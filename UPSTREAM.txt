@@ -1,0 +1,4 @@
+repo: https://github.com/tobymao/sqlglot
+commit: 91119bc
+pinned: 2026-08-21
+policy: pinned through P0-P4; continuous weekly resync from P5 onward (see PORT_PLAN.md §5.1)

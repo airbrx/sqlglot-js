@@ -1,0 +1,15 @@
+sqlglot-js
+Copyright (c) 2026 Airbrx
+
+This project is a derivative work of sqlglot (https://github.com/tobymao/sqlglot),
+Copyright (c) 2026 Toby Mao, licensed under the MIT License. The full upstream
+license text is reproduced in LICENSE-sqlglot.
+
+sqlglot-js is produced by line-by-line transliteration of sqlglot's source
+(each ported file carries a `// py: <upstream-path>:<line>` anchor to its
+origin), and its test corpus (corpus/) is harvested verbatim from sqlglot's
+own test suite (tests/dialects/*.py) via the declarative validate_identity
+and validate_all calls used throughout that suite.
+
+Upstream commit pinned at time of initial port: 91119bc
+(see UPSTREAM.txt for the current pin and resync history)
