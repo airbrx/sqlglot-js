@@ -293,6 +293,12 @@ def flag_variant_patterns() -> list[dict]:
         # VERBOSE-specific: whitespace and #-comments are ignored outside classes
         # but significant *inside* them.
         "a b", "a # comment\nb", "[a b]", r"a\ b", "( a | b )",
+        # IGNORECASE folding: 's' 'k' 'i' are the ASCII letters that non-ASCII
+        # characters fold into under Unicode rules (U+017F, U+212A, U+0130,
+        # U+0131). JS's `i` flag under `u` uses simple case folding; CPython's
+        # Unicode IGNORECASE should agree and its ASCII IGNORECASE should not.
+        # Kept here so the corpus measures that rather than trusting it.
+        "s", "k", "i", "[a-z]", "[A-Z]", "[a-z]+", "K", "S", "I", "ss",
     ]
     out: list[dict] = []
     for flag, label in flags:
@@ -739,7 +745,11 @@ def main() -> int:
     flag_subjects = [
         "", "a", "A", "ab", "a b", "a\nb", "a\n", "\na", "a\r\nb", "a#b",
         "foo bar", "Foo", "FOO", "café", "CAFÉ", "aЖ", "a1", "a_b", "a-b",
-        "n = 1", "n=1", "  n  =  1  ", "\U0001F600", "ſ", "İ",
+        "n = 1", "n=1", "  n  =  1  ", "\U0001F600",
+        # The four letters CPython's docs single out as folding into ASCII
+        # ranges under Unicode IGNORECASE, plus non-ASCII case pairs.
+        "ſ", "K", "İ", "ı", "s", "k", "i", "S", "K", "I",
+        "é", "É", "ж", "Ж", "ß", "ẞ", "ss", "SS",
     ]
     for pat in flag_variants:
         records.extend(match_cases(pat, flag_subjects))

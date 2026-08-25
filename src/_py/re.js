@@ -159,6 +159,43 @@ function isMidSurrogate(s, i) {
   return hi >= 0xd800 && hi <= 0xdbff && lo >= 0xdc00 && lo <= 0xdfff;
 }
 
+/**
+ * The other ASCII case of `cp`, or null if it is not an ASCII letter.
+ *
+ * Needed because CPython's `re.ASCII | re.IGNORECASE` folds ONLY the 52 ASCII
+ * letters, while JS's `i` flag under `u` applies Unicode simple case folding —
+ * so `/[A-Za-z0-9_]/ui` matches U+017F (LONG S) and U+212A (KELVIN SIGN) where
+ * CPython does not. Measured, not assumed: spike/py/probe_ignorecase.py shows
+ * `re.fullmatch('s', 'ſ', re.I)` is True but `re.I|re.A` is False, and that
+ * under I|A even `é`/`É` and `ж`/`Ж` stop matching.
+ * @param {number} cp
+ * @returns {number|null}
+ */
+function asciiCaseMirror(cp) {
+  if (cp >= 0x41 && cp <= 0x5a) return cp + 32;
+  if (cp >= 0x61 && cp <= 0x7a) return cp - 32;
+  return null;
+}
+
+/**
+ * Case-mirrored sub-ranges of [lo, hi] within the ASCII letter blocks.
+ * @param {number} lo @param {number} hi
+ * @returns {Array<[number, number]>}
+ */
+function asciiMirrorRanges(lo, hi) {
+  /** @type {Array<[number, number]>} */
+  const out = [];
+  for (const [blockLo, blockHi, delta] of [
+    [0x41, 0x5a, 32],
+    [0x61, 0x7a, -32],
+  ]) {
+    const a = Math.max(lo, blockLo);
+    const b = Math.min(hi, blockHi);
+    if (a <= b) out.push([a + delta, b + delta]);
+  }
+  return out;
+}
+
 /** @param {string} s @param {number} i @returns {number} */
 function nextCodePointBoundary(s, i) {
   if (i >= s.length) return s.length;
@@ -362,6 +399,26 @@ class _Parser {
     return (this.flags & ASCII) !== 0;
   }
 
+  /**
+   * True when IGNORECASE must be desugared by hand instead of handed to JS's
+   * `i` flag, because `re.ASCII | re.IGNORECASE` folds only the 52 ASCII
+   * letters while JS `u`+`i` folds the full Unicode simple-case-folding table.
+   */
+  get asciiFold() {
+    return (this.flags & IGNORECASE) !== 0 && (this.flags & ASCII) !== 0;
+  }
+
+  /**
+   * Emit one literal code point as a standalone atom, expanding ASCII letters
+   * into a two-case class when {@link asciiFold} is in effect.
+   * @param {number} cp @returns {string}
+   */
+  emitLiteral(cp) {
+    if (!this.asciiFold) return emitCp(cp);
+    const other = asciiCaseMirror(cp);
+    return other === null ? emitCp(cp) : `[${emitCp(cp)}${emitCp(other)}]`;
+  }
+
   /** Skip `re.VERBOSE` whitespace and `#` comments (outside character classes). */
   skipVerbose() {
     if (!this.verbose) return;
@@ -391,7 +448,9 @@ class _Parser {
     }
     let jsFlags = "u";
     if (this.needsV) jsFlags = "v";
-    if (this.flags & IGNORECASE) jsFlags += "i";
+    // Under re.ASCII the folding is done by emitLiteral/emitClass instead, since
+    // JS's `i` folds far more than CPython's ASCII mode does.
+    if (this.flags & IGNORECASE && !this.asciiFold) jsFlags += "i";
     if (this.flags & DOTALL) jsFlags += "s";
 
     let jsSource = this.untranslatable === null ? js : null;
@@ -611,7 +670,7 @@ class _Parser {
       case "\\":
         return this.parseEscape();
       default:
-        return litAtom(emitCp(/** @type {number} */ (c.codePointAt(0))));
+        return litAtom(this.emitLiteral(/** @type {number} */ (c.codePointAt(0))));
     }
   }
 
@@ -850,7 +909,7 @@ class _Parser {
     if (CATEGORY_CHARS.has(c)) return litAtom(this.categorySource(c));
 
     if (c in ESCAPE_CHARS) {
-      return litAtom(emitCp(ESCAPE_CHARS[/** @type {keyof typeof ESCAPE_CHARS} */ (c)]));
+      return litAtom(this.emitLiteral(ESCAPE_CHARS[/** @type {keyof typeof ESCAPE_CHARS} */ (c)]));
     }
 
     if (c === "0") {
@@ -888,10 +947,10 @@ class _Parser {
     }
 
     const cp = this.readCharEscape(c, start);
-    if (cp !== null) return litAtom(emitCp(cp));
+    if (cp !== null) return litAtom(this.emitLiteral(cp));
 
     if (ASCIILETTERS.includes(c)) throw this.err(`bad escape \\${c}`, start);
-    return litAtom(emitCp(/** @type {number} */ (c.codePointAt(0))));
+    return litAtom(this.emitLiteral(/** @type {number} */ (c.codePointAt(0))));
   }
 
   /**
@@ -1058,9 +1117,22 @@ class _Parser {
 
     let body = "";
     for (const it of items) {
-      if (it.k === "cp") body += emitCp(it.v);
-      else if (it.k === "range") body += `${emitCp(it.lo)}-${emitCp(it.hi)}`;
-      else {
+      if (it.k === "cp") {
+        body += emitCp(it.v);
+        // ASCII-only IGNORECASE: JS's `i` flag is not in play, so both cases
+        // have to be spelled out.
+        if (this.asciiFold) {
+          const other = asciiCaseMirror(it.v);
+          if (other !== null) body += emitCp(other);
+        }
+      } else if (it.k === "range") {
+        body += `${emitCp(it.lo)}-${emitCp(it.hi)}`;
+        if (this.asciiFold) {
+          for (const [lo, hi] of asciiMirrorRanges(it.lo, it.hi)) {
+            body += lo === hi ? emitCp(lo) : `${emitCp(lo)}-${emitCp(hi)}`;
+          }
+        }
+      } else {
         const inner = this.categoryInner(it.c.toLowerCase());
         if (it.c === it.c.toLowerCase()) {
           body += inner;
