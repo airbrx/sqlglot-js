@@ -72,6 +72,23 @@ def main():
             meta = node._meta
             out["m"] = dict(meta) if meta else None
             out["cm"] = list(node.comments) if node.comments else None
+            # py: repr()/_to_s() (core.py:2594-2595, verbose=False) include `_type=`
+            # iff `node.type` is truthy and the node is not itself a DataType (that
+            # guard exists because DataType.type returns self -- would recurse
+            # forever). Found via P2's astLoad round-trip gate: parse-time type
+            # inference is a real, dialect-dependent upstream behavior -- e.g.
+            # TO_CHAR under Snowflake calls annotate_types() to disambiguate
+            # ToChar vs TimeToStr (dialect.py's build_timetostr_or_tochar), which
+            # mutates `_type` on the Column/Identifier arg as a side effect. Same
+            # SQL under the default dialect parses without it. 2,344/15,540 AST rows
+            # (~15%) carry a non-null `_type` this way; `dump()` silently dropped it,
+            # so byte-identical `ast` payloads existed for atoms with DIFFERENT
+            # `repr` — an unsatisfiable astLoad contract. Use the `.type` PROPERTY,
+            # not raw `_type`: for Cast nodes it falls back to `.to` when `_type` is
+            # None (core.py:973), and repr() reflects that resolved value, not the
+            # raw attribute.
+            node_type = node.type
+            out["t"] = dump(node_type) if (node_type is not None and not node.is_data_type) else None
             return out
         if isinstance(node, list):
             return [dump(v) for v in node]
