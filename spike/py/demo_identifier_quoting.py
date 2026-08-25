@@ -42,9 +42,13 @@ NAMES = [
 
 
 def main() -> None:
-    print(f"sqlglot {sqlglot.__version__}")
+    # A bare checkout has no __version__ (it is set by the build), so report the
+    # import path instead -- what matters is that this is the pinned clone.
+    print(f"sqlglot from {sqlglot.__file__}")
     print()
-    print(f"{'name':14} {'py \\w':7} {'naive js':9} {'plan':6} {'to_identifier(name).sql()':28}")
+    # NB: no backslash inside the f-string expression -- CPython 3.9 rejects it.
+    header_py = "py " + chr(92) + "w"
+    print(f"{'name':14} {header_py:7} {'naive js':9} {'plan':6} {'to_identifier(name).sql()':28}")
     print("-" * 74)
     divergent = []
     for name in NAMES:
