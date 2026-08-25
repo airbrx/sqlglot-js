@@ -28,6 +28,7 @@ measurably wrong**; the divergence is stated so nobody "simplifies" it back.
 | `PyDecimal#toString()` | `str(Decimal)` | Uppercase `E`, exponent signed but **not** zero-padded — deliberately unlike `pyFloatToStr`. |
 | `decAdd/decSub/decMul/decDiv/decNeg/decAbs/decCmp` | `+ - * / neg abs cmp` | prec 28, `ROUND_HALF_EVEN`. **Not** a general `decimal` clone (§4.6 / B5). `decNeg(0)` is `0`, not `-0`. |
 | `pyIntFromStr(s)` / `pyFloatFromStr(s)` | `int(s)` / `float(s)` | Returns `null` where Python raises `ValueError`. Accepts surrounding Unicode whitespace, a sign, **Unicode decimal digits** (`int('٢٠٢٣') == 2023`), and underscores *between* digits only. |
+| `pyIntFromStrBase(s, base)` | `int(s, base)`, bases 2 and 16 | **P1.** Returns `null` where Python raises. Accepts a base-specific prefix (`0b` is a prefix in base 2 and two DIGITS in base 16, so `int('0b', 16) === 11`), one underscore immediately after that prefix, and Unicode decimal digits (`int('١٠', 16) === 16`). `tokenizer_core` observes only success/failure, but the value is returned so it can be fuzzed against CPython's. |
 | `pyIsInt` / `pyIsFloat` | `helper.is_int` / `is_float` | thin wrappers. |
 | `literalNumberText(v)` | `expressions/core.py:1755` | Returns `{text, neg}`. The `E+18`/`e+18` asymmetry at `test_snowflake.py:367` lives here. |
 
@@ -40,6 +41,9 @@ measurably wrong**; the divergence is stated so nobody "simplifies" it back.
 | `cpArray(s)` | `list(s)` | code-point array. |
 | `pyStrip/pyLstrip/pyRstrip(s, chars?)` | `str.strip` family | No argument ⇒ strips `str.isspace()`, which is **not** JS `\s`. |
 | `pyZfill(s, w)` | `str.zfill` | Moves a leading sign in front of the padding. |
+| `pyIsAlnum` / `pyIsDigit` | `str.isalnum` / `str.isdigit` | **P1.** String-level; empty is `false`. `isalnum` gates `_advance(alnum=True)`; `isdigit` gates the heredoc-tag fallback. |
+| `pyIsIdentifierChar(s)` | `str.isidentifier` | **P1.** SINGLE code point only (XID_Start plus `_`) — `tokenizer_core.py:970`'s only caller passes `self._peek`. Throws on a longer string rather than implementing an unused multi-character branch. |
+| `pyUpper(s)` | `str.upper()` | **P1.** NOT `toUpperCase()`, which is bound to the engine's Unicode version: Node v22 (16.0) vs CPython 3.9.25 (13.0) diverge on **67** code points. One-to-MANY (`'ß'`→`'SS'`, `'ﬆ'`→`'ST'`, so `'ﬆRUCT'` tokenizes as `STRUCT`). Output-visible at `tokenizer_core.py:853`. |
 
 > **Hard rule: never use runtime `\p{...}` for these four predicates.** Property escapes are
 > bound to the *engine's* Unicode version. Measured Node v22 (Unicode 16.0) vs CPython 3.9.25
@@ -112,6 +116,15 @@ tokenize(sql)
 never the JS string, so error columns and `highlight_sql` are correct under astral characters
 (§4.6 "Indexing"). Three components depend on this; it is frozen.
 
+**Implemented at P1 [verified].** `codePoints` is `[...sql]` — an array of one-code-point
+**strings**, matching `cpArray()` and what `errors.js::highlightSql` already slices; not an array
+of numbers. `TokenizerCore.tokenize` returns the same shape as `Tokenizer.tokenize` rather than
+upstream's bare `list[Token]`, so there is no layer where the raw string is the only handle.
+`Token.start` / `Token.end` / `Token.col` and the tokenizer's internal `_current` / `_start` are
+all code-point offsets, exactly as in Python. Asserted per row by
+`tools/tokens/check_streams.mjs`: `codePoints.join("") === sql` and `codePoints.length` equals the
+code-point count.
+
 ---
 
 ## 3. `_gen/` schema [design]
@@ -121,7 +134,7 @@ committed `_gen/.manifest.sha256` (§8.1 Rule 4).
 
 | file | generator | contents |
 |---|---|---|
-| `_gen/unicode.js` | `tools/gen_unicode_tables.mjs` | `isPrintable`, `isLowercase`, `isUppercase`, `isSpace`, `isTitlecase`, `decimalValue`, `PROVENANCE`. Delta-encoded base-36 ranges, **ends stored EXCLUSIVE**, binary search on parity. |
+| `_gen/unicode.js` | `tools/gen_unicode_tables.mjs` | `isPrintable`, `isLowercase`, `isUppercase`, `isSpace`, `isTitlecase`, `decimalValue`, `PROVENANCE`, and **added at P1** `isAlnum`, `isIdentifierStart`, `isDigit`, `upperCodePoint`. Delta-encoded base-36 ranges, **ends stored EXCLUSIVE**, binary search on parity. `upperCodePoint` is a code-point→**string** map (1,485 entries) because `str.upper()` is one-to-many. |
 | `_gen/timezones.js` | `tools/gen_timezones.mjs` | `TIMEZONES` set, lowercased, mechanically extracted from `time.py`. |
 | `_gen/expr_meta.js` | P2 | 1,048 classes: ordered `argTypes`, `requiredArgs`, traits, `initOwner`. |
 | `_gen/dispatch/` | P4 | resolved dispatch table per generator class, used to **assert** the runtime builder. |
@@ -230,6 +243,11 @@ Places where a literal transliteration is impossible. Each is exempt from `lint_
 | `Generator.sql()` over left-nested binary chains | trampoline | §4.7 — depth ∝ N. |
 | `VALUES`→`UNION` pretty reduction | trampoline | §4.7 — depth ∝ N. |
 | `_py/collections.js` `frozensetKey` separator | `","`, explicitly not `"\0"` | a NUL byte makes `grep` treat a source file as binary, which silently breaks the grep-based fidelity lints. Found the hard way. |
+| `TokenizerCore.__init__` | 26 kwargs become one options object | JS has no keyword arguments. Same precedent as `helper.csv`. Field order is upstream's parameter order and is asserted against `corpus/tokens/settings.json`. |
+| `TokenizerCore.tokenize` | returns `{tokens, codePoints}`, not `list[Token]` | §2's frozen contract. Returning the bare list at this layer would leave the raw JS string as the only handle on the input. |
+| tokenizer dicts/sets | `Map` / `Set`, never plain objects | Same reason as `trie.js`. `keywords["constructor"]` on a plain object returns `Object.prototype.constructor`, handing the scanner a function where it expects a TokenType. |
+| `_TokenizerBase.__init_subclass__` | explicit `initTokenizerSubclass(cls)` call after each class body | JS has no `__init_subclass__` hook. §4.4's "explicit derivation performed once at module init". Static inheritance reproduces the MRO read path unchanged. |
+| `Tokenizer.__init__`'s `Dialect.get_or_raise` | injected via `setDialectResolver()` | `dialects/dialect.js` lands at P5 and a JS constructor cannot `await import(...)`. Until then only an already-resolved settings object (or `null` for the base `Dialect` defaults) is accepted; resolving a dialect *name* **throws** rather than silently falling back to the default dialect, which would make every per-dialect parity row vacuously green. |
 | adjacent lone surrogates in a string | **unrepresentable; excluded from tests** | a Python `str` can hold a high surrogate followed by a low surrogate as **two** code points; a JS string is UTF-16, so that same pair **is** one astral character. Isolated lone surrogates round-trip fine and are tested; 77 generated repr cases are excluded on this basis and the count is printed, never silently dropped. |
 
 ---
@@ -274,10 +292,31 @@ numbers need the JS parser/generator, so they land at P4 rather than being guess
 
 | path | measured max safe N | threshold |
 |---|---|---|
+| **tokenize — `BEGIN SHOW` chain** | **1,734** (CPython at its default limit: **248**) | *see below* |
+| **tokenize — `; SHOW` chain** | **no recursion** (65,536+ both sides) | — |
 | parse — `OR` chain | *pending P4* | |
 | parse — `UNION` chain | *pending P4* | |
 | generate — binary chain | *pending P4* | |
 | generate `pretty` — `VALUES`→`UNION` | *pending P4* | |
+
+**Tokenizer rows added at P1 [verified]** — `node spike/fuzz_depth.mjs`, baseline from
+`python3 spike/py/gen_depth_ref.py`. §4.7 enumerated the depth-∝-N paths in the *generator*;
+there is one in the **tokenizer** too, and it was missed there. `TokenizerCore._add` recurses
+into `_scan`, which can recurse back into `_add`, whenever a COMMAND token follows `;` or
+`BEGIN` (`tokenizer_core.py:789-800`). Depth grows with input size, not with query nesting.
+
+Three things make this benign rather than a second R11:
+
+1. Both sides funnel the overflow through `tokenize`'s catch-all into a `TokenError`, so the
+   failure **mode** is identical — unlike the generator, where JS raises a bare `RangeError`.
+2. The JS threshold is **7.0× higher** than CPython's at its default `recursionlimit` of 1,000,
+   which sqlglot never raises. This is the one place where the fixed JS stack is the *more*
+   permissive of the two.
+3. It is corpus-invisible in both directions, so `fuzz_depth` now measures it on both sides
+   every run and fails if the JS number ever drops below CPython's.
+
+No `DepthLimitError` threshold is set for the tokenizer: with 7× headroom and a matching
+failure mode, adding one would make the port strictly *less* capable than upstream.
 
 Note the asymmetry that makes this tractable: the **non-pretty** `VALUES` path
 (`generator.py:2750`) is an iterative `" UNION ALL ".join(...)` and is safe at any width.

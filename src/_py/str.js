@@ -8,7 +8,17 @@
 // Iteration is over CODE POINTS (for..of), never UTF-16 units, so astral
 // characters are classified once rather than twice as surrogate halves.
 
-import { isPrintable, isLowercase, isUppercase, isSpace, isTitlecase } from "../_gen/unicode.js";
+import {
+  isPrintable,
+  isLowercase,
+  isUppercase,
+  isSpace,
+  isTitlecase,
+  isAlnum,
+  isIdentifierStart,
+  isDigit,
+  upperCodePoint,
+} from "../_gen/unicode.js";
 import { PyValueError, PyTypeError } from "./errors.js";
 // No cycle: num.js imports from _gen/unicode.js, never from this module.
 import { pyFloatToStr, pyIntToStr } from "./num.js";
@@ -54,6 +64,67 @@ export function pyIsSpace(s) {
     any = true;
   }
   return any;
+}
+
+// py: unicode_isalnum_impl — the empty string is NOT alnum.
+// Reached from tokenizer_core.py:741/748 (`_advance(alnum=True)`), which decides how
+// far a comment, var or quoted value scan runs — i.e. token boundaries.
+export function pyIsAlnum(s) {
+  let any = false;
+  for (const ch of s) {
+    if (!isAlnum(ch.codePointAt(0))) return false;
+    any = true;
+  }
+  return any;
+}
+
+// py: unicode_isdigit_impl — the empty string is NOT a digit string.
+export function pyIsDigit(s) {
+  let any = false;
+  for (const ch of s) {
+    if (!isDigit(ch.codePointAt(0))) return false;
+    any = true;
+  }
+  return any;
+}
+
+/**
+ * py: str.isidentifier() restricted to a SINGLE code point.
+ *
+ * tokenizer_core.py:970 is the only caller in scope and it passes `self._peek`, which
+ * is exactly one code point or `""`. The full multi-character rule (first code point
+ * XID_Start-or-'_', the rest XID_Continue) is deliberately NOT implemented: writing an
+ * unused, untested branch of a Unicode predicate is how the wrong one ends up called
+ * later. Throws rather than guessing if handed a longer string.
+ */
+export function pyIsIdentifierChar(s) {
+  const a = [...s];
+  if (a.length === 0) return false;
+  if (a.length > 1) {
+    throw new PyValueError("pyIsIdentifierChar: single code point only (see _py/str.js)");
+  }
+  return isIdentifierStart(a[0].codePointAt(0));
+}
+
+/**
+ * py: str.upper()
+ *
+ * NOT `String.prototype.toUpperCase()`. Same hazard as a runtime Unicode property
+ * escape: JS case conversion is bound to the *engine's* Unicode version, and Node v22
+ * (Unicode 16.0) disagrees with CPython 3.9.25 (unicodedata 13.0.0) on 67 code
+ * points — see the count printed by spike/verify_unicode_tables.mjs. The mapping is
+ * one-to-many — `'ß'.upper() === 'SS'`, `'ﬆ'.upper() === 'ST'`, so `'ﬆRUCT'` uppercases
+ * to `'STRUCT'` and tokenizes as `TokenType.STRUCT`.
+ *
+ * Output-visible: tokenizer_core.py:853 emits `text=word.upper()` for matched keywords.
+ */
+export function pyUpper(s) {
+  let out = "";
+  for (const ch of s) {
+    const mapped = upperCodePoint(ch.codePointAt(0));
+    out += mapped === null ? ch : mapped;
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------------- *
@@ -262,4 +333,13 @@ export function pyRepr(v) {
   return String(v);
 }
 
-export { isPrintable, isLowercase, isUppercase, isSpace, isTitlecase };
+export {
+  isPrintable,
+  isLowercase,
+  isUppercase,
+  isSpace,
+  isTitlecase,
+  isAlnum,
+  isIdentifierStart,
+  isDigit,
+};

@@ -27,20 +27,64 @@ function report(probe, status, detail) {
   results.push({ probe, status, detail });
 }
 
-/* ---- probe 1: tokens ------------------------------------------------------ */
+/* ---- probe 1: tokens ------------------------------------------------------ *
+ * Two halves. The membership half (443 TokenType names) has existed since P0 and is
+ * cheap but weak — a tokenizer that emits the right type names at the wrong offsets
+ * passes it. The stream half is P1's actual exit criterion: every token's type, text,
+ * line, col, start, end and comments, byte-exact against CPython over the whole
+ * corpus, plus the base-class table derivations. It lives in its own file because it
+ * is 23,457 rows and wants its own `--dialect` / `--id` flags for diagnosis.
+ */
 async function probeTokens() {
   const want = load("tokens");
   const mod = await tryImport("../../src/tokens.js");
   if (!mod?.TokenType) return report("1 tokens", "NOT_BUILT", `${want.count} token types expected`);
+
   const got = Object.keys(mod.TokenType);
   const missing = want.token_types.filter((t) => !got.includes(t));
   const extra = got.filter((t) => !want.token_types.includes(t));
+  // IntEnum ordering is observable: TokenType values are compared and used as Map keys
+  // across the parser, so a member inserted in the wrong place is a real defect even
+  // when the name set matches.
+  const order = want.token_types.findIndex((t, i) => mod.TokenType[t] !== i + 1);
+
+  if (missing.length || extra.length || order !== -1) {
+    return report(
+      "1 tokens",
+      "FAIL",
+      `${got.length}/${want.count}` +
+        (missing.length ? ` missing ${missing.slice(0, 5).join(",")}` : "") +
+        (extra.length ? ` extra ${extra.slice(0, 5).join(",")}` : "") +
+        (order !== -1 ? ` value/order wrong at ${want.token_types[order]}` : ""),
+    );
+  }
+
+  if (!existsSync("corpus/tokens/streams.jsonl")) {
+    return report(
+      "1 tokens",
+      "FAIL",
+      `${got.length}/${want.count} types ok, but corpus/tokens/streams.jsonl is missing — ` +
+        "run tools/tokens/harvest_streams.py",
+    );
+  }
+
+  const { spawnSync } = await import("node:child_process");
+  const r = spawnSync(process.execPath, ["tools/tokens/check_streams.mjs"], {
+    encoding: "utf8",
+    env: { ...process.env, TOKENS_CHECK_JSON: "1" },
+  });
+  let res;
+  try {
+    res = JSON.parse((r.stdout || "").trim().split("\n").pop());
+  } catch {
+    return report("1 tokens", "FAIL", `stream checker produced no result: ${(r.stderr || "").split("\n")[0]}`);
+  }
+
   report(
     "1 tokens",
-    missing.length === 0 && extra.length === 0 ? "PASS" : "FAIL",
-    `${got.length}/${want.count}` +
-      (missing.length ? ` missing ${missing.slice(0, 5).join(",")}` : "") +
-      (extra.length ? ` extra ${extra.slice(0, 5).join(",")}` : ""),
+    res.ok ? "PASS" : "FAIL",
+    `${got.length}/${want.count} types; ${res.summary}` +
+      (res.ok ? "" : `\n    ${res.failureCount} failures — node tools/tokens/check_streams.mjs --verbose`),
   );
 }
 

@@ -12,6 +12,10 @@ import {
   isUppercase,
   isSpace,
   isTitlecase,
+  isAlnum,
+  isIdentifierStart,
+  isDigit,
+  upperCodePoint,
   PROVENANCE,
 } from "../src/_gen/unicode.js";
 
@@ -30,6 +34,9 @@ const truth = {
   isupper: expand(ref.predicates.isupper),
   isspace: expand(ref.predicates.isspace),
   istitlechar: expand(ref.predicates.istitlechar),
+  isalnum: expand(ref.predicates.isalnum),
+  isidentifier: expand(ref.predicates.isidentifier),
+  isdigit: expand(ref.predicates.isdigit),
 };
 
 const impls = {
@@ -38,6 +45,9 @@ const impls = {
   isupper: isUppercase,
   isspace: isSpace,
   istitlechar: isTitlecase,
+  isalnum: isAlnum,
+  isidentifier: isIdentifierStart,
+  isdigit: isDigit,
 };
 
 console.log(`  table provenance: CPython ${PROVENANCE.python_version}, `
@@ -64,6 +74,42 @@ for (const [name, fn] of Object.entries(impls)) {
   console.log(
     `    ${name.padEnd(13)}${String(diffs).padStart(8)} divergences  ${diffs === 0 ? "exact" : samples.join(" ")}`,
   );
+}
+
+// str.upper(), full range. Also counts how far the engine's own toUpperCase() is from
+// CPython's, which is the whole reason this table exists rather than a delegation.
+{
+  const want = new Map(ref.upper_map);
+  let diffs = 0;
+  let engineDiffs = 0;
+  const samples = [];
+  for (let cp = 0; cp <= MAX; cp++) {
+    const self = String.fromCodePoint(cp);
+    const expected = want.get(cp) ?? self;
+    const got = upperCodePoint(cp) ?? self;
+    if (got !== expected) {
+      diffs++;
+      if (samples.length < 8) samples.push("U+" + cp.toString(16).toUpperCase().padStart(4, "0"));
+    }
+    // Lone surrogates are excluded: String.fromCodePoint yields an unpaired UTF-16
+    // unit and toUpperCase() on it is not meaningfully comparable.
+    if ((cp < 0xd800 || cp > 0xdfff) && self.toUpperCase() !== expected) engineDiffs++;
+  }
+  bad += diffs;
+  console.log(
+    `    ${"upper".padEnd(13)}${String(diffs).padStart(8)} divergences  ` +
+      `${diffs === 0 ? "exact" : samples.join(" ")}`,
+  );
+  console.log(
+    `      (for comparison, Node's own toUpperCase() diverges from CPython ` +
+      `${PROVENANCE.python_version} on ${engineDiffs} code points — that is why the table exists)`,
+  );
+  if (engineDiffs === 0) {
+    console.log(
+      "      WARNING: 0 engine divergences means this check proves nothing on this " +
+        "Node build; the table is still correct but the vacuity guard is not armed.",
+    );
+  }
 }
 
 // Guard the provenance contract itself: if the harvesting interpreter's Unicode
