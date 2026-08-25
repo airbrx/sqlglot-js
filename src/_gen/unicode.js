@@ -54,6 +54,10 @@ const SPACE = decode(
   "9,5,e,5,2s,1,q,1,4bj,1,1vj,b,t,2,5,1,1b,1,334,1",
 );
 
+const TITLECASE = decode(
+  "cl,1,2,1,2,1,12,1,5ud,8,8,8,8,8,c,1,f,1,1b,1",
+);
+
 // py: str.isprintable() — per code point.
 export function isPrintable(cp) {
   return inRanges(PRINTABLE, cp);
@@ -72,6 +76,14 @@ export function isUppercase(cp) {
 // py: str.isspace() — per code point.
 export function isSpace(cp) {
   return inRanges(SPACE, cp);
+}
+
+// py: Py_UNICODE_ISTITLE — the CHARACTER property (General_Category == Lt).
+// This is deliberately NOT str.istitle(): 'A'.istitle() is True (the string is
+// titlecase-formatted) but 'A' is not a titlecase character. _py/str.js needs the
+// character property to compute "cased" for isupper()/islower().
+export function isTitlecase(cp) {
+  return inRanges(TITLECASE, cp);
 }
 
 export const PROVENANCE = {

@@ -22,6 +22,15 @@ PREDICATES = {
     "islower": lambda c: c.islower(),
     "isupper": lambda c: c.isupper(),
     "isspace": lambda c: c.isspace(),
+    # Needed for the *string-level* semantics of islower/isupper: CPython's
+    # str.islower() rejects a string containing any titlecase char.
+    #
+    # NOTE this is the CHARACTER property Py_UNICODE_ISTITLE (category Lt), NOT the
+    # string method str.istitle(). They are different: 'A'.istitle() is True because
+    # "A" is titlecase-*formatted*, but 'A' is not a titlecase character. Dumping
+    # str.istitle() here makes every uppercase char look titlecase, which makes
+    # str.isupper() return False for 'A'.
+    "istitlechar": lambda c: unicodedata.category(c) == "Lt",
 }
 
 
@@ -59,6 +68,21 @@ def main():
                 flags[cp] = False
         out["predicates"][name] = rle(flags)
         out["counts"][name] = sum(flags)
+
+    # Cross-check the character-property claim: CPython's str.istitle() on a
+    # single char is documented-equivalent to ISUPPER(ch) or ISTITLE(ch). If that
+    # identity holds across the whole range, "category == Lt" really is the
+    # character property the string predicates need.
+    mismatches = []
+    for cp in range(maxcp + 1):
+        try:
+            ch = chr(cp)
+            derived = ch.isupper() or (unicodedata.category(ch) == "Lt")
+            if bool(ch.istitle()) != bool(derived):
+                mismatches.append(cp)
+        except (ValueError, UnicodeError):
+            pass
+    out["istitle_identity_mismatches"] = mismatches
 
     # General_Category per code point, RLE'd by category name. This lets the JS side
     # explain *why* a divergence happened (unassigned-in-13.0 vs assigned-in-15.x)

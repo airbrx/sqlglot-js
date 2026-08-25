@@ -6,7 +6,14 @@
 //   node tools/gen_unicode_tables.mjs && node spike/verify_unicode_tables.mjs
 
 import { readFileSync } from "node:fs";
-import { isPrintable, isLowercase, isUppercase, isSpace, PROVENANCE } from "../src/_gen/unicode.js";
+import {
+  isPrintable,
+  isLowercase,
+  isUppercase,
+  isSpace,
+  isTitlecase,
+  PROVENANCE,
+} from "../src/_gen/unicode.js";
 
 const ref = JSON.parse(readFileSync("spike/out/unicode_ref.json", "utf8"));
 const MAX = ref.maxunicode;
@@ -22,6 +29,7 @@ const truth = {
   islower: expand(ref.predicates.islower),
   isupper: expand(ref.predicates.isupper),
   isspace: expand(ref.predicates.isspace),
+  istitlechar: expand(ref.predicates.istitlechar),
 };
 
 const impls = {
@@ -29,12 +37,17 @@ const impls = {
   islower: isLowercase,
   isupper: isUppercase,
   isspace: isSpace,
+  istitlechar: isTitlecase,
 };
 
 console.log(`  table provenance: CPython ${PROVENANCE.python_version}, `
   + `unicodedata ${PROVENANCE.unidata_version}`);
 console.log(`  verifying 0..0x${MAX.toString(16).toUpperCase()} `
-  + `(${(MAX + 1).toLocaleString()} code points) x 4 predicates\n`);
+  + `(${(MAX + 1).toLocaleString()} code points) x ${Object.keys(impls).length} predicates`);
+console.log(
+  `  str.istitle() == ISUPPER|ISTITLE identity mismatches in CPython: ` +
+    `${(ref.istitle_identity_mismatches ?? []).length}\n`,
+);
 
 let bad = 0;
 for (const [name, fn] of Object.entries(impls)) {
