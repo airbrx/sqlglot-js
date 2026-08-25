@@ -1,75 +1,75 @@
-{"atom_id":"25834f8c67791c06","ast_ref":"25834f8c67791c06","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"BIT_AND(x)","unsupported_messages":[]}
-{"atom_id":"8e3a2db1d172f562","ast_ref":"8e3a2db1d172f562","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"BIT_OR(x)","unsupported_messages":[]}
-{"atom_id":"919fabba162e3f61","ast_ref":"919fabba162e3f61","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT x BETWEEN 2 AND 10","unsupported_messages":[]}
-{"atom_id":"d977ea16aae132c4","ast_ref":"d977ea16aae132c4","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT x BETWEEN SYMMETRIC 10 AND 2","unsupported_messages":[]}
-{"atom_id":"c76fab8593ebdbca","ast_ref":"c76fab8593ebdbca","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT x BETWEEN ASYMMETRIC 10 AND 2","unsupported_messages":[]}
-{"atom_id":"f3ce5ebe92a97ed6","ast_ref":"f3ce5ebe92a97ed6","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"LOG(2, a)","unsupported_messages":[]}
-{"atom_id":"ae80791a57a3e12b","ast_ref":"ae80791a57a3e12b","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"LOG(10, a)","unsupported_messages":[]}
-{"atom_id":"22b8f463dc563097","ast_ref":"22b8f463dc563097","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT CASE WHEN NOT a IS NULL THEN b ELSE c END","unsupported_messages":[]}
-{"atom_id":"8ac6a9ad9402448b","ast_ref":"8ac6a9ad9402448b","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT CASE WHEN NOT a IS NULL THEN b END","unsupported_messages":[]}
-{"atom_id":"618a630ad0705e8c","ast_ref":"618a630ad0705e8c","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SOUNDEX(x)","unsupported_messages":[]}
-{"atom_id":"3bc3d2068e5b6c4c","ast_ref":"3bc3d2068e5b6c4c","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(x, 1)","unsupported_messages":[]}
-{"atom_id":"533216facc617b38","ast_ref":"533216facc617b38","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(x, 1)","unsupported_messages":[]}
-{"atom_id":"398ad32558fa2b27","ast_ref":"398ad32558fa2b27","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(CAST('2020-01-01' AS DATE), 1)","unsupported_messages":[]}
-{"atom_id":"5a395d95fe50876a","ast_ref":"5a395d95fe50876a","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"ARRAY_GENERATE_RANGE(1, 4)","unsupported_messages":[]}
-{"atom_id":"fdf127e4e288bdf3","ast_ref":"fdf127e4e288bdf3","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT CONCAT('a', NULL)","unsupported_messages":[]}
-{"atom_id":"d4ec1e88c5b54154","ast_ref":"d4ec1e88c5b54154","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT CONVERT_TIMEZONE('America/Chicago', DateColumn)","unsupported_messages":[]}
-{"atom_id":"80895c5eeb863007","ast_ref":"80895c5eeb863007","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT CURRENT_DATE_UTC","unsupported_messages":[]}
-{"atom_id":"d9f38c9df160ea67","ast_ref":"d9f38c9df160ea67","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT CURRENT_DATE_UTC","unsupported_messages":[]}
-{"atom_id":"ee0c695cab3381c8","ast_ref":"ee0c695cab3381c8","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_ADD(col, 1)","unsupported_messages":[]}
-{"atom_id":"eebed14c06d3297c","ast_ref":"eebed14c06d3297c","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_ADD(col, CAST(1 AS INTERVAL HOUR))","unsupported_messages":[]}
-{"atom_id":"f28c8495178d13f2","ast_ref":"f28c8495178d13f2","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_ADD(CAST('2022-01-01 12:00:00' AS TIMESTAMP), CAST(-1 AS INTERVAL HOUR))","unsupported_messages":[]}
-{"atom_id":"65e2ac9390b85353","ast_ref":"65e2ac9390b85353","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT EXTRACT('YEAR' FROM CAST('2021-04-01' AS DATE))","unsupported_messages":[]}
-{"atom_id":"30dd98410fadc0ee","ast_ref":"30dd98410fadc0ee","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_SUB(col, 1)","unsupported_messages":[]}
-{"atom_id":"e65975c3e1867e50","ast_ref":"e65975c3e1867e50","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_SUB(col, CAST(1 AS INTERVAL HOUR))","unsupported_messages":[]}
-{"atom_id":"e2f0b0f0e168ea43","ast_ref":"e2f0b0f0e168ea43","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_SUB(CAST('2022-01-01 12:00:00' AS TIMESTAMP), CAST(-1 AS INTERVAL HOUR))","unsupported_messages":[]}
-{"atom_id":"bed9f2a3dd9df5e4","ast_ref":"bed9f2a3dd9df5e4","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2025-08-18 15:30:00' AS TIMESTAMP), 'yyyy-mm-dd')","unsupported_messages":[]}
-{"atom_id":"a683257ee9457e03","ast_ref":"a683257ee9457e03","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"DATE('2024-02-02')","unsupported_messages":[]}
-{"atom_id":"2795c672f201b59d","ast_ref":"2795c672f201b59d","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(CONCAT(x, '-', y, '-', z) AS DATE)","unsupported_messages":[]}
-{"atom_id":"3a132260702c035b","ast_ref":"3a132260702c035b","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"INTERVAL '7' DAY","unsupported_messages":[]}
-{"atom_id":"ecfa44de45a0afa7","ast_ref":"ecfa44de45a0afa7","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t LIMIT 2","unsupported_messages":[]}
-{"atom_id":"cef96896c0f4a759","ast_ref":"cef96896c0f4a759","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT COUNT(DISTINCT CASE WHEN a IS NULL THEN NULL WHEN b IS NULL THEN NULL ELSE (a, b) END) FROM t","unsupported_messages":[]}
-{"atom_id":"cdbfa99930b6942d","ast_ref":"cdbfa99930b6942d","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t ORDER BY a","unsupported_messages":[]}
-{"atom_id":"2d393eb7ea1d438c","ast_ref":"2d393eb7ea1d438c","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t ORDER BY a DESC","unsupported_messages":[]}
-{"atom_id":"b4d4db2b81453100","ast_ref":"b4d4db2b81453100","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t ORDER BY a NULLS FIRST","unsupported_messages":[]}
-{"atom_id":"18c9ac6eb9f17330","ast_ref":"18c9ac6eb9f17330","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t ORDER BY a DESC NULLS FIRST","unsupported_messages":[]}
-{"atom_id":"d1e4ad61269f8617","ast_ref":"d1e4ad61269f8617","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"REGEXP_LIKE(x, y)","unsupported_messages":[]}
-{"atom_id":"21f9d6b667bb10ce","ast_ref":"21f9d6b667bb10ce","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"REGEXP_LIKE(x, y)","unsupported_messages":[]}
-{"atom_id":"e9d6258b7ddbfe7e","ast_ref":"e9d6258b7ddbfe7e","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT REGEXP_SPLIT(tags, ',', 'ALL', 1000) AS t","unsupported_messages":[]}
-{"atom_id":"fb32bbbcb8b06b21","ast_ref":"fb32bbbcb8b06b21","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT REPEAT(x, 5)","unsupported_messages":[]}
-{"atom_id":"725e6b3e7b446168","ast_ref":"725e6b3e7b446168","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT REPEAT(x, 5)","unsupported_messages":[]}
-{"atom_id":"80387b6d139cc6ff","ast_ref":"80387b6d139cc6ff","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2025-06-24 12:34:56' AS TIMESTAMP), 'yyyy-mm-dd hh24:mi:ss')","unsupported_messages":[]}
-{"atom_id":"9e39fb8e3cc1dee3","ast_ref":"9e39fb8e3cc1dee3","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2025-06-24 12:34:56' AS TIMESTAMP), 'yyyy-mm-dd hh24:mi:ss')","unsupported_messages":[]}
-{"atom_id":"0e57136580742454","ast_ref":"0e57136580742454","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2025-06-24 12:34:56' AS TIMESTAMP), 'yyyy-mm-dd hh24:mi:ss')","unsupported_messages":[]}
-{"atom_id":"25b5aee6f69ead6f","ast_ref":"25b5aee6f69ead6f","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2025-06-24 12:34:56' AS TIMESTAMP), 'yyyy-mm-dd hh24:mi:ss')","unsupported_messages":[]}
-{"atom_id":"2c65fcf34c0d464a","ast_ref":"2c65fcf34c0d464a","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2025-06-24 12:34:56' AS TIMESTAMP), 'yy-ddd hh24:mi:ss.fff tzd')","unsupported_messages":[]}
-{"atom_id":"0f770e1530d789d0","ast_ref":"0f770e1530d789d0","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2025-06-24 12:34:56' AS TIMESTAMP), 'yy-ddd hh24:mi:ss.fff tzd')","unsupported_messages":[]}
-{"atom_id":"2018951265444b38","ast_ref":"2018951265444b38","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2025-06-24 12:34:56' AS TIMESTAMP), 'yy-ddd hh24:mi:ss.fff tzd')","unsupported_messages":[]}
-{"atom_id":"cae0d7ce85180a10","ast_ref":"cae0d7ce85180a10","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2025-06-24 12:34:56' AS TIMESTAMP), 'yy-ddd hh24:mi:ss.fff tzd')","unsupported_messages":[]}
-{"atom_id":"5c65336a94bf529a","ast_ref":"5c65336a94bf529a","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t AT SNAPSHOT '4132119532727284872'","unsupported_messages":[]}
-{"atom_id":"05f313a9c4a6b12d","ast_ref":"05f313a9c4a6b12d","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t AT TIMESTAMP '2024-01-01 12:00:00.000'","unsupported_messages":[]}
-{"atom_id":"f35c141895e137a0","ast_ref":"f35c141895e137a0","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t AT SNAPSHOT '4132119532727284872' AS a","unsupported_messages":[]}
-{"atom_id":"b9862d8a466a5a2a","ast_ref":"b9862d8a466a5a2a","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t AT SNAPSHOT '123'","unsupported_messages":[]}
-{"atom_id":"3b426afaa11a3001","ast_ref":"3b426afaa11a3001","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t AT SNAPSHOT '123'","unsupported_messages":[]}
-{"atom_id":"84c594817dab6330","ast_ref":"84c594817dab6330","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t AT TIMESTAMP '2024-01-01'","unsupported_messages":[]}
-{"atom_id":"098d4925e70e4186","ast_ref":"098d4925e70e4186","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(5555, '#')","unsupported_messages":[]}
-{"atom_id":"8361309826da279a","ast_ref":"8361309826da279a","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(3.14, '#.#')","unsupported_messages":[]}
-{"atom_id":"7f51476cc077517f","ast_ref":"7f51476cc077517f","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(columnname, '#.##')","unsupported_messages":[]}
-{"atom_id":"f3e4c291214a9439","ast_ref":"f3e4c291214a9439","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(5555)","unsupported_messages":[]}
-{"atom_id":"64b180fa5821e93a","ast_ref":"64b180fa5821e93a","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(3.14, columnname)","unsupported_messages":[]}
-{"atom_id":"a92a64d19d759bde","ast_ref":"a92a64d19d759bde","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(123, 'abcd')","unsupported_messages":[]}
-{"atom_id":"cba777fe5e545fa8","ast_ref":"cba777fe5e545fa8","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(3.14, UPPER('abcd'))","unsupported_messages":[]}
-{"atom_id":"ad7e40288a81db4e","ast_ref":"ad7e40288a81db4e","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS FLOAT)","unsupported_messages":[]}
-{"atom_id":"40f16db569174387","ast_ref":"40f16db569174387","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS FLOAT)","unsupported_messages":[]}
-{"atom_id":"a6f30c2b5e618f91","ast_ref":"a6f30c2b5e618f91","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS FLOAT)","unsupported_messages":[]}
-{"atom_id":"778439322fb342f1","ast_ref":"778439322fb342f1","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS INT)","unsupported_messages":[]}
-{"atom_id":"c4aaa76ad5a11e49","ast_ref":"c4aaa76ad5a11e49","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS INT)","unsupported_messages":[]}
-{"atom_id":"897cd6523fb44ab7","ast_ref":"897cd6523fb44ab7","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARBINARY)","unsupported_messages":[]}
-{"atom_id":"ef22191aa8d60aed","ast_ref":"ef22191aa8d60aed","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
-{"atom_id":"f079bd935077e68c","ast_ref":"f079bd935077e68c","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
-{"atom_id":"8dfdc9c4aee3ad53","ast_ref":"8dfdc9c4aee3ad53","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
-{"atom_id":"b0d3b7a00be9eb4a","ast_ref":"b0d3b7a00be9eb4a","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIMESTAMP)","unsupported_messages":[]}
-{"atom_id":"7e03cadd4f95169f","ast_ref":"7e03cadd4f95169f","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIMESTAMP)","unsupported_messages":[]}
-{"atom_id":"0939537b12924f0d","ast_ref":"0939537b12924f0d","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS LIST)","unsupported_messages":[]}
-{"atom_id":"390ae13c810e0fc5","ast_ref":"390ae13c810e0fc5","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS BOOLEAN)","unsupported_messages":[]}
-{"atom_id":"4529136508ed1820","ast_ref":"4529136508ed1820","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"FLOOR(__time TO WEEK)","unsupported_messages":[]}
+{"atom_id":"a85af6c60f930c59","ast_ref":"a85af6c60f930c59","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"BIT_AND(x)","unsupported_messages":[]}
+{"atom_id":"7958fd8f1fc9f1e9","ast_ref":"7958fd8f1fc9f1e9","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"BIT_OR(x)","unsupported_messages":[]}
+{"atom_id":"3120723d4743e37f","ast_ref":"3120723d4743e37f","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT x BETWEEN 2 AND 10","unsupported_messages":[]}
+{"atom_id":"06a617083fc1b413","ast_ref":"06a617083fc1b413","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT x BETWEEN SYMMETRIC 10 AND 2","unsupported_messages":[]}
+{"atom_id":"f10e36419b48dd32","ast_ref":"f10e36419b48dd32","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT x BETWEEN ASYMMETRIC 10 AND 2","unsupported_messages":[]}
+{"atom_id":"a66354a74b9842fd","ast_ref":"a66354a74b9842fd","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"LOG(2, a)","unsupported_messages":[]}
+{"atom_id":"aef86089d383a6a6","ast_ref":"aef86089d383a6a6","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"LOG(10, a)","unsupported_messages":[]}
+{"atom_id":"af11a8e0c7562d8e","ast_ref":"af11a8e0c7562d8e","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT CASE WHEN NOT a IS NULL THEN b ELSE c END","unsupported_messages":[]}
+{"atom_id":"09facf2059683baa","ast_ref":"09facf2059683baa","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT CASE WHEN NOT a IS NULL THEN b END","unsupported_messages":[]}
+{"atom_id":"2b56288088e17971","ast_ref":"2b56288088e17971","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SOUNDEX(x)","unsupported_messages":[]}
+{"atom_id":"6b9f8845ed970c5c","ast_ref":"6b9f8845ed970c5c","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(x, 1)","unsupported_messages":[]}
+{"atom_id":"d165816c00750d62","ast_ref":"d165816c00750d62","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(x, 1)","unsupported_messages":[]}
+{"atom_id":"3abda7221efb55fd","ast_ref":"3abda7221efb55fd","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(CAST('2020-01-01' AS DATE), 1)","unsupported_messages":[]}
+{"atom_id":"b399dbcf2353c0bb","ast_ref":"b399dbcf2353c0bb","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"ARRAY_GENERATE_RANGE(1, 4)","unsupported_messages":[]}
+{"atom_id":"855126e168429679","ast_ref":"855126e168429679","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT CONCAT('a', NULL)","unsupported_messages":[]}
+{"atom_id":"1426c3a217ee87d7","ast_ref":"1426c3a217ee87d7","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT CONVERT_TIMEZONE('America/Chicago', DateColumn)","unsupported_messages":[]}
+{"atom_id":"8f7ae19509ae013e","ast_ref":"8f7ae19509ae013e","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT CURRENT_DATE_UTC","unsupported_messages":[]}
+{"atom_id":"464b7b911d6a0c20","ast_ref":"464b7b911d6a0c20","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT CURRENT_DATE_UTC","unsupported_messages":[]}
+{"atom_id":"d236e76407b9e33b","ast_ref":"d236e76407b9e33b","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_ADD(col, 1)","unsupported_messages":[]}
+{"atom_id":"7c5cd068b396710a","ast_ref":"7c5cd068b396710a","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_ADD(col, CAST(1 AS INTERVAL HOUR))","unsupported_messages":[]}
+{"atom_id":"8339ed581df1df0f","ast_ref":"8339ed581df1df0f","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_ADD(CAST('2022-01-01 12:00:00' AS TIMESTAMP), CAST(-1 AS INTERVAL HOUR))","unsupported_messages":[]}
+{"atom_id":"d2cd423d6dbed5b5","ast_ref":"d2cd423d6dbed5b5","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT EXTRACT('YEAR' FROM CAST('2021-04-01' AS DATE))","unsupported_messages":[]}
+{"atom_id":"b81f9c8592a7595a","ast_ref":"b81f9c8592a7595a","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_SUB(col, 1)","unsupported_messages":[]}
+{"atom_id":"5a90eac4e8553a83","ast_ref":"5a90eac4e8553a83","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_SUB(col, CAST(1 AS INTERVAL HOUR))","unsupported_messages":[]}
+{"atom_id":"db0143c75dfd1900","ast_ref":"db0143c75dfd1900","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_SUB(CAST('2022-01-01 12:00:00' AS TIMESTAMP), CAST(-1 AS INTERVAL HOUR))","unsupported_messages":[]}
+{"atom_id":"a6ab52cedb04df9c","ast_ref":"a6ab52cedb04df9c","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2025-08-18 15:30:00' AS TIMESTAMP), 'yyyy-mm-dd')","unsupported_messages":[]}
+{"atom_id":"b755d6da1a4ebe78","ast_ref":"b755d6da1a4ebe78","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"DATE('2024-02-02')","unsupported_messages":[]}
+{"atom_id":"e23683201e40ef04","ast_ref":"e23683201e40ef04","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(CONCAT(x, '-', y, '-', z) AS DATE)","unsupported_messages":[]}
+{"atom_id":"798bb66e914c9c53","ast_ref":"798bb66e914c9c53","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"INTERVAL '7' DAY","unsupported_messages":[]}
+{"atom_id":"965e7dc3b8b654e2","ast_ref":"965e7dc3b8b654e2","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t LIMIT 2","unsupported_messages":[]}
+{"atom_id":"6dd33e02969d2437","ast_ref":"6dd33e02969d2437","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT COUNT(DISTINCT CASE WHEN a IS NULL THEN NULL WHEN b IS NULL THEN NULL ELSE (a, b) END) FROM t","unsupported_messages":[]}
+{"atom_id":"3d74b6c8bc64cd34","ast_ref":"3d74b6c8bc64cd34","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t ORDER BY a","unsupported_messages":[]}
+{"atom_id":"60bc949e7dbb9ae7","ast_ref":"60bc949e7dbb9ae7","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t ORDER BY a DESC","unsupported_messages":[]}
+{"atom_id":"1a065f8626a981b7","ast_ref":"1a065f8626a981b7","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t ORDER BY a NULLS FIRST","unsupported_messages":[]}
+{"atom_id":"cddf6b5c870b7c96","ast_ref":"cddf6b5c870b7c96","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t ORDER BY a DESC NULLS FIRST","unsupported_messages":[]}
+{"atom_id":"cd8fd838c353ab91","ast_ref":"cd8fd838c353ab91","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"REGEXP_LIKE(x, y)","unsupported_messages":[]}
+{"atom_id":"465244a5421dc8bf","ast_ref":"465244a5421dc8bf","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"REGEXP_LIKE(x, y)","unsupported_messages":[]}
+{"atom_id":"3b6a197aedd08f91","ast_ref":"3b6a197aedd08f91","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT REGEXP_SPLIT(tags, ',', 'ALL', 1000) AS t","unsupported_messages":[]}
+{"atom_id":"05e80cb3614c4a22","ast_ref":"05e80cb3614c4a22","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT REPEAT(x, 5)","unsupported_messages":[]}
+{"atom_id":"c4b41e1d6ff34755","ast_ref":"c4b41e1d6ff34755","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT REPEAT(x, 5)","unsupported_messages":[]}
+{"atom_id":"6b120a22587efb10","ast_ref":"6b120a22587efb10","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2025-06-24 12:34:56' AS TIMESTAMP), 'yyyy-mm-dd hh24:mi:ss')","unsupported_messages":[]}
+{"atom_id":"7f86a2000b2649c7","ast_ref":"7f86a2000b2649c7","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2025-06-24 12:34:56' AS TIMESTAMP), 'yyyy-mm-dd hh24:mi:ss')","unsupported_messages":[]}
+{"atom_id":"d46153cc4fcc422b","ast_ref":"d46153cc4fcc422b","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2025-06-24 12:34:56' AS TIMESTAMP), 'yyyy-mm-dd hh24:mi:ss')","unsupported_messages":[]}
+{"atom_id":"37cc2dbe8e6b0dd4","ast_ref":"37cc2dbe8e6b0dd4","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2025-06-24 12:34:56' AS TIMESTAMP), 'yyyy-mm-dd hh24:mi:ss')","unsupported_messages":[]}
+{"atom_id":"36ad7b10a9bb156d","ast_ref":"36ad7b10a9bb156d","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2025-06-24 12:34:56' AS TIMESTAMP), 'yy-ddd hh24:mi:ss.fff tzd')","unsupported_messages":[]}
+{"atom_id":"e589b3bd39b872b4","ast_ref":"e589b3bd39b872b4","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2025-06-24 12:34:56' AS TIMESTAMP), 'yy-ddd hh24:mi:ss.fff tzd')","unsupported_messages":[]}
+{"atom_id":"e0ddbc62d2fc4fd1","ast_ref":"e0ddbc62d2fc4fd1","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2025-06-24 12:34:56' AS TIMESTAMP), 'yy-ddd hh24:mi:ss.fff tzd')","unsupported_messages":[]}
+{"atom_id":"da1071c1de71c03a","ast_ref":"da1071c1de71c03a","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2025-06-24 12:34:56' AS TIMESTAMP), 'yy-ddd hh24:mi:ss.fff tzd')","unsupported_messages":[]}
+{"atom_id":"9e92f7a6e99db846","ast_ref":"9e92f7a6e99db846","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t AT SNAPSHOT '4132119532727284872'","unsupported_messages":[]}
+{"atom_id":"92c8d6c0d8ba5763","ast_ref":"92c8d6c0d8ba5763","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t AT TIMESTAMP '2024-01-01 12:00:00.000'","unsupported_messages":[]}
+{"atom_id":"5ff3e34a36a344d5","ast_ref":"5ff3e34a36a344d5","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t AT SNAPSHOT '4132119532727284872' AS a","unsupported_messages":[]}
+{"atom_id":"3e84e2f015fb4441","ast_ref":"3e84e2f015fb4441","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t AT SNAPSHOT '123'","unsupported_messages":[]}
+{"atom_id":"aa373c4a3f5b0600","ast_ref":"aa373c4a3f5b0600","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t AT SNAPSHOT '123'","unsupported_messages":[]}
+{"atom_id":"cc23e3a5381bac0d","ast_ref":"cc23e3a5381bac0d","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t AT TIMESTAMP '2024-01-01'","unsupported_messages":[]}
+{"atom_id":"fae7f457f118f1c9","ast_ref":"fae7f457f118f1c9","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(5555, '#')","unsupported_messages":[]}
+{"atom_id":"edec11c0d7869bfe","ast_ref":"edec11c0d7869bfe","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(3.14, '#.#')","unsupported_messages":[]}
+{"atom_id":"4ad6b08d029dc389","ast_ref":"4ad6b08d029dc389","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(columnname, '#.##')","unsupported_messages":[]}
+{"atom_id":"c2078745917e3a75","ast_ref":"c2078745917e3a75","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(5555)","unsupported_messages":[]}
+{"atom_id":"67db95327b57ef93","ast_ref":"67db95327b57ef93","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(3.14, columnname)","unsupported_messages":[]}
+{"atom_id":"31c4abf165afdf68","ast_ref":"31c4abf165afdf68","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(123, 'abcd')","unsupported_messages":[]}
+{"atom_id":"057074da23606f9e","ast_ref":"057074da23606f9e","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(3.14, UPPER('abcd'))","unsupported_messages":[]}
+{"atom_id":"7d07e2b33abaf726","ast_ref":"7d07e2b33abaf726","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS FLOAT)","unsupported_messages":[]}
+{"atom_id":"45f4fb34b676d8f2","ast_ref":"45f4fb34b676d8f2","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS FLOAT)","unsupported_messages":[]}
+{"atom_id":"a5c44e0db07b64f0","ast_ref":"a5c44e0db07b64f0","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS FLOAT)","unsupported_messages":[]}
+{"atom_id":"146a2287d0f7c3b4","ast_ref":"146a2287d0f7c3b4","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS INT)","unsupported_messages":[]}
+{"atom_id":"bb448af86b718a50","ast_ref":"bb448af86b718a50","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS INT)","unsupported_messages":[]}
+{"atom_id":"9d1bafa54ed5a000","ast_ref":"9d1bafa54ed5a000","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARBINARY)","unsupported_messages":[]}
+{"atom_id":"ab681470a26a2300","ast_ref":"ab681470a26a2300","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"ad2bf0669791aae3","ast_ref":"ad2bf0669791aae3","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"1e51975faae4c92b","ast_ref":"1e51975faae4c92b","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"6c68d4b7484e24e1","ast_ref":"6c68d4b7484e24e1","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"8f2edbda97c4da41","ast_ref":"8f2edbda97c4da41","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"e0cf35cd774ea941","ast_ref":"e0cf35cd774ea941","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS LIST)","unsupported_messages":[]}
+{"atom_id":"2c33bdcf205ebc12","ast_ref":"2c33bdcf205ebc12","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS BOOLEAN)","unsupported_messages":[]}
+{"atom_id":"0cad149cc2fbed89","ast_ref":"0cad149cc2fbed89","dialect":"dremio","flags":{"pretty":false,"identify":false},"sql":"FLOOR(__time TO WEEK)","unsupported_messages":[]}

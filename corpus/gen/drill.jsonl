@@ -1,92 +1,92 @@
-{"atom_id":"ced376e81c8bb0ce","ast_ref":"ced376e81c8bb0ce","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"LEVENSHTEIN_DISTANCE(col1, col2, 3)","unsupported_messages":["Argument 'max_dist' is not supported for expression 'Levenshtein' when targeting Drill."]}
-{"atom_id":"2aaf8ddb90ad3150","ast_ref":"2aaf8ddb90ad3150","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT y AS x FROM my_table AS t","unsupported_messages":[]}
-{"atom_id":"88629921fe9c41cc","ast_ref":"88629921fe9c41cc","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM (SELECT * FROM my_table AS t) AS tbl","unsupported_messages":[]}
-{"atom_id":"8f6603d312629a16","ast_ref":"8f6603d312629a16","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"REPEATED_COUNT(x)","unsupported_messages":[]}
-{"atom_id":"675557cabd020e80","ast_ref":"675557cabd020e80","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"ARRAY_ANY(arr, x -> pred)","unsupported_messages":["ARRAY_ANY is unsupported"]}
-{"atom_id":"5be4226c6449c844","ast_ref":"5be4226c6449c844","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS VARCHAR)","unsupported_messages":[]}
-{"atom_id":"f6bef3c7b4f2268c","ast_ref":"f6bef3c7b4f2268c","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS VARBINARY(4))","unsupported_messages":[]}
-{"atom_id":"14934fc7622bf0f8","ast_ref":"14934fc7622bf0f8","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS VARCHAR)","unsupported_messages":[]}
-{"atom_id":"a25ff01c56f09898","ast_ref":"a25ff01c56f09898","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS VARCHAR)","unsupported_messages":[]}
-{"atom_id":"31c43d160a0ba892","ast_ref":"31c43d160a0ba892","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS VARCHAR(3))","unsupported_messages":[]}
-{"atom_id":"045d58e257106ea3","ast_ref":"045d58e257106ea3","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS VARCHAR)","unsupported_messages":[]}
-{"atom_id":"f5c0f494b39239fa","ast_ref":"f5c0f494b39239fa","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS VARCHAR(3))","unsupported_messages":[]}
-{"atom_id":"d4b1540b83ce372b","ast_ref":"d4b1540b83ce372b","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS INTEGER)","unsupported_messages":[]}
-{"atom_id":"bc5b47b795db6c8a","ast_ref":"bc5b47b795db6c8a","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS DOUBLE)","unsupported_messages":[]}
-{"atom_id":"3c38dcd99ca90789","ast_ref":"3c38dcd99ca90789","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT a FROM x CROSS JOIN UNNEST(y) AS t(a)","unsupported_messages":[]}
-{"atom_id":"e91ef0ca092f26ad","ast_ref":"e91ef0ca092f26ad","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT a, b FROM x CROSS JOIN UNNEST(y, z) AS t(a, b)","unsupported_messages":[]}
-{"atom_id":"ec0b45d6762141b3","ast_ref":"ec0b45d6762141b3","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE a AS SELECT * FROM b LIMIT 0","unsupported_messages":[]}
-{"atom_id":"686eed080eb83d7f","ast_ref":"686eed080eb83d7f","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT CASE WHEN NOT a IS NULL THEN b ELSE c END","unsupported_messages":[]}
-{"atom_id":"08ff43404c3bf22a","ast_ref":"08ff43404c3bf22a","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT CASE WHEN NOT a IS NULL THEN b END","unsupported_messages":[]}
-{"atom_id":"48c9f04864b0d034","ast_ref":"48c9f04864b0d034","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"ILIKE(x, '%y')","unsupported_messages":[]}
-{"atom_id":"6aca382a4585180a","ast_ref":"6aca382a4585180a","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"NOT ILIKE(x, '%y')","unsupported_messages":[]}
-{"atom_id":"66331d9b5835362f","ast_ref":"66331d9b5835362f","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"STRPOS(haystack, needle)","unsupported_messages":[]}
-{"atom_id":"e65923106c448142","ast_ref":"e65923106c448142","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"`IF`(STRPOS(SUBSTRING(haystack, position), needle) = 0, 0, STRPOS(SUBSTRING(haystack, position), needle) + position - 1)","unsupported_messages":[]}
-{"atom_id":"824ae6d631d578b4","ast_ref":"824ae6d631d578b4","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"`IF`(x > 1, 1, 0)","unsupported_messages":[]}
-{"atom_id":"28cf73aa93220d78","ast_ref":"28cf73aa93220d78","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CASE WHEN 1 THEN x ELSE 0 END","unsupported_messages":[]}
-{"atom_id":"2d54f7838fb86766","ast_ref":"2d54f7838fb86766","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"x[y]","unsupported_messages":[]}
-{"atom_id":"5365d40cc8d64e3d","ast_ref":"5365d40cc8d64e3d","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"TRUE OR NULL AS `foo`","unsupported_messages":[]}
-{"atom_id":"c7990d47a46f4363","ast_ref":"c7990d47a46f4363","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"LEVENSHTEIN_DISTANCE(col1, col2)","unsupported_messages":[]}
-{"atom_id":"1fff80d5d0140a81","ast_ref":"1fff80d5d0140a81","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"LEVENSHTEIN_DISTANCE(col1, col2, 1, 2, 3)","unsupported_messages":["Argument 'ins_cost' is not supported for expression 'Levenshtein' when targeting Drill.","Argument 'del_cost' is not supported for expression 'Levenshtein' when targeting Drill.","Argument 'sub_cost' is not supported for expression 'Levenshtein' when targeting Drill."]}
-{"atom_id":"0e9d115c7d6f3b85","ast_ref":"0e9d115c7d6f3b85","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"LEVENSHTEIN_DISTANCE(col1, col2, 1, 2, 3, 4)","unsupported_messages":["Argument 'ins_cost' is not supported for expression 'Levenshtein' when targeting Drill.","Argument 'del_cost' is not supported for expression 'Levenshtein' when targeting Drill.","Argument 'sub_cost' is not supported for expression 'Levenshtein' when targeting Drill.","Argument 'max_dist' is not supported for expression 'Levenshtein' when targeting Drill."]}
-{"atom_id":"9c26c2251ff34ff1","ast_ref":"9c26c2251ff34ff1","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"LEVENSHTEIN_DISTANCE(COALESCE(col1, col2), COALESCE(col2, col1))","unsupported_messages":[]}
-{"atom_id":"5527f2825892ecd4","ast_ref":"5527f2825892ecd4","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS DOUBLE) / b","unsupported_messages":[]}
-{"atom_id":"a5e6d7e63c20b3ae","ast_ref":"a5e6d7e63c20b3ae","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"RAND()","unsupported_messages":[]}
-{"atom_id":"bed3d7b90895c4e0","ast_ref":"bed3d7b90895c4e0","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM a UNION SELECT * FROM b","unsupported_messages":[]}
-{"atom_id":"83f0903b15d75178","ast_ref":"83f0903b15d75178","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"TO_TIMESTAMP(x, 'yyyy-MM-dd''T''HH:mm:ss')","unsupported_messages":[]}
-{"atom_id":"abb6973052cc36aa","ast_ref":"abb6973052cc36aa","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"TO_TIMESTAMP('2020-01-01', 'yyyy-MM-dd')","unsupported_messages":[]}
-{"atom_id":"00e823f2987f3ee5","ast_ref":"00e823f2987f3ee5","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"TO_TIMESTAMP(x, 'yy')","unsupported_messages":[]}
-{"atom_id":"18a48f7d538f1be0","ast_ref":"18a48f7d538f1be0","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST('2020-01-01' AS DATE)","unsupported_messages":[]}
-{"atom_id":"2086a1c5f717223b","ast_ref":"2086a1c5f717223b","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST('2020-01-01' AS TIMESTAMP)","unsupported_messages":[]}
-{"atom_id":"29a1939deef72ed8","ast_ref":"29a1939deef72ed8","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST('2020-01-01 12:13:14-08:00' AS TIMESTAMP)","unsupported_messages":[]}
-{"atom_id":"f90aed9d09cb7f7c","ast_ref":"f90aed9d09cb7f7c","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(col AS TIMESTAMP)","unsupported_messages":[]}
-{"atom_id":"8b91d7d73b36a052","ast_ref":"8b91d7d73b36a052","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(x, 'yyyy-MM-dd')","unsupported_messages":[]}
-{"atom_id":"73b6b2761ddf5f3b","ast_ref":"73b6b2761ddf5f3b","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
-{"atom_id":"42959c90abd8c42b","ast_ref":"42959c90abd8c42b","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"UNIX_TIMESTAMP(x)","unsupported_messages":[]}
-{"atom_id":"bc6d7a2045e2dc36","ast_ref":"bc6d7a2045e2dc36","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
-{"atom_id":"e1ccbe80a18fcdc2","ast_ref":"e1ccbe80a18fcdc2","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(TO_DATE(x, 'yyyyMMdd') AS INT)","unsupported_messages":[]}
-{"atom_id":"d76c485e14775834","ast_ref":"d76c485e14775834","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"TO_DATE(CAST(x AS VARCHAR), 'yyyyMMdd')","unsupported_messages":[]}
-{"atom_id":"d5b2146784dbab19","ast_ref":"d5b2146784dbab19","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(x, INTERVAL 1 DAY)","unsupported_messages":[]}
-{"atom_id":"26499680ace4c728","ast_ref":"26499680ace4c728","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(x, INTERVAL 1 DAY)","unsupported_messages":[]}
-{"atom_id":"b59d4dd1b0100497","ast_ref":"b59d4dd1b0100497","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"TO_DATE(x, 'yyyy-MM-dd''T''HH:mm:ss')","unsupported_messages":[]}
-{"atom_id":"a09238f32c94247f","ast_ref":"a09238f32c94247f","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATE)","unsupported_messages":[]}
-{"atom_id":"4620b34cf3feaa17","ast_ref":"4620b34cf3feaa17","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATE)","unsupported_messages":[]}
-{"atom_id":"eb45bd8fa7256c14","ast_ref":"eb45bd8fa7256c14","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(CAST('2021-02-01' AS DATE), INTERVAL 1 DAY)","unsupported_messages":[]}
-{"atom_id":"280a1dbb44fa9fba","ast_ref":"280a1dbb44fa9fba","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(CAST('2020-01-01' AS DATE), INTERVAL 1 DAY)","unsupported_messages":[]}
-{"atom_id":"d1207e90ed547153","ast_ref":"d1207e90ed547153","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST('2022-01-01' AS TIMESTAMP)","unsupported_messages":[]}
-{"atom_id":"934cc934d5bbfdb3","ast_ref":"934cc934d5bbfdb3","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"DAY(x)","unsupported_messages":[]}
-{"atom_id":"fe346e6dd184805e","ast_ref":"fe346e6dd184805e","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"MONTH(x)","unsupported_messages":[]}
-{"atom_id":"24b748fd7cfe7a22","ast_ref":"24b748fd7cfe7a22","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"YEAR(x)","unsupported_messages":[]}
-{"atom_id":"42a5b123fbf18a50","ast_ref":"42a5b123fbf18a50","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"ANALYZE TABLE tbl COMPUTE STATISTICS","unsupported_messages":[]}
-{"atom_id":"5588db16c8fa59a0","ast_ref":"5588db16c8fa59a0","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"ANALYZE TABLE tbl COMPUTE STATISTICS SAMPLE 5 PERCENT","unsupported_messages":[]}
-{"atom_id":"8ccb2b6500a81201","ast_ref":"8ccb2b6500a81201","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM table(dfs.`test_data.xlsx`(type => 'excel', sheetName => 'secondSheet'))","unsupported_messages":[]}
-{"atom_id":"8588d839b8338f3a","ast_ref":"8588d839b8338f3a","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM (SELECT * FROM t) PIVOT(avg(c1) AS ac1 FOR c2 IN ('V' AS v))","unsupported_messages":[]}
-{"atom_id":"07f57d7f361b1436","ast_ref":"07f57d7f361b1436","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT '2021-01-01' + INTERVAL '1' MONTH","unsupported_messages":[]}
-{"atom_id":"bcad02d18290d7fc","ast_ref":"bcad02d18290d7fc","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT ILIKE(x, '%y')","unsupported_messages":[]}
-{"atom_id":"33400a85133554a4","ast_ref":"33400a85133554a4","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT NOT ILIKE(x, '%y')","unsupported_messages":[]}
-{"atom_id":"550ed28e5794695a","ast_ref":"550ed28e5794695a","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT ILIKE(x, '%y', '#')","unsupported_messages":[]}
-{"atom_id":"81c74897522a1051","ast_ref":"81c74897522a1051","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"NOT ILIKE(x, '%y', '#')","unsupported_messages":[]}
-{"atom_id":"9202186d5202bc68","ast_ref":"9202186d5202bc68","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"ILIKE(x, 'a') OR ILIKE(x, 'b')","unsupported_messages":[]}
-{"atom_id":"dc891aac37243cc0","ast_ref":"dc891aac37243cc0","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"ILIKE(x, 'a', '#') OR ILIKE(x, 'b', '#')","unsupported_messages":[]}
-{"atom_id":"cb538e25586ba11e","ast_ref":"cb538e25586ba11e","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"x LIKE 'a' OR x LIKE 'b'","unsupported_messages":[]}
-{"atom_id":"fee69773d128a94c","ast_ref":"fee69773d128a94c","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"FLOOR(__time TO WEEK)","unsupported_messages":[]}
-{"atom_id":"79cc92e2fae9a8c1","ast_ref":"79cc92e2fae9a8c1","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 WHERE EXISTS(SELECT 1 FROM t2 WHERE t1.x = t2.x)","unsupported_messages":[]}
-{"atom_id":"dc3492431183d465","ast_ref":"dc3492431183d465","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 WHERE NOT EXISTS(SELECT 1 FROM t2 WHERE t1.x = t2.x)","unsupported_messages":[]}
-{"atom_id":"b6f438f13893193c","ast_ref":"b6f438f13893193c","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"LEVENSHTEIN_DISTANCE(col1, col2)","unsupported_messages":[]}
-{"atom_id":"605d65b5632d2cbf","ast_ref":"605d65b5632d2cbf","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"'\\\\\\\\a'","unsupported_messages":[]}
-{"atom_id":"dc96b601063fdb14","ast_ref":"dc96b601063fdb14","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT 11","unsupported_messages":[]}
-{"atom_id":"4d4a8775e8cdc515","ast_ref":"4d4a8775e8cdc515","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT 11","unsupported_messages":[]}
-{"atom_id":"b3e0961c654bd927","ast_ref":"b3e0961c654bd927","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}
-{"atom_id":"9f0bab6e25ce9aa2","ast_ref":"9f0bab6e25ce9aa2","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}
-{"atom_id":"be503b0306df240d","ast_ref":"be503b0306df240d","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}
-{"atom_id":"7c31bcb04ca3f0e5","ast_ref":"7c31bcb04ca3f0e5","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}
-{"atom_id":"4cd1ccd531496ec6","ast_ref":"4cd1ccd531496ec6","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}
-{"atom_id":"ace9913996248081","ast_ref":"ace9913996248081","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS DOUBLE) / NULLIF(b, 0)","unsupported_messages":[]}
-{"atom_id":"e8f9988d8daac314","ast_ref":"e8f9988d8daac314","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DOUBLE)","unsupported_messages":["Conversion format is required for TO_NUMBER"]}
-{"atom_id":"87b900c3d7ca2fff","ast_ref":"87b900c3d7ca2fff","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"TO_NUMBER(x, fmt)","unsupported_messages":[]}
-{"atom_id":"6299baeccc8460ec","ast_ref":"6299baeccc8460ec","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"REPEATED_COUNT(arr)","unsupported_messages":[]}
-{"atom_id":"5d2ef3de57193e18","ast_ref":"5d2ef3de57193e18","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"REPEATED_COUNT(arr)","unsupported_messages":["Cannot transpile dimension argument for ARRAY_LENGTH"]}
-{"atom_id":"ce100cb6e7737753","ast_ref":"ce100cb6e7737753","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"ANY_VALUE(x)","unsupported_messages":[]}
-{"atom_id":"6b7bfa775b910b4f","ast_ref":"6b7bfa775b910b4f","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT a, b FROM (SELECT a AS a, b AS b, ROW_NUMBER() OVER (PARTITION BY a ORDER BY c DESC NULLS FIRST) AS _row_number FROM x) AS _t WHERE _row_number = 1","unsupported_messages":[]}
-{"atom_id":"3a53379418279e9e","ast_ref":"3a53379418279e9e","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(x, y)","unsupported_messages":[]}
-{"atom_id":"9f2d003dc6ee33c1","ast_ref":"9f2d003dc6ee33c1","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"POW(x, 2)","unsupported_messages":[]}
-{"atom_id":"9e7daf1157571903","ast_ref":"9e7daf1157571903","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE a","unsupported_messages":["Unsupported property volatileproperty"]}
+{"atom_id":"e3fd383517e5f001","ast_ref":"e3fd383517e5f001","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"LEVENSHTEIN_DISTANCE(col1, col2, 3)","unsupported_messages":["Argument 'max_dist' is not supported for expression 'Levenshtein' when targeting Drill."]}
+{"atom_id":"0e018eff489e805c","ast_ref":"0e018eff489e805c","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT y AS x FROM my_table AS t","unsupported_messages":[]}
+{"atom_id":"c1811578069dd8dc","ast_ref":"c1811578069dd8dc","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM (SELECT * FROM my_table AS t) AS tbl","unsupported_messages":[]}
+{"atom_id":"f929e81681e64eae","ast_ref":"f929e81681e64eae","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"REPEATED_COUNT(x)","unsupported_messages":[]}
+{"atom_id":"1e33474093006303","ast_ref":"1e33474093006303","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"ARRAY_ANY(arr, x -> pred)","unsupported_messages":["ARRAY_ANY is unsupported"]}
+{"atom_id":"aa755246d4c772d3","ast_ref":"aa755246d4c772d3","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"268336ff0c4cde3d","ast_ref":"268336ff0c4cde3d","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS VARBINARY(4))","unsupported_messages":[]}
+{"atom_id":"78bf7f21b3b99b3a","ast_ref":"78bf7f21b3b99b3a","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"be4542268faed1d6","ast_ref":"be4542268faed1d6","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"98a59c1fd440fb2e","ast_ref":"98a59c1fd440fb2e","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS VARCHAR(3))","unsupported_messages":[]}
+{"atom_id":"0768a6f513f0d2f2","ast_ref":"0768a6f513f0d2f2","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"0a2cc35e4a22f673","ast_ref":"0a2cc35e4a22f673","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS VARCHAR(3))","unsupported_messages":[]}
+{"atom_id":"f49c65e35aaf463d","ast_ref":"f49c65e35aaf463d","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS INTEGER)","unsupported_messages":[]}
+{"atom_id":"f8fb5208522a2765","ast_ref":"f8fb5208522a2765","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS DOUBLE)","unsupported_messages":[]}
+{"atom_id":"c807821df1599cc8","ast_ref":"c807821df1599cc8","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT a FROM x CROSS JOIN UNNEST(y) AS t(a)","unsupported_messages":[]}
+{"atom_id":"8368e8830aba7820","ast_ref":"8368e8830aba7820","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT a, b FROM x CROSS JOIN UNNEST(y, z) AS t(a, b)","unsupported_messages":[]}
+{"atom_id":"5c91291a8d8d0417","ast_ref":"5c91291a8d8d0417","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE a AS SELECT * FROM b LIMIT 0","unsupported_messages":[]}
+{"atom_id":"e8c3f22efe475367","ast_ref":"e8c3f22efe475367","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT CASE WHEN NOT a IS NULL THEN b ELSE c END","unsupported_messages":[]}
+{"atom_id":"4ff9eb4c0bcc5ec0","ast_ref":"4ff9eb4c0bcc5ec0","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT CASE WHEN NOT a IS NULL THEN b END","unsupported_messages":[]}
+{"atom_id":"b0a3e63dd6b47e10","ast_ref":"b0a3e63dd6b47e10","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"ILIKE(x, '%y')","unsupported_messages":[]}
+{"atom_id":"430daa344a743672","ast_ref":"430daa344a743672","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"NOT ILIKE(x, '%y')","unsupported_messages":[]}
+{"atom_id":"cff859806470553a","ast_ref":"cff859806470553a","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"STRPOS(haystack, needle)","unsupported_messages":[]}
+{"atom_id":"b30b691f6c4d83e4","ast_ref":"b30b691f6c4d83e4","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"`IF`(STRPOS(SUBSTRING(haystack, position), needle) = 0, 0, STRPOS(SUBSTRING(haystack, position), needle) + position - 1)","unsupported_messages":[]}
+{"atom_id":"e4ed655377b3e7de","ast_ref":"e4ed655377b3e7de","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"`IF`(x > 1, 1, 0)","unsupported_messages":[]}
+{"atom_id":"b6744c806c04918c","ast_ref":"b6744c806c04918c","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CASE WHEN 1 THEN x ELSE 0 END","unsupported_messages":[]}
+{"atom_id":"b5ce264b00ed3541","ast_ref":"b5ce264b00ed3541","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"x[y]","unsupported_messages":[]}
+{"atom_id":"9f2d95d38258abc4","ast_ref":"9f2d95d38258abc4","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"TRUE OR NULL AS `foo`","unsupported_messages":[]}
+{"atom_id":"a82c693322b8afe2","ast_ref":"a82c693322b8afe2","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"LEVENSHTEIN_DISTANCE(col1, col2)","unsupported_messages":[]}
+{"atom_id":"f2a51894893dc05d","ast_ref":"f2a51894893dc05d","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"LEVENSHTEIN_DISTANCE(col1, col2, 1, 2, 3)","unsupported_messages":["Argument 'ins_cost' is not supported for expression 'Levenshtein' when targeting Drill.","Argument 'del_cost' is not supported for expression 'Levenshtein' when targeting Drill.","Argument 'sub_cost' is not supported for expression 'Levenshtein' when targeting Drill."]}
+{"atom_id":"a38e6607ac1233b2","ast_ref":"a38e6607ac1233b2","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"LEVENSHTEIN_DISTANCE(col1, col2, 1, 2, 3, 4)","unsupported_messages":["Argument 'ins_cost' is not supported for expression 'Levenshtein' when targeting Drill.","Argument 'del_cost' is not supported for expression 'Levenshtein' when targeting Drill.","Argument 'sub_cost' is not supported for expression 'Levenshtein' when targeting Drill.","Argument 'max_dist' is not supported for expression 'Levenshtein' when targeting Drill."]}
+{"atom_id":"550eb5247103fdd5","ast_ref":"550eb5247103fdd5","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"LEVENSHTEIN_DISTANCE(COALESCE(col1, col2), COALESCE(col2, col1))","unsupported_messages":[]}
+{"atom_id":"32a36ccab5797a17","ast_ref":"32a36ccab5797a17","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS DOUBLE) / b","unsupported_messages":[]}
+{"atom_id":"147f9aa1d69f32b1","ast_ref":"147f9aa1d69f32b1","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"RAND()","unsupported_messages":[]}
+{"atom_id":"dd795f086ee80a5f","ast_ref":"dd795f086ee80a5f","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM a UNION SELECT * FROM b","unsupported_messages":[]}
+{"atom_id":"c265868d97362ca2","ast_ref":"c265868d97362ca2","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"TO_TIMESTAMP(x, 'yyyy-MM-dd''T''HH:mm:ss')","unsupported_messages":[]}
+{"atom_id":"7e81bace9aa29dce","ast_ref":"7e81bace9aa29dce","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"TO_TIMESTAMP('2020-01-01', 'yyyy-MM-dd')","unsupported_messages":[]}
+{"atom_id":"b9fb0ac311d87504","ast_ref":"b9fb0ac311d87504","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"TO_TIMESTAMP(x, 'yy')","unsupported_messages":[]}
+{"atom_id":"9e170623b12e2f80","ast_ref":"9e170623b12e2f80","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST('2020-01-01' AS DATE)","unsupported_messages":[]}
+{"atom_id":"3ea3ec127d950eb1","ast_ref":"3ea3ec127d950eb1","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST('2020-01-01' AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"16089b1f747a150c","ast_ref":"16089b1f747a150c","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST('2020-01-01 12:13:14-08:00' AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"054880db795304dd","ast_ref":"054880db795304dd","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(col AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"a081ca7ddfa3deba","ast_ref":"a081ca7ddfa3deba","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(x, 'yyyy-MM-dd')","unsupported_messages":[]}
+{"atom_id":"1970479ddaab41df","ast_ref":"1970479ddaab41df","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"da22cb59b7580581","ast_ref":"da22cb59b7580581","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"UNIX_TIMESTAMP(x)","unsupported_messages":[]}
+{"atom_id":"410728bb2611d9ba","ast_ref":"410728bb2611d9ba","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"ce8027e02f28dc1f","ast_ref":"ce8027e02f28dc1f","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(TO_DATE(x, 'yyyyMMdd') AS INT)","unsupported_messages":[]}
+{"atom_id":"e08299a0b266db49","ast_ref":"e08299a0b266db49","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"TO_DATE(CAST(x AS VARCHAR), 'yyyyMMdd')","unsupported_messages":[]}
+{"atom_id":"2be01d5864c16c22","ast_ref":"2be01d5864c16c22","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(x, INTERVAL 1 DAY)","unsupported_messages":[]}
+{"atom_id":"9a30462a8b9752c5","ast_ref":"9a30462a8b9752c5","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(x, INTERVAL 1 DAY)","unsupported_messages":[]}
+{"atom_id":"88280cdbd15568bb","ast_ref":"88280cdbd15568bb","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"TO_DATE(x, 'yyyy-MM-dd''T''HH:mm:ss')","unsupported_messages":[]}
+{"atom_id":"2e40c7a40ee5a9bc","ast_ref":"2e40c7a40ee5a9bc","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATE)","unsupported_messages":[]}
+{"atom_id":"319af74f85620bae","ast_ref":"319af74f85620bae","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATE)","unsupported_messages":[]}
+{"atom_id":"873aa2aadb99ff27","ast_ref":"873aa2aadb99ff27","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(CAST('2021-02-01' AS DATE), INTERVAL 1 DAY)","unsupported_messages":[]}
+{"atom_id":"ef9a01835f067215","ast_ref":"ef9a01835f067215","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(CAST('2020-01-01' AS DATE), INTERVAL 1 DAY)","unsupported_messages":[]}
+{"atom_id":"4f36d786ceb0e13d","ast_ref":"4f36d786ceb0e13d","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST('2022-01-01' AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"44bd35947e3856cd","ast_ref":"44bd35947e3856cd","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"DAY(x)","unsupported_messages":[]}
+{"atom_id":"4eb86584194ad4c4","ast_ref":"4eb86584194ad4c4","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"MONTH(x)","unsupported_messages":[]}
+{"atom_id":"547f8313697b4e3e","ast_ref":"547f8313697b4e3e","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"YEAR(x)","unsupported_messages":[]}
+{"atom_id":"cc9f79a4feda62c5","ast_ref":"cc9f79a4feda62c5","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"ANALYZE TABLE tbl COMPUTE STATISTICS","unsupported_messages":[]}
+{"atom_id":"812a6529c3c3bbc2","ast_ref":"812a6529c3c3bbc2","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"ANALYZE TABLE tbl COMPUTE STATISTICS SAMPLE 5 PERCENT","unsupported_messages":[]}
+{"atom_id":"09ebf640ce039b7f","ast_ref":"09ebf640ce039b7f","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM table(dfs.`test_data.xlsx`(type => 'excel', sheetName => 'secondSheet'))","unsupported_messages":[]}
+{"atom_id":"61d19021b4e3ad2d","ast_ref":"61d19021b4e3ad2d","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM (SELECT * FROM t) PIVOT(avg(c1) AS ac1 FOR c2 IN ('V' AS v))","unsupported_messages":[]}
+{"atom_id":"196f8c600e0850ba","ast_ref":"196f8c600e0850ba","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT '2021-01-01' + INTERVAL '1' MONTH","unsupported_messages":[]}
+{"atom_id":"219089cb9ccc4f5a","ast_ref":"219089cb9ccc4f5a","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT ILIKE(x, '%y')","unsupported_messages":[]}
+{"atom_id":"e87510efc1336cfc","ast_ref":"e87510efc1336cfc","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT NOT ILIKE(x, '%y')","unsupported_messages":[]}
+{"atom_id":"7f7ac30dd291508c","ast_ref":"7f7ac30dd291508c","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT ILIKE(x, '%y', '#')","unsupported_messages":[]}
+{"atom_id":"28185a8147b96f6c","ast_ref":"28185a8147b96f6c","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"NOT ILIKE(x, '%y', '#')","unsupported_messages":[]}
+{"atom_id":"67ed4bfd23b73480","ast_ref":"67ed4bfd23b73480","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"ILIKE(x, 'a') OR ILIKE(x, 'b')","unsupported_messages":[]}
+{"atom_id":"3c78c46bbbbf73aa","ast_ref":"3c78c46bbbbf73aa","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"ILIKE(x, 'a', '#') OR ILIKE(x, 'b', '#')","unsupported_messages":[]}
+{"atom_id":"b39b958ec69d03d5","ast_ref":"b39b958ec69d03d5","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"x LIKE 'a' OR x LIKE 'b'","unsupported_messages":[]}
+{"atom_id":"abdc7941f76023b0","ast_ref":"abdc7941f76023b0","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"FLOOR(__time TO WEEK)","unsupported_messages":[]}
+{"atom_id":"4f4f4c53136dda8e","ast_ref":"4f4f4c53136dda8e","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 WHERE EXISTS(SELECT 1 FROM t2 WHERE t1.x = t2.x)","unsupported_messages":[]}
+{"atom_id":"f65c7bb7f729733a","ast_ref":"f65c7bb7f729733a","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 WHERE NOT EXISTS(SELECT 1 FROM t2 WHERE t1.x = t2.x)","unsupported_messages":[]}
+{"atom_id":"4e05214b9264d011","ast_ref":"4e05214b9264d011","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"LEVENSHTEIN_DISTANCE(col1, col2)","unsupported_messages":[]}
+{"atom_id":"702834837401af17","ast_ref":"702834837401af17","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"'\\\\\\\\a'","unsupported_messages":[]}
+{"atom_id":"cc9acaf7b2a52814","ast_ref":"cc9acaf7b2a52814","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT 11","unsupported_messages":[]}
+{"atom_id":"e24b3ec40a10c20c","ast_ref":"e24b3ec40a10c20c","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT 11","unsupported_messages":[]}
+{"atom_id":"df1ec1900100a01e","ast_ref":"df1ec1900100a01e","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}
+{"atom_id":"4212f0818ee85887","ast_ref":"4212f0818ee85887","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}
+{"atom_id":"5b1307a3fb1b245f","ast_ref":"5b1307a3fb1b245f","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}
+{"atom_id":"d68bceb678fede7f","ast_ref":"d68bceb678fede7f","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}
+{"atom_id":"1a2bd8725a8586b1","ast_ref":"1a2bd8725a8586b1","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}
+{"atom_id":"36d4875db91ca082","ast_ref":"36d4875db91ca082","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS DOUBLE) / NULLIF(b, 0)","unsupported_messages":[]}
+{"atom_id":"7d0bc09b998ac700","ast_ref":"7d0bc09b998ac700","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DOUBLE)","unsupported_messages":["Conversion format is required for TO_NUMBER"]}
+{"atom_id":"da54b68c565f0c3b","ast_ref":"da54b68c565f0c3b","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"TO_NUMBER(x, fmt)","unsupported_messages":[]}
+{"atom_id":"cd83374ae96b7970","ast_ref":"cd83374ae96b7970","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"REPEATED_COUNT(arr)","unsupported_messages":[]}
+{"atom_id":"b1709838df71d2dd","ast_ref":"b1709838df71d2dd","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"REPEATED_COUNT(arr)","unsupported_messages":["Cannot transpile dimension argument for ARRAY_LENGTH"]}
+{"atom_id":"344a6f81785c05d4","ast_ref":"344a6f81785c05d4","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"ANY_VALUE(x)","unsupported_messages":[]}
+{"atom_id":"e1577bbc828a9c09","ast_ref":"e1577bbc828a9c09","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"SELECT a, b FROM (SELECT a AS a, b AS b, ROW_NUMBER() OVER (PARTITION BY a ORDER BY c DESC NULLS FIRST) AS _row_number FROM x) AS _t WHERE _row_number = 1","unsupported_messages":[]}
+{"atom_id":"d15b15b1d6189af7","ast_ref":"d15b15b1d6189af7","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(x, y)","unsupported_messages":[]}
+{"atom_id":"7e38464d2c5be875","ast_ref":"7e38464d2c5be875","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"POW(x, 2)","unsupported_messages":[]}
+{"atom_id":"ddcee9dae8635d84","ast_ref":"ddcee9dae8635d84","dialect":"drill","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE a","unsupported_messages":["Unsupported property volatileproperty"]}

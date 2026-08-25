@@ -1,6 +1,6 @@
-{"atom_id":"e5d0acda2ee3bc19","ast_ref":"e5d0acda2ee3bc19","dialect":"clickhouse, version=24.1","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('SECOND', x)","unsupported_messages":[]}
-{"atom_id":"7777156ffd30bae7","ast_ref":"7777156ffd30bae7","dialect":"clickhouse, version=24.1","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('DAY', x)","unsupported_messages":[]}
-{"atom_id":"b78a3122666d0da2","ast_ref":"b78a3122666d0da2","dialect":"clickhouse, version=24.1","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('MONTH', x)","unsupported_messages":[]}
-{"atom_id":"06323c130e00b888","ast_ref":"06323c130e00b888","dialect":"clickhouse, version=24.1","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('YEAR', x)","unsupported_messages":[]}
-{"atom_id":"c698947b56109f7c","ast_ref":"c698947b56109f7c","dialect":"clickhouse, version=24.1","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('WEEK', x)","unsupported_messages":[]}
-{"atom_id":"e8cd3f847fcf5ecf","ast_ref":"e8cd3f847fcf5ecf","dialect":"clickhouse, version=24.1","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('WEEK', today())","unsupported_messages":[]}
+{"atom_id":"15ee8b372bac7462","ast_ref":"15ee8b372bac7462","dialect":"clickhouse, version=24.1","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('SECOND', x)","unsupported_messages":[]}
+{"atom_id":"67f1417e13ec7771","ast_ref":"67f1417e13ec7771","dialect":"clickhouse, version=24.1","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('DAY', x)","unsupported_messages":[]}
+{"atom_id":"0df86223f82ed365","ast_ref":"0df86223f82ed365","dialect":"clickhouse, version=24.1","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('MONTH', x)","unsupported_messages":[]}
+{"atom_id":"13ccbe24d866d958","ast_ref":"13ccbe24d866d958","dialect":"clickhouse, version=24.1","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('YEAR', x)","unsupported_messages":[]}
+{"atom_id":"28de8722f00f545a","ast_ref":"28de8722f00f545a","dialect":"clickhouse, version=24.1","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('WEEK', x)","unsupported_messages":[]}
+{"atom_id":"de479abc311a450b","ast_ref":"de479abc311a450b","dialect":"clickhouse, version=24.1","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('WEEK', today())","unsupported_messages":[]}

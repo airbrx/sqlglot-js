@@ -1,1 +1,1 @@
-{"atom_id":"54752b072a8490a6","ast_ref":"54752b072a8490a6","dialect":"postgres, version=17.5","flags":{"pretty":false,"identify":false},"sql":"SELECT ANY_VALUE(1) AS col","unsupported_messages":[]}
+{"atom_id":"1d9882effab1aff1","ast_ref":"1d9882effab1aff1","dialect":"postgres, version=17.5","flags":{"pretty":false,"identify":false},"sql":"SELECT ANY_VALUE(1) AS col","unsupported_messages":[]}

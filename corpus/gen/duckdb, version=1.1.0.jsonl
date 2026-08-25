@@ -1,2 +1,2 @@
-{"atom_id":"1a8181726e40e4ef","ast_ref":"1a8181726e40e4ef","dialect":"duckdb, version=1.1.0","flags":{"pretty":false,"identify":false},"sql":"SELECT ([1, 2, 3])[2]","unsupported_messages":[]}
-{"atom_id":"269a28572614b846","ast_ref":"269a28572614b846","dialect":"duckdb, version=1.1.0","flags":{"pretty":false,"identify":false},"sql":"SELECT (MAP([1, 2], ['a', 'b'])[2])[1]","unsupported_messages":[]}
+{"atom_id":"05a51c3875c0a714","ast_ref":"05a51c3875c0a714","dialect":"duckdb, version=1.1.0","flags":{"pretty":false,"identify":false},"sql":"SELECT ([1, 2, 3])[2]","unsupported_messages":[]}
+{"atom_id":"d7c7f565ba5efc79","ast_ref":"d7c7f565ba5efc79","dialect":"duckdb, version=1.1.0","flags":{"pretty":false,"identify":false},"sql":"SELECT (MAP([1, 2], ['a', 'b'])[2])[1]","unsupported_messages":[]}
