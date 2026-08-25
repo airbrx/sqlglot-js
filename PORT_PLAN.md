@@ -89,7 +89,7 @@ An atom is **closed** under an implemented dialect set `S` iff both its read and
 | P6 | `+ duckdb` | 3,417 | 21.8% | +1,395 |
 | P7 | `+ hive, spark2, spark, databricks` | 5,207 | 33.3% | +1,790 |
 | **P8 (v0)** | `+ postgres, redshift` | **6,552** | **41.9%** | +1,345 |
-| P9 | all 38 dialect keys | 15,642 | 100% | +9,090 |
+| P9 | all 46 dialect keys (34 base + 12 versioned) | 15,642 | 100% | +9,090 |
 
 *(v0 boundary per Ben's decision, §9 Q2, 2026-08-24: "We will ship at P8." Bolded row updated accordingly from the original P6.)*
 
@@ -393,7 +393,9 @@ Self-contained; no dialect-to-dialect inheritance. Reproduce `generators/postgre
 
 ### P9 — Long tail. *1–2 agents per dialect. 17,680 LOC — 59% of the dialect layer, ~58% of remaining atoms.*
 
-Ordered by **greedy marginal value** from the P8 base (machine-computed, not guessed): bigquery (+1,677), tsql (+1,101), presto (+1,027), mysql (+1,000), clickhouse (+792), exasol (+618), oracle (+573), sqlite (+356), trino (+338), singlestore (+336), starrocks (+276), teradata (+202), doris (+179), drill (+111), dremio (+100), athena (+72), materialize (+63), fabric (+49), dune (+44), tableau (+44), druid (+41), prql (+30), risingwave (+16), dax (+13), then the 14 versioned keys (+28 total). Each dialect also fills stubs in the shared base files (v0 leaves ~148 parser + ~252 generator methods unimplemented); §8.1 handles the contention.
+Ordered by **greedy marginal value** from the P8 base (machine-computed, not guessed): bigquery (+1,677), tsql (+1,101), presto (+1,027), mysql (+1,000), clickhouse (+792), exasol (+618), oracle (+573), sqlite (+356), trino (+338), singlestore (+336), starrocks (+276), teradata (+202), doris (+179), drill (+111), dremio (+100), athena (+72), materialize (+63), fabric (+49), dune (+44), tableau (+44), druid (+41), prql (+30), risingwave (+16), dax (+13), **solr (added 2026-08-25 — missing from this list in earlier revisions; found by direct enumeration of the real corpus, not the plan's prose)**, then the **12** versioned keys (**+22 total**, not the originally-cited 14/+28 — see the corrected census below). Each dialect also fills stubs in the shared base files (v0 leaves ~148 parser + ~252 generator methods unimplemented); §8.1 handles the contention.
+
+**Dialect census corrected 2026-08-25, verified directly against the real corpus** (`corpus/atoms.jsonl`, computed by enumerating every distinct `read`/`write` value): **46 total dialect keys = 34 base** (33 named dialects + the `""` default) **+ 12 versioned** (`clickhouse` ×2, `duckdb` ×4, `postgres` ×4, `spark` ×2 — version strings that normalize to the same `compareVersion` bucket collapse, e.g. `duckdb, version=1.1` and `duckdb, version=1.1.0`), not the 38 base / 14 versioned cited earlier in this document. Also confirmed directly: **every versioned key appears only as a write target in the corpus, never as a read target** — so `compareVersion` is exercised exclusively on the generate path, never the parse path, which narrows where it needs to be correct.
 
 **Exit:** 15,642/15,642 minus a documented `wontfix` list. Quarantine empty. Native tests written for the 19 never-exercised generator methods (§3.5).
 
