@@ -17,9 +17,9 @@ Port `sqlglot` — SQL parser, transpiler, and optimizer — from Python to Java
 3. **Dialect priority: Snowflake > Databricks > Postgres > everything else.** Confirmed by the data (§9 Q1) — the draft's contrary recommendation was based on an arithmetic error and is withdrawn. Ben's own framing, confirming both the order and DuckDB's inclusion: *"Our product requires Snowflake, Databricks, DuckDB and Postgres. Those go first."* DuckDB was already a forced v0 dependency regardless of priority (§7 P6 — 449 of TestSnowflake's `validate_all` calls write to it), so this confirms rather than changes the existing phase order.
 4. The output must be executable by a fleet of parallel implementation sub-sessions (§8).
 
-**v0 boundary — decided by Ben (2026-08-24, §9 Q2):** v0 ships at **P8** (Snowflake + Databricks chain + DuckDB + Postgres/Redshift + default; 41.9% atom closure), not at P6 (21.8%). *"We will ship at P8."* No interim release at P5 or P6 (§9 Q3: *"We don't need an interim release"*). This is the only decision that changes the architecture's shape — see §7 P6/P8 and §10 for the restated milestones and effort.
+**v0 boundary — decided by Ben (2026-08-24, §9 Q2):** v0 ships at **P8** (Snowflake + Databricks chain + DuckDB + Postgres/Redshift + default; 42.0% atom closure), not at P6 (21.8%). *"We will ship at P8."* No interim release at P5 or P6 (§9 Q3: *"We don't need an interim release"*). This is the only decision that changes the architecture's shape — see §7 P6/P8 and §10 for the restated milestones and effort.
 
-**Definition of done, stated as a number.** Upstream's dialect suite decomposes into **15,642 atoms** (§3.2). "Done" for a phase means *every atom whose read dialect and write dialect are both in scope is green*, machine-verified. 100% of the corpus is the terminal state (P9/P10), reached only with a documented `wontfix` list.
+**Definition of done, stated as a number.** Upstream's dialect suite decomposes into **15,540 atoms** — the real, harvested count (§3.2), superseding the 15,642 estimate the plan was originally written against. "Done" for a phase means *every atom whose read dialect and write dialect are both in scope is green*, machine-verified. 100% of the corpus is the terminal state (P9/P10), reached only with a documented `wontfix` list.
 
 **Explicitly out of scope, permanently:** `tests/test_executor.py` and the 201 `# execute: true` execution assertions in the optimizer fixtures. sqlglot's Python executor is not being ported. The SQL-comparison half of those fixtures is kept.
 
@@ -45,7 +45,7 @@ Harvesting happens at the **`Validator` seam** — `validate_identity` / `valida
 
 Four artifacts, all under `corpus/`, all committed, all regenerable by `make corpus` inside the pinned toolchain container (§5.2):
 
-**(A) Declarative corpus — `corpus/atoms.jsonl`.** 8,415 harvested calls (5,398 identity, 3,005 validate_all, 12 transpile) expanded into 15,642 atoms. Row schema:
+**(A) Declarative corpus — `corpus/atoms.jsonl`.** 8,415 harvested calls (5,398 identity, 3,005 validate_all, 12 transpile) expanded into an estimated 15,642 atoms; the real harvested count is **15,540** (§1, §3.2 below). Row schema:
 
 ```json
 {"atom_id":"a1f3c9d2","input_id":"7c02...","expect_hash":"91ab...",
@@ -131,9 +131,11 @@ Independent instrumentation confirms the corpus is a strong oracle for the gener
 
 ### 3.6 Native hand-ported suites
 
-The corpus tests *transpilation*. It does not test the JS **data model** — `copy`, `eq`, `hash`, `parent`/`depth`, `meta`, mutation APIs. Those are tested by hand-porting `tests/test_expressions.py` into `test/expressions/` as real JS tests: 81 deep `assertEqual`s + 185 `assertIsInstance`es.
+The corpus tests *transpilation*. It does not test the JS **data model** — `copy`, `eq`, `hash`, `parent`/`depth`, `meta`, mutation APIs. Those are tested by hand-porting `tests/test_expressions.py` into `test/expressions/` as real JS tests.
 
-**This is a hard P2 gate, not deferrable.** Both reviews independently flagged it as the item most likely to be quietly skipped behind a green dashboard, and it is the best single decision in this plan: it is the only artifact a human reviewer can read as a *specification* rather than as a regression net.
+**Corrected 2026-08-25, verified directly against the pinned `tests/test_expressions.py`** (found by P2, which correctly refused to force a match rather than silently under- or over-counting): the "81 deep `assertEqual`s + 185 `assertIsInstance`es" figure above was never measured against real source and does not correspond to any natural counting of the file — the true totals are **283 `assertEqual`s + 120 `assertIsInstance`es across 71 tests**, and of those, only **6 tests (6 `assertEqual`s + 3 `assertIsInstance`es)** — `test_identifier`, `test_properties_from_dict`, `test_parse_identifier`, `test_literal_number`, `test_update_positions_empty_meta`, `test_pipe_and_apply` — have zero dependency on `parse_one`/`.sql()`. The remaining 65 tests build their fixtures via `parse_one` and/or assert on `.sql()` output, which do not exist until P3 (parser) and P4 (generator) land; almost all use the **default dialect** (2 of 65 explicitly need `bigquery`/`spark`).
+
+**Ben's decision (2026-08-25, §9 Q6):** hand-port only the 6 parser-independent tests at P2 — that is P2's hard gate, not deferrable. The remaining 65 are tracked as an explicit P4 exit-criterion addition (§7 P4), not silently dropped: P4 is the earliest phase where both the base parser and base generator exist to run them for real. **This is a genuine, documented scope reduction from the original (wrong) 81/185 figure, not a quiet skip** — the whole point of §8.5's human-review gate and this section's original "not deferrable" framing was to prevent exactly that failure mode, which is why the deferral is written down here with the real numbers rather than absorbed into a rounder-sounding but fabricated count.
 
 ### 3.7 The structure channel: `sync_report.py`
 
@@ -357,7 +359,7 @@ Every exit criterion below is a number emitted by `tools/closure.mjs` and the te
 ### P2 — Expressions. *2 agents. 11,882 LOC.*
 The 1,048 expression classes: trait mixins + `TRAITS`, `_gen/expr_meta.js` wiring, `defineExpr`, the 24-entry `INIT_HOOKS` table, `equals`/64-bit `hash`/`ExprSet`/`ExprMap`/`frozensetKey`, `copy()` (carrying `_hash` per `core.py:1015`, sharing non-Expr scalars by reference), `_to_s`/`repr`, `update_positions`, `add_comments` + `sqlglot.meta` directive extraction, `astLoad`. `builders.js` (1,148) is the third-largest piece; give it a strong agent.
 
-**Exit:** (1) probes #2/#3 green — 1,048 `EXPR_CLASSES`, 629 `FUNCTION_BY_NAME`, 563 `ALL_FUNCTIONS`, ordered `argTypes` + `requiredArgs` + `traits` + `initOwner` for every class (5,240 checks). (2) **Hand-ported `test/expressions/` native suite green — hard gate.** (3) For all AST-oracle rows, `astDump(astLoad(row.ast))` deep-equals `row.ast` **and** `_to_s(astLoad(row.ast))` byte-matches `row.repr`. (4) `DATE_ADD` unit-normalization test (kwargs uppercases; `astLoad` does not). (5) `equals` reproduces Python's relation on the four falsy/case-insensitivity cases.
+**Exit:** (1) probes #2/#3 green — 1,048 `EXPR_CLASSES`, 629 `FUNCTION_BY_NAME`, 563 `ALL_FUNCTIONS`, ordered `argTypes` + `requiredArgs` + `traits` + `initOwner` for every class (5,240 checks). (2) **Hand-ported `test/expressions/` native suite green — hard gate, scope corrected 2026-08-25 (§3.6): the 6 tests with no `parse_one`/`.sql()` dependency (`test_identifier`, `test_properties_from_dict`, `test_parse_identifier`, `test_literal_number`, `test_update_positions_empty_meta`, `test_pipe_and_apply`), not the originally-cited 81/185, which was never a real measurement. The other 65 tests are P4's problem (below), tracked explicitly, not dropped.** (3) For all AST-oracle rows, `astDump(astLoad(row.ast))` deep-equals `row.ast` **and** `_to_s(astLoad(row.ast))` byte-matches `row.repr`. (4) `DATE_ADD` unit-normalization test (kwargs uppercases; `astLoad` does not). (5) `equals` reproduces Python's relation on the four falsy/case-insensitivity cases.
 
 ### P3 — Parser base + Snowflake parser. *1 blocking agent, then 6–8 through the stub queue. 11,920 LOC.*
 
@@ -369,7 +371,7 @@ Blocking step (~500 LOC + seeding): `SENTINEL_NONE` falsy token, cursor primitiv
 
 Blocking step: `_buildDispatch` (prototype walk, sorted, TRANSFORMS-beats-`*_sql`, asserted against `_gen/dispatch/`), module-level dispatch cache, `sql()` exact-class dispatch with only `Func`/`Property` fallbacks, `sep`/`seg`/`indent`/`expressions`/`maybe_comment`/`sanitize_comment` (using `pyStrip`), `unsupported()`/`ErrorLevel`, `SENTINEL_LINE_BREAK` pretty machinery, `function_fallback_sql` iterating `argTypes` in declaration order, `too_wide` using `cpLen`. Then seed 432 `*_sql` stubs (4,107 LOC) + `TRANSFORMS` (143 entries) + 126 settings. Then `generators/snowflake.js` (1,222) + `transforms.js` (1,083) + `jsonpath.js` (238) + **`optimizer/simplify.js` (1,880, mandatory)**.
 
-**Exit:** **1,606 atoms closed under `{snowflake}`**, including all 82 `pretty=True` calls, the 5 `UnsupportedError` sentinels, and `identify=True`. **`unsupported_messages` matches the oracle on every generate-oracle row** (the 497-call fix). Probe #4 green (base 560, Snowflake 656). `RANDOM()` emits the exact mixed-case `E+18`/`e+18` literal asserted at `test_snowflake.py:367`. `fuzz_toowide`, `fuzz_comments`, **and `fuzz_depth`** green. **Trampolines landed on the two depth-∝-N generator paths and recorded in `CONTRACTS.md`; `test_redshift.py:524`'s N=10,000 `VALUES` case green on both the iterative *and* the `pretty` path** (§4.7). Deny-list lints green.
+**Exit:** **1,606 atoms closed under `{snowflake}`**, including all 82 `pretty=True` calls, the 5 `UnsupportedError` sentinels, and `identify=True`. **`unsupported_messages` matches the oracle on every generate-oracle row** (the 497-call fix). Probe #4 green (base 560, Snowflake 656). `RANDOM()` emits the exact mixed-case `E+18`/`e+18` literal asserted at `test_snowflake.py:367`. `fuzz_toowide`, `fuzz_comments`, **and `fuzz_depth`** green. **Trampolines landed on the two depth-∝-N generator paths and recorded in `CONTRACTS.md`; `test_redshift.py:524`'s N=10,000 `VALUES` case green on both the iterative *and* the `pretty` path** (§4.7). Deny-list lints green. **The 65 `test_expressions.py` tests deferred from P2 (§3.6) go green here — this is the earliest phase where both a base parser (P3) and base generator (this phase) exist to run them; 63 of 65 use the default dialect, 2 need bigquery/spark and may need to wait for those P9 dialects instead.**
 
 ### P5 — Slice complete: Snowflake + default + optimizer Tier B + bridge. *3–4 agents. 6,754 LOC.*
 
@@ -403,9 +405,11 @@ Self-contained; no dialect-to-dialect inheritance. Reproduce `generators/postgre
 
 ### P9 — Long tail. *1–2 agents per dialect. 17,680 LOC — 59% of the dialect layer, ~58% of remaining atoms.*
 
-Ordered by **greedy marginal value** from the P8 base (machine-computed, not guessed): bigquery (+1,677), tsql (+1,101), presto (+1,027), mysql (+1,000), clickhouse (+792), exasol (+618), oracle (+573), sqlite (+356), trino (+338), singlestore (+336), starrocks (+276), teradata (+202), doris (+179), drill (+111), dremio (+100), athena (+72), materialize (+63), fabric (+49), dune (+44), tableau (+44), druid (+41), prql (+30), risingwave (+16), dax (+13), then the 14 versioned keys (+28 total). Each dialect also fills stubs in the shared base files (v0 leaves ~148 parser + ~252 generator methods unimplemented); §8.1 handles the contention.
+Ordered by **greedy marginal value** from the P8 base (machine-computed, not guessed): bigquery (+1,677), tsql (+1,101), presto (+1,027), mysql (+1,000), clickhouse (+792), exasol (+618), oracle (+573), sqlite (+356), trino (+338), singlestore (+336), starrocks (+276), teradata (+202), doris (+179), drill (+111), dremio (+100), athena (+72), materialize (+63), fabric (+49), dune (+44), tableau (+44), druid (+41), prql (+30), risingwave (+16), dax (+13), **solr (added 2026-08-25 — missing from this list in earlier revisions; found by direct enumeration of the real corpus, not the plan's prose)**, then the **12** versioned keys (**+22 total**, not the originally-cited 14/+28 — see the corrected census below). Each dialect also fills stubs in the shared base files (v0 leaves ~148 parser + ~252 generator methods unimplemented); §8.1 handles the contention.
 
-**Exit:** 15,642/15,642 minus a documented `wontfix` list. Quarantine empty. Native tests written for the 19 never-exercised generator methods (§3.5).
+**Dialect census corrected 2026-08-25, verified directly against the real corpus** (`corpus/atoms.jsonl`, computed by enumerating every distinct `read`/`write` value): **46 total dialect keys = 34 base** (33 named dialects + the `""` default) **+ 12 versioned** (`clickhouse` ×2, `duckdb` ×4, `postgres` ×4, `spark` ×2 — version strings that normalize to the same `compareVersion` bucket collapse, e.g. `duckdb, version=1.1` and `duckdb, version=1.1.0`), not the 38 base / 14 versioned cited earlier in this document. Also confirmed directly: **every versioned key appears only as a write target in the corpus, never as a read target** — so `compareVersion` is exercised exclusively on the generate path, never the parse path, which narrows where it needs to be correct.
+
+**Exit:** 15,540/15,540 (§1's real harvested atom count, superseding the 15,642 estimate this line originally cited) minus a documented `wontfix` list. Quarantine empty. Native tests written for the 19 never-exercised generator methods (§3.5).
 
 ### P10 — Optimizer Tier C + remainder. *~9,000 LOC.*
 
@@ -513,13 +517,17 @@ All five resolved. Q2 changes the architecture (v0's boundary moves from P6 to P
 
 Databricks-chain is #1 by marginal atoms and best-in-class per kLOC — Ben's priority #2 was already the data-confirmed correct choice before he answered.
 
-**Q2 — v0 ships at P8, not P6.** Ben's exact words: *"We will ship at P8."* v0 is now Snowflake + Databricks chain + DuckDB + Postgres/Redshift + default — **41.9% atom closure (6,552/15,642)**, not the 21.8% at P6. This adds P7 (Databricks chain, 80–130 agent-hours) and P8 (Postgres+Redshift, 50–80 agent-hours) to the v0 critical path — see the restated effort table in §10. Calendar impact: v0 moves later by the 2–4 months this question flagged; the restated wall-clock estimate is in §10.
+**Q2 — v0 ships at P8, not P6.** Ben's exact words: *"We will ship at P8."* v0 is now Snowflake + Databricks chain + DuckDB + Postgres/Redshift + default — **42.0% atom closure (6,522/15,540)**, not the 21.8% at P6. This adds P7 (Databricks chain, 80–130 agent-hours) and P8 (Postgres+Redshift, 50–80 agent-hours) to the v0 critical path — see the restated effort table in §10. Calendar impact: v0 moves later by the 2–4 months this question flagged; the restated wall-clock estimate is in §10.
 
 **Q3 — No interim release.** Ben's exact words: *"We don't need an interim release."* No release event at P5 or P6; the optimizer Tier B work at P5 (~3,400 LOC) still happens exactly as scheduled — it was never optional, only the question of shipping an intermediate build around it was open. Moot in practice now that v0 already extends to P8 regardless.
 
 **Q4 — Pin through P4, continuous resync from P5. Confirmed.** Ben's exact words: *"Sounds good. Pin first."* Plan proceeds exactly as written in §5.1 — no change.
 
 **Q5 — Build-time Python dependency for verification tooling: confirmed acceptable.** Ben's exact words: *"This is acceptable (and needed)."* Plan proceeds exactly as written in §5.2 — no change. Runtime remains zero-dependency, guaranteed.
+
+### Decisions made during execution
+
+**Q6 — P2's `test/expressions/` native-suite scope, 2026-08-25.** The originally-cited "81 deep `assertEqual`s + 185 `assertIsInstance`es" (§3.6) was found by P2 to not match any real measurement of the pinned `tests/test_expressions.py` (true totals: 283/120 across 71 tests; only 6 tests have zero `parse_one`/`.sql()` dependency). Options presented: (1) hand-port only the 6 parser-independent tests now, deferring the rest as a tracked P4 exit criterion; (2) triage all 71 and hand-port whichever can be faithfully rewritten via direct construction; (3) full hand-port including parser-dependent fixtures. **Ben chose (1).** §3.6 and §7 P2/P4 updated with the real numbers and the explicit P4 tracking addition.
 
 ### Risks, ordered by expected damage
 
