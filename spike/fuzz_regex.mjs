@@ -50,21 +50,42 @@ function bucket(kind) {
   if (!stats[kind]) stats[kind] = { pass: 0, fail: 0, skip: 0, failures: [] };
   return stats[kind];
 }
+/** @type {string} */
+let currentSite = "";
 /** @param {string} kind @param {string} why @param {object} detail */
 function fail(kind, why, detail) {
   const b = bucket(kind);
   b.fail += 1;
+  tallySite(currentSite, "fail");
   if (b.failures.length < MAX_FAILURES) b.failures.push({ why, ...detail });
 }
 /** @param {string} kind */
 function pass(kind) {
   bucket(kind).pass += 1;
+  tallySite(currentSite, "pass");
 }
 /** @param {string} kind @param {string} why @param {object} [detail] */
 function skip(kind, why, detail) {
   const b = bucket(kind);
   b.skip += 1;
+  tallySite(currentSite, "skip");
   if (VERBOSE && b.failures.length < MAX_FAILURES) b.failures.push({ why: "SKIP " + why, ...detail });
+}
+
+// Per-call-site tally. The headline number for this spike is not the total but
+// "every pattern sqlglot actually reaches", so results are also bucketed by the
+// `file:line` the pattern was harvested from.
+/** @type {Map<string, {pass:number, fail:number, skip:number}>} */
+const bySite = new Map();
+/** @param {string} py @param {'pass'|'fail'|'skip'} outcome */
+function tallySite(py, outcome) {
+  if (!py) return;
+  let s = bySite.get(py);
+  if (!s) {
+    s = { pass: 0, fail: 0, skip: 0 };
+    bySite.set(py, s);
+  }
+  s[outcome] += 1;
 }
 
 /** Structural equality good enough for the JSON shapes the oracle emits. */
@@ -399,6 +420,7 @@ for (const line of fs.readFileSync(casesPath, "utf8").split("\n")) {
   const rec = JSON.parse(line);
   if (ONLY_KIND && rec.kind !== ONLY_KIND) continue;
   n += 1;
+  currentSite = rec.py || (rec.kind === "sub" || rec.kind === "escape" ? "spike:api" : "");
   switch (rec.kind) {
     case "oracle": runOracle(rec); break;
     case "match": runMatch(rec); break;
@@ -423,6 +445,22 @@ const totals = Object.values(stats).reduce(
 );
 console.log("-".repeat(40));
 console.log(`${"TOTAL".padEnd(16)}${String(totals.pass).padStart(8)}${String(totals.fail).padStart(8)}${String(totals.skip).padStart(8)}`);
+
+console.log("\nBy sqlglot call site (patterns the library actually reaches):");
+const sites = [...bySite].filter(([py]) => py.startsWith("sqlglot/")).sort();
+for (const [py, s] of sites) {
+  const flagStr = s.fail > 0 ? "  <-- FAIL" : "";
+  console.log(
+    `  ${py.padEnd(46)}${String(s.pass).padStart(6)} pass${String(s.fail).padStart(5)} fail${String(s.skip).padStart(5)} skip${flagStr}`,
+  );
+}
+const siteFail = sites.reduce((a, [, s]) => a + s.fail, 0);
+const siteSkip = sites.reduce((a, [, s]) => a + s.skip, 0);
+const sitePass = sites.reduce((a, [, s]) => a + s.pass, 0);
+console.log(`  ${"".padEnd(46)}${"-".repeat(30)}`);
+console.log(
+  `  ${"ALL sqlglot-reachable patterns".padEnd(46)}${String(sitePass).padStart(6)} pass${String(siteFail).padStart(5)} fail${String(siteSkip).padStart(5)} skip`,
+);
 
 if (untranslatable.size > 0) {
   console.log("\nPatterns valid in CPython with no faithful JS encoding:");

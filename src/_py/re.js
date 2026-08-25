@@ -147,6 +147,52 @@ function emitCp(cp) {
   return "\\u{" + cp.toString(16) + "}";
 }
 
+/**
+ * True when `i` sits between the two halves of a surrogate pair — a position
+ * CPython's code-point-based engine cannot report a match at.
+ * @param {string} s @param {number} i
+ */
+function isMidSurrogate(s, i) {
+  if (i <= 0 || i >= s.length) return false;
+  const hi = s.charCodeAt(i - 1);
+  const lo = s.charCodeAt(i);
+  return hi >= 0xd800 && hi <= 0xdbff && lo >= 0xdc00 && lo <= 0xdfff;
+}
+
+/** @param {string} s @param {number} i @returns {number} */
+function nextCodePointBoundary(s, i) {
+  if (i >= s.length) return s.length;
+  const cp = s.codePointAt(i);
+  return i + (cp !== undefined && cp > 0xffff ? 2 : 1);
+}
+
+/**
+ * UTF-16 index -> code-point index. CPython reports `Match.start`/`end`/`span`
+ * in code points; JS reports them in UTF-16 code units, so `re.search(r'\Z', '😀')`
+ * is `(1, 1)` in CPython and `(2, 2)` from a raw RegExp. PORT_PLAN.md §4.6
+ * ("Indexing") requires code points everywhere they are observable.
+ * @param {string} s @param {number} i
+ */
+function toCodePointIndex(s, i) {
+  let n = 0;
+  for (let k = 0; k < i; k += 1) {
+    const c = s.charCodeAt(k);
+    if (c >= 0xd800 && c <= 0xdbff && k + 1 < i) {
+      const lo = s.charCodeAt(k + 1);
+      if (lo >= 0xdc00 && lo <= 0xdfff) k += 1;
+    }
+    n += 1;
+  }
+  return n;
+}
+
+/** Code-point index -> UTF-16 index (inverse of {@link toCodePointIndex}). */
+function fromCodePointIndex(s, n) {
+  let i = 0;
+  for (let k = 0; k < n && i < s.length; k += 1) i = nextCodePointBoundary(s, i);
+  return i;
+}
+
 let _groupNameOk = new Map();
 /**
  * Is `name` usable verbatim as a JS named-capture-group name? Decided by asking
@@ -178,7 +224,47 @@ function jsGroupNameOk(name) {
  * @property {string|null} untranslatable  reason JS cannot express this, or null
  * @property {string[]} versionNotes    CPython-version-sensitive constructs seen
  * @property {Record<string,string>} jsGroupNames  python name -> emitted JS name
+ * @property {string[]} topAlternatives  JS source of each top-level `|` branch
+ * @property {{min:number,max:number}} width  matched-length bounds
  */
+
+/**
+ * py: sre_parse.SubPattern.getwidth caps at MAXWIDTH = 2**32 - 1.
+ * @typedef {{min:number, max:number}} Width
+ */
+const MAXWIDTH = 4294967295;
+/** @param {Width} a @param {Width} b @returns {Width} */
+const widthSeq = (a, b) => ({
+  min: Math.min(a.min + b.min, MAXWIDTH),
+  max: Math.min(a.max + b.max, MAXWIDTH),
+});
+/** @param {Width} a @param {Width} b @returns {Width} */
+const widthAlt = (a, b) => ({ min: Math.min(a.min, b.min), max: Math.max(a.max, b.max) });
+
+/**
+ * @typedef {{js:string, repeatable:boolean, isRepeat:boolean, assertion:boolean, width:Width}} Atom
+ */
+const W1 = { min: 1, max: 1 };
+const W0 = { min: 0, max: 0 };
+/** One-code-point atom: literal, class, `.`. @param {string} js @returns {Atom} */
+const litAtom = (js) => ({ js, repeatable: true, isRepeat: false, assertion: false, width: W1 });
+/**
+ * Zero-width anchor (`^ $ \A \Z \b \B`). CPython rejects a quantifier on these
+ * with "nothing to repeat", but accepts one on a lookaround — verified against
+ * CPython 3.9.25, see spike/regex/FINDINGS.md.
+ * @param {string} js @returns {Atom}
+ */
+const anchorAtom = (js) => ({ js, repeatable: false, isRepeat: false, assertion: true, width: W0 });
+/** Lookaround: zero-width but quantifiable. @param {string} js @returns {Atom} */
+const lookAtom = (js) => ({ js, repeatable: true, isRepeat: false, assertion: true, width: W0 });
+/** @param {string} js @param {Width} width @returns {Atom} */
+const groupAtom = (js, width) => ({
+  js,
+  repeatable: true,
+  isRepeat: false,
+  assertion: false,
+  width,
+});
 
 /**
  * Parse a Python regex. Always computes `groups` / `groupIndex` / Python validity.
@@ -297,7 +383,8 @@ class _Parser {
 
   /** @returns {PyRePatternInfo} */
   run() {
-    const js = this.parseAlternation(0);
+    const top = this.parseAlternation(0);
+    const js = top.js;
     if (!this.eof()) {
       // only reachable via a stray ')'
       throw this.err("unbalanced parenthesis");
@@ -325,19 +412,28 @@ class _Parser {
       untranslatable: this.untranslatable,
       versionNotes: this.versionNotes,
       jsGroupNames: this.jsGroupNames,
+      topAlternatives: top.branches,
+      width: top.width,
     };
   }
 
   /* ---------------------------------------------------------- alternation */
 
-  /** @param {number} depth @returns {string} */
+  /** @param {number} depth @returns {{js:string, width:Width, branches:string[]}} */
   parseAlternation(depth) {
     const branches = [this.parseSequence(depth)];
     while (this.peekOperator("|")) {
       this.i += 1;
       branches.push(this.parseSequence(depth));
     }
-    return branches.length === 1 ? branches[0] : branches.join("|");
+    let width = branches[0].width;
+    for (let k = 1; k < branches.length; k += 1) width = widthAlt(width, branches[k].width);
+    const sources = branches.map((b) => b.js);
+    return {
+      js: sources.length === 1 ? sources[0] : sources.join("|"),
+      width,
+      branches: sources,
+    };
   }
 
   /**
@@ -349,10 +445,12 @@ class _Parser {
     return this.peek() === c;
   }
 
-  /** @param {number} depth @returns {string} */
+  /** @param {number} depth @returns {{js:string, width:Width}} */
   parseSequence(depth) {
     /** @type {string[]} */
     const out = [];
+    /** @type {Width} */
+    let width = { min: 0, max: 0 };
     for (;;) {
       this.skipVerbose();
       if (this.eof()) break;
@@ -362,38 +460,57 @@ class _Parser {
         if (depth === 0) throw this.err("unbalanced parenthesis");
         break;
       }
+      // py: sre_parse handles `{` in the main loop, so a brace that parses as a
+      // quantifier spec with nothing in front of it is "nothing to repeat", while
+      // one that does not parse (e.g. `{}`, `{x}`) is a literal brace.
+      if (c === "{") {
+        const here = this.i;
+        const spec = this.parseBraceQuantifier();
+        this.i = here;
+        if (spec !== null && out.length === 0) throw this.err("nothing to repeat", here);
+      }
       const atom = this.parseAtom(depth);
       if (atom === null) continue; // e.g. a (?#comment) or an inline flag group
       const quantified = this.parseQuantifier(atom);
-      out.push(quantified);
+      out.push(quantified.js);
+      width = widthSeq(width, quantified.width);
     }
-    return out.join("");
+    return { js: out.join(""), width };
   }
 
   /* ----------------------------------------------------------- quantifier */
 
   /**
-   * @param {{js:string, repeatable:boolean, isRepeat:boolean, assertion:boolean}} atom
-   * @returns {string}
+   * @param {Atom} atom
+   * @returns {{js:string, width:Width}}
    */
   parseQuantifier(atom) {
     this.skipVerbose();
     const start = this.i;
     const c = this.peek();
     let spec = null;
+    let lo = 0;
+    let hi = 1;
     if (c === "*" || c === "+" || c === "?") {
       this.i += 1;
       spec = c;
+      lo = c === "+" ? 1 : 0;
+      hi = c === "?" ? 1 : MAXWIDTH;
     } else if (c === "{") {
+      const before = this.i;
       spec = this.parseBraceQuantifier();
       if (spec === null) {
         // CPython treats a non-quantifier '{' as a literal; `parseBraceQuantifier`
         // has already rewound, so fall through and let the caller re-read it.
         this.i = start;
-        return atom.js;
+        return { js: atom.js, width: atom.width };
       }
+      const m = /^\{(\d+)(?:,(\d*))?\}$/.exec(spec);
+      lo = m ? Number(m[1]) : 0;
+      hi = m ? (m[2] === undefined ? lo : m[2] === "" ? MAXWIDTH : Number(m[2])) : MAXWIDTH;
+      void before;
     } else {
-      return atom.js;
+      return { js: atom.js, width: atom.width };
     }
 
     if (!atom.repeatable) {
@@ -412,10 +529,16 @@ class _Parser {
       throw this.err("multiple repeat", this.i);
     }
 
-    // JS `u` mode forbids quantifying an assertion; Python allows it. `(?:^)*`
-    // is the equivalent and is accepted by both engines.
+    // JS `u` mode forbids quantifying an assertion; Python allows it on lookarounds.
+    // `(?:(?=a))*` is the equivalent and is accepted by both engines.
     const base = atom.assertion ? `(?:${atom.js})` : atom.js;
-    return base + spec + suffix;
+    return {
+      js: base + spec + suffix,
+      width: {
+        min: Math.min(lo * atom.width.min, MAXWIDTH),
+        max: Math.min(hi * atom.width.max, MAXWIDTH),
+      },
+    };
   }
 
   /**
@@ -461,7 +584,7 @@ class _Parser {
 
   /**
    * @param {number} depth
-   * @returns {{js:string, repeatable:boolean, isRepeat:boolean, assertion:boolean}|null}
+   * @returns {Atom|null}
    */
   parseAtom(depth) {
     const c = this.next();
@@ -469,43 +592,26 @@ class _Parser {
       case "(":
         return this.parseGroup(depth);
       case "[":
-        return { js: this.parseCharClass(), repeatable: true, isRepeat: false, assertion: false };
+        return litAtom(this.parseCharClass());
       case ".":
         // CPython `.` excludes exactly U+000A. JS `.` additionally excludes
         // \r, U+2028 and U+2029 — so only the DOTALL form can use `.`.
-        return {
-          js: this.flags & DOTALL ? "." : "[^\\n]",
-          repeatable: true,
-          isRepeat: false,
-          assertion: false,
-        };
+        return litAtom(this.flags & DOTALL ? "." : "[^\\n]");
       case "^":
-        return {
-          js: this.flags & MULTILINE ? "(?:^|(?<=\\n))" : "^",
-          repeatable: true,
-          isRepeat: false,
-          assertion: true,
-        };
+        return anchorAtom(this.flags & MULTILINE ? "(?:^|(?<=\\n))" : "^");
       case "$":
         // CPython `$` (no MULTILINE) also matches just before a trailing newline;
         // JS `$` without `m` does not. MULTILINE `$` matches before every newline,
         // but JS `m` additionally splits on \r, U+2028 and U+2029.
-        return {
-          js: this.flags & MULTILINE ? "(?=\\n|$)" : "(?=\\n?$)",
-          repeatable: true,
-          isRepeat: false,
-          assertion: true,
-        };
+        return anchorAtom(this.flags & MULTILINE ? "(?=\\n|$)" : "(?=\\n?$)");
       case "*":
       case "+":
       case "?":
         throw this.err("nothing to repeat", this.i - 1);
       case "\\":
         return this.parseEscape();
-      default: {
-        const cp = /** @type {number} */ (c.codePointAt(0));
-        return { js: emitCp(cp), repeatable: true, isRepeat: false, assertion: false };
-      }
+      default:
+        return litAtom(emitCp(/** @type {number} */ (c.codePointAt(0))));
     }
   }
 
@@ -513,7 +619,7 @@ class _Parser {
 
   /**
    * @param {number} depth
-   * @returns {{js:string, repeatable:boolean, isRepeat:boolean, assertion:boolean}|null}
+   * @returns {Atom|null}
    */
   parseGroup(depth) {
     const open = this.i - 1;
@@ -525,7 +631,7 @@ class _Parser {
       const body = this.parseAlternation(depth + 1);
       if (!this.match(")")) throw this.err("missing ), unterminated subpattern", open);
       this.openGroups.delete(gid);
-      return { js: `(${body})`, repeatable: true, isRepeat: false, assertion: false };
+      return groupAtom(`(${body.js})`, body.width);
     }
 
     const c = this.peek();
@@ -547,24 +653,16 @@ class _Parser {
         this.openGroups.delete(gid);
         const jsName = jsGroupNameOk(name) ? name : `_g${gid}`;
         this.jsGroupNames[name] = jsName;
-        return {
-          js: `(?<${jsName}>${body})`,
-          repeatable: true,
-          isRepeat: false,
-          assertion: false,
-        };
+        return groupAtom(`(?<${jsName}>${body.js})`, body.width);
       }
       if (this.match("=")) {
         const name = this.readGroupName(")");
         const gid = this.groupIndex[name];
         if (gid === undefined) throw this.err(`unknown group name '${name}'`, this.i);
         const jsName = this.jsGroupNames[name];
-        return {
-          js: `\\k<${jsName}>`,
-          repeatable: true,
-          isRepeat: false,
-          assertion: false,
-        };
+        // py: sre_parse.SubPattern.getwidth treats GROUPREF as (0, MAXWIDTH),
+        // which is why a backreference inside a lookbehind is never fixed-width.
+        return groupAtom(`\\k<${jsName}>`, { min: 0, max: MAXWIDTH });
       }
       throw this.err("unknown extension ?P", open + 1);
     }
@@ -574,7 +672,7 @@ class _Parser {
       this.i += 1;
       const body = this.parseAlternation(depth + 1);
       if (!this.match(")")) throw this.err("missing ), unterminated subpattern", open);
-      return { js: `(?:${body})`, repeatable: true, isRepeat: false, assertion: false };
+      return groupAtom(`(?:${body.js})`, body.width);
     }
 
     // (?#...)
@@ -592,12 +690,7 @@ class _Parser {
       this.i += 1;
       const body = this.parseAlternation(depth + 1);
       if (!this.match(")")) throw this.err("missing ), unterminated subpattern", open);
-      return {
-        js: `(?${c}${body})`,
-        repeatable: true,
-        isRepeat: false,
-        assertion: true,
-      };
+      return lookAtom(`(?${c}${body.js})`);
     }
 
     // (?<=...) (?<!...)
@@ -607,14 +700,14 @@ class _Parser {
         this.i += 2;
         const body = this.parseAlternation(depth + 1);
         if (!this.match(")")) throw this.err("missing ), unterminated subpattern", open);
-        // CPython requires fixed-width lookbehind; JS does not. Every pattern
-        // CPython accepts is therefore accepted by JS.
-        return {
-          js: `(?<${dir}${body})`,
-          repeatable: true,
-          isRepeat: false,
-          assertion: true,
-        };
+        // py: sre_parse._parse — CPython requires a single fixed width here, so
+        // `(?<=a|bb)` and `(?<=a{2,3})` are errors even though JS accepts both.
+        // The oracle has to reject them too: bigquery.py:127 reads `.groups` only
+        // when `re.compile` did not raise.
+        if (body.width.min !== body.width.max) {
+          throw this.err("look-behind requires fixed-width pattern", open);
+        }
+        return lookAtom(`(?<${dir}${body.js})`);
       }
       throw this.err(`unknown extension ?<${dir}`, open + 1);
     }
@@ -631,10 +724,10 @@ class _Parser {
         throw this.err(`unknown group name '${cond}'`, this.i);
       }
       // Consume the yes/no branches so group numbering stays correct.
-      this.parseAlternation(depth + 1);
+      const body = this.parseAlternation(depth + 1);
       if (!this.match(")")) throw this.err("missing ), unterminated subpattern", open);
       this.cannotTranslate("conditional group (?(id)yes|no) has no JS equivalent");
-      return { js: "", repeatable: true, isRepeat: false, assertion: false };
+      return groupAtom("", body.width);
     }
 
     // (?>...) atomic group — CPython 3.11+
@@ -682,7 +775,7 @@ class _Parser {
       this.cannotTranslate("scoped inline flags (?flags:...) are unsupported by this JS engine");
       const body = this.parseAlternation(depth + 1);
       if (!this.match(")")) throw this.err("missing ), unterminated subpattern", open);
-      return { js: `(?:${body})`, repeatable: true, isRepeat: false, assertion: false };
+      return groupAtom(`(?:${body.js})`, body.width);
     }
     if (!seenAny) throw this.err(`unknown extension ?${this.peek()}`, open + 1);
     if (!this.match(")")) throw this.err("missing -, : or )", this.i);
@@ -725,7 +818,7 @@ class _Parser {
 
   /**
    * py: sre_parse._escape (outside a character class).
-   * @returns {{js:string, repeatable:boolean, isRepeat:boolean, assertion:boolean}}
+   * @returns {Atom}
    */
   parseEscape() {
     if (this.eof()) throw this.err("bad escape (end of pattern)", this.i - 1);
@@ -735,36 +828,29 @@ class _Parser {
     if (AT_CHARS.has(c)) {
       switch (c) {
         case "A":
-          return { js: "^", repeatable: true, isRepeat: false, assertion: true };
+          return anchorAtom("^");
         case "Z":
-          return { js: "$", repeatable: true, isRepeat: false, assertion: true };
+          return anchorAtom("$");
         case "b":
         case "B": {
           // CPython `\b` is Unicode-aware for str patterns; JS `\b` is always ASCII.
           const w = this.ascii ? WORD_A : WORD_U;
           const inside = `(?:(?<![${w}])(?=[${w}])|(?<=[${w}])(?![${w}]))`;
-          const js = c === "b" ? inside : `(?!${inside})`;
-          return { js, repeatable: true, isRepeat: false, assertion: true };
+          if (c === "b") return anchorAtom(inside);
+          // py: sre_lib.h SRE_AT_UNI_NON_BOUNDARY opens with
+          //   `if (state->beginning == state->end) return 0;`
+          // so `\B` fails outright on an empty subject even though position 0 is
+          // not a word boundary. The trailing group re-imposes "subject is
+          // non-empty" that a bare negative lookahead would drop.
+          return anchorAtom(`(?!${inside})(?:(?<=[\\s\\S])|(?=[\\s\\S]))`);
         }
       }
     }
 
-    if (CATEGORY_CHARS.has(c)) {
-      return {
-        js: this.categorySource(c),
-        repeatable: true,
-        isRepeat: false,
-        assertion: false,
-      };
-    }
+    if (CATEGORY_CHARS.has(c)) return litAtom(this.categorySource(c));
 
     if (c in ESCAPE_CHARS) {
-      return {
-        js: emitCp(ESCAPE_CHARS[/** @type {keyof typeof ESCAPE_CHARS} */ (c)]),
-        repeatable: true,
-        isRepeat: false,
-        assertion: false,
-      };
+      return litAtom(emitCp(ESCAPE_CHARS[/** @type {keyof typeof ESCAPE_CHARS} */ (c)]));
     }
 
     if (c === "0") {
@@ -772,12 +858,7 @@ class _Parser {
       while (oct.length < 2 && this.peek() !== "" && OCTDIGITS.includes(this.peek())) {
         oct += this.next();
       }
-      return {
-        js: emitCp(parseInt("0" + oct, 8) & 0xff),
-        repeatable: true,
-        isRepeat: false,
-        assertion: false,
-      };
+      return litAtom(emitCp(parseInt("0" + oct, 8) & 0xff));
     }
 
     if (DIGITS.includes(c)) {
@@ -796,28 +877,21 @@ class _Parser {
           if (v > 0o377) {
             throw this.err(`octal escape value \\${digits} outside of range 0-0o377`, start);
           }
-          return { js: emitCp(v), repeatable: true, isRepeat: false, assertion: false };
+          return litAtom(emitCp(v));
         }
       }
       const gid = Number(digits);
       if (gid === 0) throw this.err("bad escape \\0", start);
       if (gid > this.groups) throw this.err(`invalid group reference ${gid}`, start + 1);
       if (this.openGroups.has(gid)) throw this.err("cannot refer to an open group", start);
-      return { js: `\\${gid}`, repeatable: true, isRepeat: false, assertion: false };
+      return groupAtom(`\\${gid}`, { min: 0, max: MAXWIDTH });
     }
 
     const cp = this.readCharEscape(c, start);
-    if (cp !== null) {
-      return { js: emitCp(cp), repeatable: true, isRepeat: false, assertion: false };
-    }
+    if (cp !== null) return litAtom(emitCp(cp));
 
     if (ASCIILETTERS.includes(c)) throw this.err(`bad escape \\${c}`, start);
-    return {
-      js: emitCp(/** @type {number} */ (c.codePointAt(0))),
-      repeatable: true,
-      isRepeat: false,
-      assertion: false,
-    };
+    return litAtom(emitCp(/** @type {number} */ (c.codePointAt(0))));
   }
 
   /**
@@ -1306,22 +1380,25 @@ export class PyMatch {
     }
     return out;
   }
-  /** @param {number|string} [g] */
+  /**
+   * py: Match.start — CPython counts code points, JS counts UTF-16 units.
+   * @param {number|string} [g]
+   */
   start(g = 0) {
     const i = this.re._groupNumber(g);
-    if (i === 0) return this._m.index;
+    if (i === 0) return toCodePointIndex(this.string, this._m.index);
     if (this._m[i] === undefined) return -1;
     // Node exposes per-group indices only with the `d` flag; PyPattern sets it.
     const ind = /** @type {any} */ (this._m).indices;
-    return ind && ind[i] ? ind[i][0] : -1;
+    return ind && ind[i] ? toCodePointIndex(this.string, ind[i][0]) : -1;
   }
   /** @param {number|string} [g] */
   end(g = 0) {
     const i = this.re._groupNumber(g);
-    if (i === 0) return this._m.index + this._m[0].length;
+    if (i === 0) return toCodePointIndex(this.string, this._m.index + this._m[0].length);
     if (this._m[i] === undefined) return -1;
     const ind = /** @type {any} */ (this._m).indices;
-    return ind && ind[i] ? ind[i][1] : -1;
+    return ind && ind[i] ? toCodePointIndex(this.string, ind[i][1]) : -1;
   }
   /** @param {number|string} [g] */
   span(g = 0) {
@@ -1367,11 +1444,22 @@ export class PyPattern {
     return gid;
   }
 
+  /**
+   * `pos` / `endpos` are CPython code-point indices; the JS engine wants UTF-16.
+   * @param {string} string @param {number} pos @param {number|undefined} endpos
+   * @returns {[number, string]}
+   */
+  _slice(string, pos, endpos) {
+    const start = pos === 0 ? 0 : fromCodePointIndex(string, pos);
+    const s = endpos === undefined ? string : string.slice(0, fromCodePointIndex(string, endpos));
+    return [start, s];
+  }
+
   /** py: Pattern.match — anchored at `pos`, not required to reach the end. */
   match(string, pos = 0, endpos = undefined) {
-    const s = endpos === undefined ? string : string.slice(0, endpos);
+    const [start, s] = this._slice(string, pos, endpos);
     const re = this._re("yd");
-    re.lastIndex = pos;
+    re.lastIndex = start;
     const m = re.exec(s);
     return m ? new PyMatch(m, this, string) : null;
   }
@@ -1383,29 +1471,149 @@ export class PyPattern {
    * because this module never emits the JS `m` flag (MULTILINE is desugared).
    */
   fullmatch(string, pos = 0, endpos = undefined) {
-    const s = endpos === undefined ? string : string.slice(0, endpos);
+    const [start, s] = this._slice(string, pos, endpos);
     const re = new RegExp(`(?:${this._src})$`, this._flags + "yd");
-    re.lastIndex = pos;
+    re.lastIndex = start;
     const m = re.exec(s);
     return m ? new PyMatch(m, this, string) : null;
   }
 
   /** py: Pattern.search */
   search(string, pos = 0, endpos = undefined) {
-    const s = endpos === undefined ? string : string.slice(0, endpos);
+    const [start, s] = this._slice(string, pos, endpos);
     const re = this._re("gd");
-    re.lastIndex = pos;
-    const m = re.exec(s);
+    re.lastIndex = start;
+    const m = this._skipMidSurrogate(re, s);
     return m ? new PyMatch(m, this, string) : null;
+  }
+
+  /**
+   * py: `_sre.c` — the scanner sets `must_advance = (state.ptr == state.start)`
+   * after every match, and `must_advance` makes the engine reject a zero-length
+   * match *at the start position* and backtrack into the remaining alternatives
+   * before moving on. JS has no equivalent, and a naive "match then bump
+   * lastIndex by one" loop diverges whenever a pattern can match both empty and
+   * non-empty at the same offset:
+   *
+   *     re.findall(r'|(\d+)', '\\0041')  ==  ['', '', '0041', '']
+   *     naive JS loop                    ->  ['', '', '', '', '', '']
+   *
+   * That pattern is reachable: sqlglot/generator.py:1667 builds
+   * `rf"{escape.name}(\d+)"` from the UESCAPE character in user SQL, so
+   * `UESCAPE '|'` produces exactly it.
+   *
+   * @param {string} string @param {number} [pos]
+   * @returns {Generator<RegExpExecArray>}
+   */
+  *_scan(string, pos = 0) {
+    let start = pos;
+    let mustAdvance = false;
+    for (;;) {
+      const m = this._searchFrom(string, start, mustAdvance);
+      if (m === null) return;
+      yield m;
+      const end = m.index + m[0].length;
+      mustAdvance = end === m.index;
+      start = end;
+      if (start > string.length) return;
+    }
+  }
+
+  /**
+   * @param {string} string @param {number} start @param {boolean} mustAdvance
+   * @returns {RegExpExecArray|null}
+   */
+  _searchFrom(string, start, mustAdvance) {
+    const re = this._re("gd");
+    re.lastIndex = start;
+    const m = this._skipMidSurrogate(re, string);
+    if (m === null) return null;
+    if (!mustAdvance || m.index > start || m[0].length > 0) return m;
+
+    const alt = this._nonEmptyAt(string, start);
+    if (alt !== null) return alt;
+
+    if (start >= string.length) return null;
+    // Advance by a whole code point: the pattern is compiled with `u`/`v`, so
+    // lastIndex must not land inside a surrogate pair.
+    const cp = string.codePointAt(start);
+    re.lastIndex = start + (cp !== undefined && cp > 0xffff ? 2 : 1);
+    return this._skipMidSurrogate(re, string);
+  }
+
+  /**
+   * CPython's engine walks code points; V8 will happily report a zero-width match
+   * at an index that sits *between* a surrogate pair, which has no CPython
+   * counterpart. Skip those positions.
+   * @param {RegExp} re @param {string} string
+   * @returns {RegExpExecArray|null}
+   */
+  _skipMidSurrogate(re, string) {
+    for (;;) {
+      const m = re.exec(string);
+      if (m === null) return null;
+      if (!isMidSurrogate(string, m.index)) return m;
+      re.lastIndex = m.index + 1;
+    }
+  }
+
+  /**
+   * First non-empty match at exactly `start`, found by re-running the pattern
+   * once per top-level alternative with the other branches made unmatchable.
+   * The disabled branches keep their parentheses, so group numbering is
+   * unchanged.
+   *
+   * When the top level has no alternation the empty match came from a nested
+   * nullable construct instead (`a*?` is the common one), so fall back to
+   * anchoring the end at each following code-point boundary and taking the first
+   * span that matches. That reproduces CPython for lazy and simple nullable
+   * patterns, which is what the corpus exercises.
+   *
+   * LIMITATION: for a *nested* alternation whose later branches are longer than
+   * an earlier matching one — `(?:|ab|a)` against "ab", where CPython retries the
+   * `ab` branch and the end-anchored scan finds `a` first — the two engines can
+   * still disagree. The corpus contains that exact pattern so the gap is
+   * measured rather than assumed; see spike/regex/FINDINGS.md.
+   *
+   * @param {string} string @param {number} start
+   * @returns {RegExpExecArray|null}
+   */
+  _nonEmptyAt(string, start) {
+    const alts = this._info.topAlternatives;
+    if (alts.length >= 2) {
+      if (this._altRes === undefined) {
+        // Disabled branches keep their parentheses so group numbering is
+        // unchanged; `[^\s\S]` in front makes the branch unmatchable.
+        this._altRes = alts.map((_, k) =>
+          alts.map((a, j) => (j === k ? a : `[^\\s\\S](?:${a})`)).join("|"),
+        );
+      }
+      for (const src of this._altRes) {
+        const re = new RegExp(src, this._flags + "yd");
+        re.lastIndex = start;
+        const m = re.exec(string);
+        if (m !== null && m[0].length > 0) return m;
+      }
+      return null;
+    }
+
+    if (this._endAnchored === undefined) {
+      this._endAnchored = new RegExp(`(?:${this._src})$`, this._flags + "yd");
+    }
+    for (let end = nextCodePointBoundary(string, start); end <= string.length; ) {
+      this._endAnchored.lastIndex = start;
+      const m = this._endAnchored.exec(string.slice(0, end));
+      if (m !== null && m[0].length > 0) return m;
+      if (end === string.length) break;
+      end = nextCodePointBoundary(string, end);
+    }
+    return null;
   }
 
   /** py: Pattern.findall */
   findall(string) {
-    const re = this._re("gd");
-    re.lastIndex = 0;
     const out = [];
-    let m;
-    while ((m = re.exec(string)) !== null) {
+    for (const m of this._scan(string)) {
       // py: Pattern.findall returns the whole match with 0 groups, the single
       // group with 1, and a tuple of groups otherwise; unmatched groups are "".
       if (this.groups === 0) out.push(m[0]);
@@ -1415,20 +1623,13 @@ export class PyPattern {
         for (let i = 1; i <= this.groups; i += 1) tup.push(m[i] === undefined ? "" : m[i]);
         out.push(tup);
       }
-      if (m[0] === "") re.lastIndex += 1;
     }
     return out;
   }
 
   /** py: Pattern.finditer */
   *finditer(string) {
-    const re = this._re("gd");
-    re.lastIndex = 0;
-    let m;
-    while ((m = re.exec(string)) !== null) {
-      yield new PyMatch(m, this, string);
-      if (m[0] === "") re.lastIndex += 1;
-    }
+    for (const m of this._scan(string)) yield new PyMatch(m, this, string);
   }
 
   /**
@@ -1451,13 +1652,10 @@ export class PyPattern {
   subn(repl, string, count = 0) {
     const tmpl =
       typeof repl === "string" ? pyReTemplate(repl, this.groups, this.groupindex) : null;
-    const re = this._re("gd");
-    re.lastIndex = 0;
     let out = "";
     let last = 0;
     let n = 0;
-    let m;
-    while ((m = re.exec(string)) !== null) {
+    for (const m of this._scan(string)) {
       if (count !== 0 && n >= count) break;
       out += string.slice(last, m.index);
       out +=
@@ -1466,7 +1664,6 @@ export class PyPattern {
           : /** @type {(m: PyMatch) => string} */ (repl)(new PyMatch(m, this, string));
       last = m.index + m[0].length;
       n += 1;
-      if (m[0] === "") re.lastIndex += 1;
     }
     out += string.slice(last);
     return [out, n];
@@ -1474,24 +1671,15 @@ export class PyPattern {
 
   /** py: Pattern.split */
   split(string, maxsplit = 0) {
-    const re = this._re("gd");
-    re.lastIndex = 0;
     const out = [];
     let last = 0;
     let n = 0;
-    let m;
-    while ((m = re.exec(string)) !== null) {
+    for (const m of this._scan(string)) {
       if (maxsplit !== 0 && n >= maxsplit) break;
-      if (m[0] === "" && m.index === last && m.index === 0) {
-        re.lastIndex += 1;
-        if (re.lastIndex > string.length) break;
-        continue;
-      }
       out.push(string.slice(last, m.index));
       for (let i = 1; i <= this.groups; i += 1) out.push(m[i] === undefined ? null : m[i]);
       last = m.index + m[0].length;
       n += 1;
-      if (m[0] === "") re.lastIndex += 1;
     }
     out.push(string.slice(last));
     return out;

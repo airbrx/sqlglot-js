@@ -282,7 +282,13 @@ def structural_patterns() -> list[dict]:
         r"(((((((((((a)))))))))))\11", r"(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)(k)(l)\12",
         # escapes
         r"\A", r"\Z", r"\z", r"\b", r"\B", r"\d", r"\D", r"\s", r"\S", r"\w", r"\W",
-        r"\q", r"\p{L}", r"\N{BULLET}", r"\N{NO SUCH NAME}", r"\x41", r"\x4", r"A",
+        r"\q", r"\p{L}", r"\N{BULLET}", r"\N{NO SUCH NAME}",
+        # ...and the same with a capture group, which is what makes an
+        # unresolvable \N{} name output-visible at bigquery.py:127: CPython
+        # raises (group=False) where a port without the Unicode name table
+        # reports groups==1 (group=True).
+        r"\N{NO SUCH NAME}(x)", r"\N{BULLET}(x)",
+        r"\x41", r"\x4", r"A",
         r"\u004", r"\U0001F600", r"\UFFFFFFFF", r"\a\f\n\r\t\v\\", r"\-", r"\&", r"\#",
         r"\ ", "\\\t",
         # classes
@@ -302,6 +308,22 @@ def structural_patterns() -> list[dict]:
         "(?P=n)", "(?P<n>a)(?P=m)", "(?P>n)", "(?Pfoo)",
         # empty / degenerate
         "", "|", "a|", "|a", "(|)", "^", "$", "^$",
+        # zero-width / must_advance: CPython rejects a zero-length match at the
+        # search start and backtracks into the remaining alternatives. The
+        # nested-alternation forms are the known-hard cases for the JS side.
+        "a*?", "a??", "(a|)", "(|a)", "(?:|ab|a)", "(?:|a|ab)", "x*", r"\b",
+        r"(?:a|)b?", "(a*)", "(a*?)",
+        # Unicode-aware shorthands and boundaries -- where CPython (Unicode by
+        # default for str patterns) and JS (\\w, \\b always ASCII) diverge most.
+        r"\w+", r"\W+", r"\d+", r"\D+", r"\s+", r"\S+", r"\bfoo\b", r"\Bfoo",
+        r"a\wb", r"[\w]", r"[\W]", r"[\d\w]", r"[^\w]", r"[\w.-]", r"[-\w]",
+        r"(?a)\w+", r"(?a)\b\w+\b", r"(?a)\d+", r"(?a)\s+",
+        # astral code points must be single atoms under /u
+        "\U0001F600", "\U0001F600+", "[\U0001F600]", "[\U0001F600-\U0001F64F]",
+        ".", "..", "[^\U0001F600]",
+        # newline handling: CPython `.` excludes only \\n; `$` also matches
+        # before a trailing newline; MULTILINE differs on \\r and U+2028/9.
+        "a.b", "(?s)a.b", "a$", "(?m)a$", "(?m)^a", r"a\Z", "^a", "(?m).",
     ]
     return [
         {"pattern": p, "flags": 0, "py": "spike:structural", "call": "re.compile"}
@@ -644,6 +666,22 @@ def main() -> int:
     for pat in dynamic:
         if pat["py"] == "sqlglot/generator.py:1667":
             records.extend(match_cases(pat, unicode_bodies))
+
+    # Structural patterns get match cases too, against a compact subject set
+    # chosen to hit every construct where the two engines are known to disagree:
+    # trailing newlines, \\r vs \\n vs U+2028, astral code points, Unicode word
+    # characters, and the whitespace code points CPython and JS classify
+    # differently ({1c,1d,1e,1f,85} vs {feff}).
+    structural_subjects = [
+        "", "a", "ab", "abc", "xax", "foo bar", "a b", "aa", "12", "0041",
+        "a\n", "a\nb", "\na", "a\n\n", "a\r\nb", "a\rb", "a b", "a b",
+        "a\tb", "a\x0bb", "a\x1cb", "a\x85b", "a﻿b", "a b", "a　b",
+        "café", "aЖ", "Êß", "aⅣ", "a½", "a٠", "a☺", "\U0001F600",
+        "a\U0001F600b", "a\U0001F600\U0001F600", "_x", "a-b", "a.b", "a_1",
+        "\\0041", "\\u0041", "a|b", "[x]", "{2}", "A", "z",
+    ]
+    for pat in structural:
+        records.extend(match_cases(pat, structural_subjects))
 
     records.extend(sub_cases())
     records.extend(escape_cases(subjects))
