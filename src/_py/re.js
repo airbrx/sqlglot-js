@@ -178,6 +178,44 @@ function asciiCaseMirror(cp) {
 }
 
 /**
+ * Non-ASCII code points that CPython's *Unicode* IGNORECASE treats as equal to
+ * an ASCII letter. CPython's docs name exactly four:
+ *
+ *   U+0130 LATIN CAPITAL LETTER I WITH DOT ABOVE  ~ i
+ *   U+0131 LATIN SMALL LETTER DOTLESS I           ~ i
+ *   U+017F LATIN SMALL LETTER LONG S              ~ s
+ *   U+212A KELVIN SIGN                            ~ k
+ *
+ * JS's `i` flag under `u` uses Unicode *simple* case folding, which covers
+ * U+017F and U+212A but not U+0130/U+0131 (those fold to themselves). Rather
+ * than encode which two the engine happens to miss — that depends on the ICU
+ * version, and this port already has one Unicode-version-skew hazard — all four
+ * are emitted. Adding a code point the engine would have matched anyway is a
+ * no-op; omitting one is a silent wrong answer.
+ */
+const UNICODE_ICASE_EXTRAS = {
+  0x69: [0x130, 0x131], // i
+  0x49: [0x130, 0x131], // I
+  0x73: [0x17f], // s
+  0x53: [0x17f], // S
+  0x6b: [0x212a], // k
+  0x4b: [0x212a], // K
+};
+
+/**
+ * Extras for every ASCII letter covered by [lo, hi].
+ * @param {number} lo @param {number} hi @returns {number[]}
+ */
+function unicodeIcaseExtrasForRange(lo, hi) {
+  const out = [];
+  for (const key of Object.keys(UNICODE_ICASE_EXTRAS)) {
+    const cp = Number(key);
+    if (cp >= lo && cp <= hi) out.push(...UNICODE_ICASE_EXTRAS[cp]);
+  }
+  return out;
+}
+
+/**
  * Case-mirrored sub-ranges of [lo, hi] within the ASCII letter blocks.
  * @param {number} lo @param {number} hi
  * @returns {Array<[number, number]>}
@@ -414,9 +452,15 @@ class _Parser {
    * @param {number} cp @returns {string}
    */
   emitLiteral(cp) {
-    if (!this.asciiFold) return emitCp(cp);
-    const other = asciiCaseMirror(cp);
-    return other === null ? emitCp(cp) : `[${emitCp(cp)}${emitCp(other)}]`;
+    if (this.asciiFold) {
+      const other = asciiCaseMirror(cp);
+      return other === null ? emitCp(cp) : `[${emitCp(cp)}${emitCp(other)}]`;
+    }
+    if (this.flags & IGNORECASE) {
+      const extras = UNICODE_ICASE_EXTRAS[cp];
+      if (extras) return `[${emitCp(cp)}${extras.map(emitCp).join("")}]`;
+    }
+    return emitCp(cp);
   }
 
   /** Skip `re.VERBOSE` whitespace and `#` comments (outside character classes). */
@@ -1124,6 +1168,8 @@ class _Parser {
         if (this.asciiFold) {
           const other = asciiCaseMirror(it.v);
           if (other !== null) body += emitCp(other);
+        } else if (this.flags & IGNORECASE) {
+          for (const extra of UNICODE_ICASE_EXTRAS[it.v] || []) body += emitCp(extra);
         }
       } else if (it.k === "range") {
         body += `${emitCp(it.lo)}-${emitCp(it.hi)}`;
@@ -1131,6 +1177,8 @@ class _Parser {
           for (const [lo, hi] of asciiMirrorRanges(it.lo, it.hi)) {
             body += lo === hi ? emitCp(lo) : `${emitCp(lo)}-${emitCp(hi)}`;
           }
+        } else if (this.flags & IGNORECASE) {
+          for (const extra of unicodeIcaseExtrasForRange(it.lo, it.hi)) body += emitCp(extra);
         }
       } else {
         const inner = this.categoryInner(it.c.toLowerCase());

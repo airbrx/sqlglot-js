@@ -3,9 +3,9 @@
   "unidata_version": "13.0.0",
   "ref": "/tmp/sqlglot-ref-regex",
   "counts": {
-    "total": 14061,
-    "oracle": 418,
-    "match": 12692,
+    "total": 19597,
+    "oracle": 498,
+    "match": 18148,
     "sub": 41,
     "escape": 902,
     "escape_build": 8
