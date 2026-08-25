@@ -240,14 +240,47 @@ Places where a literal transliteration is impossible. Each is exempt from `lint_
 margin**, and are configurable via generator options — the closest honest analogue to
 `sys.setrecursionlimit`.
 
+### 9.1 Engine ceiling — measured [verified]
+
+`node spike/fuzz_depth.mjs`, Node v22.12.0, worst of three runs each:
+
+| frame shape | overflow depth | §4.7's figure |
+|---|---:|---:|
+| trivial | **4,125** | 9,160 |
+| generator-like (5 args, locals, string building) | **3,350** | 4,225 |
+| parser-like (backtracking state + try/catch) | **3,575** | — |
+
+**The measured numbers are lower than §4.7's and I have not reconciled the difference.**
+Likely causes: my probe runs from an ESM module top level under a top-level `await`, so it
+starts with more live stack than a bare call would; and "worst of three" is deliberately
+pessimistic because the ceiling moves with whatever is already on the stack.
+
+Either way the conclusion **strengthens**: the gap to upstream's N=10,000
+(`test_redshift.py:524`) is larger than the plan assumed, so the trampolines in §4.7 item 3
+are not optional. Thresholds must be set from the worst observed value, never the best.
+
+**Suggested `DepthLimitError` threshold: 2,010** (0.6 × the realistic frame). Conservative
+on purpose — it must fire *before* V8's `RangeError`, because unwinding mid-generate is not
+a supported recovery path.
+
+`node --stack-size` remains **rejected**: unavailable to browser consumers, and raising it
+past the OS thread stack turns a clean `RangeError` into a segfault.
+
+### 9.2 Per-path max N [pending P4]
+
+The linear-growth input generators exist and are shape-asserted (`orChain`, `unionChain`,
+`wideValues`, `inList`, `addChain`, over N ∈ {10, 100, 1000, 5000, 10000}). The per-path
+numbers need the JS parser/generator, so they land at P4 rather than being guessed here.
+
 | path | measured max safe N | threshold |
 |---|---|---|
-| parse — `OR` chain | *pending* | |
-| parse — `UNION` chain | *pending* | |
-| generate — binary chain | *pending* | |
-| generate `pretty` — `VALUES`→`UNION` | *pending* | |
+| parse — `OR` chain | *pending P4* | |
+| parse — `UNION` chain | *pending P4* | |
+| generate — binary chain | *pending P4* | |
+| generate `pretty` — `VALUES`→`UNION` | *pending P4* | |
 
-Reference points already measured: a trivial JS frame overflows at depth **9,160**, a
-realistic generator frame at **4,225** (Node v22.12.0); upstream ships a test at N=**10,000**
-(`test_redshift.py:524`). `node --stack-size` is **rejected** — unavailable to browser
-consumers, and raising it past the OS thread stack turns a clean `RangeError` into a segfault.
+Note the asymmetry that makes this tractable: the **non-pretty** `VALUES` path
+(`generator.py:2750`) is an iterative `" UNION ALL ".join(...)` and is safe at any width.
+Only the **pretty** path builds the left-nested `Union` chain. `test_redshift.py:529`
+asserts the *iterative* path at N=10,000 — which is precisely why 15,540/15,540 atoms can
+pass with the recursive path broken.
