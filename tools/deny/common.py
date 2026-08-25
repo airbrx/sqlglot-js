@@ -166,8 +166,15 @@ class ExprKnowledge:
         self.classes: set[str] = set()
         # name -> kind, for things whose *return annotation* is an Expr or a
         # container of Exprs. Harvested, never hardcoded.
-        self.func_kind: dict[str, str] = {}
-        self.prop_kind: dict[str, str] = {}
+        #
+        # Split three ways, because a bare method name is ambiguous: `str.find`
+        # collides with `Expr.find`, `str.join` with `exp.join`, and
+        # `Generator.func` (returns str) with `exp.func` (returns Expr). Resolving
+        # a call therefore needs to know what the *receiver* is.
+        self.exp_func_kind: dict[str, str] = {}  # exp.foo(...)  — module level in expressions/
+        self.expr_method_kind: dict[str, str] = {}  # <expr>.foo(...) — methods on Expr classes
+        self.local_func_kind: dict[str, dict[str, str]] = {}  # per-module top-level defs
+        self.prop_kind: dict[str, str] = {}  # properties on Expr classes
         self._build()
 
     def _build(self) -> None:
@@ -199,7 +206,18 @@ class ExprKnowledge:
             tree = _parse(path)
             if tree is None:
                 continue
-            imports = ModuleImports(tree, os.path.relpath(path, self.ref))
+            relpath = os.path.relpath(path, self.ref)
+            imports = ModuleImports(tree, relpath)
+            in_expressions = relpath.startswith("sqlglot/expressions")
+
+            # Which FunctionDefs sit directly inside a class body, and which class.
+            method_owner: dict[int, str] = {}
+            for cls in ast.walk(tree):
+                if isinstance(cls, ast.ClassDef):
+                    for item in cls.body:
+                        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                            method_owner[id(item)] = cls.name
+
             for node in ast.walk(tree):
                 if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue
@@ -207,10 +225,19 @@ class ExprKnowledge:
                 if kind is None:
                     continue
                 decorators = {_ann_text(d) for d in node.decorator_list}
+                owner = method_owner.get(id(node))
+
                 if "property" in decorators or "cached_property" in decorators:
-                    self.prop_kind.setdefault(node.name, kind)
-                else:
-                    self.func_kind.setdefault(node.name, kind)
+                    if owner in self.classes:
+                        self.prop_kind.setdefault(node.name, kind)
+                    continue
+
+                if owner is None:
+                    self.local_func_kind.setdefault(relpath, {}).setdefault(node.name, kind)
+                    if in_expressions:
+                        self.exp_func_kind.setdefault(node.name, kind)
+                elif owner in self.classes:
+                    self.expr_method_kind.setdefault(node.name, kind)
 
     # ------------------------------------------------------------ annotations
 
@@ -315,9 +342,16 @@ class ExprTyper:
     `classify(node)` returns `(kind, confidence, reason)` or None.
     """
 
-    def __init__(self, knowledge: ExprKnowledge, imports: ModuleImports, scope: ast.AST) -> None:
+    def __init__(
+        self,
+        knowledge: ExprKnowledge,
+        imports: ModuleImports,
+        scope: ast.AST,
+        relpath: str = "",
+    ) -> None:
         self.k = knowledge
         self.imports = imports
+        self.relpath = relpath
         self.scope = scope
         self.names: dict[str, tuple[str, str, str]] = {}
         self.not_expr: set[str] = set()
@@ -384,21 +418,64 @@ class ExprTyper:
 
     # ---------------------------------------------------------- classifier
 
-    def classify(self, node: ast.AST) -> tuple[str, str, str] | None:
-        if isinstance(node, ast.Call):
-            fn = node.func
-            name = fn.attr if isinstance(fn, ast.Attribute) else (fn.id if isinstance(fn, ast.Name) else None)
-            if name is None:
+    def _classify_call(self, node: ast.Call) -> tuple[str, str, str] | None:
+        """Resolve a call by looking at what it is called *on*.
+
+        Without this, `span.find(q)` (str.find -> int) is read as `Expr.find`
+        (-> Expr), and `self.func(...)` inside a Generator (-> str) is read as
+        `exp.func` (-> Expr). Both produced false operator sites in the first run.
+        """
+        fn = node.func
+
+        if isinstance(fn, ast.Attribute):
+            resolved = self.imports.resolve(fn)
+            in_exp_namespace = resolved is not None and resolved[0] == "exp"
+            if in_exp_namespace:
+                if fn.attr in self.k.classes and fn.attr not in CONTAINER_HEADS:
+                    return (KIND_EXPR, CONF_HIGH, f"constructor exp.{fn.attr}(...)")
+                kind = self.k.exp_func_kind.get(fn.attr)
+                if kind is not None:
+                    return (kind, CONF_MEDIUM, f"exp.{fn.attr}() returns {kind}")
+                # exp.Literal.number(...) — attribute chain onto a class
                 return None
-            if name in self.k.classes:
-                # Only a real constructor if it resolves to the exp namespace.
-                resolved = self.imports.resolve(fn)
-                if resolved and resolved[0] in ("exp", "unknown") and name not in CONTAINER_HEADS:
-                    return (KIND_EXPR, CONF_HIGH, f"constructor {name}(...)")
-            kind = self.k.func_kind.get(name)
+            # A method call: only trust it if the receiver is itself an Expr.
+            receiver = self.classify(fn.value)
+            if receiver is not None and receiver[0] == KIND_EXPR:
+                kind = self.k.expr_method_kind.get(fn.attr)
+                if kind is not None:
+                    return (kind, CONF_MEDIUM, f".{fn.attr}() returns {kind}")
+            # exp.Literal.number(...) / exp.DataType.build(...)
+            if isinstance(fn.value, ast.Attribute):
+                inner = self.imports.resolve(fn.value)
+                if inner and inner[0] == "exp" and inner[1] in self.k.classes:
+                    return (KIND_EXPR, CONF_HIGH, f"{inner[1]}.{fn.attr}(...) builds an Expr")
+            return None
+
+        if isinstance(fn, ast.Name):
+            name = fn.id
+            if name in CONTAINER_HEADS or name in OPAQUE_HEADS:
+                return None
+            if name in self.k.classes and (
+                name in self.imports.exp_names or self.imports.in_expressions_pkg
+            ):
+                return (KIND_EXPR, CONF_HIGH, f"constructor {name}(...)")
+            # A bare call is only resolvable if this module imported it from
+            # sqlglot.expressions or defines it itself.
+            if name in self.imports.exp_names:
+                kind = self.k.exp_func_kind.get(name)
+                if kind is not None:
+                    return (kind, CONF_MEDIUM, f"{name}() returns {kind}")
+            local = self.k.local_func_kind.get(self.relpath, {})
+            kind = local.get(name)
             if kind is not None:
                 return (kind, CONF_MEDIUM, f"{name}() returns {kind}")
             return None
+
+        return None
+
+    def classify(self, node: ast.AST) -> tuple[str, str, str] | None:
+        if isinstance(node, ast.Call):
+            return self._classify_call(node)
 
         if isinstance(node, ast.Attribute):
             kind = self.k.prop_kind.get(node.attr)

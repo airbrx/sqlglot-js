@@ -101,7 +101,7 @@ def analyse(ref: str) -> tuple[list[dict], dict]:
         def typer_for(node: ast.AST) -> ExprTyper:
             scope = owner.get(id(node), tree)
             if id(scope) not in typers:
-                typers[id(scope)] = ExprTyper(knowledge, imports, scope)
+                typers[id(scope)] = ExprTyper(knowledge, imports, scope, relpath)
             return typers[id(scope)]
 
         def as_expr(tp: ExprTyper, node: ast.AST):
