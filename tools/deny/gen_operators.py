@@ -38,8 +38,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from common import (  # noqa: E402
+    KIND_EXPR,
     ExprKnowledge,
     ExprTyper,
+    ModuleImports,
     is_executor,
     owning_scope,
     rel,
@@ -92,14 +94,23 @@ def analyse(ref: str) -> tuple[list[dict], dict]:
             continue
         stats["files_scanned"] += 1
 
+        imports = ModuleImports(tree, relpath)
         owner = owning_scope(tree)
         typers: dict[int, ExprTyper] = {}
 
         def typer_for(node: ast.AST) -> ExprTyper:
             scope = owner.get(id(node), tree)
             if id(scope) not in typers:
-                typers[id(scope)] = ExprTyper(knowledge, scope)
+                typers[id(scope)] = ExprTyper(knowledge, imports, scope)
             return typers[id(scope)]
+
+        def as_expr(tp: ExprTyper, node: ast.AST):
+            """Only a value that IS an Expr dispatches to the operator dunders;
+            a container of Exprs does not."""
+            v = tp.classify(node)
+            if v is None or v[0] != KIND_EXPR:
+                return None
+            return (v[1], v[2])
 
         for node in ast.walk(tree):
             entry = None
@@ -110,8 +121,8 @@ def analyse(ref: str) -> tuple[list[dict], dict]:
                 if dunder is None:
                     continue
                 tp = typer_for(node)
-                left = tp.classify(node.left)
-                right = tp.classify(node.right)
+                left = as_expr(tp, node.left)
+                right = as_expr(tp, node.right)
                 if left is None and right is None:
                     continue
                 # Python dispatches to the reflected form when only the RIGHT
@@ -137,8 +148,8 @@ def analyse(ref: str) -> tuple[list[dict], dict]:
                 if dunder is None:
                     continue
                 tp = typer_for(node)
-                target = tp.classify(node.target)
-                value = tp.classify(node.value)
+                target = as_expr(tp, node.target)
+                value = as_expr(tp, node.value)
                 if target is None and value is None:
                     continue
                 conf, reason = target or value  # type: ignore[misc]
@@ -160,7 +171,7 @@ def analyse(ref: str) -> tuple[list[dict], dict]:
                 if dunder is None:
                     continue
                 tp = typer_for(node)
-                operand = tp.classify(node.operand)
+                operand = as_expr(tp, node.operand)
                 if operand is None:
                     continue
                 entry = {
@@ -180,8 +191,8 @@ def analyse(ref: str) -> tuple[list[dict], dict]:
                 if dunder is None:
                     continue
                 tp = typer_for(node)
-                left = tp.classify(node.left)
-                right = tp.classify(node.comparators[0])
+                left = as_expr(tp, node.left)
+                right = as_expr(tp, node.comparators[0])
                 if left is None and right is None:
                     continue
                 conf, reason = left or right  # type: ignore[misc]
@@ -200,13 +211,17 @@ def analyse(ref: str) -> tuple[list[dict], dict]:
             elif isinstance(node, ast.Subscript):
                 stats["subscript_nodes"] += 1
                 tp = typer_for(node)
-                # Only flag when the *container* is an Expr: exp_node[key] is
-                # Expr.__getitem__ and builds a Bracket. Indexing a list of
-                # Exprs is ordinary list indexing and is not a hazard.
-                value = tp.classify(node.value)
+                # Only flag when the subscripted value IS an Expr: `expr[key]`
+                # is Expr.__getitem__ and builds a Bracket. Indexing a *container*
+                # of Exprs (`expression.expressions[0]`) is ordinary indexing and
+                # is not a hazard — `as_expr` already rejects that case.
+                value = as_expr(tp, node.value)
                 if value is None:
                     continue
-                if tp._is_expr_iterable(node.value):
+                # Expr.__getitem__ does `convert(e) for e in ensure_list(other)`
+                # (expressions/core.py:1409), which cannot accept a slice object.
+                # A slice subscript is therefore never Expr.__getitem__.
+                if isinstance(node.slice, ast.Slice):
                     continue
                 if value[1].startswith("Bracket from"):
                     continue

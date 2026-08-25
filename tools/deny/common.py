@@ -7,15 +7,26 @@ has no operator overloading, so a faithful-looking transliteration of
 Those lines have to be enumerated, not reasoned about case by case.
 
 Finding them needs real syntactic understanding, so everything here is AST-based.
-The hard part is deciding whether an operand *is* an `Expr` in a dynamically typed
-codebase. This module answers that from evidence in the source itself:
+The hard part is deciding whether an operand *is* an `Expr` in a dynamically
+typed codebase. This module answers that from evidence in the source itself:
 
   * every class under `sqlglot/expressions/` that transitively subclasses `Expr`;
   * every function/method/property whose **return annotation** is one of those;
   * parameter and variable annotations, propagated through local assignments.
 
-Nothing here guesses from a name spelling. Each verdict carries the reason it was
-reached, and the generators emit that reason so a human can audit the list.
+Two things make a naive version of this badly wrong, and both are handled here:
+
+  1. **Ten expression classes collide with `typing` names** — `Any`, `ByteString`,
+     `Final`, `Generator`, `List`, `Literal`, `Match`, `Set`, `Tuple`, `Union`.
+     A substring match on the annotation text reads `t.Any` as `exp.Any` and
+     flags every `args[i]` in the codebase. Annotations are therefore parsed and
+     resolved against each module's actual imports.
+  2. **A container of Exprs is not an Expr.** `t.List[Expr]` must not make
+     `values[0]` look like `Expr.__getitem__`; it makes it an ordinary list index
+     that *yields* an Expr. The classifier is three-valued for that reason.
+
+Nothing here guesses from a name spelling. Every verdict carries the reason it
+was reached, and the generators emit that reason so a human can audit the list.
 """
 
 from __future__ import annotations
@@ -24,8 +35,9 @@ import ast
 import os
 import typing as t
 
-# Annotation tokens that denote "some kind of Expr" independently of the
-# concrete class list: the abstract base, the trait mixins, and the TypeVars.
+# Annotation tokens that denote "some kind of Expr" independently of the concrete
+# class list: the abstract base, the trait mixins, and the TypeVars sqlglot binds
+# to Expr subclasses.
 ABSTRACT_EXPR_NAMES = {
     "Expr",
     "Expression",
@@ -52,11 +64,24 @@ ABSTRACT_EXPR_NAMES = {
     "Q",
 }
 
-# Attribute accesses that yield an Expr (or a list of them) on any node. These
-# are properties on `Expr`/`Expression`; they get confirmed against the harvested
-# return annotations in `ExprKnowledge.check_builtin_properties`.
-EXPR_ATTRS = {"this", "expression", "left", "right", "parent", "unit", "alias_or_name_expr"}
-EXPR_LIST_ATTRS = {"expressions", "flatten", "args"}
+# Annotation heads that wrap rather than are: `list[Expr]` holds Exprs, it is not
+# one. Indexing one of these yields an Expr; indexing an Expr builds a Bracket.
+CONTAINER_HEADS = {
+    "list", "List", "tuple", "Tuple", "set", "Set", "frozenset", "FrozenSet",
+    "dict", "Dict", "Sequence", "MutableSequence", "Iterable", "Iterator",
+    "Generator", "Collection", "Mapping", "MutableMapping", "DefaultDict",
+    "Deque", "Counter", "OrderedDict", "AbstractSet", "Reversible", "Container",
+}
+UNION_HEADS = {"Optional", "Union"}
+# Heads whose subscript is not a value container at all.
+OPAQUE_HEADS = {"Type", "type", "Callable", "ClassVar", "Final", "Literal", "Annotated", "Unpack"}
+
+KIND_EXPR = "expr"
+KIND_CONTAINER = "container"
+
+CONF_HIGH = "high"
+CONF_MEDIUM = "medium"
+CONF_LOW = "low"
 
 
 def _ann_text(node: ast.AST | None) -> str:
@@ -64,8 +89,73 @@ def _ann_text(node: ast.AST | None) -> str:
         return ""
     try:
         return ast.unparse(node)
-    except Exception:  # pragma: no cover - unparse is total on parsed input
+    except Exception:  # pragma: no cover
         return ""
+
+
+def _walk_py(root: str) -> t.Iterator[str]:
+    for dirpath, _dirs, files in os.walk(root):
+        for fname in sorted(files):
+            if fname.endswith(".py"):
+                yield os.path.join(dirpath, fname)
+
+
+def _parse(path: str) -> ast.Module | None:
+    try:
+        return ast.parse(open(path, encoding="utf-8").read(), filename=path)
+    except (OSError, SyntaxError):
+        return None
+
+
+class ModuleImports:
+    """Which names in this module mean `typing.X` and which mean `exp.X`."""
+
+    def __init__(self, tree: ast.Module, relpath: str) -> None:
+        self.typing_aliases: set[str] = set()
+        self.exp_aliases: set[str] = set()
+        self.typing_names: set[str] = set()
+        self.exp_names: set[str] = set()
+        self.in_expressions_pkg = relpath.startswith("sqlglot/expressions")
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "typing":
+                        self.typing_aliases.add(alias.asname or "typing")
+            elif isinstance(node, ast.ImportFrom):
+                mod = node.module or ""
+                if mod == "typing" or mod == "typing_extensions":
+                    for alias in node.names:
+                        self.typing_names.add(alias.asname or alias.name)
+                elif mod.endswith("expressions") or mod == "sqlglot":
+                    for alias in node.names:
+                        if alias.name == "expressions":
+                            self.exp_aliases.add(alias.asname or "expressions")
+                        else:
+                            self.exp_names.add(alias.asname or alias.name)
+
+    def resolve(self, node: ast.AST) -> tuple[str, str] | None:
+        """(namespace, name) for a Name/Attribute annotation head.
+
+        namespace is 'typing', 'exp' or 'unknown'.
+        """
+        if isinstance(node, ast.Attribute):
+            base = node.value
+            if isinstance(base, ast.Name):
+                if base.id in self.typing_aliases:
+                    return ("typing", node.attr)
+                if base.id in self.exp_aliases:
+                    return ("exp", node.attr)
+            return ("unknown", node.attr)
+        if isinstance(node, ast.Name):
+            if node.id in self.typing_names:
+                return ("typing", node.id)
+            if node.id in self.exp_names:
+                return ("exp", node.id)
+            if self.in_expressions_pkg:
+                return ("exp", node.id)
+            return ("unknown", node.id)
+        return None
 
 
 class ExprKnowledge:
@@ -74,12 +164,11 @@ class ExprKnowledge:
     def __init__(self, ref: str) -> None:
         self.ref = ref
         self.classes: set[str] = set()
-        self.expr_functions: set[str] = set()
-        self.expr_methods: set[str] = set()
-        self.expr_properties: set[str] = set()
+        # name -> kind, for things whose *return annotation* is an Expr or a
+        # container of Exprs. Harvested, never hardcoded.
+        self.func_kind: dict[str, str] = {}
+        self.prop_kind: dict[str, str] = {}
         self._build()
-
-    # ---------------------------------------------------------------- build
 
     def _build(self) -> None:
         bases: dict[str, list[str]] = {}
@@ -106,129 +195,175 @@ class ExprKnowledge:
 
         self.classes = {n for n in bases if n in ("Expr", "Expression") or reaches(n)}
 
-        # Functions and methods whose declared return type is an Expr. This is
-        # what makes `.copy()`, `exp.paren(...)`, `seq_get(...)` recognisable
-        # without hardcoding a list of names.
         for path in _walk_py(os.path.join(self.ref, "sqlglot")):
             tree = _parse(path)
             if tree is None:
                 continue
-            in_class: list[str] = []
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ClassDef):
-                    in_class.append(node.name)
+            imports = ModuleImports(tree, os.path.relpath(path, self.ref))
             for node in ast.walk(tree):
                 if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue
-                if not self.is_expr_annotation(_ann_text(node.returns)):
+                kind = self.annotation_kind(node.returns, imports)
+                if kind is None:
                     continue
                 decorators = {_ann_text(d) for d in node.decorator_list}
                 if "property" in decorators or "cached_property" in decorators:
-                    self.expr_properties.add(node.name)
+                    self.prop_kind.setdefault(node.name, kind)
                 else:
-                    self.expr_functions.add(node.name)
-                    self.expr_methods.add(node.name)
+                    self.func_kind.setdefault(node.name, kind)
 
-    # ------------------------------------------------------------- queries
+    # ------------------------------------------------------------ annotations
 
-    def is_expr_annotation(self, text: str) -> bool:
-        """True when an annotation string denotes an Expr (or a container of one)."""
-        if not text:
+    def annotation_kind(self, node: ast.AST | None, imports: ModuleImports) -> str | None:
+        """KIND_EXPR, KIND_CONTAINER, or None — with imports resolved properly."""
+        if node is None:
+            return None
+        return self._kind(node, imports, depth=0)
+
+    def _kind(self, node: ast.AST, imports: ModuleImports, depth: int) -> str | None:
+        if depth > 8:
+            return None
+
+        # Forward reference: 'Expression'
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, str):
+                try:
+                    inner = ast.parse(node.value, mode="eval").body
+                except SyntaxError:
+                    return None
+                return self._kind(inner, imports, depth + 1)
+            return None
+
+        # PEP 604: `Expr | None`
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+            return self._union_kind([node.left, node.right], imports, depth)
+
+        if isinstance(node, ast.Subscript):
+            head = imports.resolve(node.value)
+            head_name = head[1] if head else ""
+            args = _subscript_args(node)
+            if head_name in UNION_HEADS:
+                return self._union_kind(args, imports, depth)
+            if head_name in OPAQUE_HEADS:
+                return None
+            if head_name in CONTAINER_HEADS:
+                # A container is only interesting if it holds Exprs.
+                for a in args:
+                    if self._kind(a, imports, depth + 1) == KIND_EXPR:
+                        return KIND_CONTAINER
+                return None
+            # e.g. `Select[...]`; treat the head itself
+            return self._kind(node.value, imports, depth + 1)
+
+        resolved = imports.resolve(node)
+        if resolved is None:
+            return None
+        namespace, name = resolved
+        if namespace == "typing":
+            return None
+        if name in ABSTRACT_EXPR_NAMES or name in self.classes:
+            # A bare colliding name in a module that never imported it from
+            # sqlglot.expressions is almost certainly the typing one.
+            if namespace == "unknown" and name in CONTAINER_HEADS | OPAQUE_HEADS:
+                return None
+            return KIND_EXPR
+        if name in CONTAINER_HEADS:
+            return None
+        return None
+
+    def _union_kind(self, parts: list[ast.AST], imports: ModuleImports, depth: int) -> str | None:
+        kinds = [self._kind(p, imports, depth + 1) for p in parts]
+        if KIND_EXPR in kinds:
+            return KIND_EXPR
+        if KIND_CONTAINER in kinds:
+            return KIND_CONTAINER
+        return None
+
+    def union_has_non_expr(self, node: ast.AST | None, imports: ModuleImports) -> bool:
+        """True for `str | Expr` style annotations, where the value may not be an
+        Expr at runtime. Those verdicts get downgraded to low confidence."""
+        if node is None:
             return False
-        # `-> bool`, `-> str`, `-> int` are the common non-Expr returns; bail early
-        # so that e.g. `t.Callable[..., Expression]` is not mistaken for a value.
-        if text in ("bool", "str", "int", "float", "None", "bytes"):
-            return False
-        if text.startswith("t.Callable") or text.startswith("Callable"):
-            return False
-        for name in _identifiers(text):
-            if name in ABSTRACT_EXPR_NAMES or name in self.classes:
+        text = _ann_text(node)
+        if "ExpOrStr" in text:
+            return True
+        parts: list[ast.AST] = []
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+            parts = [node.left, node.right]
+        elif isinstance(node, ast.Subscript):
+            head = imports.resolve(node.value)
+            if head and head[1] in UNION_HEADS:
+                parts = _subscript_args(node)
+        for p in parts:
+            if self._kind(p, imports, 0) is None and _ann_text(p) not in ("None",):
                 return True
         return False
 
 
-def _identifiers(text: str) -> t.Iterator[str]:
-    cur = ""
-    for ch in text:
-        if ch.isalnum() or ch == "_":
-            cur += ch
-        else:
-            if cur:
-                yield cur
-            cur = ""
-    if cur:
-        yield cur
-
-
-def _walk_py(root: str) -> t.Iterator[str]:
-    for dirpath, _dirs, files in os.walk(root):
-        for fname in sorted(files):
-            if fname.endswith(".py"):
-                yield os.path.join(dirpath, fname)
-
-
-def _parse(path: str) -> ast.Module | None:
-    try:
-        return ast.parse(open(path, encoding="utf-8").read(), filename=path)
-    except (OSError, SyntaxError):
-        return None
-
-
-# --------------------------------------------------------------------- typing
-
-# How confident we are that a node is an Expr, and why.
-CONF_HIGH = "high"
-CONF_MEDIUM = "medium"
-CONF_LOW = "low"
+def _subscript_args(node: ast.Subscript) -> list[ast.AST]:
+    sl = node.slice
+    if isinstance(sl, ast.Tuple):
+        return list(sl.elts)
+    if isinstance(sl, ast.Index):  # pragma: no cover - py<3.9 shape
+        return [sl.value]  # type: ignore[attr-defined]
+    return [sl]
 
 
 class ExprTyper:
-    """Local, annotation-driven inference of "is this node an Expr?".
+    """Local, annotation-driven inference scoped to one function (or module) body.
 
-    Scoped to one function body (or one module body). Names get their type from
-    parameter annotations, annotated assignments, `for` targets over Expr
-    collections, and plain assignments from Expr-valued right-hand sides,
-    iterated to a fixpoint.
+    `classify(node)` returns `(kind, confidence, reason)` or None.
     """
 
-    def __init__(self, knowledge: ExprKnowledge, scope: ast.AST) -> None:
+    def __init__(self, knowledge: ExprKnowledge, imports: ModuleImports, scope: ast.AST) -> None:
         self.k = knowledge
+        self.imports = imports
         self.scope = scope
-        self.names: dict[str, tuple[str, str]] = {}  # name -> (confidence, reason)
+        self.names: dict[str, tuple[str, str, str]] = {}
         self.not_expr: set[str] = set()
         self._seed()
-        for _ in range(3):  # fixpoint; 3 passes is ample for sqlglot's shapes
+        for _ in range(3):
             if not self._propagate():
                 break
 
     # ------------------------------------------------------------- seeding
+
+    def _record(self, name: str, kind: str, conf: str, reason: str) -> None:
+        if name not in self.names and name not in self.not_expr:
+            self.names[name] = (kind, conf, reason)
 
     def _seed(self) -> None:
         node = self.scope
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             args = node.args
             for a in [*args.posonlyargs, *args.args, *args.kwonlyargs]:
-                text = _ann_text(a.annotation)
-                if self.k.is_expr_annotation(text):
-                    self.names[a.arg] = (CONF_HIGH, f"parameter annotated {text}")
-                elif text in ("int", "str", "bool", "float", "bytes"):
-                    self.not_expr.add(a.arg)
+                self._seed_annotated(a.arg, a.annotation, "parameter")
             if args.vararg is not None:
-                text = _ann_text(args.vararg.annotation)
-                if self.k.is_expr_annotation(text):
-                    self.names[args.vararg.arg] = (CONF_MEDIUM, f"*args annotated {text}")
+                kind = self.k.annotation_kind(args.vararg.annotation, self.imports)
+                if kind == KIND_EXPR:
+                    # `*args: Expr` binds a tuple of Exprs, not an Expr
+                    self._record(args.vararg.arg, KIND_CONTAINER, CONF_MEDIUM, "*args of Exprs")
 
         for sub in ast.walk(node):
             if isinstance(sub, ast.AnnAssign) and isinstance(sub.target, ast.Name):
-                text = _ann_text(sub.annotation)
-                if self.k.is_expr_annotation(text):
-                    self.names[sub.target.id] = (CONF_HIGH, f"annotated {text}")
-                elif text in ("int", "str", "bool", "float", "bytes"):
-                    self.not_expr.add(sub.target.id)
-            elif isinstance(sub, ast.For):
-                # `for e in expression.expressions:` binds an Expr
-                if self._is_expr_iterable(sub.iter) and isinstance(sub.target, ast.Name):
-                    self.names[sub.target.id] = (CONF_MEDIUM, "loop over an Expr collection")
+                self._seed_annotated(sub.target.id, sub.annotation, "annotated")
+            elif isinstance(sub, ast.For) and isinstance(sub.target, ast.Name):
+                v = self.classify(sub.iter)
+                if v is not None and v[0] == KIND_CONTAINER:
+                    self._record(sub.target.id, KIND_EXPR, CONF_MEDIUM, "loop over a container of Exprs")
+
+    def _seed_annotated(self, name: str, annotation: ast.AST | None, what: str) -> None:
+        text = _ann_text(annotation)
+        kind = self.k.annotation_kind(annotation, self.imports)
+        if kind is None:
+            if text in ("int", "str", "bool", "float", "bytes"):
+                self.not_expr.add(name)
+            return
+        conf = CONF_HIGH
+        if kind == KIND_EXPR and self.k.union_has_non_expr(annotation, self.imports):
+            # `str | Expr` may hold a plain string at runtime.
+            conf = CONF_LOW
+        self._record(name, kind, conf, f"{what} annotated {text}")
 
     def _propagate(self) -> bool:
         changed = False
@@ -238,49 +373,39 @@ class ExprTyper:
             verdict = self.classify(sub.value)
             if verdict is None:
                 continue
-            conf, reason = verdict
+            kind, conf, reason = verdict
             for target in sub.targets:
                 if isinstance(target, ast.Name) and target.id not in self.names:
                     if target.id in self.not_expr:
                         continue
-                    self.names[target.id] = (conf, f"assigned from {reason}")
+                    self.names[target.id] = (kind, conf, f"assigned from {reason}")
                     changed = True
         return changed
 
     # ---------------------------------------------------------- classifier
 
-    def _is_expr_iterable(self, node: ast.AST) -> bool:
-        if isinstance(node, ast.Attribute) and node.attr in EXPR_LIST_ATTRS:
-            return True
+    def classify(self, node: ast.AST) -> tuple[str, str, str] | None:
         if isinstance(node, ast.Call):
             fn = node.func
-            if isinstance(fn, ast.Attribute) and fn.attr in ("find_all", "flatten", "iter_expressions"):
-                return True
-        return False
-
-    def classify(self, node: ast.AST) -> tuple[str, str] | None:
-        """Return (confidence, reason) if `node` evaluates to an Expr, else None."""
-        # exp.Foo(...) / Foo(...) where Foo is a harvested expression class
-        if isinstance(node, ast.Call):
-            fn = node.func
-            if isinstance(fn, ast.Attribute):
-                if fn.attr in self.k.classes:
-                    return (CONF_HIGH, f"constructor {ast.unparse(fn)}(...)")
-                if fn.attr in self.k.expr_methods:
-                    return (CONF_MEDIUM, f"call {fn.attr}() returns an Expr")
-            if isinstance(fn, ast.Name):
-                if fn.id in self.k.classes:
-                    return (CONF_HIGH, f"constructor {fn.id}(...)")
-                if fn.id in self.k.expr_functions:
-                    return (CONF_MEDIUM, f"call {fn.id}() returns an Expr")
+            name = fn.attr if isinstance(fn, ast.Attribute) else (fn.id if isinstance(fn, ast.Name) else None)
+            if name is None:
+                return None
+            if name in self.k.classes:
+                # Only a real constructor if it resolves to the exp namespace.
+                resolved = self.imports.resolve(fn)
+                if resolved and resolved[0] in ("exp", "unknown") and name not in CONTAINER_HEADS:
+                    return (KIND_EXPR, CONF_HIGH, f"constructor {name}(...)")
+            kind = self.k.func_kind.get(name)
+            if kind is not None:
+                return (kind, CONF_MEDIUM, f"{name}() returns {kind}")
             return None
 
-        # `.this`, `.expression`, `.left`, ... and harvested Expr properties
         if isinstance(node, ast.Attribute):
-            if node.attr in EXPR_ATTRS:
-                return (CONF_HIGH, f".{node.attr} is an Expr")
-            if node.attr in self.k.expr_properties:
-                return (CONF_MEDIUM, f".{node.attr} is an Expr property")
+            kind = self.k.prop_kind.get(node.attr)
+            if kind is not None:
+                return (kind, CONF_MEDIUM, f".{node.attr} is {kind}")
+            if node.attr == "args":
+                return (KIND_CONTAINER, CONF_MEDIUM, ".args is a dict of Exprs")
             return None
 
         if isinstance(node, ast.Name):
@@ -288,54 +413,48 @@ class ExprTyper:
                 return None
             return self.names.get(node.id)
 
-        # expression.expressions[0], args[i] where args holds Exprs
         if isinstance(node, ast.Subscript):
-            if self._is_expr_iterable(node.value):
-                return (CONF_MEDIUM, "index into an Expr collection")
             inner = self.classify(node.value)
-            if inner is not None:
-                # subscripting an Expr is itself __getitem__ -> Bracket
-                return (CONF_MEDIUM, "Bracket from Expr.__getitem__")
-            return None
+            if inner is None:
+                return None
+            if inner[0] == KIND_CONTAINER:
+                if isinstance(node.slice, ast.Slice):
+                    return (KIND_CONTAINER, inner[1], f"slice of {inner[2]}")
+                return (KIND_EXPR, inner[1], f"element of {inner[2]}")
+            # subscripting an Expr is Expr.__getitem__ -> Bracket
+            return (KIND_EXPR, inner[1], "Bracket from Expr.__getitem__")
 
-        # (a - b) is an Expr if either side is
         if isinstance(node, ast.BinOp):
             for side in (node.left, node.right):
                 v = self.classify(side)
-                if v is not None:
-                    return (v[0], f"BinOp over {v[1]}")
+                if v is not None and v[0] == KIND_EXPR:
+                    return (KIND_EXPR, v[1], f"BinOp over {v[2]}")
             return None
 
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.Invert)):
             v = self.classify(node.operand)
-            if v is not None:
-                return (v[0], f"UnaryOp over {v[1]}")
+            if v is not None and v[0] == KIND_EXPR:
+                return (KIND_EXPR, v[1], f"UnaryOp over {v[2]}")
             return None
 
         if isinstance(node, ast.IfExp):
             for side in (node.body, node.orelse):
                 v = self.classify(side)
                 if v is not None:
-                    return (CONF_LOW, f"conditional yielding {v[1]}")
+                    return (v[0], CONF_LOW, f"conditional yielding {v[2]}")
             return None
 
         if isinstance(node, ast.BoolOp):
-            # `x or exp.null()` is an idiomatic default; the result may be an Expr
             for side in node.values:
                 v = self.classify(side)
                 if v is not None:
-                    return (CONF_LOW, f"and/or yielding {v[1]}")
+                    return (v[0], CONF_LOW, f"and/or yielding {v[2]}")
+            return None
+
+        if isinstance(node, (ast.List, ast.ListComp, ast.GeneratorExp, ast.SetComp)):
             return None
 
         return None
-
-
-def iter_scopes(tree: ast.Module) -> t.Iterator[ast.AST]:
-    """Every function body, plus the module body itself as a pseudo-scope."""
-    yield tree
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            yield node
 
 
 def owning_scope(tree: ast.Module) -> dict[int, ast.AST]:
@@ -360,23 +479,27 @@ def rel(ref: str, path: str) -> str:
     return os.path.relpath(path, ref)
 
 
+_LINE_CACHE: dict[str, list[str]] = {}
+
+
 def source_line(path: str, lineno: int) -> str:
-    try:
-        with open(path, encoding="utf-8") as fh:
-            for i, line in enumerate(fh, 1):
-                if i == lineno:
-                    return line.rstrip("\n").strip()
-    except OSError:
-        pass
+    lines = _LINE_CACHE.get(path)
+    if lines is None:
+        try:
+            lines = open(path, encoding="utf-8").read().splitlines()
+        except OSError:
+            lines = []
+        _LINE_CACHE[path] = lines
+    if 1 <= lineno <= len(lines):
+        return lines[lineno - 1].strip()
     return ""
 
 
 def sqlglot_files(ref: str) -> list[str]:
-    """Every .py under sqlglot/, executor included but flagged by the caller."""
     return sorted(_walk_py(os.path.join(ref, "sqlglot")))
 
 
 def is_executor(relpath: str) -> bool:
-    """`tests/test_executor.py` and sqlglot's executor are permanently out of
-    scope (PORT_PLAN.md §1), so executor hits are reported separately."""
+    """sqlglot's executor is permanently out of scope (PORT_PLAN.md §1), so
+    executor hits are counted separately rather than dropped."""
     return relpath.startswith("sqlglot/executor/")
