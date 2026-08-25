@@ -1,0 +1,6 @@
+{"atom_id":"c9b059bb02fa46bc","ast_ref":"c9b059bb02fa46bc","dialect":"clickhouse, version=23.8","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('second', x)","unsupported_messages":[]}
+{"atom_id":"d19c2f3376142a25","ast_ref":"d19c2f3376142a25","dialect":"clickhouse, version=23.8","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('day', x)","unsupported_messages":[]}
+{"atom_id":"4c25fa29b122b612","ast_ref":"4c25fa29b122b612","dialect":"clickhouse, version=23.8","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('month', x)","unsupported_messages":[]}
+{"atom_id":"a678594e55fba324","ast_ref":"a678594e55fba324","dialect":"clickhouse, version=23.8","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('year', x)","unsupported_messages":[]}
+{"atom_id":"669c80690cd5c35b","ast_ref":"669c80690cd5c35b","dialect":"clickhouse, version=23.8","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('week', x)","unsupported_messages":[]}
+{"atom_id":"f4d6a2f658bb68a4","ast_ref":"f4d6a2f658bb68a4","dialect":"clickhouse, version=23.8","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('week', today())","unsupported_messages":[]}

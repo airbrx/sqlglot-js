@@ -1,0 +1,613 @@
+{"atom_id":"7a02ecc810138389","ast_ref":"7a02ecc810138389","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT CAST(ds AS STRING) AS ds FROM (VALUES ('2022-01-01')) AS t(ds)","unsupported_messages":[]}
+{"atom_id":"c3365f238f86ac27","ast_ref":"c3365f238f86ac27","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT STRUCT(1, 2, 3), STRUCT(), STRUCT('abc'), STRUCT(1, t.str_col), STRUCT(1, 'abc'), STRUCT(str_col)","unsupported_messages":["Hive does not support named structs.","Hive does not support named structs.","Hive does not support named structs."]}
+{"atom_id":"afa76e03da9b0aaf","ast_ref":"afa76e03da9b0aaf","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"LEVENSHTEIN(col1, col2, 3)","unsupported_messages":["Argument 'max_dist' is not supported for expression 'Levenshtein' when targeting Hive."]}
+{"atom_id":"354a3595d3ba1f73","ast_ref":"354a3595d3ba1f73","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"LOWER(HEX(x))","unsupported_messages":[]}
+{"atom_id":"8a2629d39eb557ce","ast_ref":"8a2629d39eb557ce","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"LOWER(HEX(x))","unsupported_messages":[]}
+{"atom_id":"663d4677906549c3","ast_ref":"663d4677906549c3","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"HEX(x)","unsupported_messages":[]}
+{"atom_id":"a8bce672996aab07","ast_ref":"a8bce672996aab07","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"UNHEX(MD5(x))","unsupported_messages":[]}
+{"atom_id":"fb48a3eb18cc290d","ast_ref":"fb48a3eb18cc290d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'x'","unsupported_messages":[]}
+{"atom_id":"e5a2c6090962efb4","ast_ref":"e5a2c6090962efb4","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'x\\''","unsupported_messages":[]}
+{"atom_id":"eb5d459a35eb42cc","ast_ref":"eb5d459a35eb42cc","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'x\\\\\\''","unsupported_messages":[]}
+{"atom_id":"e3a9cac3701e421b","ast_ref":"e3a9cac3701e421b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'x\\\\y'","unsupported_messages":[]}
+{"atom_id":"b8bf4a8ec72f98a0","ast_ref":"b8bf4a8ec72f98a0","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'\\\\'","unsupported_messages":[]}
+{"atom_id":"48720d865036fb22","ast_ref":"48720d865036fb22","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'/\\\\*.*\\\\*/'","unsupported_messages":[]}
+{"atom_id":"a76700bea0ec070a","ast_ref":"a76700bea0ec070a","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'/\\\\*.*\\\\*/'","unsupported_messages":[]}
+{"atom_id":"7bf5bd2c1231b6c2","ast_ref":"7bf5bd2c1231b6c2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS BIGINT)","unsupported_messages":[]}
+{"atom_id":"2d68dc0df84ff3bc","ast_ref":"2d68dc0df84ff3bc","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS BINARY)","unsupported_messages":[]}
+{"atom_id":"4170bdaa492ec51a","ast_ref":"4170bdaa492ec51a","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS DECIMAL)","unsupported_messages":[]}
+{"atom_id":"fdc29b30eb3738c5","ast_ref":"fdc29b30eb3738c5","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ARRAY(1, 2, 3)","unsupported_messages":[]}
+{"atom_id":"df85201be01da116","ast_ref":"df85201be01da116","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CURRENT_DATETIME()","unsupported_messages":[]}
+{"atom_id":"b6ea080a1e2a4900","ast_ref":"b6ea080a1e2a4900","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CURRENT_TIME()","unsupported_messages":[]}
+{"atom_id":"53d2d1485abb10b2","ast_ref":"53d2d1485abb10b2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CURRENT_TIMESTAMP()","unsupported_messages":[]}
+{"atom_id":"5297654892edd79b","ast_ref":"5297654892edd79b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CURRENT_TIMESTAMP()","unsupported_messages":[]}
+{"atom_id":"d37d5beb0996e487","ast_ref":"d37d5beb0996e487","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE db.example_table (col_a STRUCT<struct_col_a: INT, struct_col_b: STRING>)","unsupported_messages":[]}
+{"atom_id":"9cb665598762b5ae","ast_ref":"9cb665598762b5ae","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE db.example_table (col_a STRUCT<struct_col_a: BIGINT, struct_col_b: STRUCT<nested_col_a: STRING, nested_col_b: STRING>>)","unsupported_messages":[]}
+{"atom_id":"943c62fe49bc29bd","ast_ref":"943c62fe49bc29bd","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM a WHERE b IN (SELECT EXPLODE(ARRAY(1, 2, 3)))","unsupported_messages":[]}
+{"atom_id":"252a608bcbc56e7f","ast_ref":"252a608bcbc56e7f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(CURRENT_DATE, -1)","unsupported_messages":[]}
+{"atom_id":"4bc9b05b3bdfd76b","ast_ref":"4bc9b05b3bdfd76b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CONCAT(ARRAY(1, 2), ARRAY(3, 4), ARRAY(5, 6))","unsupported_messages":[]}
+{"atom_id":"230faca3d30fd2d7","ast_ref":"230faca3d30fd2d7","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"IF(y <> 0, x / y, NULL)","unsupported_messages":[]}
+{"atom_id":"74f22a94e8670439","ast_ref":"74f22a94e8670439","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"IF((2 * y) <> 0, (x + 1) / (2 * y), NULL)","unsupported_messages":[]}
+{"atom_id":"efd4aa365644355f","ast_ref":"efd4aa365644355f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM EXPLODE(ARRAY(STRUCT('Alice', STRUCT(85, 90)), STRUCT('Bob', STRUCT(92, 88))))","unsupported_messages":["Hive does not support named structs.","Hive does not support named structs.","Hive does not support named structs.","Hive does not support named structs.","Hive does not support named structs.","Hive does not support named structs.","Hive does not support named structs.","Hive does not support named structs."]}
+{"atom_id":"b3e604238420cc19","ast_ref":"b3e604238420cc19","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM EXPLODE(ARRAY(STRUCT('Alice', 85), STRUCT('Bob', 92), STRUCT('Diana', 95)))","unsupported_messages":["Hive does not support named structs.","Hive does not support named structs.","Hive does not support named structs.","Hive does not support named structs.","Hive does not support named structs.","Hive does not support named structs."]}
+{"atom_id":"5595d023ffc848bd","ast_ref":"5595d023ffc848bd","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM tbl LATERAL VIEW POSEXPLODE(col) AS offset, ref","unsupported_messages":[]}
+{"atom_id":"39a2b28406969d79","ast_ref":"39a2b28406969d79","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM tbl LATERAL VIEW POSEXPLODE(col) AS pos, ref","unsupported_messages":[]}
+{"atom_id":"c4eb7bcb161813a5","ast_ref":"c4eb7bcb161813a5","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT EXTRACT(WEEK FROM d)","unsupported_messages":["WEEK(THURSDAY) is not supported; falling back to the default week start day"]}
+{"atom_id":"a6ce33155fb3522a","ast_ref":"a6ce33155fb3522a","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT col[0]","unsupported_messages":[]}
+{"atom_id":"3d413cfd266185ff","ast_ref":"3d413cfd266185ff","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SPLIT(x, CONCAT('\\\\Q', 's', '\\\\E'))","unsupported_messages":[]}
+{"atom_id":"bce29ad18068811e","ast_ref":"bce29ad18068811e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SPLIT(x, '\\\\d+')","unsupported_messages":[]}
+{"atom_id":"d074ddfa1caaadb9","ast_ref":"d074ddfa1caaadb9","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"WITH t AS (SELECT 1 AS x, 2 AS y) SELECT x AS x FROM t GROUP BY x","unsupported_messages":[]}
+{"atom_id":"659f5c53aa00afb2","ast_ref":"659f5c53aa00afb2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"WITH t AS (SELECT 1 AS x, 2 AS y) SELECT SUM(x) AS y, y AS x FROM t GROUP BY y","unsupported_messages":[]}
+{"atom_id":"3239c66e266197ea","ast_ref":"3239c66e266197ea","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT y AS x FROM my_table AS t","unsupported_messages":[]}
+{"atom_id":"b5308f5cbc7f61e7","ast_ref":"b5308f5cbc7f61e7","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM (SELECT * FROM my_table AS t) AS tbl","unsupported_messages":[]}
+{"atom_id":"7d6cea7cfba9fd90","ast_ref":"7d6cea7cfba9fd90","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"WITH cte1 AS (SELECT a, b FROM table1), cte2 AS (SELECT c, e AS d FROM table2) SELECT b, d AS dd FROM cte1 AS t CROSS JOIN cte2 WHERE cte1.a = cte2.c","unsupported_messages":[]}
+{"atom_id":"9c4b8a4ba350d10e","ast_ref":"9c4b8a4ba350d10e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ARRAY_SUM(ARRAY(1, 2))","unsupported_messages":[]}
+{"atom_id":"c4f791cfccb4ba3a","ast_ref":"c4f791cfccb4ba3a","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REDUCE(x, 0, (acc, x) -> acc + x, acc -> acc)","unsupported_messages":[]}
+{"atom_id":"1b990c54af91eee8","ast_ref":"1b990c54af91eee8","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ARRAY_INTERSECT(x, y)","unsupported_messages":[]}
+{"atom_id":"f6fb2ce5ce8d51be","ast_ref":"f6fb2ce5ce8d51be","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SORT_ARRAY(x)","unsupported_messages":[]}
+{"atom_id":"5729caf706b720d7","ast_ref":"5729caf706b720d7","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ARRAY_ANY(arr, x -> pred)","unsupported_messages":["ARRAY_ANY is unsupported"]}
+{"atom_id":"d864fe3706229acd","ast_ref":"d864fe3706229acd","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ASCII('A')","unsupported_messages":[]}
+{"atom_id":"217a4bc53f3d1ca0","ast_ref":"217a4bc53f3d1ca0","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS STRING)","unsupported_messages":[]}
+{"atom_id":"8741c87423e96270","ast_ref":"8741c87423e96270","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS BINARY(4))","unsupported_messages":[]}
+{"atom_id":"ff1473db4738310e","ast_ref":"ff1473db4738310e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS BINARY(4))","unsupported_messages":[]}
+{"atom_id":"cc4ecdbd4df730c4","ast_ref":"cc4ecdbd4df730c4","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS STRING)","unsupported_messages":[]}
+{"atom_id":"bb40a3723cc5dc32","ast_ref":"bb40a3723cc5dc32","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS STRING)","unsupported_messages":[]}
+{"atom_id":"f66223edc094d33f","ast_ref":"f66223edc094d33f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS VARCHAR(3))","unsupported_messages":[]}
+{"atom_id":"13b76b281b0b8950","ast_ref":"13b76b281b0b8950","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS STRING)","unsupported_messages":[]}
+{"atom_id":"fccdf6d174276535","ast_ref":"fccdf6d174276535","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS VARCHAR(3))","unsupported_messages":[]}
+{"atom_id":"ac040dd7fa9a173f","ast_ref":"ac040dd7fa9a173f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS SMALLINT)","unsupported_messages":[]}
+{"atom_id":"37aa73db623c3beb","ast_ref":"37aa73db623c3beb","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS DOUBLE)","unsupported_messages":[]}
+{"atom_id":"7ed5a7c6a57f008c","ast_ref":"7ed5a7c6a57f008c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT a, b FROM x LATERAL VIEW EXPLODE(y) t AS a, b","unsupported_messages":[]}
+{"atom_id":"27c73b42710fa51e","ast_ref":"27c73b42710fa51e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT numbers, animals, n, a FROM (SELECT ARRAY(2, 5) AS numbers, ARRAY('dog', 'cat', 'bird') AS animals UNION ALL SELECT ARRAY(7, 8, 9), ARRAY('cow', 'pig')) AS x CROSS JOIN EXPLODE(numbers, animals, t(n, a))","unsupported_messages":["Cannot transpile UNNEST with multiple input arrays"]}
+{"atom_id":"4194d5191662c62d","ast_ref":"4194d5191662c62d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT a, b, c, d, e FROM x","unsupported_messages":["CROSS JOIN UNNEST to LATERAL VIEW EXPLODE transformation requires explicit column aliases"]}
+{"atom_id":"378019b6b6d972b3","ast_ref":"378019b6b6d972b3","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE a LIKE b","unsupported_messages":[]}
+{"atom_id":"809481d0f319362b","ast_ref":"809481d0f319362b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT 1 AS `x```","unsupported_messages":[]}
+{"atom_id":"dcc3f802c56eea52","ast_ref":"dcc3f802c56eea52","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t LIMIT 1","unsupported_messages":[]}
+{"atom_id":"8702bda60b36b1b0","ast_ref":"8702bda60b36b1b0","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"GROUPING(x)","unsupported_messages":[]}
+{"atom_id":"48ca43d896a2b532","ast_ref":"48ca43d896a2b532","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE t (c STRING, nc STRING, v1 STRING, v2 STRING, nv STRING, nv2 STRING)","unsupported_messages":[]}
+{"atom_id":"9d487f47dd4913b5","ast_ref":"9d487f47dd4913b5","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE INDEX my_idx ON TABLE tbl(a, b)","unsupported_messages":[]}
+{"atom_id":"572934cf15ba9845","ast_ref":"572934cf15ba9845","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE UNIQUE INDEX my_idx ON TABLE tbl(a, b)","unsupported_messages":[]}
+{"atom_id":"e63eebc593cad780","ast_ref":"e63eebc593cad780","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE t (b1 BINARY, b2 BINARY(1024), c1 STRING, c2 VARCHAR(1024))","unsupported_messages":[]}
+{"atom_id":"61e1897e13d15323","ast_ref":"61e1897e13d15323","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM x LATERAL VIEW EXPLODE(a) j AS lista LATERAL VIEW EXPLODE(b) k AS listb LATERAL VIEW EXPLODE(c) l AS listc","unsupported_messages":[]}
+{"atom_id":"4fbcd55bcbb36186","ast_ref":"4fbcd55bcbb36186","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"WITH t AS (SELECT 1 AS c) SELECT * FROM (SELECT c FROM t) AS subq","unsupported_messages":[]}
+{"atom_id":"279aabb9bba8f2bb","ast_ref":"279aabb9bba8f2bb","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"WITH t AS (SELECT 1 AS c) SELECT * FROM (SELECT * FROM (SELECT c FROM t) AS subq1) AS subq2","unsupported_messages":[]}
+{"atom_id":"5ab5727c2177202c","ast_ref":"5ab5727c2177202c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"WITH a1 AS (SELECT 1), a2 AS (SELECT 2), b AS (SELECT * FROM a1, a2), c AS (SELECT * FROM b) SELECT * FROM c","unsupported_messages":[]}
+{"atom_id":"c4e8a2a0947af359","ast_ref":"c4e8a2a0947af359","dialect":"hive","flags":{"pretty":true,"identify":false},"sql":"WITH tmp AS (\n  SELECT\n    *\n  FROM table0\n), subquery1 AS (\n  SELECT\n    *\n  FROM tmp\n), tmp2 AS (\n  SELECT\n    *\n  FROM table1\n  WHERE\n    a IN subquery1\n), subquery2 AS (\n  SELECT\n    *\n  FROM tmp2\n)\nSELECT\n  *\nFROM subquery2","unsupported_messages":[]}
+{"atom_id":"626cccf3bbebe5db","ast_ref":"626cccf3bbebe5db","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT CASE WHEN NOT a IS NULL THEN b ELSE c END","unsupported_messages":[]}
+{"atom_id":"75c03d9e55b3d984","ast_ref":"75c03d9e55b3d984","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT CASE WHEN NOT a IS NULL THEN b END","unsupported_messages":[]}
+{"atom_id":"76c829a39b259e95","ast_ref":"76c829a39b259e95","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"LOWER(x) LIKE LOWER('%y')","unsupported_messages":[]}
+{"atom_id":"c3ae2d2bd44c6586","ast_ref":"c3ae2d2bd44c6586","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"LOWER(x) NOT LIKE LOWER('%y')","unsupported_messages":[]}
+{"atom_id":"b60c7a9b5e8367a5","ast_ref":"b60c7a9b5e8367a5","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"LOCATE(needle, haystack)","unsupported_messages":[]}
+{"atom_id":"42a5a67ac4d21d27","ast_ref":"42a5a67ac4d21d27","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"LOCATE(needle, haystack, position)","unsupported_messages":[]}
+{"atom_id":"2a930ceb15a91244","ast_ref":"2a930ceb15a91244","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CASE WHEN '-' IS NULL OR 'a' IS NULL OR 'b' IS NULL THEN NULL ELSE CONCAT_WS('-', 'a', 'b') END","unsupported_messages":[]}
+{"atom_id":"cc335212bd65f94b","ast_ref":"cc335212bd65f94b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CASE WHEN '-' IS NULL OR x IS NULL THEN NULL ELSE CONCAT_WS('-', x) END","unsupported_messages":[]}
+{"atom_id":"56e264bbc2982ff0","ast_ref":"56e264bbc2982ff0","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"IF(x > 1, 1, 0)","unsupported_messages":[]}
+{"atom_id":"0b91f6d4b46c6d85","ast_ref":"0b91f6d4b46c6d85","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CASE WHEN 1 THEN x ELSE 0 END","unsupported_messages":[]}
+{"atom_id":"f42ac428bdac8bfa","ast_ref":"f42ac428bdac8bfa","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x[y]","unsupported_messages":[]}
+{"atom_id":"04f598c1748b8e37","ast_ref":"04f598c1748b8e37","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'[\"x\"]'","unsupported_messages":[]}
+{"atom_id":"155bef97f8271a3f","ast_ref":"155bef97f8271a3f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"TRUE OR NULL AS `foo`","unsupported_messages":[]}
+{"atom_id":"5351e830d472dc1d","ast_ref":"5351e830d472dc1d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT IF(COALESCE(bar, 0) = 1, TRUE, FALSE) AS foo FROM baz","unsupported_messages":[]}
+{"atom_id":"f33a0a95aca09c30","ast_ref":"f33a0a95aca09c30","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"LEVENSHTEIN(col1, col2)","unsupported_messages":[]}
+{"atom_id":"f87ddf5111eeb73a","ast_ref":"f87ddf5111eeb73a","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"LEVENSHTEIN(col1, col2, 1, 2, 3)","unsupported_messages":["Argument 'ins_cost' is not supported for expression 'Levenshtein' when targeting Hive.","Argument 'del_cost' is not supported for expression 'Levenshtein' when targeting Hive.","Argument 'sub_cost' is not supported for expression 'Levenshtein' when targeting Hive."]}
+{"atom_id":"5d550ad2962757d6","ast_ref":"5d550ad2962757d6","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"LEVENSHTEIN(col1, col2, 1, 2, 3, 4)","unsupported_messages":["Argument 'ins_cost' is not supported for expression 'Levenshtein' when targeting Hive.","Argument 'del_cost' is not supported for expression 'Levenshtein' when targeting Hive.","Argument 'sub_cost' is not supported for expression 'Levenshtein' when targeting Hive.","Argument 'max_dist' is not supported for expression 'Levenshtein' when targeting Hive."]}
+{"atom_id":"31c52560e8f5ce40","ast_ref":"31c52560e8f5ce40","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"LEVENSHTEIN(COALESCE(col1, col2), COALESCE(col2, col1))","unsupported_messages":[]}
+{"atom_id":"a0b9f3020294e667","ast_ref":"a0b9f3020294e667","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"FILTER(the_array, x -> x > 0)","unsupported_messages":[]}
+{"atom_id":"aad27ee5cfcecedb","ast_ref":"aad27ee5cfcecedb","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"a / b","unsupported_messages":[]}
+{"atom_id":"abfe87c54dfae3ee","ast_ref":"abfe87c54dfae3ee","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"(8 - 1 + 7) % 7","unsupported_messages":[]}
+{"atom_id":"36a1706829819e51","ast_ref":"36a1706829819e51","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"a % (b + 1)","unsupported_messages":[]}
+{"atom_id":"9f01d530325592c9","ast_ref":"9f01d530325592c9","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ARRAY_REMOVE(the_array, target)","unsupported_messages":[]}
+{"atom_id":"d10fe4507871ca4c","ast_ref":"d10fe4507871ca4c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT fname, lname, age FROM person ORDER BY age DESC NULLS FIRST, fname ASC NULLS LAST, lname","unsupported_messages":[]}
+{"atom_id":"56fbdc7954a5a3d9","ast_ref":"56fbdc7954a5a3d9","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"RAND()","unsupported_messages":[]}
+{"atom_id":"d49fd5f35f49806b","ast_ref":"d49fd5f35f49806b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REGR_COUNT(x, y)","unsupported_messages":[]}
+{"atom_id":"e6323cf842f9c152","ast_ref":"e6323cf842f9c152","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REGR_INTERCEPT(x, y)","unsupported_messages":[]}
+{"atom_id":"c294a7f169b41a27","ast_ref":"c294a7f169b41a27","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REGR_R2(x, y)","unsupported_messages":[]}
+{"atom_id":"1d52e39cea3ab85f","ast_ref":"1d52e39cea3ab85f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REGR_SXX(x, y)","unsupported_messages":[]}
+{"atom_id":"e5895733157cdc39","ast_ref":"e5895733157cdc39","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REGR_SXY(x, y)","unsupported_messages":[]}
+{"atom_id":"e7090959319bee09","ast_ref":"e7090959319bee09","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REGR_SYY(x, y)","unsupported_messages":[]}
+{"atom_id":"3c91a42c17611867","ast_ref":"3c91a42c17611867","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REVERSE(x)","unsupported_messages":[]}
+{"atom_id":"76b5fd5fa8d229af","ast_ref":"76b5fd5fa8d229af","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SOUNDEX(x)","unsupported_messages":[]}
+{"atom_id":"723c86a1bec59336","ast_ref":"723c86a1bec59336","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT LPAD('bar', 5, ' ')","unsupported_messages":[]}
+{"atom_id":"13e9968410245046","ast_ref":"13e9968410245046","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT LPAD('bar', 5, ' ')","unsupported_messages":[]}
+{"atom_id":"0931ba573dcd23b8","ast_ref":"0931ba573dcd23b8","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT RPAD('bar', 5, ' ')","unsupported_messages":[]}
+{"atom_id":"49ae1f725557b23d","ast_ref":"49ae1f725557b23d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT RPAD('bar', 5, ' ')","unsupported_messages":[]}
+{"atom_id":"d42cc11468a909df","ast_ref":"d42cc11468a909df","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(FROM_UNIXTIME(UNIX_TIMESTAMP(x, 'yyyy-M-dTH:m:s')) AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"54dce48d8f6b1539","ast_ref":"54dce48d8f6b1539","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST('2020-01-01' AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"55fcebdcbac07f7d","ast_ref":"55fcebdcbac07f7d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(FROM_UNIXTIME(UNIX_TIMESTAMP(x, 'yy')) AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"70dffbb52eadf28c","ast_ref":"70dffbb52eadf28c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"UNIX_TIMESTAMP('2020-01-01', 'yyyy-M-d')","unsupported_messages":[]}
+{"atom_id":"38e5777812adaf11","ast_ref":"38e5777812adaf11","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"TO_DATE('2020-01-01')","unsupported_messages":[]}
+{"atom_id":"e88974b7b6fbc78f","ast_ref":"e88974b7b6fbc78f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST('2020-01-01' AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"37d804c6f2c3803d","ast_ref":"37d804c6f2c3803d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST('2020-01-01 12:13:14-08:00' AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"1e21a3ed6d16c13a","ast_ref":"1e21a3ed6d16c13a","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(col AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"3f675aac7f6d97da","ast_ref":"3f675aac7f6d97da","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"UNIX_TIMESTAMP('2020-01-01')","unsupported_messages":[]}
+{"atom_id":"f249d60175350102","ast_ref":"f249d60175350102","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATE_FORMAT(x, 'yyyy-MM-dd')","unsupported_messages":[]}
+{"atom_id":"e6a8f3afc369a067","ast_ref":"e6a8f3afc369a067","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS STRING)","unsupported_messages":[]}
+{"atom_id":"4867ba4cb6287a49","ast_ref":"4867ba4cb6287a49","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"UNIX_TIMESTAMP(x)","unsupported_messages":[]}
+{"atom_id":"64088367a091efb1","ast_ref":"64088367a091efb1","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SUBSTRING(CAST(x AS STRING), 1, 10)","unsupported_messages":[]}
+{"atom_id":"e30dc24bb747d450","ast_ref":"e30dc24bb747d450","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"TO_DATE(x)","unsupported_messages":[]}
+{"atom_id":"7d7c86bb831c4b72","ast_ref":"7d7c86bb831c4b72","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"TO_DATE(x, 'd')","unsupported_messages":[]}
+{"atom_id":"d23c103f4d5f2df0","ast_ref":"d23c103f4d5f2df0","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"FROM_UNIXTIME(x, y)","unsupported_messages":[]}
+{"atom_id":"20c5a6a52bf01e0d","ast_ref":"20c5a6a52bf01e0d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"FROM_UNIXTIME(x)","unsupported_messages":[]}
+{"atom_id":"f1ab4d2d10f965f6","ast_ref":"f1ab4d2d10f965f6","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"FROM_UNIXTIME(x)","unsupported_messages":[]}
+{"atom_id":"6413b2a88dd72bf8","ast_ref":"6413b2a88dd72bf8","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS STRING)","unsupported_messages":[]}
+{"atom_id":"f2860e837a98586b","ast_ref":"f2860e837a98586b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(DATE_FORMAT(x, 'yyyyMMdd') AS INT)","unsupported_messages":[]}
+{"atom_id":"473e658e2c714837","ast_ref":"473e658e2c714837","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"TO_DATE(CAST(x AS STRING), 'yyyyMMdd')","unsupported_messages":[]}
+{"atom_id":"bb713af62324db57","ast_ref":"bb713af62324db57","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(SUBSTR(REPLACE(CAST(x AS STRING), '-', ''), 1, 8) AS INT)","unsupported_messages":[]}
+{"atom_id":"807b7b29a12d9dce","ast_ref":"807b7b29a12d9dce","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(x, 1)","unsupported_messages":[]}
+{"atom_id":"c716530dce3800b6","ast_ref":"c716530dce3800b6","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(x, 1)","unsupported_messages":[]}
+{"atom_id":"8be1cd28a800d836","ast_ref":"8be1cd28a800d836","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(FROM_UNIXTIME(UNIX_TIMESTAMP(x, 'yyyy-M-dTH:m:s')) AS DATE)","unsupported_messages":[]}
+{"atom_id":"abc1a60d1ad80b41","ast_ref":"abc1a60d1ad80b41","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATE)","unsupported_messages":[]}
+{"atom_id":"8a21b6a2049bc8a4","ast_ref":"8a21b6a2049bc8a4","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATE)","unsupported_messages":[]}
+{"atom_id":"ad2a5baca70415a4","ast_ref":"ad2a5baca70415a4","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD('2021-02-01', 1)","unsupported_messages":[]}
+{"atom_id":"a9d078e4954f6dcc","ast_ref":"a9d078e4954f6dcc","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(x, 1)","unsupported_messages":[]}
+{"atom_id":"565f24bc990c05bc","ast_ref":"565f24bc990c05bc","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(CURRENT_DATE, 1)","unsupported_messages":[]}
+{"atom_id":"d7f8df07ff34570a","ast_ref":"d7f8df07ff34570a","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(CAST('2020-01-01' AS DATE), 1)","unsupported_messages":[]}
+{"atom_id":"77e2e6c9edcb27eb","ast_ref":"77e2e6c9edcb27eb","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST('2022-01-01' AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"3f65a651dfc5711c","ast_ref":"3f65a651dfc5711c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"TIMESTAMP('2022-01-01')","unsupported_messages":[]}
+{"atom_id":"8c9db8e8d38c13b8","ast_ref":"8c9db8e8d38c13b8","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DAY(x)","unsupported_messages":[]}
+{"atom_id":"beb07d84e3e7baac","ast_ref":"beb07d84e3e7baac","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"MONTH(x)","unsupported_messages":[]}
+{"atom_id":"93200e7dc1617c40","ast_ref":"93200e7dc1617c40","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"YEAR(x)","unsupported_messages":[]}
+{"atom_id":"404564abdcf8a44c","ast_ref":"404564abdcf8a44c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"TRANSLATE(x, y, z)","unsupported_messages":[]}
+{"atom_id":"72bac7db6d6b29d0","ast_ref":"72bac7db6d6b29d0","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"TRIM('a' FROM 'abc')","unsupported_messages":[]}
+{"atom_id":"e00bcc5a81e297ec","ast_ref":"e00bcc5a81e297ec","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"TRIM(LEADING 'H' FROM 'Hello World')","unsupported_messages":[]}
+{"atom_id":"4ba6239547f530b3","ast_ref":"4ba6239547f530b3","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"TRIM(TRAILING 'd' FROM 'Hello World')","unsupported_messages":[]}
+{"atom_id":"410dc56212b4646b","ast_ref":"410dc56212b4646b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"LTRIM('Hello World')","unsupported_messages":[]}
+{"atom_id":"2e5b885039e63596","ast_ref":"2e5b885039e63596","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"RTRIM('Hello World')","unsupported_messages":[]}
+{"atom_id":"0241612c115e3c26","ast_ref":"0241612c115e3c26","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"UUID()","unsupported_messages":[]}
+{"atom_id":"e198014c809fb4e9","ast_ref":"e198014c809fb4e9","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"WEEKOFYEAR(CAST('2025-01-01' AS DATE))","unsupported_messages":[]}
+{"atom_id":"a0d1b667245ece83","ast_ref":"a0d1b667245ece83","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x RLIKE y","unsupported_messages":[]}
+{"atom_id":"0b401060add92b5a","ast_ref":"0b401060add92b5a","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"FLOOR(__time TO WEEK)","unsupported_messages":[]}
+{"atom_id":"f2474e1a909e3866","ast_ref":"f2474e1a909e3866","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(COL AS ARRAY<BIGINT>)","unsupported_messages":[]}
+{"atom_id":"d469645cb35143b8","ast_ref":"d469645cb35143b8","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 SEMI JOIN t2 ON t1.x = t2.x","unsupported_messages":[]}
+{"atom_id":"9b090a39f5de2ed6","ast_ref":"9b090a39f5de2ed6","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 ANTI JOIN t2 ON t1.x = t2.x","unsupported_messages":[]}
+{"atom_id":"cb3fbdda1a75f9ed","ast_ref":"cb3fbdda1a75f9ed","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x RLIKE y","unsupported_messages":[]}
+{"atom_id":"4a80c3f8e63571f7","ast_ref":"4a80c3f8e63571f7","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SPLIT(x, CONCAT('\\\\Q', 'a', '\\\\E'))","unsupported_messages":[]}
+{"atom_id":"f5d5c85e871480df","ast_ref":"f5d5c85e871480df","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SPLIT(x, CONCAT('\\\\Q', 'a', '\\\\E'))","unsupported_messages":[]}
+{"atom_id":"5ed363930b759914","ast_ref":"5ed363930b759914","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SPLIT(x, 'a')","unsupported_messages":[]}
+{"atom_id":"9a1ea4d91e2e887b","ast_ref":"9a1ea4d91e2e887b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x.abc","unsupported_messages":[]}
+{"atom_id":"4505035dbc17bee8","ast_ref":"4505035dbc17bee8","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x.y.abc","unsupported_messages":[]}
+{"atom_id":"61ba92c56ec387ab","ast_ref":"61ba92c56ec387ab","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE(x, 0.5)","unsupported_messages":[]}
+{"atom_id":"8feb17244257b126","ast_ref":"8feb17244257b126","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SORT_ARRAY(x, FALSE)","unsupported_messages":[]}
+{"atom_id":"a3e9f5097c76c02d","ast_ref":"a3e9f5097c76c02d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SORT_ARRAY(x, FALSE)","unsupported_messages":[]}
+{"atom_id":"4f099473f0c86ed2","ast_ref":"4f099473f0c86ed2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SORT_ARRAY(x)","unsupported_messages":[]}
+{"atom_id":"879066b3ec54628d","ast_ref":"879066b3ec54628d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"MONTH('2021-03-01')","unsupported_messages":[]}
+{"atom_id":"d7fad79d91d48c10","ast_ref":"d7fad79d91d48c10","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CONCAT(ARRAY(1, 2), ARRAY(3, 4))","unsupported_messages":[]}
+{"atom_id":"5c9762b36fed5d5d","ast_ref":"5c9762b36fed5d5d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT CAST('2018-01-01 00:00:00' AS DATE) + INTERVAL '3' DAY","unsupported_messages":[]}
+{"atom_id":"39c9cc4ec6d2a6c2","ast_ref":"39c9cc4ec6d2a6c2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATE_FORMAT(x, 'yyyy-MM-dd HH:mm:ss')","unsupported_messages":[]}
+{"atom_id":"69ca745d49985629","ast_ref":"69ca745d49985629","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(FROM_UNIXTIME(UNIX_TIMESTAMP(x, 'yy-M')) AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"eea3fc4181fef7b2","ast_ref":"eea3fc4181fef7b2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"FROM_UNIXTIME(x)","unsupported_messages":[]}
+{"atom_id":"2d1ba0cd9c1dca8a","ast_ref":"2d1ba0cd9c1dca8a","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(FROM_UNIXTIME(UNIX_TIMESTAMP(x, 'M/d/yy h:m a')) AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"d5c170819921afba","ast_ref":"d5c170819921afba","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT CAST('foo' AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"4760a9d25b85d574","ast_ref":"4760a9d25b85d574","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT x & 1","unsupported_messages":[]}
+{"atom_id":"3446dcf69bf10737","ast_ref":"3446dcf69bf10737","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT x | 1","unsupported_messages":[]}
+{"atom_id":"072bf1d36af3e437","ast_ref":"072bf1d36af3e437","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT ~x","unsupported_messages":[]}
+{"atom_id":"46bc2248fb3a8e1d","ast_ref":"46bc2248fb3a8e1d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT x << 1","unsupported_messages":[]}
+{"atom_id":"91a6f57421cc33ac","ast_ref":"91a6f57421cc33ac","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT x >> 1","unsupported_messages":[]}
+{"atom_id":"f71e7f071158eb73","ast_ref":"f71e7f071158eb73","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"TO_DATE(x)","unsupported_messages":[]}
+{"atom_id":"37ba8f79ce249077","ast_ref":"37ba8f79ce249077","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"TO_DATE(x, 'yyyy')","unsupported_messages":[]}
+{"atom_id":"b4b5c5f2da35b096","ast_ref":"b4b5c5f2da35b096","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT a RLIKE '.*x.*'","unsupported_messages":[]}
+{"atom_id":"efffc56157f577e8","ast_ref":"efffc56157f577e8","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"MD5(x)","unsupported_messages":[]}
+{"atom_id":"4384bf0ad21661d8","ast_ref":"4384bf0ad21661d8","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"UNHEX(MD5(x))","unsupported_messages":[]}
+{"atom_id":"c6548e2bd20871fa","ast_ref":"c6548e2bd20871fa","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT IF(1 = 0, NULL, 1) AS NIZ1","unsupported_messages":[]}
+{"atom_id":"b9978061f20d7459","ast_ref":"b9978061f20d7459","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT IF(NULL IS NULL, 0, NULL) AS NIZ1","unsupported_messages":[]}
+{"atom_id":"892a78a36052909c","ast_ref":"892a78a36052909c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"LEVENSHTEIN(col1, col2)","unsupported_messages":[]}
+{"atom_id":"305a892972916590","ast_ref":"305a892972916590","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REGEXP_REPLACE(subject, pattern, replacement)","unsupported_messages":["Argument 'position' is not supported for expression 'RegexpReplace' when targeting Hive.","Argument 'occurrence' is not supported for expression 'RegexpReplace' when targeting Hive."]}
+{"atom_id":"7bf10d43245a96c7","ast_ref":"7bf10d43245a96c7","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x & 1","unsupported_messages":[]}
+{"atom_id":"be3bbcfc032f9e1e","ast_ref":"be3bbcfc032f9e1e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x & 1","unsupported_messages":[]}
+{"atom_id":"88bc303d5394a846","ast_ref":"88bc303d5394a846","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x & 1","unsupported_messages":[]}
+{"atom_id":"547215467a5bf99e","ast_ref":"547215467a5bf99e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x & 1","unsupported_messages":[]}
+{"atom_id":"c8e22263d6574b61","ast_ref":"c8e22263d6574b61","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x & 1 > 0","unsupported_messages":[]}
+{"atom_id":"00b5bcb640863ea9","ast_ref":"00b5bcb640863ea9","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x & 1 > 0","unsupported_messages":[]}
+{"atom_id":"010ee2316ff348d7","ast_ref":"010ee2316ff348d7","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x & 1 > 0","unsupported_messages":[]}
+{"atom_id":"4914471ad27145ae","ast_ref":"4914471ad27145ae","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x & 1 > 0","unsupported_messages":[]}
+{"atom_id":"e135db2bf6f58fed","ast_ref":"e135db2bf6f58fed","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"~x","unsupported_messages":[]}
+{"atom_id":"adb9e664036be540","ast_ref":"adb9e664036be540","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"~x","unsupported_messages":[]}
+{"atom_id":"da681400b7142926","ast_ref":"da681400b7142926","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"~x","unsupported_messages":[]}
+{"atom_id":"ab5655494ab94afe","ast_ref":"ab5655494ab94afe","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"~x","unsupported_messages":[]}
+{"atom_id":"2c15ce85a449fe59","ast_ref":"2c15ce85a449fe59","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x | 1","unsupported_messages":[]}
+{"atom_id":"de541b2a77dad77c","ast_ref":"de541b2a77dad77c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x | 1","unsupported_messages":[]}
+{"atom_id":"75f9f41c8c0c01dd","ast_ref":"75f9f41c8c0c01dd","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x | 1","unsupported_messages":[]}
+{"atom_id":"5617b3e1e101a009","ast_ref":"5617b3e1e101a009","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x | 1","unsupported_messages":[]}
+{"atom_id":"0615a056f81c009e","ast_ref":"0615a056f81c009e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x << 1","unsupported_messages":[]}
+{"atom_id":"0ad5977e0a588977","ast_ref":"0ad5977e0a588977","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x << 1","unsupported_messages":[]}
+{"atom_id":"d2396bd5e002473f","ast_ref":"d2396bd5e002473f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x >> 1","unsupported_messages":[]}
+{"atom_id":"950a34f8c0503380","ast_ref":"950a34f8c0503380","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x >> 1","unsupported_messages":[]}
+{"atom_id":"d7c492d0b63aa977","ast_ref":"d7c492d0b63aa977","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(1 AS SMALLINT)","unsupported_messages":[]}
+{"atom_id":"030013d186f9111f","ast_ref":"030013d186f9111f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(1 AS SMALLINT)","unsupported_messages":[]}
+{"atom_id":"258a3dad720e3e0f","ast_ref":"258a3dad720e3e0f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(1 AS TINYINT)","unsupported_messages":[]}
+{"atom_id":"51eb2a1d3e07c51b","ast_ref":"51eb2a1d3e07c51b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(1 AS BIGINT)","unsupported_messages":[]}
+{"atom_id":"b94cb02f4b65d19a","ast_ref":"b94cb02f4b65d19a","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(1.0 AS DECIMAL)","unsupported_messages":[]}
+{"atom_id":"862402db013138a7","ast_ref":"862402db013138a7","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(1 AS INT)","unsupported_messages":[]}
+{"atom_id":"73d4f6925c94c497","ast_ref":"73d4f6925c94c497","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(1 AS INT)","unsupported_messages":[]}
+{"atom_id":"681e988204d0e44e","ast_ref":"681e988204d0e44e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE FUNCTION my_func AS 'com.example.MyFunc' USING JAR 'hdfs://path/to/my.jar'","unsupported_messages":[]}
+{"atom_id":"e001b6a652731e6b","ast_ref":"e001b6a652731e6b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE OR REPLACE TEMPORARY FUNCTION some_func AS 'my_jar.SomeFunctionUDF' USING JAR 's3://bucket/my.jar'","unsupported_messages":[]}
+{"atom_id":"4c940c6f8015b668","ast_ref":"4c940c6f8015b668","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE FUNCTION my_func AS 'com.example.MyFunc' USING FILE 'hdfs://path/to/file.py'","unsupported_messages":[]}
+{"atom_id":"5e00ee0170e3489f","ast_ref":"5e00ee0170e3489f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE FUNCTION my_func AS 'com.example.MyFunc' USING ARCHIVE 'hdfs://path/to/archive.zip'","unsupported_messages":[]}
+{"atom_id":"d5aa98975a142b57","ast_ref":"d5aa98975a142b57","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(a AS BOOLEAN)","unsupported_messages":[]}
+{"atom_id":"833432ddadb9b558","ast_ref":"833432ddadb9b558","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE x (w STRING) PARTITIONED BY (y INT, z INT)","unsupported_messages":[]}
+{"atom_id":"476f99a85559f39b","ast_ref":"476f99a85559f39b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE test STORED AS PARQUET TBLPROPERTIES ('x'='1', 'Z'='2') AS SELECT 1","unsupported_messages":[]}
+{"atom_id":"0996f48d95bce8f4","ast_ref":"0996f48d95bce8f4","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE test STORED AS INPUTFORMAT 'foo1' OUTPUTFORMAT 'foo2'","unsupported_messages":[]}
+{"atom_id":"83099fd544ec8f91","ast_ref":"83099fd544ec8f91","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER TABLE x PARTITION(y = z) ADD COLUMN a VARCHAR(10)","unsupported_messages":[]}
+{"atom_id":"7b0f8f1215e4e8a4","ast_ref":"7b0f8f1215e4e8a4","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER TABLE x CHANGE COLUMN a a VARCHAR(10)","unsupported_messages":[]}
+{"atom_id":"7074f2d553d12439","ast_ref":"7074f2d553d12439","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER TABLE x CHANGE COLUMN a a VARCHAR(10)","unsupported_messages":[]}
+{"atom_id":"54e822364dd8685f","ast_ref":"54e822364dd8685f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER TABLE x CHANGE COLUMN a a VARCHAR(10) COMMENT 'comment'","unsupported_messages":[]}
+{"atom_id":"d1ae91cd935678bd","ast_ref":"d1ae91cd935678bd","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER TABLE x CHANGE COLUMN a b VARCHAR(10)","unsupported_messages":[]}
+{"atom_id":"e60c94debf5ed757","ast_ref":"e60c94debf5ed757","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER TABLE x CHANGE COLUMN a a VARCHAR(10) CASCADE","unsupported_messages":[]}
+{"atom_id":"c46028885bbccd2c","ast_ref":"c46028885bbccd2c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER TABLE X ADD COLUMNS (y INT, z STRING)","unsupported_messages":[]}
+{"atom_id":"9ae310a79fcdb250","ast_ref":"9ae310a79fcdb250","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER TABLE X ADD COLUMNS (y INT, z STRING) CASCADE","unsupported_messages":[]}
+{"atom_id":"fb61012beb9c29f5","ast_ref":"fb61012beb9c29f5","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE EXTERNAL TABLE x (y INT) ROW FORMAT SERDE 'serde' ROW FORMAT DELIMITED FIELDS TERMINATED BY '1' WITH SERDEPROPERTIES ('input.regex'='')","unsupported_messages":[]}
+{"atom_id":"2b1d9348b2ff48de","ast_ref":"2b1d9348b2ff48de","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE EXTERNAL TABLE `my_table` (`a7` ARRAY<DATE>) ROW FORMAT SERDE 'a' STORED AS INPUTFORMAT 'b' OUTPUTFORMAT 'c' LOCATION 'd' TBLPROPERTIES ('e'='f')","unsupported_messages":[]}
+{"atom_id":"3139827e2fd8261d","ast_ref":"3139827e2fd8261d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE EXTERNAL TABLE X (y INT) STORED BY 'x'","unsupported_messages":[]}
+{"atom_id":"8919e1daf68c059e","ast_ref":"8919e1daf68c059e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER VIEW v1 AS SELECT x, UPPER(s) AS s FROM t2","unsupported_messages":[]}
+{"atom_id":"b916e649e7f5d6f0","ast_ref":"b916e649e7f5d6f0","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER VIEW v1 (c1, c2) AS SELECT x, UPPER(s) AS s FROM t2","unsupported_messages":[]}
+{"atom_id":"43fc00b2a4791d5e","ast_ref":"43fc00b2a4791d5e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER VIEW v7 (c1 COMMENT 'Comment for c1', c2) AS SELECT t1.c1, t1.c2 FROM t1","unsupported_messages":[]}
+{"atom_id":"e43c93c8327b7bcc","ast_ref":"e43c93c8327b7bcc","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER VIEW db1.v1 RENAME TO db2.v2","unsupported_messages":[]}
+{"atom_id":"8c1ca2483c5ed5ac","ast_ref":"8c1ca2483c5ed5ac","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER VIEW v1 SET TBLPROPERTIES ('tblp1'='1', 'tblp2'='2')","unsupported_messages":[]}
+{"atom_id":"83aa8acae555e994","ast_ref":"83aa8acae555e994","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER VIEW v1 UNSET TBLPROPERTIES ('tblp1', 'tblp2')","unsupported_messages":[]}
+{"atom_id":"934adf43037900cf","ast_ref":"934adf43037900cf","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE foo (col STRUCT<struct_col_a: VARCHAR((50))>)","unsupported_messages":[]}
+{"atom_id":"f17a560c7dafe42b","ast_ref":"f17a560c7dafe42b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE db.example_table (col_a STRUCT<struct_col_a: INT, struct_col_b: STRING>)","unsupported_messages":[]}
+{"atom_id":"22c12f679114aef4","ast_ref":"22c12f679114aef4","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE db.example_table (col_a STRUCT<struct_col_a: INT, struct_col_b: STRUCT<nested_col_a: STRING, nested_col_b: STRING>>)","unsupported_messages":[]}
+{"atom_id":"845c7a805ba6ec96","ast_ref":"845c7a805ba6ec96","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER TABLE db.example_table ADD PARTITION(col_a = 'a') LOCATION 'b'","unsupported_messages":[]}
+{"atom_id":"677418399a609007","ast_ref":"677418399a609007","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER TABLE db.example_table ADD PARTITION(col_a = 'a') LOCATION 'b'","unsupported_messages":[]}
+{"atom_id":"3d0deda186be652c","ast_ref":"3d0deda186be652c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER TABLE db.example_table ADD PARTITION(col_a = 'a') LOCATION 'b'","unsupported_messages":[]}
+{"atom_id":"4f02740dd7fb94b4","ast_ref":"4f02740dd7fb94b4","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER TABLE db.example_table ADD PARTITION(col_a = 'a') LOCATION 'b'","unsupported_messages":[]}
+{"atom_id":"5836207081a5231a","ast_ref":"5836207081a5231a","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'\\n'","unsupported_messages":[]}
+{"atom_id":"97f1404ff5f47310","ast_ref":"97f1404ff5f47310","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'\\n'","unsupported_messages":[]}
+{"atom_id":"1468ef6ad705920f","ast_ref":"1468ef6ad705920f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'\\\\\\n'","unsupported_messages":[]}
+{"atom_id":"4e2ed258d40d8a56","ast_ref":"4e2ed258d40d8a56","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'\\\\n'","unsupported_messages":[]}
+{"atom_id":"41024d0e4eb2d0e2","ast_ref":"41024d0e4eb2d0e2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"''","unsupported_messages":[]}
+{"atom_id":"a7db57e00aad79bc","ast_ref":"a7db57e00aad79bc","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'\\\\'","unsupported_messages":[]}
+{"atom_id":"8adee42bab6390b7","ast_ref":"8adee42bab6390b7","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'\\\\z'","unsupported_messages":[]}
+{"atom_id":"b04f0dd636bd48d2","ast_ref":"b04f0dd636bd48d2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"TO_DATE(TO_DATE(x))","unsupported_messages":[]}
+{"atom_id":"a25c58eb897fc1da","ast_ref":"a25c58eb897fc1da","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DAY(TO_DATE(x))","unsupported_messages":[]}
+{"atom_id":"0ed3095723220623","ast_ref":"0ed3095723220623","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t WHERE col IN ('stream')","unsupported_messages":[]}
+{"atom_id":"f29d0a0253788b07","ast_ref":"f29d0a0253788b07","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SET hiveconf:some_var = 5","unsupported_messages":[]}
+{"atom_id":"3215a45b32cc943e","ast_ref":"3215a45b32cc943e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"(VALUES (1 AS a, 2 AS b, 3))","unsupported_messages":[]}
+{"atom_id":"d0660941bacb554f","ast_ref":"d0660941bacb554f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM my_table TIMESTAMP AS OF DATE_ADD(CURRENT_DATE, -1)","unsupported_messages":[]}
+{"atom_id":"020390840710a1f7","ast_ref":"020390840710a1f7","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM my_table VERSION AS OF DATE_ADD(CURRENT_DATE, -1)","unsupported_messages":[]}
+{"atom_id":"74760771e966fcce","ast_ref":"74760771e966fcce","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT WEEKOFYEAR('2024-05-22'), DAYOFMONTH('2024-05-22'), DAYOFWEEK('2024-05-22')","unsupported_messages":[]}
+{"atom_id":"e4a8fca06d5057f8","ast_ref":"e4a8fca06d5057f8","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT ROW() OVER (PARTITION BY x ORDER BY y)","unsupported_messages":[]}
+{"atom_id":"ce92b0c21548552e","ast_ref":"ce92b0c21548552e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT transform","unsupported_messages":[]}
+{"atom_id":"7c5e0df3ddef3efe","ast_ref":"7c5e0df3ddef3efe","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM test DISTRIBUTE BY y SORT BY x DESC ORDER BY l","unsupported_messages":[]}
+{"atom_id":"a932259d9a005d6e","ast_ref":"a932259d9a005d6e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM test WHERE RAND() <= 0.1 DISTRIBUTE BY RAND() SORT BY RAND()","unsupported_messages":[]}
+{"atom_id":"5fee0d9a1e8b2744","ast_ref":"5fee0d9a1e8b2744","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"(SELECT 1 UNION SELECT 2) DISTRIBUTE BY z","unsupported_messages":[]}
+{"atom_id":"733db84c6cd053fa","ast_ref":"733db84c6cd053fa","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"(SELECT 1 UNION SELECT 2) DISTRIBUTE BY z SORT BY x","unsupported_messages":[]}
+{"atom_id":"f32385c45eb97e7f","ast_ref":"f32385c45eb97e7f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"(SELECT 1 UNION SELECT 2) CLUSTER BY y","unsupported_messages":[]}
+{"atom_id":"7d2937db38f0a628","ast_ref":"7d2937db38f0a628","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM test CLUSTER BY y","unsupported_messages":[]}
+{"atom_id":"45cae2fa4d9a4de5","ast_ref":"45cae2fa4d9a4de5","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"(SELECT 1 UNION SELECT 2) SORT BY z","unsupported_messages":[]}
+{"atom_id":"cd2136a9bba93c82","ast_ref":"cd2136a9bba93c82","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"INSERT OVERWRITE TABLE zipcodes PARTITION(state = '0') VALUES (896, 'US', 'TAMPA', 33607)","unsupported_messages":[]}
+{"atom_id":"7eb974ecb086f0e7","ast_ref":"7eb974ecb086f0e7","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"INSERT OVERWRITE TABLE zipcodes PARTITION(state = 0) VALUES (896, 'US', 'TAMPA', 33607)","unsupported_messages":[]}
+{"atom_id":"744a7ebd967650d0","ast_ref":"744a7ebd967650d0","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"INSERT OVERWRITE DIRECTORY 'x' ROW FORMAT DELIMITED FIELDS TERMINATED BY '\u0001' COLLECTION ITEMS TERMINATED BY ',' MAP KEYS TERMINATED BY ':' LINES TERMINATED BY '' STORED AS TEXTFILE SELECT * FROM `a`.`b`","unsupported_messages":[]}
+{"atom_id":"ad1c0f1963f6c27a","ast_ref":"ad1c0f1963f6c27a","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT a, b, SUM(c) FROM tabl AS t GROUP BY a, b, GROUPING SETS ((a, b), a)","unsupported_messages":[]}
+{"atom_id":"52d9205b771f1573","ast_ref":"52d9205b771f1573","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT a, b, SUM(c) FROM tabl AS t GROUP BY a, b, GROUPING SETS ((t.a, b), a)","unsupported_messages":[]}
+{"atom_id":"0be68ba83152503e","ast_ref":"0be68ba83152503e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT a, b, SUM(c) FROM tabl AS t GROUP BY a, FOO(b), GROUPING SETS ((a, FOO(b)), a)","unsupported_messages":[]}
+{"atom_id":"ca1908c35c163e63","ast_ref":"ca1908c35c163e63","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT key, value, GROUPING__ID, COUNT(*) FROM T1 GROUP BY key, value WITH CUBE","unsupported_messages":[]}
+{"atom_id":"d196b6d16e29d9ee","ast_ref":"d196b6d16e29d9ee","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT key, value, GROUPING__ID, COUNT(*) FROM T1 GROUP BY key, value WITH ROLLUP","unsupported_messages":[]}
+{"atom_id":"831076dbe87389f8","ast_ref":"831076dbe87389f8","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"TRUNCATE TABLE t1 PARTITION(age = 10, name = 'test', address = 'abc')","unsupported_messages":[]}
+{"atom_id":"62fcb04b21e54df0","ast_ref":"62fcb04b21e54df0","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 CROSS JOIN t2","unsupported_messages":[]}
+{"atom_id":"611d09a28ddaf36f","ast_ref":"611d09a28ddaf36f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT ${hiveconf:some_var}","unsupported_messages":[]}
+{"atom_id":"d0642c22cea02e9e","ast_ref":"d0642c22cea02e9e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE_APPROX(x, 0.5)","unsupported_messages":[]}
+{"atom_id":"96c0868aeb282006","ast_ref":"96c0868aeb282006","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE_APPROX(x, 0.5)","unsupported_messages":[]}
+{"atom_id":"8f76cd452382a5f2","ast_ref":"8f76cd452382a5f2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE_APPROX(x, 0.5)","unsupported_messages":[]}
+{"atom_id":"02a151643d8f0766","ast_ref":"02a151643d8f0766","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE_APPROX(x, 0.5)","unsupported_messages":[]}
+{"atom_id":"5e2a7b628748e72c","ast_ref":"5e2a7b628748e72c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE_APPROX(x, 0.5)","unsupported_messages":[]}
+{"atom_id":"48e59b9e73973401","ast_ref":"48e59b9e73973401","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE_APPROX(x, 0.5)","unsupported_messages":[]}
+{"atom_id":"311631a82807da4f","ast_ref":"311631a82807da4f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE_APPROX(x, 0.5)","unsupported_messages":[]}
+{"atom_id":"109f28607f71100f","ast_ref":"109f28607f71100f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE_APPROX(x, 0.5)","unsupported_messages":[]}
+{"atom_id":"883cec2e8918b833","ast_ref":"883cec2e8918b833","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE_APPROX(x, 0.5, 200)","unsupported_messages":[]}
+{"atom_id":"873c7257e12b5def","ast_ref":"873c7257e12b5def","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE_APPROX(x, 0.5, 200)","unsupported_messages":[]}
+{"atom_id":"67c06210d134111c","ast_ref":"67c06210d134111c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE_APPROX(x, 0.5, 200)","unsupported_messages":[]}
+{"atom_id":"c5e9eb92a626b267","ast_ref":"c5e9eb92a626b267","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE_APPROX(x, 0.5, 200)","unsupported_messages":[]}
+{"atom_id":"f3b55ed9970133bb","ast_ref":"f3b55ed9970133bb","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"APPROX_COUNT_DISTINCT(a)","unsupported_messages":[]}
+{"atom_id":"e88af206ab64c5dd","ast_ref":"e88af206ab64c5dd","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ARRAY_CONTAINS(x, 1)","unsupported_messages":[]}
+{"atom_id":"3c5fd5166dd8146d","ast_ref":"3c5fd5166dd8146d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ARRAY_CONTAINS(x, 1)","unsupported_messages":[]}
+{"atom_id":"ebb35084f7edb8d1","ast_ref":"ebb35084f7edb8d1","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ARRAY_CONTAINS(x, 1)","unsupported_messages":[]}
+{"atom_id":"1333696ba02391e2","ast_ref":"1333696ba02391e2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SIZE(x)","unsupported_messages":[]}
+{"atom_id":"16de46fd1c045e34","ast_ref":"16de46fd1c045e34","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"LOCATE('a', x)","unsupported_messages":[]}
+{"atom_id":"e092423a4a1c23e2","ast_ref":"e092423a4a1c23e2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"LOCATE('a', x, 3)","unsupported_messages":[]}
+{"atom_id":"d7d8b22b227193df","ast_ref":"d7d8b22b227193df","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"INITCAP('new york')","unsupported_messages":[]}
+{"atom_id":"d836da046e42dc0f","ast_ref":"d836da046e42dc0f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM x.z TABLESAMPLE (10 PERCENT) AS y","unsupported_messages":[]}
+{"atom_id":"345e88150c2d4ee6","ast_ref":"345e88150c2d4ee6","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT SORT_ARRAY(x, FALSE)","unsupported_messages":[]}
+{"atom_id":"4c31b42e18b93137","ast_ref":"4c31b42e18b93137","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT SORT_ARRAY(x, FALSE)","unsupported_messages":[]}
+{"atom_id":"9fd060dffcb87976","ast_ref":"9fd060dffcb87976","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT SORT_ARRAY(x, FALSE)","unsupported_messages":[]}
+{"atom_id":"920fb9446b0d438a","ast_ref":"920fb9446b0d438a","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"GET_JSON_OBJECT(x, '$.name')","unsupported_messages":[]}
+{"atom_id":"80b6239ed5f8b9c8","ast_ref":"80b6239ed5f8b9c8","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"MAP(a, b, c, d)","unsupported_messages":[]}
+{"atom_id":"b2f74fe30c1ff415","ast_ref":"b2f74fe30c1ff415","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"MAP(a, b, c, d)","unsupported_messages":[]}
+{"atom_id":"16b4636fa958810f","ast_ref":"16b4636fa958810f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"MAP(a, b, c, d)","unsupported_messages":[]}
+{"atom_id":"550cd53dc5855fb9","ast_ref":"550cd53dc5855fb9","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"MAP(a, b, c, d)","unsupported_messages":[]}
+{"atom_id":"0f0e67ac479dc6d9","ast_ref":"0f0e67ac479dc6d9","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"MAP(a, b, c, d)","unsupported_messages":[]}
+{"atom_id":"c0262797fd97974d","ast_ref":"c0262797fd97974d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"MAP(a, b, c, d)","unsupported_messages":[]}
+{"atom_id":"b66c221285c5f6e9","ast_ref":"b66c221285c5f6e9","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"MAP(a, b)","unsupported_messages":[]}
+{"atom_id":"f74e28c9b759da60","ast_ref":"f74e28c9b759da60","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"LN(10)","unsupported_messages":[]}
+{"atom_id":"1858ee8768dbd2b5","ast_ref":"1858ee8768dbd2b5","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ds = '2020-01-01'","unsupported_messages":[]}
+{"atom_id":"4a9f75831ab890a9","ast_ref":"4a9f75831ab890a9","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ds = '1\\'\\'2'","unsupported_messages":[]}
+{"atom_id":"0cc897bdc93a3054","ast_ref":"0cc897bdc93a3054","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x = 1","unsupported_messages":[]}
+{"atom_id":"56327ec224f4133b","ast_ref":"56327ec224f4133b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x DIV y","unsupported_messages":[]}
+{"atom_id":"7a371e39fd5130ff","ast_ref":"7a371e39fd5130ff","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x DIV y","unsupported_messages":[]}
+{"atom_id":"de599be76c6f6331","ast_ref":"de599be76c6f6331","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x DIV y","unsupported_messages":[]}
+{"atom_id":"cf53a330baf671b5","ast_ref":"cf53a330baf671b5","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x DIV y","unsupported_messages":[]}
+{"atom_id":"cc42893ea2f53200","ast_ref":"cc42893ea2f53200","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x DIV y","unsupported_messages":[]}
+{"atom_id":"7fe5343d4f23ca82","ast_ref":"7fe5343d4f23ca82","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"COLLECT_LIST(x)","unsupported_messages":[]}
+{"atom_id":"3ee55ac1961838ae","ast_ref":"3ee55ac1961838ae","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"COLLECT_LIST(x)","unsupported_messages":[]}
+{"atom_id":"5bf57e86d64321cd","ast_ref":"5bf57e86d64321cd","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"COLLECT_SET(x)","unsupported_messages":[]}
+{"atom_id":"32a7beff4cf1d791","ast_ref":"32a7beff4cf1d791","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"COLLECT_SET(x)","unsupported_messages":[]}
+{"atom_id":"48310034ce8260ed","ast_ref":"48310034ce8260ed","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"COLLECT_SET(x)","unsupported_messages":[]}
+{"atom_id":"ca6ce833ce2192b9","ast_ref":"ca6ce833ce2192b9","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"COLLECT_SET(x)","unsupported_messages":[]}
+{"atom_id":"14499dc33e5008eb","ast_ref":"14499dc33e5008eb","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM x TABLESAMPLE (1 PERCENT) AS foo","unsupported_messages":[]}
+{"atom_id":"9b39363d0528c5dd","ast_ref":"9b39363d0528c5dd","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM x TABLESAMPLE (1 PERCENT) AS foo","unsupported_messages":[]}
+{"atom_id":"d04c89b5c40e25e6","ast_ref":"d04c89b5c40e25e6","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM x TABLESAMPLE (1 PERCENT) AS foo","unsupported_messages":[]}
+{"atom_id":"613015519ab3b6ea","ast_ref":"613015519ab3b6ea","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT a, SUM(c) FROM t GROUP BY a, DATE_FORMAT(b, 'yyyy'), GROUPING SETS ((a, DATE_FORMAT(b, 'yyyy')), a)","unsupported_messages":[]}
+{"atom_id":"b74fb834b1165003","ast_ref":"b74fb834b1165003","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT TRUNC(CAST(ds AS TIMESTAMP), 'MONTH')","unsupported_messages":[]}
+{"atom_id":"841fabbdfd251ae1","ast_ref":"841fabbdfd251ae1","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT TRUNC(CAST(ds AS TIMESTAMP), 'MONTH')","unsupported_messages":[]}
+{"atom_id":"2bde9c01bc3f0946","ast_ref":"2bde9c01bc3f0946","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"TRUNC(date_col, 'MM')","unsupported_messages":[]}
+{"atom_id":"6b190f30b7f4d4f6","ast_ref":"6b190f30b7f4d4f6","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(3.14159 AS BIGINT)","unsupported_messages":["Argument 'decimals' is not supported for expression 'Trunc' when targeting Hive."]}
+{"atom_id":"8c9f976b04cb04c0","ast_ref":"8c9f976b04cb04c0","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REGEXP_EXTRACT('abc', '(a)(b)(c)')","unsupported_messages":[]}
+{"atom_id":"d5b982ae3bbf703e","ast_ref":"d5b982ae3bbf703e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REGEXP_EXTRACT('abc', '(a)(b)(c)')","unsupported_messages":[]}
+{"atom_id":"ccda80fdc2c7237f","ast_ref":"ccda80fdc2c7237f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REGEXP_EXTRACT('abc', '(a)(b)(c)')","unsupported_messages":[]}
+{"atom_id":"43848d2ce432aa92","ast_ref":"43848d2ce432aa92","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REGEXP_EXTRACT('abc', '(a)(b)(c)')","unsupported_messages":[]}
+{"atom_id":"5cd1aedf06f4426a","ast_ref":"5cd1aedf06f4426a","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"EXISTS(col, x -> x % 2 = 0)","unsupported_messages":[]}
+{"atom_id":"1b6c0b51eb2064dd","ast_ref":"1b6c0b51eb2064dd","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT EXISTS(ARRAY(2, 3), x -> x % 2 = 0)","unsupported_messages":[]}
+{"atom_id":"0dfe0f8bb82ae344","ast_ref":"0dfe0f8bb82ae344","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT EXISTS(ARRAY(2, 3), x -> x % 2 = 0)","unsupported_messages":[]}
+{"atom_id":"dabf8cc1b00749f6","ast_ref":"dabf8cc1b00749f6","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT EXISTS(ARRAY(2, 3), x -> x % 2 = 0)","unsupported_messages":[]}
+{"atom_id":"5398066c7669b4a2","ast_ref":"5398066c7669b4a2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT EXISTS(ARRAY(2, 3), x -> x % 2 = 0)","unsupported_messages":[]}
+{"atom_id":"3d1f91faaa1d7e54","ast_ref":"3d1f91faaa1d7e54","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT 1_2","unsupported_messages":[]}
+{"atom_id":"c7df769e5e8ee26f","ast_ref":"c7df769e5e8ee26f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT MAP(*), STRUCT(*) FROM t","unsupported_messages":[]}
+{"atom_id":"56d823d457a29772","ast_ref":"56d823d457a29772","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT MAP(*), STRUCT(*) FROM t","unsupported_messages":[]}
+{"atom_id":"b15e200abb4a429c","ast_ref":"b15e200abb4a429c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT MAP(*), STRUCT(*) FROM t","unsupported_messages":[]}
+{"atom_id":"57f01d22e47e0141","ast_ref":"57f01d22e47e0141","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT MAP(*), STRUCT(*) FROM t","unsupported_messages":[]}
+{"atom_id":"b1666ad58d1924b4","ast_ref":"b1666ad58d1924b4","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT FIRST(sample_col, TRUE)","unsupported_messages":[]}
+{"atom_id":"0a75264335d1a837","ast_ref":"0a75264335d1a837","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT FIRST(sample_col, TRUE)","unsupported_messages":[]}
+{"atom_id":"246e6919613e1611","ast_ref":"246e6919613e1611","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT FIRST(sample_col, TRUE)","unsupported_messages":[]}
+{"atom_id":"3b8b01eb63396ab7","ast_ref":"3b8b01eb63396ab7","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT FIRST_VALUE(sample_col, TRUE)","unsupported_messages":[]}
+{"atom_id":"dd96d08caeaae2e8","ast_ref":"dd96d08caeaae2e8","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT FIRST_VALUE(sample_col, TRUE)","unsupported_messages":[]}
+{"atom_id":"3f99cc4357f00d59","ast_ref":"3f99cc4357f00d59","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT FIRST_VALUE(sample_col, TRUE)","unsupported_messages":[]}
+{"atom_id":"bfd00a9f6951e7dc","ast_ref":"bfd00a9f6951e7dc","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT LAST_VALUE(sample_col, TRUE)","unsupported_messages":[]}
+{"atom_id":"e30fb6725335f27e","ast_ref":"e30fb6725335f27e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT LAST_VALUE(sample_col, TRUE)","unsupported_messages":[]}
+{"atom_id":"19c598cff82f819f","ast_ref":"19c598cff82f819f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT LAST_VALUE(sample_col, TRUE)","unsupported_messages":[]}
+{"atom_id":"91a780a3b57e00cd","ast_ref":"91a780a3b57e00cd","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT LAST(sample_col, TRUE)","unsupported_messages":[]}
+{"atom_id":"ea8826d94721d940","ast_ref":"ea8826d94721d940","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT LAST(sample_col, TRUE)","unsupported_messages":[]}
+{"atom_id":"471aaf49cae1741c","ast_ref":"471aaf49cae1741c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT LAST(sample_col, TRUE)","unsupported_messages":[]}
+{"atom_id":"3dc5dc89b724197d","ast_ref":"3dc5dc89b724197d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(CURRENT_DATE, (1 + 1) * -1)","unsupported_messages":[]}
+{"atom_id":"829e4532c6b8bd87","ast_ref":"829e4532c6b8bd87","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT ELT(2, 'foo', 'bar', 'baz') AS Result","unsupported_messages":[]}
+{"atom_id":"e067c5d116e4e3de","ast_ref":"e067c5d116e4e3de","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"WITH t AS (SELECT '{\"x-y\": \"z\"}' AS c) SELECT GET_JSON_OBJECT(c, '$.x-y') FROM t","unsupported_messages":[]}
+{"atom_id":"1d6e17bb1acc9c05","ast_ref":"1d6e17bb1acc9c05","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT PARSE_JSON('{\"key\": 123}')","unsupported_messages":[]}
+{"atom_id":"a2cd8734aef53875","ast_ref":"a2cd8734aef53875","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_JSON(PARSE_JSON('{\"key\": 123}'))","unsupported_messages":[]}
+{"atom_id":"8972507e55895b2b","ast_ref":"8972507e55895b2b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 FULL OUTER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"612329f5eebcb619","ast_ref":"612329f5eebcb619","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 FULL OUTER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"8d115790a3513638","ast_ref":"8d115790a3513638","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 FULL OUTER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"e40156f102229398","ast_ref":"e40156f102229398","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 FULL OUTER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"addaa096a0f10d15","ast_ref":"addaa096a0f10d15","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 FULL OUTER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"e348f2f0ee1162a2","ast_ref":"e348f2f0ee1162a2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 FULL OUTER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"a77a1141887eac49","ast_ref":"a77a1141887eac49","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 LEFT JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"b85e7845c56b3a13","ast_ref":"b85e7845c56b3a13","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 LEFT JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"d4c0643739eedb83","ast_ref":"d4c0643739eedb83","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 LEFT JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"870ef4ed3a625efd","ast_ref":"870ef4ed3a625efd","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 LEFT JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"30931f3c4bd95fcd","ast_ref":"30931f3c4bd95fcd","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 LEFT JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"8a46149fc3b785e3","ast_ref":"8a46149fc3b785e3","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 LEFT JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"60194d7a92ff9bff","ast_ref":"60194d7a92ff9bff","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 RIGHT JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"802631e8b5a9d4b3","ast_ref":"802631e8b5a9d4b3","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 RIGHT JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"10574434719a54d0","ast_ref":"10574434719a54d0","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 RIGHT JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"90328330ae3dd26f","ast_ref":"90328330ae3dd26f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 RIGHT JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"33aa1d6f7a164917","ast_ref":"33aa1d6f7a164917","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 RIGHT JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"e3b9d83694d6ac17","ast_ref":"e3b9d83694d6ac17","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 RIGHT JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"2bcc5f85dabe6c67","ast_ref":"2bcc5f85dabe6c67","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 LEFT OUTER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"b80c4c68141e7e82","ast_ref":"b80c4c68141e7e82","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 LEFT OUTER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"a0b379e343a9739e","ast_ref":"a0b379e343a9739e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 LEFT OUTER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"fbd8fc80d765144f","ast_ref":"fbd8fc80d765144f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 LEFT OUTER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"e524bce2c3a23114","ast_ref":"e524bce2c3a23114","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 LEFT OUTER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"1753d4506cfd2d4b","ast_ref":"1753d4506cfd2d4b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 LEFT OUTER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"a860c7d1b3b902ef","ast_ref":"a860c7d1b3b902ef","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 RIGHT OUTER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"6783c0d2d18be6ab","ast_ref":"6783c0d2d18be6ab","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 RIGHT OUTER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"a3073409a94e2523","ast_ref":"a3073409a94e2523","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 RIGHT OUTER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"bfb845db7f46abda","ast_ref":"bfb845db7f46abda","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 RIGHT OUTER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"68bd4341f99fd86c","ast_ref":"68bd4341f99fd86c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 RIGHT OUTER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"c8ff34d68c7e4014","ast_ref":"c8ff34d68c7e4014","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 RIGHT OUTER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"60b2ac9e40cd7ede","ast_ref":"60b2ac9e40cd7ede","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 INNER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"f19dbd9844a678a6","ast_ref":"f19dbd9844a678a6","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 INNER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"01bed01d7c4e5107","ast_ref":"01bed01d7c4e5107","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 INNER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"bc9d0e0649401e68","ast_ref":"bc9d0e0649401e68","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 INNER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"e2ae7127a1c09f87","ast_ref":"e2ae7127a1c09f87","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 INNER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"9a7bc1759431f5e7","ast_ref":"9a7bc1759431f5e7","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t1 INNER JOIN t2 ON TRUE","unsupported_messages":[]}
+{"atom_id":"aa055ea8ee46f744","ast_ref":"aa055ea8ee46f744","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT a, b FROM x LATERAL VIEW EXPLODE(y) t AS a LATERAL VIEW EXPLODE(z) u AS b","unsupported_messages":[]}
+{"atom_id":"cb57bfb62bcc4204","ast_ref":"cb57bfb62bcc4204","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT a FROM x LATERAL VIEW EXPLODE(y) t AS a","unsupported_messages":[]}
+{"atom_id":"efcb6619844b39bb","ast_ref":"efcb6619844b39bb","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT a FROM x LATERAL VIEW POSEXPLODE(y) t AS pos, col","unsupported_messages":[]}
+{"atom_id":"ceb3ad17680a3ad2","ast_ref":"ceb3ad17680a3ad2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM x LATERAL VIEW POSEXPLODE(MAP(col, 'val')) t AS pos, key, value","unsupported_messages":[]}
+{"atom_id":"33054423affb5406","ast_ref":"33054423affb5406","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT a FROM x LATERAL VIEW EXPLODE(ARRAY(y)) t AS a","unsupported_messages":[]}
+{"atom_id":"9b26022e3272395e","ast_ref":"9b26022e3272395e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT fname, lname, age FROM person ORDER BY age DESC NULLS FIRST, fname ASC NULLS LAST, lname","unsupported_messages":[]}
+{"atom_id":"f419d4349ecaccc2","ast_ref":"f419d4349ecaccc2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE(x, 0.5)","unsupported_messages":[]}
+{"atom_id":"9ea546e00a69eb63","ast_ref":"9ea546e00a69eb63","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE(DISTINCT x, 0.5)","unsupported_messages":[]}
+{"atom_id":"4d42bd530219397d","ast_ref":"4d42bd530219397d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE(DISTINCT x, 0.5)","unsupported_messages":[]}
+{"atom_id":"86f370b2758927d2","ast_ref":"86f370b2758927d2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE(DISTINCT x, 0.5)","unsupported_messages":[]}
+{"atom_id":"a5b61b33ce7ae549","ast_ref":"a5b61b33ce7ae549","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE(x, 0.5)","unsupported_messages":[]}
+{"atom_id":"2797d2cd0f7a8551","ast_ref":"2797d2cd0f7a8551","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE(x, 0.5)","unsupported_messages":[]}
+{"atom_id":"4913c8da81e332f6","ast_ref":"4913c8da81e332f6","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE(x, 0.5)","unsupported_messages":[]}
+{"atom_id":"56c1ce33802963ba","ast_ref":"56c1ce33802963ba","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE(x, 0.5)","unsupported_messages":[]}
+{"atom_id":"3162d3f79edc7dd9","ast_ref":"3162d3f79edc7dd9","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE(DISTINCT x, 0.5)","unsupported_messages":[]}
+{"atom_id":"ba7688aa99d53e5f","ast_ref":"ba7688aa99d53e5f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"PERCENTILE(x, 0.5)","unsupported_messages":[]}
+{"atom_id":"87cc1a5c85d71133","ast_ref":"87cc1a5c85d71133","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'\\''","unsupported_messages":[]}
+{"atom_id":"c140abb173cf4eda","ast_ref":"c140abb173cf4eda","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'\"x\"'","unsupported_messages":[]}
+{"atom_id":"a3104e0b1afde806","ast_ref":"a3104e0b1afde806","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'\\'x\\''","unsupported_messages":[]}
+{"atom_id":"7288b5b792398701","ast_ref":"7288b5b792398701","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'\\\\\\\\a'","unsupported_messages":[]}
+{"atom_id":"940f7750e5422511","ast_ref":"940f7750e5422511","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'\\\\\\\\a'","unsupported_messages":[]}
+{"atom_id":"2f126427dc6ec755","ast_ref":"2f126427dc6ec755","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'\\\\\\\\a'","unsupported_messages":[]}
+{"atom_id":"e07b89daaf952047","ast_ref":"e07b89daaf952047","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'\\\\\\\\a'","unsupported_messages":[]}
+{"atom_id":"909ab51d2e737255","ast_ref":"909ab51d2e737255","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"a RLIKE 'x'","unsupported_messages":[]}
+{"atom_id":"7dbc68092bae253e","ast_ref":"7dbc68092bae253e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"a RLIKE 'x'","unsupported_messages":[]}
+{"atom_id":"e85249833bed0157","ast_ref":"e85249833bed0157","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATE)","unsupported_messages":[]}
+{"atom_id":"138274774d142879","ast_ref":"138274774d142879","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"(UNIX_TIMESTAMP(y) - UNIX_TIMESTAMP(x)) * 1000","unsupported_messages":[]}
+{"atom_id":"5d1957ac7c6d63ad","ast_ref":"5d1957ac7c6d63ad","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"UNIX_TIMESTAMP(y) - UNIX_TIMESTAMP(x)","unsupported_messages":[]}
+{"atom_id":"f291e012f57b2723","ast_ref":"f291e012f57b2723","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"(UNIX_TIMESTAMP(y) - UNIX_TIMESTAMP(x)) / 60","unsupported_messages":[]}
+{"atom_id":"4cc18d4adedcffa4","ast_ref":"4cc18d4adedcffa4","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"(UNIX_TIMESTAMP(y) - UNIX_TIMESTAMP(x)) / 3600","unsupported_messages":[]}
+{"atom_id":"bb15e9b5e506f669","ast_ref":"bb15e9b5e506f669","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATEDIFF(a, b)","unsupported_messages":[]}
+{"atom_id":"47d89876d68abb38","ast_ref":"47d89876d68abb38","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"FROM_UNIXTIME(x, 'yyyy-MM-dd\\'T\\'HH')","unsupported_messages":[]}
+{"atom_id":"f9a67ae9bf1f819c","ast_ref":"f9a67ae9bf1f819c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATE_FORMAT('2020-01-01', 'yyyy-MM-dd HH:mm:ss')","unsupported_messages":[]}
+{"atom_id":"24771e58e99e3400","ast_ref":"24771e58e99e3400","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD('2020-01-01', 1)","unsupported_messages":[]}
+{"atom_id":"ca22c577495a870a","ast_ref":"ca22c577495a870a","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD('2020-01-01', 1 * -1)","unsupported_messages":[]}
+{"atom_id":"008bb4a0ee924a9e","ast_ref":"008bb4a0ee924a9e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD('2020-01-01', -1)","unsupported_messages":[]}
+{"atom_id":"73863454791ffa39","ast_ref":"73863454791ffa39","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(a, b * -1)","unsupported_messages":[]}
+{"atom_id":"269bbf5e150e8503","ast_ref":"269bbf5e150e8503","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ADD_MONTHS('2020-01-01', -2)","unsupported_messages":[]}
+{"atom_id":"ac85fee636fb39b2","ast_ref":"ac85fee636fb39b2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATEDIFF(TO_DATE(y), x)","unsupported_messages":[]}
+{"atom_id":"200b8870ad538f18","ast_ref":"200b8870ad538f18","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"UNIX_TIMESTAMP(x)","unsupported_messages":[]}
+{"atom_id":"76003c06637cdcc2","ast_ref":"76003c06637cdcc2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DAY(x)","unsupported_messages":[]}
+{"atom_id":"b6591870e817aa14","ast_ref":"b6591870e817aa14","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"MONTH(x)","unsupported_messages":[]}
+{"atom_id":"176820ed6d7bc92c","ast_ref":"176820ed6d7bc92c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"YEAR(x)","unsupported_messages":[]}
+{"atom_id":"821de1233f91a762","ast_ref":"821de1233f91a762","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT 11","unsupported_messages":[]}
+{"atom_id":"cd54d439640236e9","ast_ref":"cd54d439640236e9","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT 11","unsupported_messages":[]}
+{"atom_id":"e507808728777cb5","ast_ref":"e507808728777cb5","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE t (foo BINARY)","unsupported_messages":[]}
+{"atom_id":"3637808ef7e58a70","ast_ref":"3637808ef7e58a70","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}
+{"atom_id":"a9a38c4b87552c3a","ast_ref":"a9a38c4b87552c3a","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}
+{"atom_id":"9c49c2cd981ea6b9","ast_ref":"9c49c2cd981ea6b9","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}
+{"atom_id":"7714d0d5b237eaf0","ast_ref":"7714d0d5b237eaf0","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}
+{"atom_id":"76646dccc2c90161","ast_ref":"76646dccc2c90161","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}
+{"atom_id":"845ed9f1cc45d2cb","ast_ref":"845ed9f1cc45d2cb","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"a / b","unsupported_messages":[]}
+{"atom_id":"3eae8ec55b1c0130","ast_ref":"3eae8ec55b1c0130","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DOUBLE)","unsupported_messages":["Unsupported TO_NUMBER function"]}
+{"atom_id":"6a6126e0581e4b36","ast_ref":"6a6126e0581e4b36","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SIZE(arr)","unsupported_messages":[]}
+{"atom_id":"4ee2d79b568a6b22","ast_ref":"4ee2d79b568a6b22","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SIZE(arr)","unsupported_messages":["Cannot transpile dimension argument for ARRAY_LENGTH"]}
+{"atom_id":"ffeec9a7a8e58e0a","ast_ref":"ffeec9a7a8e58e0a","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT col[0]","unsupported_messages":[]}
+{"atom_id":"46d7235a5d48845d","ast_ref":"46d7235a5d48845d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE x (a UUID, b BINARY)","unsupported_messages":[]}
+{"atom_id":"da21308fe33dea96","ast_ref":"da21308fe33dea96","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"EXPLODE(SEQUENCE(CAST('2019-01-01' AS TIMESTAMP), CAST(CURRENT_TIMESTAMP() AS TIMESTAMP), INTERVAL '1' DAY))","unsupported_messages":[]}
+{"atom_id":"3ec7c7adb1050ed2","ast_ref":"3ec7c7adb1050ed2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM EXPLODE(SEQUENCE(a, b))","unsupported_messages":[]}
+{"atom_id":"88c1604b4060d308","ast_ref":"88c1604b4060d308","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM x LIMIT 1","unsupported_messages":[]}
+{"atom_id":"1215a5a4c2d7eac6","ast_ref":"1215a5a4c2d7eac6","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT fname, lname, age FROM person ORDER BY age DESC NULLS FIRST, fname ASC NULLS LAST, lname NULLS LAST","unsupported_messages":[]}
+{"atom_id":"b96e27eb6a2afc9e","ast_ref":"b96e27eb6a2afc9e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT CASE WHEN SUBSTRING('abcdefg', 1, 2) IN ('ab') THEN 1 ELSE 0 END","unsupported_messages":[]}
+{"atom_id":"cd95629b565c7d71","ast_ref":"cd95629b565c7d71","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM x WHERE SUBSTRING(col1, 3 + LENGTH(col1) - 10, 10) IN (col2)","unsupported_messages":[]}
+{"atom_id":"1b64a22c6636f961","ast_ref":"1b64a22c6636f961","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT TRIM(' XXX ')","unsupported_messages":[]}
+{"atom_id":"5183da74be7a99a5","ast_ref":"5183da74be7a99a5","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"LTRIM(' XXX ')","unsupported_messages":[]}
+{"atom_id":"bba3a17c6c8b89dc","ast_ref":"bba3a17c6c8b89dc","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"RTRIM(' XXX ')","unsupported_messages":[]}
+{"atom_id":"9c365ce3b4f00aea","ast_ref":"9c365ce3b4f00aea","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"WITH t AS (SELECT ARRAY(1, 2, 3) AS col) SELECT * FROM t WHERE EXISTS(col, x -> 1 <= x) AND EXISTS(col, x -> 2 = x)","unsupported_messages":[]}
+{"atom_id":"c47c6a02b70bc681","ast_ref":"c47c6a02b70bc681","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT EXPLODE(c) FROM t","unsupported_messages":[]}
+{"atom_id":"0d65c64e7520d5ad","ast_ref":"0d65c64e7520d5ad","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT EXPLODE(ARRAY(1))","unsupported_messages":[]}
+{"atom_id":"e60a053f4deb85bc","ast_ref":"e60a053f4deb85bc","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"UNBASE64(x)","unsupported_messages":[]}
+{"atom_id":"8802d499f3647eaf","ast_ref":"8802d499f3647eaf","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"BASE64(x)","unsupported_messages":[]}
+{"atom_id":"a73e6fd62efa78a6","ast_ref":"a73e6fd62efa78a6","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(MAP('key', 1) AS MAP<STRING, INT>)","unsupported_messages":[]}
+{"atom_id":"c15200d9187e3b8a","ast_ref":"c15200d9187e3b8a","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(MAP('a', ARRAY(1), 'b', ARRAY(2), 'c', ARRAY(3)) AS MAP<STRING, ARRAY<INT>>)","unsupported_messages":[]}
+{"atom_id":"2434ba3b745a6942","ast_ref":"2434ba3b745a6942","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"095b2522afae68cd","ast_ref":"095b2522afae68cd","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE test STORED AS PARQUET AS SELECT 1","unsupported_messages":[]}
+{"atom_id":"1dc5634dcf9d4274","ast_ref":"1dc5634dcf9d4274","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE test STORED AS PARQUET AS SELECT 1","unsupported_messages":[]}
+{"atom_id":"52f88cbb16527b4e","ast_ref":"52f88cbb16527b4e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE test STORED AS PARQUET TBLPROPERTIES ('X'='1', 'Z'='2') AS SELECT 1","unsupported_messages":[]}
+{"atom_id":"58691d879483eac7","ast_ref":"58691d879483eac7","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE x (w STRING) PARTITIONED BY (y INT, z INT)","unsupported_messages":[]}
+{"atom_id":"ae19489c23a6fbe6","ast_ref":"ae19489c23a6fbe6","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE x TBLPROPERTIES ('bucket_by'=ARRAY('y'), 'bucket_count'=64) AS SELECT 1 AS y","unsupported_messages":[]}
+{"atom_id":"2ecdc756056391d4","ast_ref":"2ecdc756056391d4","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE db.example_table (col_a STRUCT<struct_col_a: INT, struct_col_b: STRING>)","unsupported_messages":[]}
+{"atom_id":"52cb35851f580b54","ast_ref":"52cb35851f580b54","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE db.example_table (col_a STRUCT<struct_col_a: INT, struct_col_b: STRUCT<nested_col_a: STRING, nested_col_b: STRING>>)","unsupported_messages":[]}
+{"atom_id":"a89f9e1703cf66b7","ast_ref":"a89f9e1703cf66b7","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"FIRST(x)","unsupported_messages":[]}
+{"atom_id":"2b3daf25544bc17f","ast_ref":"2b3daf25544bc17f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"COLLECT_LIST(x)","unsupported_messages":[]}
+{"atom_id":"b67462ea628fb302","ast_ref":"b67462ea628fb302","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT APPROX_COUNT_DISTINCT(a) FROM foo","unsupported_messages":[]}
+{"atom_id":"ba2c8b38cf2d88ff","ast_ref":"ba2c8b38cf2d88ff","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT APPROX_COUNT_DISTINCT(a) FROM foo","unsupported_messages":["Argument 'accuracy' is not supported for expression 'ApproxDistinct' when targeting Hive."]}
+{"atom_id":"0eeffd6b4c260fb4","ast_ref":"0eeffd6b4c260fb4","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT APPROX_COUNT_DISTINCT(a) FROM foo","unsupported_messages":["Argument 'accuracy' is not supported for expression 'ApproxDistinct' when targeting Hive."]}
+{"atom_id":"0e19d678120dc0ad","ast_ref":"0e19d678120dc0ad","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT GET_JSON_OBJECT(x, '$.name')","unsupported_messages":[]}
+{"atom_id":"344c74b14beb5709","ast_ref":"344c74b14beb5709","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT GET_JSON_OBJECT(x, '$.name')","unsupported_messages":[]}
+{"atom_id":"d23be84ac2e60399","ast_ref":"d23be84ac2e60399","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'毛'","unsupported_messages":[]}
+{"atom_id":"3902453985314293","ast_ref":"3902453985314293","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT SORT_ARRAY(x)","unsupported_messages":["Hive's SORT_ARRAY does not support a comparator."]}
+{"atom_id":"75da7ba4b0973ef2","ast_ref":"75da7ba4b0973ef2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT SORT_ARRAY(x)","unsupported_messages":[]}
+{"atom_id":"31c7b566bd1a507c","ast_ref":"31c7b566bd1a507c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT SORT_ARRAY(x)","unsupported_messages":["Hive's SORT_ARRAY does not support a comparator."]}
+{"atom_id":"de3f9c9fead95fe3","ast_ref":"de3f9c9fead95fe3","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"MAP(a, b)","unsupported_messages":["Cannot convert array columns into map."]}
+{"atom_id":"2fba91bc081ae22f","ast_ref":"2fba91bc081ae22f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"MAP(a, c, b, d)","unsupported_messages":[]}
+{"atom_id":"60e6e222743f4ccb","ast_ref":"60e6e222743f4ccb","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"MAP('a', 'b')","unsupported_messages":[]}
+{"atom_id":"2db44d81cd1d73df","ast_ref":"2db44d81cd1d73df","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM EXPLODE(ARRAY('7', '14')) AS x","unsupported_messages":[]}
+{"atom_id":"1600a680129c7d97","ast_ref":"1600a680129c7d97","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM EXPLODE(ARRAY('7', '14')) AS x(y)","unsupported_messages":[]}
+{"atom_id":"37e3d5feabe3994d","ast_ref":"37e3d5feabe3994d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT a, b, c, d, SUM(y) FROM z GROUP BY d, GROUPING SETS ((b, c)), CUBE (a), ROLLUP (a)","unsupported_messages":[]}
+{"atom_id":"fef905df307e0682","ast_ref":"fef905df307e0682","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REGEXP_EXTRACT('abc', '(a)(b)(c)', 0)","unsupported_messages":[]}
+{"atom_id":"61e5da6ee1d9d401","ast_ref":"61e5da6ee1d9d401","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'\\''","unsupported_messages":[]}
+{"atom_id":"a5342e25d938f4e5","ast_ref":"a5342e25d938f4e5","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'x'","unsupported_messages":[]}
+{"atom_id":"c3d12d6f7aaf77d4","ast_ref":"c3d12d6f7aaf77d4","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'\\'x\\''","unsupported_messages":[]}
+{"atom_id":"7677bbed6084d506","ast_ref":"7677bbed6084d506","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'\\'x'","unsupported_messages":[]}
+{"atom_id":"3329326bacc38d3b","ast_ref":"3329326bacc38d3b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"x IN ('a', 'a\\'b')","unsupported_messages":[]}
+{"atom_id":"f411cfc2862ec5ed","ast_ref":"f411cfc2862ec5ed","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"a RLIKE 'x'","unsupported_messages":[]}
+{"atom_id":"1f9305f58d5d27b6","ast_ref":"1f9305f58d5d27b6","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SPLIT(x, CONCAT('\\\\Q', 'a.', '\\\\E'))","unsupported_messages":[]}
+{"atom_id":"057e114a9627f18e","ast_ref":"057e114a9627f18e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SPLIT(x, 'a.')","unsupported_messages":[]}
+{"atom_id":"0c9f2f5dc43235de","ast_ref":"0c9f2f5dc43235de","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SIZE(x)","unsupported_messages":[]}
+{"atom_id":"4fa3c23926a2ed2b","ast_ref":"4fa3c23926a2ed2b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CONCAT_WS('-', x)","unsupported_messages":[]}
+{"atom_id":"723185ce95836302","ast_ref":"723185ce95836302","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REPLACE(subject, pattern, '')","unsupported_messages":[]}
+{"atom_id":"f4d69af358115119","ast_ref":"f4d69af358115119","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REPLACE(subject, pattern, replacement)","unsupported_messages":[]}
+{"atom_id":"e34e7e784a5a2692","ast_ref":"e34e7e784a5a2692","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATE_FORMAT(x, 'yyyy-MM-dd HH:mm:ss')","unsupported_messages":[]}
+{"atom_id":"05429e8fe0571380","ast_ref":"05429e8fe0571380","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"86aec1767747c663","ast_ref":"86aec1767747c663","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"8f7f782b7496f3e5","ast_ref":"8f7f782b7496f3e5","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATE_FORMAT(x, 'HH:mm:ss')","unsupported_messages":[]}
+{"atom_id":"a1065d1c6c759f5e","ast_ref":"a1065d1c6c759f5e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(SUBSTRING(x, 1, 10) AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"d78ee15ae20555fb","ast_ref":"d78ee15ae20555fb","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(SUBSTRING(x, 1, 10) AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"e3b4da61bb853ad4","ast_ref":"e3b4da61bb853ad4","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"FROM_UNIXTIME(x)","unsupported_messages":[]}
+{"atom_id":"3853cd6c5520a253","ast_ref":"3853cd6c5520a253","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"UNIX_TIMESTAMP(x)","unsupported_messages":[]}
+{"atom_id":"78ae39862e819d11","ast_ref":"78ae39862e819d11","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATE_ADD(x, 1)","unsupported_messages":[]}
+{"atom_id":"9ebedc0d06b71916","ast_ref":"9ebedc0d06b71916","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CURRENT_TIMESTAMP()","unsupported_messages":[]}
+{"atom_id":"c16efec52474c3ef","ast_ref":"c16efec52474c3ef","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT a FROM x LATERAL VIEW EXPLODE(ARRAY(y)) t AS a","unsupported_messages":[]}
+{"atom_id":"4304244be967a3f6","ast_ref":"4304244be967a3f6","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT a FROM x CROSS JOIN b LATERAL VIEW EXPLODE(ARRAY(y)) t AS a","unsupported_messages":[]}
+{"atom_id":"09724e216fe4ab50","ast_ref":"09724e216fe4ab50","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT a, b FROM (SELECT a AS a, b AS b, ROW_NUMBER() OVER (PARTITION BY a ORDER BY c DESC NULLS FIRST) AS _row_number FROM x) AS _t WHERE _row_number = 1","unsupported_messages":[]}
+{"atom_id":"c69185044f22f08e","ast_ref":"c69185044f22f08e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"DATEDIFF(b, a)","unsupported_messages":[]}
+{"atom_id":"4326f8029b77ae4d","ast_ref":"4326f8029b77ae4d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_MONTHS('2008-02-28', 18)","unsupported_messages":[]}
+{"atom_id":"779c02798305b736","ast_ref":"779c02798305b736","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT CAST(DATEDIFF('2009-12-31', '2009-01-01') / 7 AS INT)","unsupported_messages":[]}
+{"atom_id":"5760d7065290d5da","ast_ref":"5760d7065290d5da","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REGEXP_EXTRACT(subject, pattern, group)","unsupported_messages":["Argument 'position' is not supported for expression 'RegexpExtract' when targeting Hive.","Argument 'occurrence' is not supported for expression 'RegexpExtract' when targeting Hive.","Argument 'parameters' is not supported for expression 'RegexpExtract' when targeting Hive."]}
+{"atom_id":"22fceb7aad818908","ast_ref":"22fceb7aad818908","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REGEXP_EXTRACT(subject, pattern)","unsupported_messages":["Argument 'position' is not supported for expression 'RegexpExtract' when targeting Hive.","Argument 'occurrence' is not supported for expression 'RegexpExtract' when targeting Hive.","Argument 'parameters' is not supported for expression 'RegexpExtract' when targeting Hive."]}
+{"atom_id":"a92813ec1ecba05e","ast_ref":"a92813ec1ecba05e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REGEXP_REPLACE(subject, pattern, '')","unsupported_messages":[]}
+{"atom_id":"fc395b811e8ca2e0","ast_ref":"fc395b811e8ca2e0","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REGEXP_REPLACE(subject, pattern, replacement)","unsupported_messages":[]}
+{"atom_id":"ee8a3a84b9559955","ast_ref":"ee8a3a84b9559955","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REGEXP_REPLACE(subject, pattern, replacement)","unsupported_messages":["Argument 'position' is not supported for expression 'RegexpReplace' when targeting Hive."]}
+{"atom_id":"08633a384fd7c538","ast_ref":"08633a384fd7c538","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REGEXP_REPLACE(subject, pattern, replacement)","unsupported_messages":["Argument 'position' is not supported for expression 'RegexpReplace' when targeting Hive.","Argument 'occurrence' is not supported for expression 'RegexpReplace' when targeting Hive.","Argument 'modifiers' is not supported for expression 'RegexpReplace' when targeting Hive."]}
+{"atom_id":"4b545a8dd925d816","ast_ref":"4b545a8dd925d816","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REPLACE(subject, pattern, '')","unsupported_messages":[]}
+{"atom_id":"e3b8654660193f82","ast_ref":"e3b8654660193f82","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REPLACE(subject, pattern, replacement)","unsupported_messages":[]}
+{"atom_id":"576237d841f72583","ast_ref":"576237d841f72583","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT EXTRACT(year FROM CAST('2020-01-01' AS TIMESTAMP))","unsupported_messages":[]}
+{"atom_id":"48c3b47531422c1c","ast_ref":"48c3b47531422c1c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT i, p, o FROM (SELECT i, p, o, ROW_NUMBER() OVER (PARTITION BY p ORDER BY o NULLS LAST) AS _w FROM qt) AS _t WHERE _w = 1","unsupported_messages":[]}
+{"atom_id":"a53262284bfe6f35","ast_ref":"a53262284bfe6f35","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"POWER(x, 2)","unsupported_messages":[]}
+{"atom_id":"fd82f70c480dac08","ast_ref":"fd82f70c480dac08","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"IF(bar = 0 AND NOT foo IS NULL, 0, foo / bar)","unsupported_messages":[]}
+{"atom_id":"f2a6566143bc34f4","ast_ref":"f2a6566143bc34f4","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"IF((c - d) = 0 AND NOT (a - b) IS NULL, 0, (a - b) / (c - d))","unsupported_messages":[]}
+{"atom_id":"af69cdd8ca1cc3e2","ast_ref":"af69cdd8ca1cc3e2","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"IF(bar = 0 OR bar IS NULL, 0, foo / bar)","unsupported_messages":[]}
+{"atom_id":"70e38e2dba6b3a1b","ast_ref":"70e38e2dba6b3a1b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"IF((c - d) = 0 OR (c - d) IS NULL, 0, (a - b) / (c - d))","unsupported_messages":[]}
+{"atom_id":"80cafc41669b6c27","ast_ref":"80cafc41669b6c27","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"IF(foo IS NULL, 0, foo)","unsupported_messages":[]}
+{"atom_id":"253dbcf63b71d606","ast_ref":"253dbcf63b71d606","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"IF(foo = 0, NULL, foo)","unsupported_messages":[]}
+{"atom_id":"0f938a6f1095d72d","ast_ref":"0f938a6f1095d72d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT fname, lname, age FROM person ORDER BY age DESC NULLS FIRST, fname ASC NULLS LAST, lname NULLS LAST","unsupported_messages":[]}
+{"atom_id":"766ad4a2f221b894","ast_ref":"766ad4a2f221b894","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT a RLIKE b","unsupported_messages":[]}
+{"atom_id":"55e9fe1797f8ec42","ast_ref":"55e9fe1797f8ec42","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT NOT a RLIKE b","unsupported_messages":[]}
+{"atom_id":"a569af1c4b9b23b4","ast_ref":"a569af1c4b9b23b4","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT a RLIKE b","unsupported_messages":[]}
+{"atom_id":"a2ad245b3c746e58","ast_ref":"a2ad245b3c746e58","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(UUID() AS STRING)","unsupported_messages":[]}
+{"atom_id":"6f9d6a7bcec7c00f","ast_ref":"6f9d6a7bcec7c00f","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE db.example_table (col_a STRUCT<struct_col_a: INT, struct_col_b: STRING>)","unsupported_messages":[]}
+{"atom_id":"f9d18c3b7a3a285b","ast_ref":"f9d18c3b7a3a285b","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE db.example_table (col_a STRUCT<struct_col_a: INT, struct_col_b: STRUCT<nested_col_a: STRING, nested_col_b: STRING>>)","unsupported_messages":[]}
+{"atom_id":"64fe2d249b0b3dcf","ast_ref":"64fe2d249b0b3dcf","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE db.example_table (col_a ARRAY<INT>, col_b ARRAY<ARRAY<INT>>)","unsupported_messages":[]}
+{"atom_id":"06c42cf4ef3bb7dc","ast_ref":"06c42cf4ef3bb7dc","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE x STORED AS ICEBERG PARTITIONED BY (MONTHS(y)) LOCATION 's3://z'","unsupported_messages":[]}
+{"atom_id":"fa1fc5e1858ac8ae","ast_ref":"fa1fc5e1858ac8ae","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE test STORED AS PARQUET AS SELECT 1","unsupported_messages":[]}
+{"atom_id":"0a4810b486118daf","ast_ref":"0a4810b486118daf","dialect":"hive","flags":{"pretty":true,"identify":false},"sql":"CREATE TABLE blah (\n  col_a INT\n)\nCOMMENT 'Test comment: blah'\nPARTITIONED BY (\n  date STRING\n)\nSTORED AS ICEBERG\nTBLPROPERTIES (\n  'x'='1'\n)","unsupported_messages":[]}
+{"atom_id":"a0f5104ef5b81ce4","ast_ref":"a0f5104ef5b81ce4","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER TABLE db.example CHANGE COLUMN col_a col_a BIGINT","unsupported_messages":[]}
+{"atom_id":"c3cb4e78429c5d7d","ast_ref":"c3cb4e78429c5d7d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER TABLE db.example CHANGE COLUMN col_a col_a BIGINT","unsupported_messages":[]}
+{"atom_id":"60bd44cf6955ad47","ast_ref":"60bd44cf6955ad47","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER TABLE db.example","unsupported_messages":["Cannot rename columns without data type defined in Hive"]}
+{"atom_id":"c34088a52192bec5","ast_ref":"c34088a52192bec5","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"WITH cte AS (SELECT cola FROM other_table) INSERT OVERWRITE TABLE table SELECT cola FROM cte","unsupported_messages":[]}
+{"atom_id":"7d0f5d4ea6396d58","ast_ref":"7d0f5d4ea6396d58","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CONCAT_WS(' ', NULL, 'Smith')","unsupported_messages":[]}
+{"atom_id":"3d6ba7d1099d39ed","ast_ref":"3d6ba7d1099d39ed","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"WITH tbl AS (SELECT 1 AS id, 'eggy' AS name UNION ALL SELECT NULL AS id, 'jake' AS name) SELECT COUNT(DISTINCT id, name) AS cnt FROM tbl","unsupported_messages":[]}
+{"atom_id":"e5306a810d438ad9","ast_ref":"e5306a810d438ad9","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT CAST(DATEDIFF('2020-12-31', '2020-01-01') / 7 AS INT)","unsupported_messages":[]}
+{"atom_id":"d35e417da22d4d19","ast_ref":"d35e417da22d4d19","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT MONTHS_BETWEEN('1997-02-28 10:30:00', '1996-10-30')","unsupported_messages":[]}
+{"atom_id":"53cea28d4f2a1c97","ast_ref":"53cea28d4f2a1c97","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT MONTHS_BETWEEN('1997-02-28 10:30:00', '1996-10-30')","unsupported_messages":[]}
+{"atom_id":"9924594f2f309cf6","ast_ref":"9924594f2f309cf6","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT 'John Doe' RLIKE 'John.*'","unsupported_messages":[]}
+{"atom_id":"155629983fe91329","ast_ref":"155629983fe91329","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT CAST(MONTHS_BETWEEN('2020-03-05', '2020-01-01') AS INT)","unsupported_messages":[]}
+{"atom_id":"bcd8f8c60d0c0784","ast_ref":"bcd8f8c60d0c0784","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"REDUCE(my_arr, 0, (acc, x) -> acc + x, s -> s * 2)","unsupported_messages":[]}
+{"atom_id":"a2b13cbfee977b06","ast_ref":"a2b13cbfee977b06","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SORT_ARRAY(x)","unsupported_messages":["Hive's SORT_ARRAY does not support a comparator."]}
+{"atom_id":"9950a9cd8036e71a","ast_ref":"9950a9cd8036e71a","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ARRAY(0, 1, 2)","unsupported_messages":[]}
+{"atom_id":"e1737f82b3fbeb05","ast_ref":"e1737f82b3fbeb05","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT fname, lname, age FROM person ORDER BY age DESC NULLS FIRST, fname ASC NULLS LAST, lname","unsupported_messages":[]}
+{"atom_id":"defd5a8ad801edfc","ast_ref":"defd5a8ad801edfc","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT APPROX_COUNT_DISTINCT(a) FROM foo","unsupported_messages":[]}
+{"atom_id":"d2b4a1c616b75f49","ast_ref":"d2b4a1c616b75f49","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"MONTH('2021-03-01')","unsupported_messages":[]}
+{"atom_id":"2c4f3dbe5129cd97","ast_ref":"2c4f3dbe5129cd97","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"YEAR('2021-03-01')","unsupported_messages":[]}
+{"atom_id":"7fb4ee2bb9cfe79d","ast_ref":"7fb4ee2bb9cfe79d","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'毛'","unsupported_messages":[]}
+{"atom_id":"8bc42b21cbbf1fff","ast_ref":"8bc42b21cbbf1fff","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT SUBSTRING(x, 1, 2), SUBSTRING(x, LENGTH(x) - (2 - 1))","unsupported_messages":[]}
+{"atom_id":"18035446166bcdee","ast_ref":"18035446166bcdee","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"MAP(ARRAY(1), c)","unsupported_messages":["Cannot convert array columns into map."]}
+{"atom_id":"63c7e534a0dd0052","ast_ref":"63c7e534a0dd0052","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT SORT_ARRAY(x)","unsupported_messages":[]}
+{"atom_id":"84e7dd61d0c04874","ast_ref":"84e7dd61d0c04874","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"TO_DATE(x)","unsupported_messages":[]}
+{"atom_id":"5a551934948cfcdc","ast_ref":"5a551934948cfcdc","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"TO_DATE(x, 'yyyy')","unsupported_messages":[]}
+{"atom_id":"5a8667d85724753c","ast_ref":"5a8667d85724753c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT id, t.type, t.scores FROM example_table, EXPLODE(SPLIT(type, CONCAT('\\\\Q', ';', '\\\\E')), scores, t(type, scores))","unsupported_messages":["Cannot transpile UNNEST with multiple input arrays"]}
+{"atom_id":"1f104155bed6d007","ast_ref":"1f104155bed6d007","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT id, t.type, t.scores FROM example_table_2 CROSS JOIN LATERAL EXPLODE(SPLIT(type, CONCAT('\\\\Q', ';', '\\\\E')), scores) AS t(type, scores)","unsupported_messages":["Cannot transpile UNNEST with multiple input arrays"]}
+{"atom_id":"615e09166d9c3f84","ast_ref":"615e09166d9c3f84","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"`x`","unsupported_messages":[]}
+{"atom_id":"1a32094d5dc2d871","ast_ref":"1a32094d5dc2d871","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"'x'","unsupported_messages":[]}
+{"atom_id":"2dd57034820af7fc","ast_ref":"2dd57034820af7fc","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"IF(x = 'a', y, NULL)","unsupported_messages":[]}
+{"atom_id":"67ac2f8d53a182e7","ast_ref":"67ac2f8d53a182e7","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"COALESCE(a, 0)","unsupported_messages":[]}
+{"atom_id":"ecd4aff2d8060a73","ast_ref":"ecd4aff2d8060a73","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"COUNT(DISTINCT a)","unsupported_messages":[]}
+{"atom_id":"8a0e36e9a71b82a5","ast_ref":"8a0e36e9a71b82a5","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"COUNT(DISTINCT (a))","unsupported_messages":[]}
+{"atom_id":"676b23fdadb2a542","ast_ref":"676b23fdadb2a542","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"COUNT(a)","unsupported_messages":[]}
+{"atom_id":"059674084d4ab8ab","ast_ref":"059674084d4ab8ab","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE a","unsupported_messages":["Unsupported property volatileproperty"]}
+{"atom_id":"e1acdfa8703bfcc5","ast_ref":"e1acdfa8703bfcc5","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"ALTER TABLE a CHANGE COLUMN b b INT","unsupported_messages":["Unsupported CHANGE COLUMN syntax"]}
+{"atom_id":"7e8e53a7b29c8a03","ast_ref":"7e8e53a7b29c8a03","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"SELECT ${x}","unsupported_messages":[]}
+{"atom_id":"6b4a610b8f59011e","ast_ref":"6b4a610b8f59011e","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TEMPORARY TABLE mytemptable (a INT)","unsupported_messages":[]}
+{"atom_id":"cf885c3aa67052b6","ast_ref":"cf885c3aa67052b6","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE `dbo`.`mytable` (`email` VARCHAR(255) NOT NULL)","unsupported_messages":[]}
+{"atom_id":"764ed5a1fbc12895","ast_ref":"764ed5a1fbc12895","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE x (A INT NOT NULL, B INT)","unsupported_messages":[]}
+{"atom_id":"dff9060ca7e01562","ast_ref":"dff9060ca7e01562","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE x (A INT NOT NULL, B INT)","unsupported_messages":[]}
+{"atom_id":"f85dbaba8974bc70","ast_ref":"f85dbaba8974bc70","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"0e1b7c40c53bfe28","ast_ref":"0e1b7c40c53bfe28","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS BINARY)","unsupported_messages":[]}
+{"atom_id":"2e2e073dc8e13540","ast_ref":"2e2e073dc8e13540","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS FLOAT)","unsupported_messages":[]}
+{"atom_id":"858c6e4037148178","ast_ref":"858c6e4037148178","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS FLOAT)","unsupported_messages":[]}
+{"atom_id":"4af4fb8db11d0eb8","ast_ref":"4af4fb8db11d0eb8","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DOUBLE)","unsupported_messages":[]}
+{"atom_id":"777a1c8875ca3f78","ast_ref":"777a1c8875ca3f78","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DOUBLE)","unsupported_messages":[]}
+{"atom_id":"6d133a3848c0254c","ast_ref":"6d133a3848c0254c","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(X AS INT)","unsupported_messages":[]}
+{"atom_id":"974243290f8c5503","ast_ref":"974243290f8c5503","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(X AS BIGINT)","unsupported_messages":[]}
+{"atom_id":"389d093b1956d915","ast_ref":"389d093b1956d915","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(X AS SMALLINT)","unsupported_messages":[]}
+{"atom_id":"68325a64b3c56f81","ast_ref":"68325a64b3c56f81","dialect":"hive","flags":{"pretty":false,"identify":false},"sql":"CAST(X AS SMALLINT)","unsupported_messages":[]}

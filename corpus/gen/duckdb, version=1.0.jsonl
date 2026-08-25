@@ -1,0 +1,1 @@
+{"atom_id":"413aec7ed059ba14","ast_ref":"413aec7ed059ba14","dialect":"duckdb, version=1.0","flags":{"pretty":false,"identify":false},"sql":"SUM(CASE WHEN x THEN 1 ELSE 0 END)","unsupported_messages":[]}

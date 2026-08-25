@@ -1,0 +1,1 @@
+{"atom_id":"0ef91307476d8e35","ast_ref":"0ef91307476d8e35","dialect":"prql","flags":{"pretty":false,"identify":false},"sql":"FLOOR(__time TO WEEK)","unsupported_messages":[]}

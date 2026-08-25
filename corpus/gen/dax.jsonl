@@ -1,0 +1,1 @@
+{"atom_id":"640acc18a922a466","ast_ref":"640acc18a922a466","dialect":"dax","flags":{"pretty":false,"identify":false},"sql":"FLOOR(__time TO WEEK)","unsupported_messages":[]}

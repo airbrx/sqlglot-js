@@ -1,0 +1,50 @@
+{"atom_id":"ee3411308924a444","ast_ref":"ee3411308924a444","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"FLOOR(__time TO WEEK)","unsupported_messages":[]}
+{"atom_id":"2d8fa91cf218096b","ast_ref":"2d8fa91cf218096b","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIME(6))","unsupported_messages":[]}
+{"atom_id":"c0b1332affc3c6c3","ast_ref":"c0b1332affc3c6c3","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATETIME2(6))","unsupported_messages":[]}
+{"atom_id":"21427f9a47c944e2","ast_ref":"21427f9a47c944e2","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIME(3))","unsupported_messages":[]}
+{"atom_id":"134c8a3750729da8","ast_ref":"134c8a3750729da8","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATETIME2(3))","unsupported_messages":[]}
+{"atom_id":"18b1587a7d25935b","ast_ref":"18b1587a7d25935b","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIME(6))","unsupported_messages":[]}
+{"atom_id":"fa9638aa8aeabbc7","ast_ref":"fa9638aa8aeabbc7","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATETIME2(6))","unsupported_messages":[]}
+{"atom_id":"b4b931e9bf543edb","ast_ref":"b4b931e9bf543edb","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIME(6))","unsupported_messages":[]}
+{"atom_id":"e6663d0865ec2df5","ast_ref":"e6663d0865ec2df5","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATETIME2(6))","unsupported_messages":[]}
+{"atom_id":"d795ac48706a8253","ast_ref":"d795ac48706a8253","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIME(6))","unsupported_messages":[]}
+{"atom_id":"2b0fec85f1cc2a72","ast_ref":"2b0fec85f1cc2a72","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATETIME2(6))","unsupported_messages":[]}
+{"atom_id":"9a0cf76751839f8a","ast_ref":"9a0cf76751839f8a","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(CAST(x AS DATETIMEOFFSET(6)) AT TIME ZONE 'Pacific Standard Time' AS DATETIME2(6))","unsupported_messages":[]}
+{"atom_id":"0ac2b0eb7ca78358","ast_ref":"0ac2b0eb7ca78358","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(CAST(x AS DATETIMEOFFSET(3)) AT TIME ZONE 'Pacific Standard Time' AS DATETIME2(3))","unsupported_messages":[]}
+{"atom_id":"4b1ed21398288a77","ast_ref":"4b1ed21398288a77","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(CAST(x AS DATETIMEOFFSET(6)) AT TIME ZONE 'Pacific Standard Time' AS DATETIME2(6))","unsupported_messages":[]}
+{"atom_id":"3dde41286ba23885","ast_ref":"3dde41286ba23885","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(CAST(x AS DATETIMEOFFSET(6)) AT TIME ZONE 'Pacific Standard Time' AS DATETIME2(6))","unsupported_messages":[]}
+{"atom_id":"fcebb09f759ba53b","ast_ref":"fcebb09f759ba53b","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATETIME2(6))","unsupported_messages":[]}
+{"atom_id":"3ff5acba0ce7b03c","ast_ref":"3ff5acba0ce7b03c","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATETIME2(3))","unsupported_messages":[]}
+{"atom_id":"14b784e7d5fad9f7","ast_ref":"14b784e7d5fad9f7","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATETIME2(6))","unsupported_messages":[]}
+{"atom_id":"b3561d954e4bf337","ast_ref":"b3561d954e4bf337","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATETIME2(6))","unsupported_messages":[]}
+{"atom_id":"014b63e8aef3aec9","ast_ref":"014b63e8aef3aec9","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS BIT)","unsupported_messages":[]}
+{"atom_id":"9291dacc169d25fd","ast_ref":"9291dacc169d25fd","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATE)","unsupported_messages":[]}
+{"atom_id":"f84550c091a50d47","ast_ref":"f84550c091a50d47","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATETIME2(6))","unsupported_messages":[]}
+{"atom_id":"8ebbc28892700f3c","ast_ref":"8ebbc28892700f3c","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DECIMAL)","unsupported_messages":[]}
+{"atom_id":"799663fdeb31ca37","ast_ref":"799663fdeb31ca37","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS FLOAT)","unsupported_messages":[]}
+{"atom_id":"f2ff9067743a0d2c","ast_ref":"f2ff9067743a0d2c","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARBINARY)","unsupported_messages":[]}
+{"atom_id":"026bd328044f9cf5","ast_ref":"026bd328044f9cf5","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS INT)","unsupported_messages":[]}
+{"atom_id":"5a9c5c9e152be1df","ast_ref":"5a9c5c9e152be1df","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"a46a94d3db79a28a","ast_ref":"a46a94d3db79a28a","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DECIMAL)","unsupported_messages":[]}
+{"atom_id":"1978304ec429570b","ast_ref":"1978304ec429570b","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS CHAR)","unsupported_messages":[]}
+{"atom_id":"2f1b9ad91e1a1bf0","ast_ref":"2f1b9ad91e1a1bf0","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"e36fa2bd32ae7c70","ast_ref":"e36fa2bd32ae7c70","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS ROWVERSION)","unsupported_messages":[]}
+{"atom_id":"c6fd0fe0d9a895c0","ast_ref":"c6fd0fe0d9a895c0","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATETIME2(6))","unsupported_messages":[]}
+{"atom_id":"62fa3e97f71e63a6","ast_ref":"62fa3e97f71e63a6","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DECIMAL)","unsupported_messages":[]}
+{"atom_id":"7977192c23ddc25f","ast_ref":"7977192c23ddc25f","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR(MAX))","unsupported_messages":[]}
+{"atom_id":"362722c6cbb26bb6","ast_ref":"362722c6cbb26bb6","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATETIME2(6))","unsupported_messages":[]}
+{"atom_id":"6a9c5646e194364b","ast_ref":"6a9c5646e194364b","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATETIME2(6))","unsupported_messages":[]}
+{"atom_id":"36fc07b5394fd7da","ast_ref":"36fc07b5394fd7da","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS SMALLINT)","unsupported_messages":[]}
+{"atom_id":"f41896730c129e63","ast_ref":"f41896730c129e63","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS SMALLINT)","unsupported_messages":[]}
+{"atom_id":"9b181c31ee6b401e","ast_ref":"9b181c31ee6b401e","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS UNIQUEIDENTIFIER)","unsupported_messages":[]}
+{"atom_id":"e8d4be3e75fbb70b","ast_ref":"e8d4be3e75fbb70b","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS SQL_VARIANT)","unsupported_messages":[]}
+{"atom_id":"d554c5f86065ca79","ast_ref":"d554c5f86065ca79","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"1b79ffbaed7221e9","ast_ref":"1b79ffbaed7221e9","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"DATEADD(MICROSECONDS, CAST(ROUND(column * 1e6, 0) AS BIGINT), CAST('1970-01-01' AS DATETIME2(6)))","unsupported_messages":[]}
+{"atom_id":"4316e94938182602","ast_ref":"4316e94938182602","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE t (col VARCHAR(1))","unsupported_messages":[]}
+{"atom_id":"4e722cc20add7bfd","ast_ref":"4e722cc20add7bfd","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE t (col VARCHAR(50))","unsupported_messages":[]}
+{"atom_id":"0b7dd5b808e9d8ee","ast_ref":"0b7dd5b808e9d8ee","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE t (col CHAR(1))","unsupported_messages":[]}
+{"atom_id":"ba15e34069ee9423","ast_ref":"ba15e34069ee9423","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE t (col CHAR(10))","unsupported_messages":[]}
+{"atom_id":"d3eda4cbe40f2fd2","ast_ref":"d3eda4cbe40f2fd2","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE t (col VARCHAR(MAX))","unsupported_messages":[]}
+{"atom_id":"6bc754a079078e65","ast_ref":"6bc754a079078e65","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE t (col VARCHAR(MAX))","unsupported_messages":[]}
+{"atom_id":"84dab52f2abe597b","ast_ref":"84dab52f2abe597b","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE t (col CHAR(MAX))","unsupported_messages":[]}
+{"atom_id":"dd9b1467ffdfbd7f","ast_ref":"dd9b1467ffdfbd7f","dialect":"fabric","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE t (col CHAR(MAX))","unsupported_messages":[]}

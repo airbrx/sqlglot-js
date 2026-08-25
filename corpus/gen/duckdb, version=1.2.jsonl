@@ -1,0 +1,2 @@
+{"atom_id":"2b9058c7225ce534","ast_ref":"2b9058c7225ce534","dialect":"duckdb, version=1.2","flags":{"pretty":false,"identify":false},"sql":"COUNT_IF(x)","unsupported_messages":[]}
+{"atom_id":"440ba3eef67dcfe9","ast_ref":"440ba3eef67dcfe9","dialect":"duckdb, version=1.2","flags":{"pretty":false,"identify":false},"sql":"SELECT COUNT_IF((x > 1) IS TRUE) FROM t","unsupported_messages":[]}

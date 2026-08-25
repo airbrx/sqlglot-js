@@ -19,6 +19,7 @@ AST gate non-tautological and human-readable (§3.1(B)).
 """
 
 import argparse
+import enum
 import json
 import os
 import sys
@@ -38,6 +39,7 @@ def main():
 
     from sqlglot import exp, parse_one, ErrorLevel
     from sqlglot.generator import Generator
+    from sqlglot.dialects.dialect import Dialect
 
     # ---- capture unsupported_messages (§3.1 D) -------------------------------
     last = {"messages": []}
@@ -66,11 +68,20 @@ def main():
         if isinstance(node, tuple):
             # Tagged so the JS side can tell a tuple from a list.
             return {"__tuple__": [dump(v) for v in node]}
-        if isinstance(node, (str, int, float, bool)) or node is None:
+        if isinstance(node, bool) or node is None:
             return node
+        if isinstance(node, (str, int, float)):
+            return node
+        if isinstance(node, enum.Enum):
+            # exp.DType and friends. `name` is the stable identity; `value` is carried
+            # too because some enums round-trip by value.
+            return {"__enum__": type(node).__name__, "name": node.name, "value": node.value}
         if isinstance(node, type):
             # e.g. arg values that are classes (DataType refs)
             return {"__type__": node.__name__}
+        if isinstance(node, Dialect):
+            # A parsed-in Dialect instance (e.g. ClickHouse) held on an arg.
+            return {"__dialect__": type(node).__name__}
         # Anything else is a leak in this dumper, not something to coerce silently.
         return {"__unknown__": repr(node), "__pytype__": type(node).__name__}
 

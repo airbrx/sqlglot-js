@@ -1,0 +1,3 @@
+{"atom_id":"38650d828bceefdb","ast_ref":"38650d828bceefdb","dialect":"spark, version=3.0.0","flags":{"pretty":false,"identify":false},"sql":"ARRAY_JOIN(COLLECT_LIST(sellerid), ', ')","unsupported_messages":[]}
+{"atom_id":"a9e10f5267127057","ast_ref":"a9e10f5267127057","dialect":"spark, version=3.0.0","flags":{"pretty":false,"identify":false},"sql":"ARRAY_JOIN(COLLECT_LIST(x), ', ')","unsupported_messages":[]}
+{"atom_id":"0c50f49924261237","ast_ref":"0c50f49924261237","dialect":"spark, version=3.0.0","flags":{"pretty":false,"identify":false},"sql":"ARRAY_JOIN(COLLECT_LIST(x), ', ')","unsupported_messages":[]}
