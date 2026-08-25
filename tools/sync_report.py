@@ -22,9 +22,30 @@ SNAPSHOT = "corpus/manifest.json"
 
 
 def norm_body(src_lines, node):
-    """Body hash that ignores docstrings, comments and blank lines, so a reflow does
-    not read as a change but a real edit does."""
-    seg = src_lines[node.lineno - 1 : node.end_lineno]
+    """Body hash that ignores the `def ...:` signature line, a leading docstring,
+    comments and blank lines, so a reflow -- or a RENAME -- does not read as a change,
+    but a real edit does.
+
+    Codex review, PR #1: the signature line was previously included in the hashed
+    segment (`src_lines[node.lineno - 1 : ...]`, where `node.lineno` is the `def` line
+    itself on Python 3.8+). That meant renaming a method while leaving its body
+    identical still changed the hash -- `diff()`'s rename detector matches purely on
+    hash equality, so every rename was silently reported as an unrelated add+remove
+    instead of the promised rename work item. The bug was invisible to the old
+    selftest because it constructed synthetic manifest entries with pre-chosen hash
+    values instead of calling `manifest_for`/`norm_body` on real source (see
+    `selftest()` below, which now does).
+    """
+    body = node.body
+    start = node.lineno  # 0-indexed position of the line AFTER `def ...:` (1-indexed
+    # node.lineno IS the def line on Python 3.8+, even for decorated functions).
+    if (
+        body
+        and isinstance(body[0], ast.Expr)
+        and isinstance(getattr(body[0].value, "value", None), str)
+    ):
+        start = max(start, body[0].end_lineno)  # also skip a leading docstring
+    seg = src_lines[start : node.end_lineno]
     out = []
     for line in seg:
         s = line.strip()
@@ -35,15 +56,13 @@ def norm_body(src_lines, node):
     return hashlib.sha256(text.encode("utf8")).hexdigest()[:12]
 
 
-def manifest_for(path):
-    """{qualname: {line, end, hash}} for every function/method in a module."""
-    with open(path, encoding="utf8") as f:
-        src = f.read()
+def manifest_for_source(src, label="<string>"):
+    """{qualname: {line, end, hash}} for every function/method in Python source text."""
     lines = src.splitlines()
     try:
         tree = ast.parse(src)
     except SyntaxError as e:
-        return {"__parse_error__": str(e)}
+        return {"__parse_error__": f"{label}: {e}"}
 
     out = {}
 
@@ -61,6 +80,13 @@ def manifest_for(path):
 
     walk(tree, "")
     return out
+
+
+def manifest_for(path):
+    """{qualname: {line, end, hash}} for every function/method in a module file."""
+    with open(path, encoding="utf8") as f:
+        src = f.read()
+    return manifest_for_source(src, label=path)
 
 
 def collect(ref, subdir="sqlglot"):
@@ -155,6 +181,41 @@ def selftest():
     old2 = {"a.py": {"f": M(10, "h1")}}
     new2 = {"a.py": {"f": M(99, "h1")}}
     t("pure move is not a change", "a.py" not in diff(old2, new2)["changed"])
+
+    # Codex review, PR #1: exercise manifest_for_source on REAL code, not synthetic
+    # hashes, so a regression in norm_body's line-skipping (signature/docstring) is
+    # actually caught by this test instead of being invisible to it.
+    src_before = (
+        "def _parse_bitwise(self, token):\n"
+        '    """Old name."""\n'
+        "    return self.this + 1\n"
+    )
+    src_renamed = (
+        "def _parse_binary(self, token):\n"
+        '    """New docstring text -- should not affect the hash."""\n'
+        "    return self.this + 1\n"
+    )
+    src_body_changed = (
+        "def _parse_binary(self, token):\n"
+        '    """New docstring text -- should not affect the hash."""\n'
+        "    return self.this + 2\n"
+    )
+    m_before = manifest_for_source(src_before)
+    m_renamed = manifest_for_source(src_renamed)
+    m_body_changed = manifest_for_source(src_body_changed)
+    t(
+        "real rename: identical body, different name+docstring -> same hash",
+        m_before["_parse_bitwise"]["hash"] == m_renamed["_parse_binary"]["hash"],
+    )
+    t(
+        "real rename detected end-to-end via diff()",
+        diff({"a.py": m_before}, {"a.py": m_renamed})["changed"]["a.py"]["renamed"]
+        == [["_parse_bitwise", "_parse_binary"]],
+    )
+    t(
+        "real body edit still changes the hash",
+        m_renamed["_parse_binary"]["hash"] != m_body_changed["_parse_binary"]["hash"],
+    )
 
     bad = 0
     for name, ok in checks:

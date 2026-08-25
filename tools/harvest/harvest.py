@@ -214,6 +214,17 @@ def main():
     runner = unittest.TextTestRunner(stream=open(os.devnull, "w"), verbosity=0)
     res = runner.run(suite)
 
+    # Sort before writing. The atom SET is deterministic across runs (verified: 5 runs,
+    # 3 with distinct explicit PYTHONHASHSEED values, identical atom_id sets every time
+    # -- content never depends on set/dict iteration order), but unittest's collection
+    # and the harvester's own append order are not byte-stable, so an unsorted write
+    # made every re-harvest of an UNCHANGED corpus look like a large diff (spurious
+    # add+remove churn on identical content, discovered while validating the Codex
+    # review's `make resync`-before-`accept-corpus` fix on PR #1). Sorting by atom_id
+    # -- itself a stable hash of the atom's own identity -- makes the file order a pure
+    # function of content, so `git diff` after a re-harvest reflects only real changes.
+    atoms.sort(key=lambda a: a["atom_id"])
+
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     with open(args.out, "w", encoding="utf8") as f:
         for a in atoms:
@@ -230,6 +241,12 @@ def main():
         "upstream_commit": commit,
         "python_version": sys.version.split()[0],
         "unidata_version": unicodedata.unidata_version,
+        # Documents the fix in Makefile's `corpus:` target: corpus/ast and corpus/gen
+        # (built by astdump.py, not this script) are only byte-reproducible under a
+        # pinned hash seed -- upstream's Union/SetOperation args ordering is genuinely
+        # PYTHONHASHSEED-dependent. atoms.jsonl itself is unaffected (atom_id/expect_hash
+        # hash over sql/read/write/etc., never over parsed-AST arg order).
+        "python_hash_seed": os.environ.get("PYTHONHASHSEED"),
         "atom_count": len(atoms),
         "tests_run": res.testsRun,
         "test_failures": len(res.failures),

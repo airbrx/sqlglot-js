@@ -21,9 +21,28 @@ import {
   inputKey,
   PASS,
 } from "../tools/ratchet.mjs";
+import { UnsupportedError } from "../src/errors.js";
 
 const RATCHET_PATH = "test/ratchet.json";
 const ATOMS_PATH = "corpus/atoms.jsonl";
+const PROVENANCE_PATH = "corpus/PROVENANCE.json";
+
+// PORT_PLAN.md §5.2/R6: golden expectations are interpreter-version-dependent
+// (subsecond_precision, Unicode data). A corpus harvested under a different toolchain
+// must not be silently accepted -- that is the exact failure mode R6 exists to name.
+// Compares only the fields that are known to change output SQL (python_version,
+// unidata_version); upstream_commit drift is what --resync is FOR, so it is not checked
+// here.
+function checkProvenance(ratchet) {
+  if (!existsSync(PROVENANCE_PATH)) return { ok: true }; // nothing harvested yet
+  const current = JSON.parse(readFileSync(PROVENANCE_PATH, "utf8"));
+  if (!ratchet.provenance) return { ok: true, current }; // first --baseline sets it
+  const accepted = ratchet.provenance;
+  const mismatch =
+    accepted.python_version !== current.python_version ||
+    accepted.unidata_version !== current.unidata_version;
+  return { ok: !mismatch, current, accepted };
+}
 
 export function loadAtoms(path = ATOMS_PATH) {
   const out = [];
@@ -65,8 +84,15 @@ export function runAtom(atom, transpile) {
       identify: atom.identify,
     });
   } catch (e) {
-    // `expected: null` is the UnsupportedError sentinel (§7 P4's 5 cases).
-    if (atom.expected === null) return { ok: true, reason: "EXPECTED_UNSUPPORTED" };
+    // `expected: null` is the UnsupportedError sentinel (§7 P4's 5 cases). Only the
+    // library's own UnsupportedError may satisfy it — an unrelated crash (TypeError,
+    // a bug in the generator) throwing on the same input must NOT be able to pass by
+    // accident. Codex review, PR #1: the previous `if (atom.expected === null)` branch
+    // accepted any thrown value here, which would hide exactly that class of defect.
+    if (atom.expected === null) {
+      if (e instanceof UnsupportedError) return { ok: true, reason: "EXPECTED_UNSUPPORTED" };
+      return { ok: false, reason: "THREW_WRONG_TYPE", detail: String(e && e.message) };
+    }
     return { ok: false, reason: "THREW", detail: String(e && e.message) };
   }
   if (atom.expected === null) {
@@ -122,15 +148,25 @@ function selftest() {
   const loud = () => ({ sql: "SELECT 1", unsupportedMessages: ["x is not supported"] });
   t("matching unsupported_messages passes", runAtom(needsMsg, loud).ok);
 
-  // UnsupportedError sentinel: expected === null means the generate must THROW.
+  // UnsupportedError sentinel: expected === null means the generate must throw the
+  // library's OWN UnsupportedError -- not just throw something.
   const sentinel = atom({ expected: null });
-  const thrower = () => {
-    throw new Error("UnsupportedError");
+  const throwsUnsupported = () => {
+    throw new UnsupportedError("x is not supported");
   };
-  t("sentinel passes when it throws", runAtom(sentinel, thrower).ok);
+  t("sentinel passes when it throws UnsupportedError", runAtom(sentinel, throwsUnsupported).ok);
   t(
     "sentinel fails when it returns",
     runAtom(sentinel, good).reason === "EXPECTED_THROW_BUT_RETURNED",
+  );
+  // Codex review, PR #1: an unrelated crash on a sentinel atom must not be able to pass
+  // by accident just because it happened to throw.
+  const throwsUnrelated = () => {
+    throw new TypeError("cannot read properties of undefined");
+  };
+  t(
+    "sentinel fails when a non-UnsupportedError is thrown",
+    runAtom(sentinel, throwsUnrelated).reason === "THREW_WRONG_TYPE",
   );
 
   // Ratchet wiring: a pass-listed atom that fails must be reported as a regression.
@@ -159,14 +195,38 @@ if (!existsSync(ATOMS_PATH)) {
 
 const atoms = loadAtoms();
 const ratchet = loadRatchet(RATCHET_PATH);
+const isBaselining = argv.includes("--baseline");
 
-if (argv.includes("--baseline")) {
+// R6/§5.2: enforce the recorded corpus provenance before doing anything else with the
+// atoms. Skipped only when --baseline is the explicit human act of accepting a new one.
+if (!isBaselining) {
+  const prov = checkProvenance(ratchet);
+  if (!prov.ok) {
+    console.error(
+      `\n  PROVENANCE MISMATCH -- corpus/PROVENANCE.json does not match the accepted toolchain.\n` +
+        `    accepted: python ${prov.accepted.python_version}, unidata ${prov.accepted.unidata_version}\n` +
+        `    current:  python ${prov.current.python_version}, unidata ${prov.current.unidata_version}\n` +
+        `  Golden SQL is interpreter-version-dependent (subsecond_precision, Unicode data).\n` +
+        `  Re-run with --baseline to explicitly accept this toolchain, or re-harvest under\n` +
+        `  the accepted one.\n`,
+    );
+    process.exit(1);
+  }
+}
+
+if (isBaselining) {
   // Accept the current corpus: record input_id -> expect_hash so rule 5 can detect a
-  // changed expectation at the next resync.
+  // changed expectation at the next resync, and snapshot the toolchain provenance this
+  // baseline is valid for (R6/§5.2).
   const baseline = {};
   for (const a of atoms) baseline[inputKey(a)] = a.expect_hash;
-  saveRatchet(RATCHET_PATH, { ...ratchet, corpus_atoms: atoms.length, baseline });
+  const prov = checkProvenance(ratchet);
+  const provenance = prov.current ?? ratchet.provenance;
+  saveRatchet(RATCHET_PATH, { ...ratchet, corpus_atoms: atoms.length, baseline, provenance });
   console.log(`  baselined ${atoms.length} atoms into ${RATCHET_PATH}`);
+  if (provenance) {
+    console.log(`  provenance: python ${provenance.python_version}, unidata ${provenance.unidata_version}`);
+  }
   process.exit(0);
 }
 

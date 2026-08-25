@@ -54,6 +54,12 @@ export function loadRatchet(path) {
     quarantine: r.quarantine ?? {},
     // input_id -> expect_hash from the last ACCEPTED harvest. Rule 5 compares against it.
     baseline: r.baseline ?? {},
+    // {python_version, unidata_version, ...} from corpus/PROVENANCE.json at the last
+    // ACCEPTED harvest. R6/§5.2: a corpus harvested under a different interpreter can
+    // carry different golden SQL for the same input (subsecond_precision etc.) without
+    // input_id or expect_hash changing shape -- this is a version check, not a content
+    // check, and rule 5 alone cannot see it. null until the first --baseline.
+    provenance: r.provenance ?? null,
   };
 }
 
@@ -64,6 +70,7 @@ export function saveRatchet(path, state) {
     wontfix: state.wontfix,
     quarantine: state.quarantine,
     baseline: state.baseline,
+    provenance: state.provenance ?? null,
   };
   writeFileSync(path, JSON.stringify(out, null, 1) + "\n");
 }

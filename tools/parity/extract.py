@@ -47,8 +47,19 @@ def jsonable(v):
         # Sets are unordered in Python; sort so the snapshot is stable.
         return {"__set__": sorted((str(jsonable(x)) for x in v))}
     if isinstance(v, dict):
-        # Order IS significant (§4.6) — keep insertion order.
-        return {"__dict__": [[str(jsonable(k)), jsonable(val)] for k, val in v.items()]}
+        # Order IS significant (§4.6) — keep insertion order, EXCEPT when keyed by
+        # class objects: a class's default __hash__ is id()-based (no __hash__
+        # override on Expr subclasses), so a dict built from a class-keyed
+        # comprehension/set has memory-address-dependent iteration order — not
+        # stabilized by PYTHONHASHSEED. Found while validating seed-pinning
+        # reproducibility: corpus/parity/dialects.json still churned on a class-keyed
+        # function-return-type table after PYTHONHASHSEED=0 fixed everything else.
+        # These tables carry no SQL-observable ordering semantics (unlike arg_types),
+        # so sorting by the rendered key is safe.
+        items = list(v.items())
+        if items and all(isinstance(k, type) for k, _ in items):
+            items.sort(key=lambda kv: kv[0].__name__)
+        return {"__dict__": [[str(jsonable(k)), jsonable(val)] for k, val in items]}
     if isinstance(v, type):
         return {"__class__": v.__name__}
     if callable(v):

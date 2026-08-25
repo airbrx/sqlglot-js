@@ -22,8 +22,18 @@ import argparse
 import enum
 import json
 import os
+import re
 import sys
 from collections import OrderedDict
+
+# A handful of atoms (e.g. ClickHouse JSONCast) hold a raw Dialect *instance* as an arg
+# value. `dump()` abstracts that losslessly to {"__dialect__": "ClickHouse"}, but `repr`
+# below is Python's real Expression.__repr__, which for such args falls through to
+# object.__repr__ and embeds a live memory address -- not reproducible across processes.
+# Found while validating PYTHONHASHSEED pinning (Makefile): 2 rows in
+# corpus/ast/clickhouse.jsonl still differed between two seed-pinned runs, isolated to
+# this exact pattern.
+_OBJ_ADDR_RE = re.compile(r" object at 0x[0-9a-fA-F]+")
 
 
 def main():
@@ -119,7 +129,7 @@ def main():
             ast_files[key] = open(os.path.join(args.astdir, f"{key}.jsonl"), "w", encoding="utf8")
         try:
             ast = dump(expr)
-            row = {"atom_id": a["atom_id"], "ast": ast, "repr": repr(expr)}
+            row = {"atom_id": a["atom_id"], "ast": ast, "repr": _OBJ_ADDR_RE.sub(" object at 0x0", repr(expr))}
             blob = json.dumps(row, separators=(",", ":"), ensure_ascii=False)
             ast_files[key].write(blob + "\n")
             n_ast += 1
