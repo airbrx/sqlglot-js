@@ -22,12 +22,15 @@ python3 spike/py/gen_num_cases.py     > spike/out/num_cases.jsonl   || fail=1
 python3 spike/py/gen_unicode_ref.py   > spike/out/unicode_ref.json  || fail=1
 python3 spike/py/gen_str_cases.py     > spike/out/str_cases.jsonl   || fail=1
 node tools/gen_unicode_tables.mjs                                   || fail=1
+node tools/gen_timezones.mjs /tmp/sqlglot-ref                       || fail=1
+python3 spike/py/gen_calib_cases.py   > spike/out/calib.jsonl       || fail=1
 
 run "PROBE 1a: numeric differential"      node spike/fuzz_num.mjs
 run "PROBE 1b: named go/no-go literal"    node spike/gonogo_snowflake367.mjs
 run "PROBE 2a: unicode candidate sweep"   node spike/fuzz_unicode.mjs
 run "PROBE 2b: generated table exactness" node spike/verify_unicode_tables.mjs
 run "PROBE 2c: string-level predicates"   node spike/fuzz_str.mjs
+run "CALIBRATION: trie/time/helper"       node spike/fuzz_calib.mjs
 
 echo
 if [ "$fail" -eq 0 ]; then
