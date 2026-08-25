@@ -454,8 +454,13 @@ def sub_cases() -> list[dict]:
         }
         try:
             rec["result"], rec["n"] = re.subn(pattern, repl, subject, count=count)
-        except re.error as exc:
+        except (re.error, IndexError, ValueError) as exc:
+            # NB: CPython raises `re.error` for a bad template *escape* but a bare
+            # `IndexError` for an unknown group name/number -- sre_parse.parse_template
+            # re-raises the KeyError as IndexError. Both are recorded so the JS side
+            # can be compared on "errored" without claiming false type parity.
             rec["error"] = str(exc)
+            rec["error_type"] = type(exc).__name__
         out.append(rec)
     return out
 
