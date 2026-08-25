@@ -440,6 +440,24 @@ class ExprTyper:
         """
         fn = node.func
 
+        # `<expr>.args.get("start")` reads an argument, exactly like
+        # `<expr>.args["start"]`. The default argument is the discriminator:
+        # `.args.get("offset", 0)` is being used as a number (generator.py:3593,
+        # dialect.py:1241 both feed apply_index_offset), whereas a bare
+        # `.args.get("start")` yields an Expr and `- 1` on it builds exp.Sub
+        # (generators/singlestore.py:245).
+        if (
+            isinstance(fn, ast.Attribute)
+            and fn.attr == "get"
+            and isinstance(fn.value, ast.Attribute)
+            and fn.value.attr == "args"
+        ):
+            if len(node.args) >= 2:
+                default = node.args[1]
+                if isinstance(default, ast.Constant) and not isinstance(default.value, bool):
+                    return None
+            return (KIND_EXPR, CONF_MEDIUM, ".args.get(...) is an Expr arg")
+
         if isinstance(fn, ast.Attribute):
             resolved = self.imports.resolve(fn)
             in_exp_namespace = resolved is not None and resolved[0] == "exp"

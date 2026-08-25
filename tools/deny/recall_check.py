@@ -57,6 +57,42 @@ def _is_plainly_numeric(node: ast.AST) -> bool:
     return True
 
 
+def annotation_nodes(tree: ast.Module) -> set[int]:
+    """Every node inside a type annotation.
+
+    PEP 604 spells unions with `|`, so `exp.Expr | None` parses as a BinOp with
+    BitOr. Those are types, not runtime operators, and they otherwise drown the
+    review: they were 90% of the first over-broad run.
+    """
+    inside: set[int] = set()
+
+    def mark(node: ast.AST | None) -> None:
+        if node is None:
+            return
+        for sub in ast.walk(node):
+            inside.add(id(sub))
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.AnnAssign):
+            mark(node.annotation)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            mark(node.returns)
+            a = node.args
+            for arg in [*a.posonlyargs, *a.args, *a.kwonlyargs, a.vararg, a.kwarg]:
+                if arg is not None:
+                    mark(arg.annotation)
+        elif isinstance(node, ast.Subscript):
+            # t.Union[...] / t.Optional[...] / t.Callable[...] payloads
+            head = node.value
+            name = head.attr if isinstance(head, ast.Attribute) else getattr(head, "id", "")
+            if name in ("Union", "Optional", "Callable", "Type", "ClassVar", "Dict",
+                        "List", "Tuple", "Set", "Sequence", "Iterable", "Iterator",
+                        "Mapping", "Literal", "Annotated", "Final"):
+                mark(node.slice)
+
+    return inside
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ref", default="/tmp/sqlglot-ref-regex")
@@ -76,7 +112,10 @@ def main() -> int:
             tree = ast.parse(open(path, encoding="utf-8").read(), filename=path)
         except (OSError, SyntaxError):
             continue
+        in_annotation = annotation_nodes(tree)
         for node in ast.walk(tree):
+            if id(node) in in_annotation:
+                continue
             if isinstance(node, ast.BinOp) and isinstance(node.op, ARITH_OPS):
                 pass
             elif isinstance(node, ast.Compare) and len(node.ops) == 1 and isinstance(
