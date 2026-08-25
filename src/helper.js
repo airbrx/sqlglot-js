@@ -4,6 +4,7 @@ import { getCloseMatches } from "./_py/difflib.js";
 import { pyIntFromStr, pyFloatFromStr } from "./_py/num.js";
 import { pySorted, pyCmp, pyTupleCmp } from "./_py/sort.js";
 import { pyIsIsoDate, pyIsIsoDateTime } from "./_py/datetime.js";
+import { PyValueError, PyStopIteration } from "./_py/errors.js";
 
 // py: CAMEL_CASE_PATTERN = re.compile("(?<!^)(?=[A-Z])")
 // `[A-Z]` is ASCII-only in Python too, so this does NOT split on 'Æ'; the
@@ -22,7 +23,7 @@ export function suggestClosestMatchAndFail(kind, word, possibilities) {
     similar = ` Did you mean ${similar}?`;
   }
 
-  throw new Error(`Unknown ${kind} '${word}'.${similar}`);
+  throw new PyValueError(`Unknown ${kind} '${word}'.${similar}`);
 }
 
 /**
@@ -164,7 +165,7 @@ export function tsort(dag) {
     }
 
     if (!current.size) {
-      throw new Error("Cycle error");
+      throw new PyValueError("Cycle error");
     }
 
     for (const node of current) {
@@ -227,6 +228,9 @@ export function nameSequence(prefix) {
  * THROWS in JS — hence the Math.max(0, ...).
  */
 export function splitNumWords(value, sep, minNumWords, fillFromStart = true) {
+  // py: str.split('') raises ValueError('empty separator'); JS silently returns
+  // the characters instead, which would quietly produce wrong table parts.
+  if (sep === "") throw new PyValueError("empty separator");
   const words = value.split(sep);
   const pad = new Array(Math.max(0, minNumWords - words.length)).fill(null);
   if (fillFromStart) {
@@ -289,7 +293,7 @@ function dictValues(d) {
 /** py: helper.first(it) — returns the first element from an iterable. */
 export function first(it) {
   for (const i of it) return i;
-  throw new Error("StopIteration");
+  throw new PyStopIteration("first() on an empty iterable");
 }
 
 /**

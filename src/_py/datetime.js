@@ -18,12 +18,9 @@
 // NOT `new Date()`. 3.11+ accepts more (notably 'Z' and 1/2/4/5-digit fractions),
 // which is exactly why corpus provenance pins the interpreter version.
 
-export class PyValueError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "PyValueError";
-  }
-}
+import { PyValueError, PyTypeError } from "./errors.js";
+
+export { PyValueError };
 
 export const MINYEAR = 1;
 export const MAXYEAR = 9999;
@@ -88,80 +85,130 @@ function checkTimeArgs(hour, minute, second, microsecond) {
   }
 }
 
-// py: _parse_hh_mm_ss_ff — parses HH[:MM[:SS[.fff[fff]]]]
-function parseHhMmSsFf(tstr) {
-  const lenStr = tstr.length;
-  const timeComps = [0, 0, 0, 0];
-  let pos = 0;
-
-  for (let comp = 0; comp < 3; comp++) {
-    if (lenStr - pos < 2) throw new PyValueError("Incomplete time component");
-
-    const v = parseDigits(tstr, pos, 2);
-    if (v < 0) throw new PyValueError("Invalid time component");
-    timeComps[comp] = v;
-
-    pos += 2;
-    const nextChar = tstr.slice(pos, pos + 1);
-
-    if (!nextChar || comp >= 2) break;
-    if (nextChar !== ":") throw new PyValueError(`Invalid time separator: ${nextChar}`);
-    pos += 1;
-  }
-
-  if (pos < lenStr) {
-    if (tstr[pos] !== ".") {
-      throw new PyValueError("Invalid microsecond component");
-    }
-    pos += 1;
-    const lenRemainder = lenStr - pos;
-    if (lenRemainder !== 3 && lenRemainder !== 6) {
-      throw new PyValueError("Invalid microsecond component");
-    }
-    const frac = parseDigits(tstr, pos, lenRemainder);
-    if (frac < 0) throw new PyValueError("Invalid microsecond component");
-    timeComps[3] = lenRemainder === 3 ? frac * 1000 : frac;
-  }
-
-  return timeComps;
+// Reading one past a slice bound is MEANINGFUL here: the C code walks a
+// NUL-terminated buffer while `p_end` is only a slice boundary (usually the
+// timezone position). So `*(p++)` at `p_end` yields the '+'/'-' when a timezone
+// follows, and '\0' only at the true end of the string.
+function charAt(cps, i) {
+  return i < cps.length ? cps[i] : "\0";
 }
 
-// py: _parse_isoformat_time — HH[:MM[:SS[.fff[fff]]]][+HH:MM[:SS[.ffffff]]]
-function parseIsoformatTime(tstr) {
-  const lenStr = tstr.length;
-  if (lenStr < 2) throw new PyValueError("Isoformat time too short");
+// py: parse_digits(p, &val, n) — strict ASCII digits; returns [newP, value] or [null, 0].
+function parseDigitsAt(cps, p, n) {
+  let value = 0;
+  for (let i = 0; i < n; i++) {
+    const c = charAt(cps, p + i);
+    if (c < "0" || c > "9") return [null, 0];
+    value = value * 10 + (c.charCodeAt(0) - 0x30);
+  }
+  return [p + n, value];
+}
 
-  // py: tz_pos = (tstr.find('-') + 1 or tstr.find('+') + 1)
-  // Note '-' is searched FIRST, so a '-' anywhere wins over a later '+'.
-  const tzPos = tstr.indexOf("-") + 1 || tstr.indexOf("+") + 1;
-  const timestr = tzPos > 0 ? tstr.slice(0, tzPos - 1) : tstr;
+// py: parse_hh_mm_ss_ff(tstr, tstr_end, ...) — _datetimemodule.c:740
+//
+// Returns {rv, hour, minute, second, microsecond} where rv is
+//   0  success, string fully consumed
+//   1  success, but there is trailing content (fatal ONLY when no timezone follows)
+//  -3  failed to parse a time component
+//  -4  malformed time separator
+function parseHhMmSsFf(cps, start, end) {
+  let p = start;
+  const vals = [0, 0, 0];
+  let microsecond = 0;
 
-  const timeComps = parseHhMmSsFf(timestr);
+  // py: Parse [HH[:MM[:SS]]]
+  for (let i = 0; i < 3; i++) {
+    const [np, v] = parseDigitsAt(cps, p, 2);
+    if (np === null) return { rv: -3 };
+    vals[i] = v;
+    p = np;
 
-  let tz = null;
-  if (tzPos > 0) {
-    const tzstr = tstr.slice(tzPos);
-    // Valid tz strings are exactly: HH:MM (5), HH:MM:SS (8), HH:MM:SS.ffffff (15)
-    if (tzstr.length !== 5 && tzstr.length !== 8 && tzstr.length !== 15) {
-      throw new PyValueError("Malformed time zone string");
-    }
-    const tzComps = parseHhMmSsFf(tzstr);
-    if (tzComps.every((x) => x === 0)) {
-      tz = { offsetMicros: 0, utc: true };
+    const c = charAt(cps, p);
+    p += 1;
+    if (p >= end) {
+      // py: return c != '\0'
+      return {
+        rv: c !== "\0" ? 1 : 0,
+        hour: vals[0],
+        minute: vals[1],
+        second: vals[2],
+        microsecond,
+      };
+    } else if (c === ":") {
+      continue;
+    } else if (c === ".") {
+      break;
     } else {
-      const tzsign = tstr[tzPos - 1] === "-" ? -1 : 1;
-      const micros =
-        tzComps[0] * 3600000000 + tzComps[1] * 60000000 + tzComps[2] * 1000000 + tzComps[3];
-      const total = tzsign * micros;
-      // py: timezone(td) requires strictly between -24h and 24h
-      if (Math.abs(total) >= 86400000000) {
-        throw new PyValueError("offset must be a timedelta strictly between -24h and 24h");
-      }
-      tz = { offsetMicros: total, utc: false };
+      return { rv: -4 }; // Malformed time separator
     }
   }
 
-  return [...timeComps, tz];
+  // py: Parse .fff[fff]
+  const lenRemains = end - p;
+  if (!(lenRemains === 6 || lenRemains === 3)) return { rv: -3 };
+  const [np, v] = parseDigitsAt(cps, p, lenRemains);
+  if (np === null) return { rv: -3 };
+  microsecond = lenRemains === 3 ? v * 1000 : v;
+  p = np;
+
+  // py: Return 1 if it's not the end of the string
+  return {
+    rv: charAt(cps, p) !== "\0" ? 1 : 0,
+    hour: vals[0],
+    minute: vals[1],
+    second: vals[2],
+    microsecond,
+  };
+}
+
+// py: parse_isoformat_time(dtstr, dtlen, ...) — _datetimemodule.c:789
+//
+// Returns {rv, hour, minute, second, microsecond, tzoffsetSec, tzMicro} where rv is
+//   0 success without tz, 1 success with tz, negative on failure.
+function parseIsoformatTime(cps) {
+  const dtlen = cps.length;
+
+  // py: scan FORWARD for the first '+' or '-'. Note this differs from
+  // Lib/datetime.py, which searches for '-' anywhere first and only then '+'.
+  // The do/while reads before testing the bound, so an empty input leaves
+  // tzinfoPos == 1 > dtlen, which then fails digit parsing — matching C.
+  let tzinfoPos = 0;
+  do {
+    const c = charAt(cps, tzinfoPos);
+    if (c === "+" || c === "-") break;
+  } while (++tzinfoPos < dtlen);
+
+  const r = parseHhMmSsFf(cps, 0, tzinfoPos);
+  if (r.rv < 0) return { rv: r.rv };
+
+  if (tzinfoPos === dtlen) {
+    // No timezone, so trailing content is an error.
+    if (r.rv === 1) return { rv: -5 };
+    return { ...r, rv: 0, tzoffsetSec: 0, tzMicro: 0 };
+  }
+
+  // py: valid tz forms are +HH:MM (6), +HH:MM:SS (9), +HH:MM:SS.ffffff (16),
+  // measured INCLUDING the sign character.
+  const tzlen = dtlen - tzinfoPos;
+  if (!(tzlen === 6 || tzlen === 9 || tzlen === 16)) return { rv: -5 };
+
+  const tzsign = cps[tzinfoPos] === "-" ? -1 : 1;
+  const tzr = parseHhMmSsFf(cps, tzinfoPos + 1, dtlen);
+  const tzoffsetSec = tzsign * (tzr.hour * 3600 + tzr.minute * 60 + tzr.second);
+  const tzMicro = (tzr.microsecond ?? 0) * tzsign;
+
+  // py: return rv ? -5 : 1  — any nonzero rv (including negatives) is -5.
+  if (tzr.rv) return { rv: -5 };
+  return { ...r, rv: 1, tzoffsetSec, tzMicro };
+}
+
+// py: new_timezone — offset must be strictly between -24h and 24h.
+function checkTimezone(tzoffsetSec, tzMicro) {
+  const totalMicros = tzoffsetSec * 1000000 + tzMicro;
+  if (Math.abs(totalMicros) >= 86400000000) {
+    throw new PyValueError("offset must be a timedelta strictly between -24h and 24h");
+  }
+  return totalMicros === 0 ? { offsetMicros: 0, utc: true } : { offsetMicros: totalMicros, utc: false };
 }
 
 /**
@@ -170,7 +217,7 @@ function parseIsoformatTime(tstr) {
  */
 export function pyDateFromIsoFormat(dateString) {
   if (typeof dateString !== "string") {
-    throw new TypeError("fromisoformat: argument must be str");
+    throw new PyTypeError("fromisoformat: argument must be str");
   }
   if (dateString.length !== 10) {
     throw new PyValueError(`Invalid isoformat string: ${JSON.stringify(dateString)}`);
@@ -192,40 +239,44 @@ export function pyDateFromIsoFormat(dateString) {
  */
 export function pyDateTimeFromIsoFormat(dateString) {
   if (typeof dateString !== "string") {
-    throw new TypeError("fromisoformat: argument must be str");
+    throw new PyTypeError("fromisoformat: argument must be str");
   }
-  const dstr = dateString.slice(0, 10);
-  const tstr = dateString.slice(11);
+  // Work in code points. The C code advances past the separator by its UTF-8
+  // byte width (1-4 bytes), which is exactly "skip one code point".
+  const cps = [...dateString];
+  const invalid = () =>
+    new PyValueError(`Invalid isoformat string: ${JSON.stringify(dateString)}`);
+
+  if (cps.length < 10) throw invalid();
 
   let dateComponents;
   try {
-    if (dstr.length !== 10) throw new PyValueError("too short");
-    dateComponents = parseIsoformatDate(dstr);
+    dateComponents = parseIsoformatDate(cps.slice(0, 10).join(""));
   } catch (e) {
-    if (e instanceof PyValueError) {
-      throw new PyValueError(`Invalid isoformat string: ${JSON.stringify(dateString)}`);
-    }
+    if (e instanceof PyValueError) throw invalid();
     throw e;
   }
 
-  let timeComponents;
-  if (tstr) {
-    try {
-      timeComponents = parseIsoformatTime(tstr);
-    } catch (e) {
-      if (e instanceof PyValueError) {
-        throw new PyValueError(`Invalid isoformat string: ${JSON.stringify(dateString)}`);
-      }
-      throw e;
-    }
-  } else {
-    timeComponents = [0, 0, 0, 0, null];
+  let hour = 0;
+  let minute = 0;
+  let second = 0;
+  let microsecond = 0;
+  let tz = null;
+
+  // py: if (!rv && len > 10)
+  if (cps.length > 10) {
+    const t = parseIsoformatTime(cps.slice(11));
+    if (t.rv < 0) throw invalid();
+    hour = t.hour ?? 0;
+    minute = t.minute ?? 0;
+    second = t.second ?? 0;
+    microsecond = t.microsecond ?? 0;
+    if (t.rv === 1) tz = checkTimezone(t.tzoffsetSec, t.tzMicro);
   }
 
   const [year, month, day] = dateComponents;
-  const [hour, minute, second, microsecond, tz] = timeComponents;
-  // py: cls(*(date_components + time_components)) — constructor validates ranges,
-  // and those ValueErrors are NOT wrapped as 'Invalid isoformat string'.
+  // py: new_datetime_subclass_ex validates ranges, and those ValueErrors are NOT
+  // wrapped as 'Invalid isoformat string'.
   checkDateArgs(year, month, day);
   checkTimeArgs(hour, minute, second, microsecond);
 

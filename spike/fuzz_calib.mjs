@@ -30,6 +30,9 @@ function record(bucket, ok, detail) {
 
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
+// `_py/errors.js` names exceptions PyValueError etc.; CPython reports ValueError.
+const pyErrName = (e) => (e?.name ?? e?.constructor?.name ?? "Error").replace(/^Py/, "");
+
 // Serialize a JS trie the same way the Python side does.
 function dumpTrie(t) {
   const out = { end: false, children: {} };
@@ -64,7 +67,7 @@ function run(rec) {
       try {
         got = formatTime(rec.s, rec.mapping);
       } catch (e) {
-        got = { __error__: e.constructor.name };
+        got = { __error__: pyErrName(e) };
       }
       record("time: format_time", eq(got, rec.want), {
         s: rec.s,
@@ -162,7 +165,7 @@ function run(rec) {
       try {
         got = H.splitNumWords(rec.value, rec.sep, rec.n, rec.fill_from_start);
       } catch (e) {
-        got = { __error__: e.constructor.name };
+        got = { __error__: pyErrName(e) };
       }
       record("helper: split_num_words", eq(got, rec.want), {
         value: rec.value,
@@ -199,7 +202,7 @@ function run(rec) {
         const dag = new Map(Object.entries(rec.dag).map(([k, v]) => [k, new Set(v)]));
         got = H.tsort(dag);
       } catch (e) {
-        got = { __error__: e.message === "Cycle error" ? "ValueError" : e.constructor.name };
+        got = { __error__: pyErrName(e) };
       }
       record("helper: tsort", eq(got, rec.want), { dag: rec.dag, want: rec.want, got });
       break;
