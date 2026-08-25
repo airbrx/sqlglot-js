@@ -113,6 +113,12 @@ async function probeExprs() {
     const wantReq = spec.required_args.join(",");
     const gotReq = [...(got.requiredArgs ?? [])].sort().join(",");
     if (wantReq !== gotReq) bad.push(`${key}: requiredArgs`);
+    checks++;
+    const wantTraits = (spec.traits ?? spec.bases?.filter((b) => b !== "Expression" && b !== "Expr") ?? []).join(",");
+    const gotTraits = (got.traits ?? []).join(",");
+    if (wantTraits !== gotTraits) bad.push(`${key}: traits\n      want ${wantTraits}\n      got  ${gotTraits}`);
+    checks++;
+    if ((spec.init_owner ?? null) !== (got.initOwner ?? null)) bad.push(`${key}: initOwner`);
   }
   report(
     "2 exprs",
