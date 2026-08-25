@@ -36,6 +36,7 @@ run "CALIBRATION: trie/time/helper"       node spike/fuzz_calib.mjs
 run "BUILTINS: _py shims + containers"    node spike/fuzz_builtins.mjs
 run "LINT: license attribution"           node tools/lint_license.mjs
 run "LINT: no runtime \\p{...}"            node tools/lint_unicode.mjs
+run "LINT: no raw control bytes"          node tools/lint_control_bytes.mjs
 run "SELFTEST: closure calculator"        node tools/closure.mjs --selftest
 run "SELFTEST: ratchet rules 1-5"         node tools/ratchet.mjs --selftest
 run "SELFTEST: corpus runner"             node test/runner.mjs --selftest
