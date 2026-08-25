@@ -171,8 +171,8 @@ Per-module proxy-satisfiability (§3.8) — filled in as the two P0 proofs land:
 
 | module | satisfiable | note |
 |---|---|---|
-| `test_errors.py` | **P0 proof** | cheapest — 36 of 48 `assertEqual`s are string literals |
-| `test_transpile.py` | **P0 proof** | most representative |
+| `test_errors.py` | **PROVEN [verified]** | 13 tests / 49 assertions (36 with string literals) run **green through the bridge against the JS `highlightSql`**. Upstream's own assertions, unmodified. |
+| `test_transpile.py` | **95% measured** | 43 assertions, only **2** touch object graphs. Needs `transpile`, so the run lands at P4; the satisfiability is measured now rather than assumed. |
 | `test_generator.py`, `test_time.py`, `test_schema.py`, `test_jsonpath.py`, `test_transforms.py`, `test_diff.py` | P5 | |
 | `test_build.py` | **NO** | 228 lambdas, 38 applying Python operators to `exp` objects (`x + 1`, `x // 1`, `x & 1`, `~x`, `x[...]`). Hand-ported native suite at P5 instead. |
 
