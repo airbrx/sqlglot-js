@@ -80,18 +80,26 @@ An atom is **closed** under an implemented dialect set `S` iff both its read and
 
 `tools/closure.mjs` computes this from `corpus/atoms.jsonl` and is the source of every phase exit number in §7. Machine-computed, checked in, reproducible:
 
-| after phase | dialect set | atoms closed | % of 15,642 | marginal |
+**Regenerated from the real harvested corpus, 2026-08-25.** The table below is now emitted by `node tools/closure.mjs --markdown` against `corpus/atoms.jsonl`, not estimated. The estimate this plan was written against was ~15,642 atoms; the real count is **15,540**, a 102-atom / 0.65% delta — the same order as the pre-existing 3,417-vs-3,421 footnote below. **Percentages are unchanged to within 0.1pp at every phase**, so the arithmetic and the P8-ships-v0 conclusion stand unaltered. Per-test-class closure and the recomputed P9 greedy ordering are in `CLOSURE.md`.
+
+| after phase | dialect set | atoms closed | % of 15,540 | marginal |
 |---|---|---|---|---|
-| P4 | `{snowflake}` | 1,606 | 10.3% | — |
-| P5 | `+ default` | 2,022 | 12.9% | +416 |
-| P6 | `+ duckdb` | 3,417 | 21.8% | +1,395 |
-| P7 | `+ hive, spark2, spark, databricks` | 5,207 | 33.3% | +1,790 |
-| **P8 (v0)** | `+ postgres, redshift` | **6,552** | **41.9%** | +1,345 |
-| P9 | all 38 dialect keys | 15,642 | 100% | +9,090 |
+| P4 | `{snowflake}` | 1,595 | 10.3% | +1,595 |
+| P5 | `+ default` | 2,000 | 12.9% | +405 |
+| P6 | `+ duckdb` | 3,394 | 21.8% | +1,394 |
+| P7 | `+ hive, spark2, spark, databricks` | 5,178 | 33.3% | +1,784 |
+| **P8 (v0)** | `+ postgres, redshift` | **6,522** | **42.0%** | +1,344 |
+| P9 | all 46 dialect keys | 15,540 | 100% | +9,018 |
+
+*(Superseded estimates, for comparison: P4 1,606 · P5 2,022 · P6 3,417 · P7 5,207 · P8 6,552 · P9 15,642.)*
 
 *(v0 boundary per Ben's decision, §9 Q2, 2026-08-24: "We will ship at P8." Bolded row updated accordingly from the original P6.)*
 
-*(An independent derivation produced 3,421 rather than 3,417 at P6. The 4-atom delta is the handling of the 12 `Validator.transpile` rows in `TestDAX`, which we resolve as `(dax → write_dialect)` rather than `(dax → dax)`. The calculator is checked in so this is settled by running it, not by argument.)*
+**Two census corrections the real corpus forces**, neither schedule-relevant: the dialect key count is **34 base + 12 versioned = 46**, not "38 + 14"; and the versioned keys contribute **+22**, not +28. Every versioned key appears **only as a write target** (0 occurrences as a read dialect), which narrows `compareVersion` (§7 P8) to the generate path.
+
+*(The independent derivation that produced 3,421 rather than 3,417 at P6 is now moot: the calculator run against the real corpus gives **3,394**, resolving the 12 `Validator.transpile` rows in `TestDAX` as `(dax → write_dialect)`. Settled by running it, as intended.)*
+
+> **Not yet regenerated:** the per-phase **Exit** criteria in §7 still quote the old estimates (e.g. "1,606 atoms closed under `{snowflake}`" at P4). Substitute the table above; `CLOSURE.md` carries the per-class figures those exits also cite.
 
 ### 3.3 The ratchet
 
