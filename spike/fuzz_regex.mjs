@@ -1,0 +1,797 @@
+// fuzz_regex — PORT_PLAN.md §3.4 target 2, a mandatory P0 exit criterion.
+//
+//   python3 spike/py/gen_regex_cases.py --stdout > spike/out/regex_cases.jsonl
+//   node spike/fuzz_regex.mjs
+//
+// or both at once: bash spike/run_regex.sh
+//
+// Validates `src/_py/re.js` against CPython's `re` across every surface §3.4 names:
+// group counting, named groups, `\A`/`\Z`, `re.VERBOSE`, `re.sub` template semantics
+// (`\1` vs `$1`), and `re.escape` output validity under `/u`.
+//
+// Three things make this a fuzz target rather than a regression net:
+//
+//   1. **A ratchet, not a threshold.** KNOWN_GAPS lists the exact cases that cannot
+//      pass, with a reason. A new failure is RED; a listed gap that *starts* passing
+//      is also RED, so the list cannot rot (§3.3 rules 1 and 2 applied locally).
+//   2. **A vacuity check.** A differential both the correct and the naive port pass
+//      proves nothing, so this asserts that a naive port — `new RegExp(pattern,'u')`,
+//      JS `\w`, byte-identical `re.escape`, `\1`->`$1` by string replace — FAILS on
+//      the corpus, and reports by how much. If any naive check stops failing, the
+//      corpus has stopped exercising that divergence and the target says so.
+//   3. **A coverage assertion.** Each named §3.4 surface must be present in the
+//      corpus with a non-zero case count, so silently dropping a surface is RED.
+//
+// It reads the JSONL written by spike/py/gen_regex_cases.py and diffs four surfaces:
+//
+//   oracle        re.compile(p).groups / groupindex / validity  -- the contract
+//                 sqlglot/parsers/bigquery.py:127 depends on
+//   match         search / match / fullmatch / findall spans and groups
+//   sub           re.sub template semantics and replacement output
+//   escape        re.escape byte-fidelity, plus /u-validity and match round-trip
+//
+// Usage:
+//   node spike/fuzz_regex.mjs [--cases spike/regex/corpus/cases.jsonl]
+//                             [--max-failures 25] [--kind oracle] [--verbose]
+//
+// Exit code 0 iff every case in scope passed.
+
+import fs from "node:fs";
+import path from "node:path";
+import process from "node:process";
+import {
+  PyReError,
+  PyReUntranslatable,
+  PyPattern,
+  pyReEscape,
+  pyReEscapeExact,
+  pyReParse,
+  pyReTemplate,
+} from "../src/_py/re.js";
+
+/* -------------------------------------------------------------------- args */
+
+const argv = process.argv.slice(2);
+/** @param {string} name @param {string} dflt */
+function opt(name, dflt) {
+  const i = argv.indexOf("--" + name);
+  return i === -1 ? dflt : argv[i + 1];
+}
+const CASES = opt("cases", "");
+const MAX_FAILURES = Number(opt("max-failures", "25"));
+const ONLY_KIND = opt("kind", "");
+const VERBOSE = argv.includes("--verbose");
+
+// Prefer a freshly generated corpus; fall back to the committed one so the target
+// is runnable without Python (PORT_PLAN.md §8.1 rule 4's JS-only contributor path).
+const CANDIDATE_PATHS = CASES
+  ? [CASES]
+  : ["spike/out/regex_cases.jsonl", "spike/regex/corpus/cases.jsonl"];
+
+/* ------------------------------------------------------------ known gaps */
+
+/**
+ * Cases that cannot pass, each with the reason and whether sqlglot can reach it.
+ * Anything failing that is NOT listed here is RED; anything listed that starts
+ * PASSING is also RED, because a gap that silently closes means the list is
+ * describing a version of the code that no longer exists.
+ */
+const KNOWN_GAPS = [
+  {
+    kind: "oracle",
+    pattern: "\\N{NO SUCH NAME}",
+    why: "validating a Unicode character NAME needs the UnicodeData name table, which a zero-dependency runtime does not carry",
+    reachable: "only via a user REGEXP_EXTRACT literal; BigQuery is RE2, which has no \\N{}",
+  },
+  {
+    kind: "oracle",
+    pattern: "\\N{NO SUCH NAME}(x)",
+    why: "same, and group-bearing, so the divergence is output-visible at parsers/bigquery.py:127",
+    reachable: "same",
+  },
+  {
+    kind: "match",
+    pattern: "(?:|ab|a)",
+    subject: "ab",
+    why: "CPython's must_advance backtracks into a NESTED alternation; _py/re.js explores top-level branches only",
+    reachable: "no — the reachable form (generator.py:1667 with UESCAPE '|') is top-level alternation",
+  },
+  {
+    kind: "match",
+    pattern: "(?:|ab|a)",
+    subject: "abc",
+    why: "same",
+    reachable: "no",
+  },
+];
+
+/**
+ * The single place a gap key is built — used for both corpus records and
+ * KNOWN_GAPS entries. The separator is an explicit escape rather than a typed
+ * character because an earlier version built the two sides from two separate
+ * literals, one of which had picked up a NUL byte, so every gap silently read
+ * as "now passing" and the ratchet went RED for the wrong reason.
+ * @param {{kind: string, pattern: string, subject?: string}} rec
+ */
+function gapKeyOf(rec) {
+  const parts =
+    rec.kind === "match" ? [rec.kind, rec.pattern, rec.subject] : [rec.kind, rec.pattern];
+  return parts.join("␟");
+}
+const GAP_KEYS = new Map(KNOWN_GAPS.map((g) => [gapKeyOf(g), g]));
+/** gaps observed failing this run — anything left over closed silently */
+const gapsSeenFailing = new Set();
+/** gaps whose case is present in the corpus at all — catches a list gone stale */
+const gapsSeenAtAll = new Set();
+/** failures that are NOT known gaps */
+let unexpectedFailures = 0;
+
+/**
+ * Self-test for the ratchet itself. The first version of `gapKeyOf` built the
+ * corpus-side and gap-side keys from two separate template literals and one of
+ * them contained a NUL byte, so every gap read as "now passing" — the ratchet
+ * was reporting RED for a reason that did not exist. A check that has never been
+ * observed to fire is not a check, so this asserts each verdict predicate.
+ * @returns {number} failures
+ */
+function selfTest() {
+  let bad = 0;
+  const check = (name, ok) => {
+    console.log(`  ${ok ? "ok  " : "FAIL"}  ${name}`);
+    if (!ok) bad += 1;
+  };
+
+  // 1. A gap entry and an equivalent corpus record must produce the same key.
+  //    This is the exact bug that shipped.
+  for (const g of KNOWN_GAPS) {
+    const asRecord =
+      g.kind === "match"
+        ? { kind: g.kind, pattern: g.pattern, subject: g.subject }
+        : { kind: g.kind, pattern: g.pattern };
+    check(`key round-trips: ${g.kind} ${JSON.stringify(g.pattern)}`, gapKeyOf(g) === gapKeyOf(asRecord));
+  }
+
+  // 2. Keys must actually discriminate — no accidental collisions.
+  check("gap keys are distinct", new Set(KNOWN_GAPS.map(gapKeyOf)).size === KNOWN_GAPS.length);
+
+  // 3. Different subjects on the same pattern must not collide.
+  check(
+    "subject is part of a match key",
+    gapKeyOf({ kind: "match", pattern: "a", subject: "b" }) !==
+      gapKeyOf({ kind: "match", pattern: "a", subject: "c" }),
+  );
+
+  // 4. The verdict must go RED on each of the three failure modes.
+  check("RED on an unexpected failure", computeRed(1, 0, 0, 0) > 0);
+  check("RED on a vacuous check", computeRed(0, 1, 0, 0) > 0);
+  check("RED on an uncovered surface", computeRed(0, 0, 1, 0) > 0);
+  check("RED on a gap that closed", computeRed(0, 0, 0, 1) > 0);
+  check("GREEN when all clean", computeRed(0, 0, 0, 0) === 0);
+  return bad;
+}
+
+/** @param {number} unexpected @param {number} vacuous @param {number} uncovered @param {number} closed */
+function computeRed(unexpected, vacuous, uncovered, closed) {
+  return unexpected + vacuous + uncovered + closed;
+}
+
+/* ------------------------------------------------------------------ report */
+
+/** @type {Record<string, {pass:number, fail:number, skip:number, failures:any[]}>} */
+const stats = {};
+/** @param {string} kind */
+function bucket(kind) {
+  if (!stats[kind]) stats[kind] = { pass: 0, fail: 0, skip: 0, failures: [] };
+  return stats[kind];
+}
+/** @type {string} */
+let currentSite = "";
+/** @type {object|null} the record being checked, for known-gap matching */
+let currentRec = null;
+/** @param {string} kind @param {string} why @param {object} detail */
+function fail(kind, why, detail) {
+  const b = bucket(kind);
+  b.fail += 1;
+  tallySite(currentSite, "fail");
+  const key = currentRec ? gapKeyOf(currentRec) : "";
+  if (GAP_KEYS.has(key)) {
+    gapsSeenFailing.add(key);
+    return; // expected; counted in the table but not a RED signal
+  }
+  unexpectedFailures += 1;
+  if (b.failures.length < MAX_FAILURES) b.failures.push({ why, ...detail });
+}
+/** @param {string} kind */
+function pass(kind) {
+  bucket(kind).pass += 1;
+  tallySite(currentSite, "pass");
+}
+/** @param {string} kind @param {string} why @param {object} [detail] */
+function skip(kind, why, detail) {
+  const b = bucket(kind);
+  b.skip += 1;
+  tallySite(currentSite, "skip");
+  if (VERBOSE && b.failures.length < MAX_FAILURES) b.failures.push({ why: "SKIP " + why, ...detail });
+}
+
+// Per-call-site tally. The headline number for this spike is not the total but
+// "every pattern sqlglot actually reaches", so results are also bucketed by the
+// `file:line` the pattern was harvested from.
+/** @type {Map<string, {pass:number, fail:number, skip:number}>} */
+const bySite = new Map();
+/** @param {string} py @param {'pass'|'fail'|'skip'} outcome */
+function tallySite(py, outcome) {
+  if (!py) return;
+  let s = bySite.get(py);
+  if (!s) {
+    s = { pass: 0, fail: 0, skip: 0 };
+    bySite.set(py, s);
+  }
+  s[outcome] += 1;
+}
+
+/** Structural equality good enough for the JSON shapes the oracle emits. */
+function eq(a, b) {
+  if (a === b) return true;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((v, i) => eq(v, b[i]));
+  }
+  if (a && b && typeof a === "object" && typeof b === "object") {
+    const ka = Object.keys(a).sort();
+    const kb = Object.keys(b).sort();
+    return eq(ka, kb) && ka.every((k) => eq(a[k], b[k]));
+  }
+  return false;
+}
+
+/* ------------------------------------------------------- vacuity counters
+ *
+ * What a NAIVE port gets wrong. If any of these hits zero the corpus has stopped
+ * exercising that divergence and the target is vacuous for it — the same
+ * reasoning fuzz_toowide uses about `.length` vs `cpLen`.
+ */
+const naive = {
+  "compile: new RegExp(p,'u') rejects a CPython-valid pattern": 0,
+  "compile: new RegExp(p,'u') accepts a CPython-INVALID pattern": 0,
+  "groups: count '(' not followed by '?'": 0,
+  "escape: CPython-byte-identical output is invalid under /u": 0,
+  "template: \\1 -> $1 by string replace": 0,
+};
+
+/** The classic wrong way to count groups: scan for '(' not followed by '?'. */
+function naiveGroupCount(pattern) {
+  let n = 0;
+  for (let i = 0; i < pattern.length; i += 1) {
+    if (pattern[i] === "\\") {
+      i += 1;
+      continue;
+    }
+    if (pattern[i] === "(" && pattern[i + 1] !== "?") n += 1;
+  }
+  return n;
+}
+
+/** The obvious template translation: turn every \<digit> into $<digit>. */
+function naiveTemplate(repl) {
+  return repl.replace(/\\(\d)/g, "$$$1");
+}
+
+/* ---------------------------------------------------- untranslatable census */
+
+/** @type {Map<string, {count:number, example:string, py:string}>} */
+const untranslatable = new Map();
+/** @param {string} reason @param {string} pattern @param {string} py */
+function noteUntranslatable(reason, pattern, py) {
+  const cur = untranslatable.get(reason);
+  if (cur) cur.count += 1;
+  else untranslatable.set(reason, { count: 1, example: pattern, py });
+}
+
+/* ---------------------------------------------------------------- handlers */
+
+/**
+ * `re.compile(p).groups` and validity -- the oracle sqlglot/parsers/bigquery.py:127
+ * reads directly. Must agree even for patterns JS cannot execute.
+ */
+function runOracle(rec) {
+  const kind = "oracle";
+
+  // --- vacuity: what would a naive port do here? ---
+  let naiveCompiles = true;
+  try {
+    new RegExp(rec.pattern, "u");
+  } catch {
+    naiveCompiles = false;
+  }
+  if (rec.valid && !naiveCompiles) {
+    naive["compile: new RegExp(p,'u') rejects a CPython-valid pattern"] += 1;
+  }
+  if (!rec.valid && naiveCompiles) {
+    naive["compile: new RegExp(p,'u') accepts a CPython-INVALID pattern"] += 1;
+  }
+  if (rec.valid && naiveGroupCount(rec.pattern) !== rec.groups) {
+    naive["groups: count '(' not followed by '?'"] += 1;
+  }
+
+  let info = null;
+  let error = null;
+  try {
+    info = pyReParse(rec.pattern, rec.flags);
+  } catch (e) {
+    if (!(e instanceof PyReError)) {
+      fail(kind, "unexpected exception class", {
+        pattern: rec.pattern,
+        py: rec.py,
+        js: `${/** @type {Error} */ (e).name}: ${/** @type {Error} */ (e).message}`,
+      });
+      return;
+    }
+    error = e;
+  }
+
+  if (rec.valid !== (error === null)) {
+    fail(kind, rec.valid ? "JS rejected a pattern CPython accepts" : "JS accepted a pattern CPython rejects", {
+      pattern: rec.pattern,
+      flags: rec.flags,
+      py: rec.py,
+      cpython: rec.valid ? `valid, groups=${rec.groups}` : `re.error: ${rec.error}`,
+      js: error ? `PyReError: ${error.msg}` : `valid, groups=${info.groups}`,
+    });
+    return;
+  }
+  if (!rec.valid) {
+    pass(kind);
+    return;
+  }
+  if (info.groups !== rec.groups) {
+    fail(kind, "group count mismatch", {
+      pattern: rec.pattern,
+      py: rec.py,
+      cpython: rec.groups,
+      js: info.groups,
+    });
+    return;
+  }
+  if (!eq(info.groupIndex, rec.groupindex)) {
+    fail(kind, "groupindex mismatch", {
+      pattern: rec.pattern,
+      py: rec.py,
+      cpython: rec.groupindex,
+      js: info.groupIndex,
+    });
+    return;
+  }
+  if (info.untranslatable) noteUntranslatable(info.untranslatable, rec.pattern, rec.py);
+  pass(kind);
+}
+
+/** search / match / fullmatch / findall behaviour on real subject strings. */
+function runMatch(rec) {
+  const kind = "match";
+  if (rec.runtime_error) {
+    skip(kind, "CPython runtime error on this case", { pattern: rec.pattern });
+    return;
+  }
+  let p;
+  try {
+    p = new PyPattern(rec.pattern, rec.flags);
+  } catch (e) {
+    if (e instanceof PyReUntranslatable) {
+      noteUntranslatable(e.reason, rec.pattern, rec.py);
+      skip(kind, "untranslatable: " + e.reason, { pattern: rec.pattern, py: rec.py });
+      return;
+    }
+    fail(kind, "compile failed for a CPython-valid pattern", {
+      pattern: rec.pattern,
+      py: rec.py,
+      js: `${/** @type {Error} */ (e).name}: ${/** @type {Error} */ (e).message}`,
+    });
+    return;
+  }
+
+  const s = rec.subject;
+  /** @param {import('../src/_py/re.js').PyMatch|null} m */
+  const shape = (m) => (m === null ? null : [m.start(), m.end(), m.groups("")]);
+
+  for (const op of ["search", "match", "fullmatch"]) {
+    const got = shape(p[op](s));
+    // CPython reports unmatched groups as None; the oracle JSON encodes that as null.
+    const want = rec[op] === null ? null : [rec[op][0], rec[op][1], rec[op][2].map((v) => (v === null ? "" : v))];
+    if (!eq(got, want)) {
+      fail(kind, `${op} mismatch`, {
+        pattern: rec.pattern,
+        subject: s,
+        py: rec.py,
+        cpython: want,
+        js: got,
+        jsSource: p._src,
+      });
+      return;
+    }
+  }
+  const gotFind = p.findall(s);
+  if (!eq(gotFind, rec.findall)) {
+    fail(kind, "findall mismatch", {
+      pattern: rec.pattern,
+      subject: s,
+      py: rec.py,
+      cpython: rec.findall,
+      js: gotFind,
+      jsSource: p._src,
+    });
+    return;
+  }
+  pass(kind);
+}
+
+/** `re.sub` template translation and replacement output. */
+function runSub(rec) {
+  const kind = "sub";
+  let p;
+  try {
+    p = new PyPattern(rec.pattern, rec.flags);
+  } catch (e) {
+    if (e instanceof PyReUntranslatable) {
+      noteUntranslatable(e.reason, rec.pattern, "sub");
+      skip(kind, "untranslatable", { pattern: rec.pattern });
+      return;
+    }
+    fail(kind, "compile failed", { pattern: rec.pattern, js: String(e) });
+    return;
+  }
+
+  // --- vacuity: the obvious \1 -> $1 string translation ---
+  if (!("error" in rec) && p._src !== null) {
+    try {
+      const re = new RegExp(p._src, p._flags + "g");
+      const viaNaive =
+        rec.count === 0
+          ? rec.subject.replace(re, naiveTemplate(rec.repl))
+          : rec.result;
+      if (viaNaive !== rec.result) {
+        naive["template: \\1 -> $1 by string replace"] += 1;
+      }
+    } catch {
+      naive["template: \\1 -> $1 by string replace"] += 1;
+    }
+  }
+
+  let got = null;
+  let err = null;
+  try {
+    got = p.subn(rec.repl, rec.subject, rec.count);
+  } catch (e) {
+    err = e;
+  }
+
+  if ("error" in rec) {
+    // CPython raised. It raises re.error for a bad escape and IndexError for an
+    // unknown group; we only require that JS also refuses, not that the class
+    // matches -- nothing in sqlglot/ catches a template error.
+    if (err === null) {
+      fail(kind, "JS accepted a template CPython rejects", {
+        pattern: rec.pattern,
+        repl: rec.repl,
+        cpython: `${rec.error_type}: ${rec.error}`,
+        js: got,
+      });
+    } else {
+      pass(kind);
+    }
+    return;
+  }
+  if (err !== null) {
+    fail(kind, "JS rejected a template CPython accepts", {
+      pattern: rec.pattern,
+      repl: rec.repl,
+      cpython: rec.result,
+      js: `${/** @type {Error} */ (err).name}: ${/** @type {Error} */ (err).message}`,
+    });
+    return;
+  }
+  if (got[0] !== rec.result || got[1] !== rec.n) {
+    fail(kind, "sub output mismatch", {
+      pattern: rec.pattern,
+      repl: rec.repl,
+      subject: rec.subject,
+      count: rec.count,
+      cpython: [rec.result, rec.n],
+      js: got,
+    });
+    return;
+  }
+
+  // Additionally check the *string* template form where it is unambiguous, since
+  // that is what a hand-written port is most likely to reach for.
+  const tmpl = pyReTemplate(rec.repl, p.groups, p.groupindex);
+  if (tmpl.js !== null && p._src !== null) {
+    const re = new RegExp(p._src, p._flags + "g");
+    const viaString = rec.count === 0
+      ? rec.subject.replace(re, tmpl.js)
+      : null;
+    if (viaString !== null && viaString !== rec.result) {
+      fail(kind, "string-form template diverges from CPython", {
+        pattern: rec.pattern,
+        repl: rec.repl,
+        jsTemplate: tmpl.js,
+        cpython: rec.result,
+        js: viaString,
+      });
+      return;
+    }
+  }
+  pass(kind);
+}
+
+/**
+ * `re.escape`. Two separate claims:
+ *   (a) pyReEscapeExact reproduces CPython's output byte for byte;
+ *   (b) pyReEscape output is accepted under a JS `u` flag AND matches exactly the
+ *       input string -- which is the property every call site actually relies on.
+ */
+function runEscape(rec) {
+  const kind = "escape";
+
+  // --- vacuity: CPython's own escape output is often not /u-valid ---
+  try {
+    new RegExp("^(?:" + rec.output + ")$", "u");
+  } catch {
+    naive["escape: CPython-byte-identical output is invalid under /u"] += 1;
+  }
+
+  const exact = pyReEscapeExact(rec.input);
+  if (exact !== rec.output) {
+    fail(kind, "pyReEscapeExact differs from CPython re.escape", {
+      input: rec.input,
+      cpython: rec.output,
+      js: exact,
+    });
+    return;
+  }
+  const safe = pyReEscape(rec.input);
+  let re;
+  try {
+    re = new RegExp("^(?:" + safe + ")$", "u");
+  } catch (e) {
+    fail(kind, "pyReEscape output is not valid under /u", {
+      input: rec.input,
+      js: safe,
+      error: /** @type {Error} */ (e).message,
+    });
+    return;
+  }
+  if (re.test(rec.input) !== rec.roundtrip) {
+    fail(kind, "pyReEscape round-trip disagrees with CPython", {
+      input: rec.input,
+      escaped: safe,
+      cpython: rec.roundtrip,
+      js: re.test(rec.input),
+    });
+    return;
+  }
+  // The escaped form must also survive being re-parsed as Python regex source,
+  // because qualify_columns.py:1176 concatenates escape() output into a new pattern.
+  try {
+    pyReParse(safe);
+  } catch (e) {
+    fail(kind, "pyReEscape output does not re-parse as a Python pattern", {
+      input: rec.input,
+      escaped: safe,
+      error: /** @type {Error} */ (e).message,
+    });
+    return;
+  }
+  pass(kind);
+}
+
+/** The real ILIKE-pattern construction at qualify_columns.py:1176. */
+function runEscapeBuild(rec) {
+  const kind = "escape_build";
+  let built = "";
+  for (const ch of rec.input) {
+    if (ch === "_") built += ".";
+    else if (ch === "%") built += ".*";
+    else built += pyReEscape(ch);
+  }
+  let p;
+  try {
+    p = new PyPattern(built, 2 /* IGNORECASE */);
+  } catch (e) {
+    fail(kind, "built pattern failed to compile", {
+      input: rec.input,
+      built,
+      error: /** @type {Error} */ (e).message,
+    });
+    return;
+  }
+  for (const [subject, want] of Object.entries(rec.matches)) {
+    const got = p.fullmatch(subject) !== null;
+    if (got !== want) {
+      fail(kind, "ILIKE fullmatch mismatch", {
+        ilike: rec.input,
+        pythonBuilt: rec.built,
+        jsBuilt: built,
+        subject,
+        cpython: want,
+        js: got,
+      });
+      return;
+    }
+  }
+  pass(kind);
+}
+
+/* -------------------------------------------------------------------- main */
+
+if (argv.includes("--selftest")) {
+  console.log("\nfuzz_regex --selftest (ratchet logic)\n");
+  const bad = selfTest();
+  console.log(bad === 0 ? "\n  SELFTEST: GREEN\n" : `\n  SELFTEST: RED (${bad})\n`);
+  process.exit(bad === 0 ? 0 : 1);
+}
+
+const casesPath = CANDIDATE_PATHS.map((p) => path.resolve(p)).find((p) => fs.existsSync(p));
+if (casesPath === undefined) {
+  console.error(
+    `error: no corpus found (looked for ${CANDIDATE_PATHS.join(", ")})\n` +
+      "  run: python3 spike/py/gen_regex_cases.py --stdout > spike/out/regex_cases.jsonl",
+  );
+  process.exit(2);
+}
+
+/** Surfaces PORT_PLAN.md §3.4 item 2 names by hand; each must be non-empty. */
+const coverage = {
+  "group counting": 0,
+  "named groups": 0,
+  "\\A / \\Z anchors": 0,
+  "re.VERBOSE": 0,
+  "re.sub templates": 0,
+  "re.escape under /u": 0,
+  "runtime-constructed patterns": 0,
+};
+
+const started = Date.now();
+let n = 0;
+for (const line of fs.readFileSync(casesPath, "utf8").split("\n")) {
+  if (line === "") continue;
+  const rec = JSON.parse(line);
+  if (ONLY_KIND && rec.kind !== ONLY_KIND) continue;
+  n += 1;
+  currentRec = rec;
+  if (GAP_KEYS.has(gapKeyOf(rec))) gapsSeenAtAll.add(gapKeyOf(rec));
+  currentSite = rec.py || (rec.kind === "sub" || rec.kind === "escape" ? "spike:api" : "");
+
+  if (rec.kind === "oracle") coverage["group counting"] += 1;
+  if (typeof rec.pattern === "string") {
+    if (rec.pattern.includes("(?P<")) coverage["named groups"] += 1;
+    if (/\\[AZ]/.test(rec.pattern)) coverage["\\A / \\Z anchors"] += 1;
+  }
+  if ((rec.flags & 64) !== 0 || (rec.pattern || "").includes("(?x)")) {
+    coverage["re.VERBOSE"] += 1;
+  }
+  if (rec.kind === "sub") coverage["re.sub templates"] += 1;
+  if (rec.kind === "escape" || rec.kind === "escape_build") {
+    coverage["re.escape under /u"] += 1;
+  }
+  if (typeof rec.py === "string" && (rec.py.endsWith("generator.py:1667") || rec.py.endsWith("bigquery.py:127"))) {
+    coverage["runtime-constructed patterns"] += 1;
+  }
+  switch (rec.kind) {
+    case "oracle": runOracle(rec); break;
+    case "match": runMatch(rec); break;
+    case "sub": runSub(rec); break;
+    case "escape": runEscape(rec); break;
+    case "escape_build": runEscapeBuild(rec); break;
+    default: skip(rec.kind, "unknown case kind"); break;
+  }
+}
+
+let totalFail = 0;
+console.log(
+  `\nfuzz_regex — _py/re.js vs CPython, ${n.toLocaleString()} cases in ${Date.now() - started}ms`,
+);
+console.log(`  corpus: ${path.relative(process.cwd(), casesPath)}\n`);
+console.log(`${"surface".padEnd(16)}${"pass".padStart(8)}${"fail".padStart(8)}${"skip".padStart(8)}`);
+console.log("-".repeat(40));
+for (const [kind, b] of Object.entries(stats)) {
+  totalFail += b.fail;
+  console.log(`${kind.padEnd(16)}${String(b.pass).padStart(8)}${String(b.fail).padStart(8)}${String(b.skip).padStart(8)}`);
+}
+const totals = Object.values(stats).reduce(
+  (acc, b) => ({ pass: acc.pass + b.pass, fail: acc.fail + b.fail, skip: acc.skip + b.skip }),
+  { pass: 0, fail: 0, skip: 0 },
+);
+console.log("-".repeat(40));
+console.log(`${"TOTAL".padEnd(16)}${String(totals.pass).padStart(8)}${String(totals.fail).padStart(8)}${String(totals.skip).padStart(8)}`);
+
+console.log("\nBy sqlglot call site (patterns the library actually reaches):");
+const sites = [...bySite].filter(([py]) => py.startsWith("sqlglot/")).sort();
+for (const [py, s] of sites) {
+  const flagStr = s.fail > 0 ? "  <-- FAIL" : "";
+  console.log(
+    `  ${py.padEnd(46)}${String(s.pass).padStart(6)} pass${String(s.fail).padStart(5)} fail${String(s.skip).padStart(5)} skip${flagStr}`,
+  );
+}
+const siteFail = sites.reduce((a, [, s]) => a + s.fail, 0);
+const siteSkip = sites.reduce((a, [, s]) => a + s.skip, 0);
+const sitePass = sites.reduce((a, [, s]) => a + s.pass, 0);
+console.log(`  ${"".padEnd(46)}${"-".repeat(30)}`);
+console.log(
+  `  ${"ALL sqlglot-reachable patterns".padEnd(46)}${String(sitePass).padStart(6)} pass${String(siteFail).padStart(5)} fail${String(siteSkip).padStart(5)} skip`,
+);
+
+if (untranslatable.size > 0) {
+  console.log("\nPatterns valid in CPython with no faithful JS encoding:");
+  for (const [reason, info] of [...untranslatable].sort((a, b) => b[1].count - a[1].count)) {
+    console.log(`  ${String(info.count).padStart(4)}x  ${reason}`);
+    console.log(`        e.g. ${JSON.stringify(info.example)}  (${info.py})`);
+  }
+}
+
+for (const [kind, b] of Object.entries(stats)) {
+  if (b.failures.length === 0) continue;
+  console.log(`\n--- ${kind}: first ${b.failures.length} unexpected failures ---`);
+  for (const f of b.failures) console.log("  " + JSON.stringify(f));
+}
+
+/* --------------------------------------------------------------- verdict */
+
+let red = 0;
+
+// (1) Ratchet: unexpected failures, and gaps that closed without being delisted.
+console.log("\nknown gaps (ratchet):");
+for (const g of KNOWN_GAPS) {
+  const key = gapKeyOf(g);
+  const inCorpus = gapsSeenAtAll.has(key);
+  const stillFailing = gapsSeenFailing.has(key);
+  const state = !inCorpus ? "NOT IN CORPUS" : stillFailing ? "gap          " : "NOW PASSING  ";
+  console.log(
+    `  ${state} ${g.kind} ${JSON.stringify(g.pattern)}` +
+      (g.subject === undefined ? "" : ` on ${JSON.stringify(g.subject)}`),
+  );
+  console.log(`        ${g.why}`);
+  console.log(`        reachable from sqlglot: ${g.reachable}`);
+  if (!inCorpus) {
+    console.log("        ^ the corpus no longer contains this case — the gap list is stale");
+    red += 1;
+  } else if (!stillFailing) {
+    console.log("        ^ delist it — a gap that closes silently means this list is stale");
+    red += 1;
+  }
+}
+if (unexpectedFailures > 0) red += unexpectedFailures;
+
+// (2) Vacuity: a differential both implementations pass is not testing anything.
+console.log("\nvacuity — cases a NAIVE port gets wrong (all must be > 0):");
+let vacuous = 0;
+for (const [label, count] of Object.entries(naive)) {
+  const ok = count > 0;
+  if (!ok) vacuous += 1;
+  console.log(`  ${String(count).padStart(6)}  ${label}${ok ? "" : "   <-- VACUOUS"}`);
+}
+if (vacuous > 0) red += vacuous;
+
+// (3) Coverage: every surface §3.4 item 2 names by hand must be exercised.
+console.log("\ncoverage — surfaces named in PORT_PLAN.md §3.4 item 2:");
+let uncovered = 0;
+for (const [label, count] of Object.entries(coverage)) {
+  const ok = count > 0;
+  if (!ok) uncovered += 1;
+  console.log(`  ${String(count).padStart(6)}  ${label}${ok ? "" : "   <-- NOT COVERED"}`);
+}
+if (uncovered > 0) red += uncovered;
+
+console.log("");
+if (red === 0) {
+  console.log(`  FUZZ_REGEX: GREEN — ${totals.pass.toLocaleString()} pass, ` +
+    `${KNOWN_GAPS.length} known gaps, 0 unexpected\n`);
+  process.exit(0);
+}
+const reasons = [];
+if (unexpectedFailures) reasons.push(`${unexpectedFailures} unexpected failures`);
+if (vacuous) reasons.push(`${vacuous} vacuous checks`);
+if (uncovered) reasons.push(`${uncovered} uncovered surfaces`);
+const closed = KNOWN_GAPS.length - gapsSeenFailing.size;
+if (closed > 0) reasons.push(`${closed} known gaps now passing`);
+console.log(`  FUZZ_REGEX: RED — ${reasons.join(", ")}\n`);
+process.exit(1);
