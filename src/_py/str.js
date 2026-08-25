@@ -9,6 +9,9 @@
 // characters are classified once rather than twice as surrogate halves.
 
 import { isPrintable, isLowercase, isUppercase, isSpace, isTitlecase } from "../_gen/unicode.js";
+import { PyValueError, PyTypeError } from "./errors.js";
+// No cycle: num.js imports from _gen/unicode.js, never from this module.
+import { pyFloatToStr, pyIntToStr } from "./num.js";
 
 // py: unicode_isprintable_impl — the empty string is printable.
 export function pyIsPrintable(s) {
@@ -125,6 +128,138 @@ export function pyZfill(s, width) {
     out = a[0] + "0".repeat(fill) + a.slice(1).join("");
   }
   return out;
+}
+
+/* ------------------------------------------------------------------------- *
+ * builtins added by review B (PORT_PLAN.md §4.6) — all corpus-invisible       *
+ * ------------------------------------------------------------------------- */
+
+// py: len(s.encode("utf-8"))
+//
+// `parsers/clickhouse.py:63` does `len(sep_value.encode("utf-8")) == 1`. Corpus
+// coverage is `splitByChar('', x)` only, so a `.length` port passes every atom and
+// still turns `splitByChar('é', x)` into `Split` instead of `Anonymous`.
+//
+// Note this is NOT `new TextEncoder().encode(s).length`: that substitutes U+FFFD
+// (3 bytes) for a lone surrogate, whereas Python raises UnicodeEncodeError.
+export function utf8Len(s) {
+  let n = 0;
+  for (const ch of s) {
+    const cp = ch.codePointAt(0);
+    if (cp >= 0xd800 && cp <= 0xdfff) {
+      throw new PyValueError(
+        `'utf-8' codec can't encode character '\\ud${cp.toString(16)}' in position 0: surrogates not allowed`,
+      );
+    }
+    if (cp < 0x80) n += 1;
+    else if (cp < 0x800) n += 2;
+    else if (cp < 0x10000) n += 3;
+    else n += 4;
+  }
+  return n;
+}
+
+// py: chr(i)
+//
+// `generators/singlestore.py:25` does `chr(int(m.group(1), 16))`.
+// `String.fromCharCode` truncates above 0xFFFF and is deny-listed outright.
+// Python's chr() also accepts lone surrogates, which fromCodePoint handles.
+export function pyChr(cp) {
+  if (!Number.isInteger(cp) || cp < 0 || cp > 0x10ffff) {
+    throw new PyValueError("chr() arg not in range(0x110000)");
+  }
+  return String.fromCodePoint(cp);
+}
+
+// py: ord(c) — code point of a single-character string.
+export function pyOrd(s) {
+  const a = [...s];
+  if (a.length !== 1) {
+    throw new PyTypeError(`ord() expected a character, but string of length ${a.length} found`);
+  }
+  return a[0].codePointAt(0);
+}
+
+// py: f"{n:0{width}d}"
+//
+// `parsers/dremio.py:65` does `f"{int(year.this):04d}-..."`. `padStart` puts the
+// zeros before the sign (`0-01`); Python puts the sign first (`-001`).
+export function pyFormatInt(n, width) {
+  const neg = typeof n === "bigint" ? n < 0n : n < 0;
+  const digits = (neg ? -n : n).toString();
+  const sign = neg ? "-" : "";
+  const pad = Math.max(0, width - digits.length - sign.length);
+  return sign + "0".repeat(pad) + digits;
+}
+
+/* ------------------------------------------------------------------------- *
+ * repr                                                                       *
+ * ------------------------------------------------------------------------- */
+
+// py: Objects/unicodeobject.c unicode_repr
+//
+// Quote selection: single quotes, unless the string contains ' and no ".
+// Printability is decided by the generated table, NOT by \p{...}.
+export function pyReprStr(s) {
+  let quote = "'";
+  if (s.includes("'") && !s.includes('"')) quote = '"';
+
+  let out = quote;
+  for (const ch of s) {
+    const cp = ch.codePointAt(0);
+    if (ch === quote || ch === "\\") out += "\\" + ch;
+    else if (ch === "\t") out += "\\t";
+    else if (ch === "\n") out += "\\n";
+    else if (ch === "\r") out += "\\r";
+    else if (cp < 0x20 || cp === 0x7f) out += "\\x" + cp.toString(16).padStart(2, "0");
+    else if (cp < 0x7f) out += ch;
+    else if (!isPrintable(cp)) {
+      if (cp <= 0xff) out += "\\x" + cp.toString(16).padStart(2, "0");
+      else if (cp <= 0xffff) out += "\\u" + cp.toString(16).padStart(4, "0");
+      else out += "\\U" + cp.toString(16).padStart(8, "0");
+    } else out += ch;
+  }
+  return out + quote;
+}
+
+/**
+ * py: repr(v) for the value kinds sqlglot renders into error and warning messages
+ * (§4.6 "Strings": list/tuple/set/dict rendering).
+ *
+ * Containers are tagged rather than guessed: JS cannot distinguish a Python list
+ * from a tuple, so pass `{__tuple__: [...]}` / `Set` / `Map` explicitly.
+ */
+export function pyRepr(v) {
+  if (v === null || v === undefined) return "None";
+  if (typeof v === "boolean") return v ? "True" : "False";
+  if (typeof v === "string") return pyReprStr(v);
+  // BigInt models a Python int (repr has no '.0'); Number models a Python float.
+  if (typeof v === "bigint") return pyIntToStr(v);
+  if (typeof v === "number") return pyFloatToStr(v);
+  if (Array.isArray(v)) return "[" + v.map(pyRepr).join(", ") + "]";
+  if (v instanceof Set) {
+    // py: an empty set reprs as `set()`, not `{}` — `{}` is an empty dict.
+    if (v.size === 0) return "set()";
+    return "{" + [...v].map(pyRepr).join(", ") + "}";
+  }
+  if (v instanceof Map) {
+    return "{" + [...v].map(([k, val]) => `${pyRepr(k)}: ${pyRepr(val)}`).join(", ") + "}";
+  }
+  if (typeof v === "object" && Array.isArray(v.__tuple__)) {
+    const items = v.__tuple__;
+    if (items.length === 1) return `(${pyRepr(items[0])},)`;
+    return "(" + items.map(pyRepr).join(", ") + ")";
+  }
+  if (typeof v === "object") {
+    return (
+      "{" +
+      Object.entries(v)
+        .map(([k, val]) => `${pyReprStr(k)}: ${pyRepr(val)}`)
+        .join(", ") +
+      "}"
+    );
+  }
+  return String(v);
 }
 
 export { isPrintable, isLowercase, isUppercase, isSpace, isTitlecase };
