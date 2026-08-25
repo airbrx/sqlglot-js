@@ -184,6 +184,38 @@ for hi, lo in ((0xD800, 0xDC00), (0xDBFF, 0xDFFF), (0xD83D, 0xDE00)):
     add("", f"SELECT '{pair}'", "surrogate_pair")
     add("", f"SELECT a{pair}b", "surrogate_pair")
 
+# --------------------------------------------------------------------------- #
+# structural edge cases — not a Unicode concern, but the same blind spot
+# --------------------------------------------------------------------------- #
+# The harvested corpus is 23,457 rows of realistic SQL and raises on 17 of them. So the
+# tokenizer's ERROR paths are almost entirely unexercised by it, and so are its command
+# re-scan (`_add` truncating `self.tokens` and re-entering `_scan`), its Jinja block
+# tokens, its CR/LF line accounting, and the negative `_advance` that rewinds a heredoc
+# tag. These are hand-picked to reach those, and are run against EVERY dialect — which
+# is what turns ~120 strings into ~4,200 rows and ~470 error cases.
+SQ, DQ, BS = "'", '"', "\\"
+STRUCTURAL = [
+    "", " ", "\t", "\n", "\r\n", "\r", "  \n  ",
+    "--", "--x", "/*", "/**/", "/*/", "/* /* */ */", "/*+", "/*+ hint */ SELECT 1",
+    "SELECT /*+ a */ 1", "SELECT 1 /*+ a */", "{#", "{# x #}", "{% x %}", "{{+ x -}}",
+    # Unterminated and doubled delimiters, spelled without literal triple quotes so the
+    # file stays free of sequences that terminate a docstring.
+    SQ, SQ * 2, SQ * 3, DQ, DQ * 2, DQ * 3, "`", "x" + SQ, "n" + SQ, "N" + SQ,
+    "$", "$$", "$$$", "$a$", "$a$x$a$", "$1$", "$ $", "$a b$",
+    "0x", "0b", "0X", "0B", "0xZZ", "0b22",
+    "1e", "1e+", "1e-", "1e+5", "1.", ".1", "1..2", "1_0", "1__0", "1L", "1S", "1x",
+    ";", ";;", "; SHOW", "SHOW", "SHOW ; SHOW", "BEGIN SHOW x", "EXECUTE a b c",
+    "SELECT 1;", "; -- c\nSHOW x", "-- c\n; SHOW", "FETCH", "RENAME a", "CALL x",
+    "GROUP\tBY x", "GROUP  BY x", "GROUP\nBY x", "GROUP BY", "ORDER  BY",
+    BS, BS * 2, SQ + BS + SQ, SQ + BS * 2 + SQ, SQ + "a" + BS + SQ + "b" + SQ,
+    SQ + "a" + SQ * 2 + "b" + SQ, DQ + "a" + DQ * 2 + "b" + DQ, SQ * 3 + "a" + SQ * 3,
+    "SELECT * FROM t -- \r\n WHERE x", "a\rb", "x\r\ny",
+    "@", "@@", "@x", "@1", "@1.5", "?", "?::", "::", ":::", "|", "||", "|>", "-|-",
+    "<<->>", "<->", "~~~", "~~*", "&&", "??", "==", "!=", "<>", "<=>",
+    "SELECT 1 -- a\n-- b\nFROM t", "/*a*//*b*/SELECT 1",
+    "USER-DEFINED", "DOUBLE PRECISION", "CHARACTER VARYING", "SIMILAR TO", "SQL SECURITY",
+]
+
 ALPHABET = (
     [chr(c) for c in range(0x20, 0x7F)]
     + PY_SPACES
@@ -225,6 +257,14 @@ def main():
     # The JSONPath tokenizer is the only one with NUMBERS_CAN_HAVE_DECIMALS=False.
     for sql in ("$.a.1", "$[0].b", "1.5", "$.a[1].b", "$['x'].y"):
         add("$jsonpath", sql, "jsonpath")
+
+    # Structural cases against every tokenizer, including the two that are not
+    # registered Dialects. Cross-producting is the point: `$$` is a raw string in
+    # snowflake, a heredoc tag opener in postgres, and two PARAMETER tokens in the
+    # default dialect, so one string exercises three different scanner paths.
+    for d in [""] + sorted(Dialect.classes) + ["$jsonpath"]:
+        for sql in STRUCTURAL:
+            add(d, sql, "structural")
 
     seen = set()
     excluded = 0

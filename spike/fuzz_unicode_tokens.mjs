@@ -174,7 +174,7 @@ const MUTATIONS = [
       "stop condition in a loop, and the fast path only ever skips characters that are " +
       "alphanumeric — which are never single tokens, never whitespace, and never the first " +
       "character of a comment delimiter. Skipping fewer of them costs iterations, not " +
-      "answers. Argued, plus 28,040 inputs of evidence; not a proof.",
+      "answers. Argued, plus ~32,000 inputs of evidence; not a proof.",
   },
   {
     name: "isidentifier via ASCII regex",

@@ -70,11 +70,19 @@ Athena's underlying streams are Hive's and Trino's, both of which are separately
    `pyIsIdentifierChar` / `pyIsDigit` / `pyIsSpace`, plus 8,034 `pyIntFromStrBase` probes. 0
    divergences. The full-range tables themselves are verified separately over all 1,114,112 code
    points by `spike/verify_unicode_tables.mjs`.
-2. **Token streams over a Unicode-targeted SQL corpus** — 4,651 cases, 12,125 tokens, 10
-   dialects, 0 divergences. Generators are purpose-built per scanner decision, not random bytes:
+2. **Token streams over a targeted SQL corpus** — 8,554 cases, 17,612 tokens, 34 dialects, 0
+   divergences. Generators are purpose-built per scanner decision, not random bytes:
    `case_fold`, `astral`, `py_space`, `alnum_edge`, `ident_edge`, `uni_digits`, `heredoc`,
-   `surrogate`, plus `soup` as a background. Runs through the *same* checker as the harvested
-   corpus, so there is one comparison implementation.
+   `surrogate`, `structural`, plus `soup` as a background. Runs through the *same* checker as
+   the harvested corpus, so there is one comparison implementation.
+
+   The `structural` set is not a Unicode concern but shares the same blind spot: the harvested
+   corpus raises on **17** of its 23,457 rows, so the tokenizer's error paths, its command
+   re-scan (`_add` truncating `self.tokens` and re-entering `_scan`), its Jinja block tokens,
+   its CR/LF line accounting and the negative `_advance` that rewinds a heredoc tag are
+   effectively unexercised by it. ~120 hand-picked strings crossed with every tokenizer give
+   4,019 rows and **1,540 exact-message `TokenError` cases** — a 90× increase in error-path
+   coverage. All byte-exact, message included.
 3. **A vacuity check** — see below.
 
 Six lone-surrogate-pair cases are generated and then excluded, per CONTRACTS.md §8: a Python
@@ -90,7 +98,7 @@ notices. The interesting output is not "all caught" — it is the split.
 
 | mutation | corpus | fuzz | verdict |
 |---|---:|---:|---|
-| token end off-by-one *(control)* | 23,372 | 3,494 | both |
+| token end off-by-one *(control)* | 23,372 | 6,566 | both |
 | size via UTF-16 `.length` | **2** | 1,247 | both |
 | delimiter width via `.length` | 1 | 5 | both |
 | `isspace` via JS regex | **0** | 638 | **fuzz only** |
