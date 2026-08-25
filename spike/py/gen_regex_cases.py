@@ -266,6 +266,49 @@ def dynamic_patterns(subjects: dict[str, list[str]]) -> list[dict]:
 
 # ------------------------------------------------------------------ structural
 
+def flag_variant_patterns() -> list[dict]:
+    """The same patterns under each `re` flag.
+
+    PORT_PLAN.md §3.4 item 2 names `re.VERBOSE` as a required surface, and the
+    harvested corpus carries flags=0 everywhere (sqlglot passes flags at only one
+    site, `qualify_columns.py:1104`'s re.IGNORECASE). Without this section the
+    fuzzer would never exercise a flag at all.
+
+    Flags change what `^ $ .` compile to, whether `\\w` is Unicode or ASCII, and —
+    for VERBOSE — how the pattern is *tokenized*, so each is a distinct surface.
+    """
+    flags = [
+        (0, "none"),
+        (re.IGNORECASE, "I"),
+        (re.MULTILINE, "M"),
+        (re.DOTALL, "S"),
+        (re.VERBOSE, "X"),
+        (re.ASCII, "A"),
+        (re.MULTILINE | re.DOTALL, "M|S"),
+        (re.IGNORECASE | re.ASCII, "I|A"),
+    ]
+    pats = [
+        r"^a.b$", r"\w+", r"\d+", r"\s+", r"\bfoo\b", r"a$", r"^a",
+        r"[\w-]+", r"(?P<n>\w+)\s*=\s*(?P<v>\S+)", r".", r"A", r"\W",
+        # VERBOSE-specific: whitespace and #-comments are ignored outside classes
+        # but significant *inside* them.
+        "a b", "a # comment\nb", "[a b]", r"a\ b", "( a | b )",
+    ]
+    out: list[dict] = []
+    for flag, label in flags:
+        for p in pats:
+            out.append(
+                {
+                    "pattern": p,
+                    "flags": flag,
+                    "py": "spike:flags",
+                    "call": "re.compile",
+                    "note": f"flags={label}",
+                }
+            )
+    return out
+
+
 def structural_patterns() -> list[dict]:
     """A bounded, deliberately adversarial sweep of Python regex *syntax*.
 
@@ -308,6 +351,9 @@ def structural_patterns() -> list[dict]:
         "(?P=n)", "(?P<n>a)(?P=m)", "(?P>n)", "(?Pfoo)",
         # empty / degenerate
         "", "|", "a|", "|a", "(|)", "^", "$", "^$",
+        # named groups and backreferences — §3.4 item 2 names these explicitly
+        "(?P<year>[0-9]{4})", "(?P<a>x)(?P<b>y)", "(?P<n>a)(?P=n)",
+        r"(?P<q>['\"]).*?(?P=q)", "(?P<n>a)|(?P<m>b)",
         # zero-width / must_advance: CPython rejects a zero-length match at the
         # search start and backtracks into the remaining alternatives. The
         # nested-alternation forms are the known-hard cases for the JS side.
@@ -601,6 +647,8 @@ def main() -> int:
     ap.add_argument("--ref", default="/tmp/sqlglot-ref-regex")
     ap.add_argument("--out", default="spike/regex/corpus")
     ap.add_argument("--sweep", action="store_true", help="regenerate the Unicode class sweep")
+    ap.add_argument("--stdout", action="store_true",
+                    help="write the JSONL to stdout instead of --out/cases.jsonl")
     ap.add_argument("--max-subjects", type=int, default=220,
                     help="subjects paired with each harvested pattern")
     args = ap.parse_args()
@@ -618,10 +666,12 @@ def main() -> int:
     subjects = harvest_subjects(args.ref)
     dynamic = dynamic_patterns(subjects)
     structural = structural_patterns()
+    flag_variants = flag_variant_patterns()
 
     print(f"harvested {len(harvested)} static patterns from {args.ref}/sqlglot", file=sys.stderr)
     print(f"modelled  {len(dynamic)} runtime-constructed patterns", file=sys.stderr)
     print(f"structural {len(structural)} adversarial syntax patterns", file=sys.stderr)
+    print(f"flags     {len(flag_variants)} pattern x flag combinations", file=sys.stderr)
     for name, values in subjects.items():
         print(f"  subjects[{name}] = {len(values)}", file=sys.stderr)
 
@@ -646,7 +696,7 @@ def main() -> int:
     )
 
     records: list[dict] = []
-    for pat in harvested + dynamic + structural:
+    for pat in harvested + dynamic + structural + flag_variants:
         records.append(oracle_case(pat))
 
     for pat in harvested:
@@ -683,8 +733,26 @@ def main() -> int:
     for pat in structural:
         records.extend(match_cases(pat, structural_subjects))
 
+    # Flag variants get match cases over subjects chosen to make each flag bite:
+    # trailing/embedded newlines for M and S, case pairs for I, whitespace and
+    # #-comments for X, non-ASCII for A.
+    flag_subjects = [
+        "", "a", "A", "ab", "a b", "a\nb", "a\n", "\na", "a\r\nb", "a#b",
+        "foo bar", "Foo", "FOO", "café", "CAFÉ", "aЖ", "a1", "a_b", "a-b",
+        "n = 1", "n=1", "  n  =  1  ", "\U0001F600", "ſ", "İ",
+    ]
+    for pat in flag_variants:
+        records.extend(match_cases(pat, flag_subjects))
+
     records.extend(sub_cases())
     records.extend(escape_cases(subjects))
+
+    if args.stdout:
+        # Matches the p0-foundation convention: gen_*.py > spike/out/*.jsonl
+        for rec in records:
+            sys.stdout.write(json.dumps(rec, ensure_ascii=True) + "\n")
+        print(f"{len(records)} cases -> stdout", file=sys.stderr)
+        return 0
 
     out_path = os.path.join(args.out, "cases.jsonl")
     with open(out_path, "w", encoding="utf-8") as fh:
