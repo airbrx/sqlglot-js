@@ -104,23 +104,33 @@ def main():
     )
 
     # ---- probe 4: generator dispatch -----------------------------------------
-    # The resolved table per generator class: TRANSFORMS beats *_sql (§7 P4).
+    # The RESOLVED table per generator class. Uses upstream's own `_build_dispatch`
+    # rather than reimplementing it, so the snapshot cannot drift from the algorithm
+    # it is meant to pin. Semantics that matter (generator.py:78):
+    #   - seeded from TRANSFORMS, so TRANSFORMS beats *_sql
+    #   - only `*_sql` whose stripped key is a real EXPR_CLASS key participates
+    #     (so helpers like `binary_sql` are excluded)
+    #   - `_`-prefixed methods are excluded
+    from sqlglot.generator import _build_dispatch
+
     def dispatch_for(gcls):
-        table = {}
-        # *_sql methods, walking the MRO the way Generator does.
-        for name in dir(gcls):
-            if name.endswith("_sql") and callable(getattr(gcls, name, None)):
-                table[name] = "method"
+        resolved = _build_dispatch(gcls)
         transforms = getattr(gcls, "TRANSFORMS", {}) or {}
-        for k in transforms:
-            table[f"{getattr(k, '__name__', str(k))}:TRANSFORM"] = "transform"
+        entries = []
+        for expr_cls, handler in resolved.items():
+            entries.append(
+                [
+                    expr_cls.__name__,
+                    "transform" if expr_cls in transforms else getattr(handler, "__name__", "?"),
+                ]
+            )
+        entries.sort()
         return {
-            "methods": sorted(n for n, kind in table.items() if kind == "method"),
-            "transforms": sorted(
-                getattr(k, "__name__", str(k)) for k in transforms
-            ),
-            "method_count": sum(1 for kind in table.values() if kind == "method"),
+            "resolved_count": len(resolved),
             "transform_count": len(transforms),
+            "from_transforms": sum(1 for _, h in entries if h == "transform"),
+            "from_method": sum(1 for _, h in entries if h != "transform"),
+            "entries": entries,
         }
 
     dispatch = OrderedDict()
@@ -199,7 +209,8 @@ def main():
     )
     print(
         f"  probe 4 dispatch   {len(dispatch)} generator classes "
-        f"(base {dispatch['Generator']['method_count']} methods)",
+        f"(base {dispatch['Generator']['resolved_count']} resolved, "
+        f"snowflake {dispatch.get('snowflake', {}).get('resolved_count', '?')})",
         file=sys.stderr,
     )
     print(f"  probe 5 dialects   {len(dialects)} registered", file=sys.stderr)

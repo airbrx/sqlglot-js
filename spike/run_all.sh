@@ -40,6 +40,7 @@ run "SELFTEST: ratchet rules 1-5"         node tools/ratchet.mjs --selftest
 run "SELFTEST: corpus runner"             node test/runner.mjs --selftest
 run "CORPUS: integrity"                   node tools/check_corpus.mjs
 run "CORPUS: resync vs baseline"          node test/runner.mjs --resync
+run "PARITY: 6 probes"                    node tools/parity/check.mjs
 
 echo
 if [ "$fail" -eq 0 ]; then
