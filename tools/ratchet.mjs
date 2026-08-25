@@ -134,7 +134,19 @@ export function resync(ratchet, atoms) {
   }
 
   const removed = Object.keys(baseline).filter((i) => !seenInputs.has(i));
-  return { fresh, changed, unchanged, removed };
+
+  // Turnover guard. Rule 4 lets NEW inputs enter quarantine, which is right for the
+  // ~1,100 atoms a large upstream bump brings. But if the input_id FORMULA changes (or
+  // the corpus is regenerated from a different upstream), every input looks new and
+  // rule 4 would happily quarantine the entire corpus — indistinguishable from a green
+  // build. That is the same vacuous-green failure rule 5 exists to prevent, reached by
+  // a different door. Anything above this fraction is a provenance change, not an
+  // upstream bump, and demands an explicit `--baseline`.
+  const baseSize = Object.keys(baseline).length;
+  const turnover = baseSize === 0 ? 0 : removed.length / baseSize;
+  const suspiciousTurnover = baseSize > 0 && turnover > 0.5;
+
+  return { fresh, changed, unchanged, removed, turnover, suspiciousTurnover };
 }
 
 /**
@@ -204,6 +216,12 @@ function selftest() {
   t("rule 5 records both hashes", rs.changed[0].was === "h1" && rs.changed[0].now === "hCHANGED");
   t("unchanged detected", rs.unchanged.length === 1 && rs.unchanged[0] === "u1");
   t("removed input detected", rs.removed.includes("a3i"));
+
+  // Turnover guard: a formula/provenance change looks like "everything is new", which
+  // rule 4 would quarantine wholesale. That must be loud, not green.
+  const wipe = resync(R, [{ atom_id: "z", input_id: "iOTHER", expect_hash: "hZ" }]);
+  t("turnover guard fires on total baseline turnover", wipe.suspiciousTurnover === true);
+  t("turnover guard quiet on a normal bump", rs.suspiciousTurnover === false);
 
   // The single most important negative assertion in this file: a changed expectation
   // must NOT be reachable through the quarantine path.

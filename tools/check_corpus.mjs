@@ -5,7 +5,8 @@
 //
 //   node tools/check_corpus.mjs
 
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 
 const atoms = readFileSync("corpus/atoms.jsonl", "utf8")
   .split("\n")
@@ -70,12 +71,53 @@ if (conflicting.length) {
   }
 }
 
+/* --------------------------------------------------------------------------- *
+ * oracle staleness                                                             *
+ *
+ * corpus/ast/ and corpus/gen/ are keyed by atom_id, and atom_id derives from
+ * input_id. Any change to the input_id formula (or a re-harvest) silently orphans
+ * every oracle row: the runner would look them up, find nothing, and could report a
+ * clean run against an oracle that describes a corpus which no longer exists.
+ * --------------------------------------------------------------------------- */
+
+let oracleStale = 0;
+function checkOracle(dir, label) {
+  if (!existsSync(dir)) {
+    console.log(`  ${label}: not built`);
+    return;
+  }
+  let rows = 0;
+  let orphans = 0;
+  for (const f of readdirSync(dir)) {
+    if (!f.endsWith(".jsonl")) continue;
+    for (const line of readFileSync(join(dir, f), "utf8").split("\n")) {
+      if (!line) continue;
+      rows++;
+      if (!ids.has(JSON.parse(line).atom_id)) orphans++;
+    }
+  }
+  const pct = rows ? ((100 * orphans) / rows).toFixed(1) : "0.0";
+  console.log(
+    `  ${label}: ${rows.toLocaleString()} rows, ${orphans.toLocaleString()} orphaned (${pct}%)` +
+      (orphans ? "  <- STALE, regenerate with tools/astdump.py" : ""),
+  );
+  if (orphans) oracleStale += orphans;
+}
+
+checkOracle("corpus/ast", "AST oracle");
+checkOracle("corpus/gen", "generate oracle");
+console.log();
+
 // Sentinel-vs-value conflicts are EXPECTED and handled: `ratchet.inputKey()` folds the
 // raises-ness into the key, and harvest.py now folds it into input_id itself (so a
 // re-harvest drives this count to 0). Anything else means input_id is not a key for a
 // reason we do not understand, which would make ratchet rule 5 unsound — hard fail.
 if (other > 0) {
   console.log(`  CORPUS INTEGRITY: FAIL — ${other} unexplained input_id conflicts\n`);
+  process.exit(1);
+}
+if (oracleStale > 0) {
+  console.log(`  CORPUS INTEGRITY: FAIL — ${oracleStale.toLocaleString()} orphaned oracle rows\n`);
   process.exit(1);
 }
 console.log(

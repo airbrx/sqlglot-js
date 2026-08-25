@@ -184,6 +184,15 @@ if (argv.includes("--resync")) {
     }
     process.exit(1);
   }
+  if (rs.suspiciousTurnover) {
+    console.log(
+      `\n  TURNOVER GUARD — ${(rs.turnover * 100).toFixed(1)}% of the baseline disappeared.\n` +
+        "  That is a provenance change (input_id formula, or a different upstream), not an\n" +
+        "  upstream bump. Rule 4 would quarantine the whole corpus and report green.\n" +
+        "  Re-baseline explicitly with `node test/runner.mjs --baseline` if this is intended.",
+    );
+    process.exit(1);
+  }
   process.exit(0);
 }
 
