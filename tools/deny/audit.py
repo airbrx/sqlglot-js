@@ -37,7 +37,9 @@ def main() -> int:
     for key, items in sorted(groups.items(), key=lambda kv: -len(kv[1])):
         print(f"\n=== {key}  ({len(items)} sites) ===")
         for s in items[: args.n]:
-            print(f"  {s['py']:52} [{s['confidence']}] {s.get('why','')}")
+            note = s.get("why") or s.get("why_js_differs") or ""
+            conf = s.get("confidence", s.get("shim", ""))
+            print(f"  {s['py']:52} [{conf}] {note[:90]}")
             print(f"      {s.get('source','')[:150]}")
     return 0
 
