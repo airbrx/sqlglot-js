@@ -3,3 +3,5 @@
 #   python3 spike/py/gen_unicode_ref.py   > spike/out/unicode_ref.json
 spike/out/
 node_modules/
+__pycache__/
+*.pyc
