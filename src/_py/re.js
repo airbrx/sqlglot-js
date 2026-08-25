@@ -1816,7 +1816,7 @@ const _compileCache = new Map();
  * @param {string} pattern @param {number} [flags] @returns {PyPattern}
  */
 export function compile(pattern, flags = 0) {
-  const key = flags + " " + pattern;
+  const key = JSON.stringify([flags, pattern]);
   let p = _compileCache.get(key);
   if (p === undefined) {
     p = new PyPattern(pattern, flags);

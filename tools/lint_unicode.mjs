@@ -17,7 +17,19 @@ import { join } from "node:path";
 const GUARDED = ["src/_py", "src/tokenizer.js", "src/tokenizer_core.js", "src/generator.js", "src/time.js"];
 
 // _gen/ is generated from the CPython dump, so it is the source of truth, not a violation.
-const EXEMPT_FILES = new Set(["src/_gen/unicode.js"]);
+//
+// src/_py/re.js is exempt for a different, narrower reason (PORT_PLAN.md §4.6 "Regex",
+// added 2026-08-25 after the regex differential corpus): \w/\d/\s translation is embedded
+// inside dynamically-constructed, dynamically-compiled regex patterns (generator.py:1667,
+// bigquery.py:127), so it cannot route through a precomputed static table the way the four
+// _py/str.js predicates do -- it must build a real runtime \p{...} JS regex at match time.
+// The residual Unicode-version-skew this leaves (harvest-time unidata_version vs the
+// consuming runtime's process.versions.unicode) is accepted and tracked in
+// corpus/PROVENANCE.json, not silently absorbed. This exemption covers exactly the four
+// \p{...} character-class constants re.js needs for that translation (WORD_U, DIGIT_U,
+// SPACE_U, PY_IDENT_RE) -- it is not a blanket license for the file to use \p{...} for the
+// isprintable/islower/isupper/isspace predicates those still must come from _gen/unicode.js.
+const EXEMPT_FILES = new Set(["src/_gen/unicode.js", "src/_py/re.js"]);
 
 function walk(path, out = []) {
   let st;
