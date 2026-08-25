@@ -31,6 +31,18 @@ PREDICATES = {
     # str.istitle() here makes every uppercase char look titlecase, which makes
     # str.isupper() return False for 'A'.
     "istitlechar": lambda c: unicodedata.category(c) == "Lt",
+    # --- added at P1: the four predicates sqlglot/tokenizer_core.py reaches ---
+    #
+    # `_advance(alnum=True)` (tokenizer_core.py:741,748) runs isalnum() on the current
+    # and peeked character on every comment, var and quoted-value scan; `_scan_number`
+    # (:970) branches on isidentifier(); `_scan_string` (:1062) calls isdigit() on a
+    # heredoc tag. All three decide token boundaries, so all three are output-visible.
+    "isalnum": lambda c: c.isalnum(),
+    # str.isidentifier() on a SINGLE character is Py_UNICODE_ISIDSTART, i.e. XID_Start
+    # plus '_'. tokenizer_core.py:970 only ever calls it on `self._peek`, which is one
+    # code point or "". `"".isidentifier()` is False and is handled by the caller.
+    "isidentifier": lambda c: c.isidentifier(),
+    "isdigit": lambda c: c.isdigit(),
 }
 
 
@@ -147,6 +159,43 @@ def main():
             start = cp
     cats.setdefault(prev, []).append([start, maxcp])
     out["categories"] = cats
+
+    # str.upper(), per code point, for every code point where it is not the identity.
+    #
+    # Added at P1. `str.upper()` is NOT safe to delegate to JS `toUpperCase()`: it is
+    # bound to the engine's Unicode version exactly as `\p{...}` is, and Node v22
+    # (Unicode 16.0) disagrees with CPython 3.9.25 (unicodedata 13.0.0) on 67 code
+    # points — U+019B, U+0264, U+1C8A, U+2C5F, ten of U+A7Cx-A7Dx, and the 54-point
+    # Vithkuqi block U+10570-105BC, all of which gained an uppercase mapping after 13.0.
+    #
+    # It reaches token TEXT, not just token type: tokenizer_core.py:853 emits
+    # `text=word.upper()` for every matched keyword, and :1119 uppercases arbitrary
+    # source text to look it up in KEYWORDS. The mapping is 1-to-MANY ('ß' -> 'SS',
+    # 'ﬆ' -> 'ST', so 'ﬆRUCT'.upper() == 'STRUCT' and tokenizes as TokenType.STRUCT),
+    # so this is a code-point -> string map, not a code-point -> code-point map.
+    upper = {}
+    for cp in range(maxcp + 1):
+        try:
+            ch = chr(cp)
+        except (ValueError, UnicodeError):
+            continue
+        u = ch.upper()
+        if u != ch:
+            upper[cp] = u
+    out["upper_map"] = [[cp, s] for cp, s in sorted(upper.items())]
+
+    # str.upper() is documented as a full, per-character mapping with no context
+    # sensitivity (unlike str.lower()'s final-sigma rule). Assert that here rather than
+    # trusting it: if any string's upper() differs from the concatenation of its
+    # characters' upper(), the per-code-point table above is not a faithful model.
+    probes = [
+        "ß", "ﬆRUCT", "ΣΣ", "ΑΣ", "aßb", "İ", "ǰ", "ﬄ", "ᾨ", "İı",
+        "SELECT", "select", "ſelect", "ıd", "ǅ", "ǆx",
+    ]
+    ctx = [
+        p for p in probes if p.upper() != "".join(chr(c).upper() for c in map(ord, p))
+    ]
+    out["upper_context_sensitive"] = ctx
 
     json.dump(out, sys.stdout, separators=(",", ":"))
     sys.stdout.write("\n")

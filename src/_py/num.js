@@ -599,6 +599,51 @@ export function pyFloatFromStr(text) {
   return Number(t);
 }
 
+/**
+ * py: int(text, base) for base 2 and 16 — returns a BigInt, or null where Python
+ * raises ValueError.
+ *
+ * Added at P1. `tokenizer_core.py` calls this in exactly three places
+ * (`_scan_bits`, `_scan_hex`, `_scan_string`) and in all three **only success or
+ * failure is observed** — the value is discarded and the token falls back to
+ * IDENTIFIER on ValueError. The value is still returned rather than a bare boolean so
+ * the shim can be fuzzed against CPython's actual result, not merely its exception.
+ *
+ * CPython's `pylong_int_from_string` accepts, in order: surrounding whitespace (after
+ * the transform above, so Unicode spaces count and U+FEFF does not), an optional sign,
+ * an optional base-specific prefix, an optional single underscore *immediately after
+ * that prefix*, then base-`base` digits with single underscores between them. Unicode
+ * decimal digits fold to ASCII first, so `int('١٠', 16) === 16`.
+ */
+export function pyIntFromStrBase(text, base) {
+  if (base !== 2 && base !== 16) {
+    throw new Error(`pyIntFromStrBase: only bases 2 and 16 are ported (got ${base})`);
+  }
+  let t = transformDecimalAndSpaceToAscii(text).trim();
+
+  let negative = false;
+  if (t[0] === "+" || t[0] === "-") {
+    negative = t[0] === "-";
+    t = t.slice(1);
+  }
+
+  // The prefix is base-specific: '0b' is a prefix in base 2 but two hex DIGITS in
+  // base 16, which is why `int('0b', 16) === 11` while `int('0b', 2)` raises.
+  const prefix = base === 2 ? "b" : "x";
+  if (t.length >= 2 && t[0] === "0" && (t[1] === prefix || t[1] === prefix.toUpperCase())) {
+    t = t.slice(2);
+    // py: a single underscore is allowed right after the prefix — `int('0b_10', 2)`
+    // is 2 — even though a leading underscore without a prefix is not.
+    if (t[0] === "_") t = t.slice(1);
+  }
+
+  const re = base === 2 ? /^[01](?:_?[01])*$/ : /^[0-9a-fA-F](?:_?[0-9a-fA-F])*$/;
+  if (!re.test(t)) return null;
+
+  const v = BigInt((base === 2 ? "0b" : "0x") + t.replace(/_/g, ""));
+  return negative ? -v : v;
+}
+
 /** py: helper.is_int */
 export function pyIsInt(text) {
   return pyIntFromStr(text) !== null;

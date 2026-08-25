@@ -48,8 +48,20 @@ export class ParseError extends SqlglotError {
   }
 }
 
-// py: errors.TokenError
-export class TokenError extends SqlglotError {}
+/**
+ * py: errors.TokenError
+ *
+ * `start` and `end`, when set, are CODE-POINT offsets into the source SQL delimiting
+ * the context snippet quoted in the message — i.e. the snippet is `sql[start:end]`
+ * sliced by code point, never by UTF-16 unit (§4.6 "Indexing", CONTRACTS.md §2).
+ */
+export class TokenError extends SqlglotError {
+  constructor(message, start = null, end = null) {
+    super(message);
+    this.start = start;
+    this.end = end;
+  }
+}
 
 // py: errors.OptimizeError
 export class OptimizeError extends SqlglotError {}
