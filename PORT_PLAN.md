@@ -19,7 +19,9 @@ Port `sqlglot` — SQL parser, transpiler, and optimizer — from Python to Java
 
 **v0 boundary — decided by Ben (2026-08-24, §9 Q2):** v0 ships at **P8** (Snowflake + Databricks chain + DuckDB + Postgres/Redshift + default; 41.9% atom closure), not at P6 (21.8%). *"We will ship at P8."* No interim release at P5 or P6 (§9 Q3: *"We don't need an interim release"*). This is the only decision that changes the architecture's shape — see §7 P6/P8 and §10 for the restated milestones and effort.
 
-**Definition of done, stated as a number.** Upstream's dialect suite decomposes into **15,642 atoms** (§3.2). "Done" for a phase means *every atom whose read dialect and write dialect are both in scope is green*, machine-verified. 100% of the corpus is the terminal state (P9/P10), reached only with a documented `wontfix` list.
+**Definition of done, stated as a number.** Upstream's dialect suite decomposes into **15,540 atoms** — the real, harvested count as of 2026-08-25 (`corpus/atoms.jsonl`, `p0-foundation`), superseding the 15,642 estimate carried since the original planning recon (a 102-atom / 0.65% delta between two independently written harvesters, in the range the plan already treats as measurement noise — see §3.2). "Done" for a phase means *every atom whose read dialect and write dialect are both in scope is green*, machine-verified. 100% of the corpus is the terminal state (P9/P10), reached only with a documented `wontfix` list.
+
+**Every specific atom count and closure percentage elsewhere in this document (§3.2's table, and every phase's "Exit" criterion in §7) was computed from the 15,642 estimate and has not yet been regenerated against the real 15,540-atom corpus.** That regeneration is `closure.mjs`'s actual job (§3.2, §7 P0 item 6) — now that real data exists, this is a `tools/closure.mjs` run away, not a hand-edit; treat the specific numbers below as directionally correct but pending a re-run.
 
 **Explicitly out of scope, permanently:** `tests/test_executor.py` and the 201 `# execute: true` execution assertions in the optimizer fixtures. sqlglot's Python executor is not being ported. The SQL-comparison half of those fixtures is kept.
 
@@ -92,6 +94,8 @@ An atom is **closed** under an implemented dialect set `S` iff both its read and
 *(v0 boundary per Ben's decision, §9 Q2, 2026-08-24: "We will ship at P8." Bolded row updated accordingly from the original P6.)*
 
 *(An independent derivation produced 3,421 rather than 3,417 at P6. The 4-atom delta is the handling of the 12 `Validator.transpile` rows in `TestDAX`, which we resolve as `(dax → write_dialect)` rather than `(dax → dax)`. The calculator is checked in so this is settled by running it, not by argument.)*
+
+**Real corpus harvested 2026-08-25** (`tools/harvest/harvest.py`, run authorized directly by Ben after the auto-mode permission classifier denied the spawned session — it executes upstream's test suite via a monkey-patched `Validator`, which the classifier can't evaluate): **15,540 atoms**, 772 upstream tests, 1 environmental error (`test_lazy_load` shells to `python`, absent on this box — only `python3`), and 3 test failures that are a harness artifact, not a corpus problem: `test_clickhouse.test_array_offset`, `test_duckdb.test_array_index`, `test_postgres.test_array_offset` each assert an *exact* list of `logging` INFO messages from one parse+generate call, and the harvester's wrapper calls `parse_one`/`sql_of` a second time (to extract the atom) after the original assertion already ran, doubling the "Applying array index offset" log lines in the shared capture context. The underlying transpilation is correct on both passes; only log-message-counting tests are affected, and none gate corpus content. This 15,540 figure is now the real denominator (§1) superseding the 15,642 estimate above — the per-phase table itself is pending a `closure.mjs` re-run against it (§7 P0 item 6).
 
 ### 3.3 The ratchet
 
