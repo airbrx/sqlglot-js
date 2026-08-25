@@ -155,7 +155,7 @@ drops 34% of arg entries (`None`, `[]`).
 ```json
 {"atom_id":"a1f3c9d2",
  "ast":{"c":"Select","a":[["expressions",[...]],["from",null]],
-        "m":{"line":1,"col":7,"start":0,"end":12},"cm":null},
+        "m":{"line":1,"col":7,"start":0,"end":12},"cm":null,"t":null},
  "repr":"Select(\n  expressions=[...])"}
 ```
 
@@ -166,6 +166,20 @@ drops 34% of arg entries (`None`, `[]`).
 - **`astLoad` must not run `INIT_HOOKS`.** It constructs with a no-arg constructor plus `set()`,
   bypassing `__init__`, exactly like `serde.load`. Concretely: kwargs-construction of `DateAdd`
   uppercases the unit; `astLoad` does not. Unit-tested at P2.
+- **`t` carries `node.type`** (the property, not the raw `_type` attribute — for `Cast` nodes the
+  property falls back to `.to` when `_type` is unset, and `repr()` reflects that resolved value)
+  when it is truthy and the node is not itself a `DataType` (self-reference guard, matching
+  `core.py:2594-2595`). Otherwise `null`. This is not vestigial: parse-time type inference is a
+  real, dialect-dependent upstream behavior, not an optimizer-only concern — e.g. `TO_CHAR` under
+  Snowflake calls `annotate_types()` at parse time to disambiguate `ToChar` vs `TimeToStr`
+  (`dialect.py`'s `build_timetostr_or_tochar`), mutating `_type` on an arg as a side effect; the
+  same SQL under the default dialect parses without it. 2,344 of 15,540 AST-oracle rows (~15%)
+  carry a non-null `t` this way. Before this field existed, byte-identical `ast` payloads existed
+  for atoms with different `repr` (found via P2's `astLoad` round-trip gate going NO-GO on
+  atom `1cae856d22aaba04` vs `1a5105cd5965e49e`) — an unsatisfiable contract, not a P2 bug.
+  `bigquery.py`, `databricks.py`, and `hive.py` all import `TypeAnnotator` for the same reason;
+  P3+ must call the equivalent type-disambiguation hook wherever upstream does, not just at
+  `astLoad`/optimizer time.
 
 ---
 
