@@ -1,6 +1,12 @@
 // py: sqlglot/errors.py @ 91119bc — plus the port's own NotPorted contract.
 
 import { PyValueError } from "./_py/errors.js";
+import { pySortedBy } from "./_py/sort.js";
+
+// py: errors.py:10-12
+export const ANSI_UNDERLINE = "\u001b[4m";
+export const ANSI_RESET = "\u001b[0m";
+export const ERROR_MESSAGE_CONTEXT_DEFAULT = 100;
 
 /**
  * CONTRACTS.md §6 — the stub sentinel.
@@ -75,5 +81,80 @@ export class DepthLimitError extends SqlglotError {
 // Measured by spike/fuzz_depth.mjs on Node v22.12.0 (CONTRACTS.md §9.1): the realistic
 // generator frame overflows at 3,350; 0.6x leaves margin for the live stack at entry.
 export const DEFAULT_DEPTH_LIMIT = 2010;
+
+/**
+ * py: errors.highlight_sql(sql, positions, context_length=100)
+ *
+ * All indexing is by CODE POINT, per §4.6's indexing contract: `errors.js` and
+ * `parser.js` slice the code-point array, never the JS string, so error columns and
+ * highlight ranges stay correct under astral characters. Python's `sql[a:b]` is a
+ * code-point slice; `String.prototype.slice` is a UTF-16 slice and would cut a
+ * surrogate pair in half.
+ *
+ * @param {string} sql
+ * @param {Array<[number, number]>} positions inclusive 0-based (start, end) pairs
+ * @param {number} [contextLength]
+ * @returns {[string, string, string, string]} [formatted, startCtx, highlight, endCtx]
+ */
+export function highlightSql(sql, positions, contextLength = ERROR_MESSAGE_CONTEXT_DEFAULT) {
+  if (!positions || positions.length === 0) {
+    throw new PyValueError("positions must contain at least one (start, end) tuple");
+  }
+
+  const cps = [...sql];
+  const slice = (a, b) => cps.slice(a, b).join("");
+
+  let startContext = "";
+  let endContext = "";
+  let firstHighlightStart = 0;
+  const formattedParts = [];
+  let previousPartEnd = 0;
+
+  // py: sorted(positions, key=lambda pos: pos[0]) — stable, so equal starts keep
+  // their original relative order.
+  const sortedPositions = pySortedBy(positions, (pos) => pos[0]);
+
+  if (sortedPositions[0][0] > 0) {
+    firstHighlightStart = sortedPositions[0][0];
+    startContext = slice(Math.max(0, firstHighlightStart - contextLength), firstHighlightStart);
+    formattedParts.push(startContext);
+    previousPartEnd = firstHighlightStart;
+  }
+
+  for (const [start, end] of sortedPositions) {
+    const highlightStart = Math.max(start, previousPartEnd);
+    const highlightEnd = end + 1;
+
+    if (highlightStart >= highlightEnd) continue; // skip invalid or overlapping
+    if (highlightStart > previousPartEnd) {
+      formattedParts.push(slice(previousPartEnd, highlightStart));
+    }
+    formattedParts.push(`${ANSI_UNDERLINE}${slice(highlightStart, highlightEnd)}${ANSI_RESET}`);
+    previousPartEnd = highlightEnd;
+  }
+
+  if (previousPartEnd < cps.length) {
+    endContext = slice(previousPartEnd, previousPartEnd + contextLength);
+    formattedParts.push(endContext);
+  }
+
+  const formattedSql = formattedParts.join("");
+  const highlight = slice(firstHighlightStart, previousPartEnd);
+
+  return [formattedSql, startContext, highlight, endContext];
+}
+
+/** py: errors.concat_messages(errors, maximum) */
+export function concatMessages(errors, maximum) {
+  const msg = errors.slice(0, maximum).map((e) => String(e));
+  const remaining = errors.length - maximum;
+  if (remaining > 0) msg.push(`... and ${remaining} more`);
+  return msg.join("\n\n");
+}
+
+/** py: errors.merge_errors(errors) */
+export function mergeErrors(errors) {
+  return errors.flatMap((error) => error.errors ?? []);
+}
 
 export { PyValueError };
