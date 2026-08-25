@@ -25,6 +25,7 @@ node tools/gen_unicode_tables.mjs                                   || fail=1
 node tools/gen_timezones.mjs /tmp/sqlglot-ref                       || fail=1
 python3 spike/py/gen_calib_cases.py   > spike/out/calib.jsonl       || fail=1
 python3 spike/py/gen_builtins_cases.py > spike/out/builtins.jsonl   || fail=1
+python3 spike/py/gen_toowide_comments.py > spike/out/toowide_comments.jsonl || fail=1
 
 run "PROBE 1a: numeric differential"      node spike/fuzz_num.mjs
 run "PROBE 1b: named go/no-go literal"    node spike/gonogo_snowflake367.mjs
@@ -41,6 +42,9 @@ run "SELFTEST: corpus runner"             node test/runner.mjs --selftest
 run "CORPUS: integrity"                   node tools/check_corpus.mjs
 run "CORPUS: resync vs baseline"          node test/runner.mjs --resync
 run "PARITY: 6 probes"                    node tools/parity/check.mjs
+run "FUZZ: depth (R11/C1)"                node spike/fuzz_depth.mjs
+run "FUZZ: toowide + comments"            node spike/fuzz_toowide_comments.mjs
+run "SELFTEST: sync_report"               python3 tools/sync_report.py --selftest
 
 echo
 if [ "$fail" -eq 0 ]; then
