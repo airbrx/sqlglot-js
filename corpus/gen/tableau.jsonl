@@ -1,0 +1,32 @@
+{"atom_id":"0742172ea2a911c4","ast_ref":"0742172ea2a911c4","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"IF x = 'a' THEN y ELSE NULL END","unsupported_messages":[]}
+{"atom_id":"10938b6f530aef66","ast_ref":"10938b6f530aef66","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"'x'","unsupported_messages":[]}
+{"atom_id":"169246e55ef7184c","ast_ref":"169246e55ef7184c","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"FINDNTH(haystack, needle, occurrence)","unsupported_messages":[]}
+{"atom_id":"18cacfa418a46a8d","ast_ref":"18cacfa418a46a8d","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"ARRAY_ANY(arr, x -> pred)","unsupported_messages":["ARRAY_ANY is unsupported"]}
+{"atom_id":"296cdb091949b84a","ast_ref":"296cdb091949b84a","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DOUBLE)","unsupported_messages":["Conversion format is required for TO_NUMBER"]}
+{"atom_id":"29e0f77392d54456","ast_ref":"29e0f77392d54456","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"SELECT a, b FROM (SELECT a AS a, b AS b, ROW_NUMBER() OVER (PARTITION BY a ORDER BY c DESC NULLS FIRST) AS _row_number FROM x) AS _t WHERE _row_number = 1","unsupported_messages":[]}
+{"atom_id":"2f9601cf88acebaa","ast_ref":"2f9601cf88acebaa","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"COUNT(a)","unsupported_messages":[]}
+{"atom_id":"36c1e976ccd3b558","ast_ref":"36c1e976ccd3b558","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"IF FIND(SUBSTRING(haystack, position), needle) = 0 THEN 0 ELSE FIND(SUBSTRING(haystack, position), needle) + position - 1 END","unsupported_messages":[]}
+{"atom_id":"42dabd9c96610da3","ast_ref":"42dabd9c96610da3","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"SELECT 11","unsupported_messages":[]}
+{"atom_id":"5424573dd6dbe7a2","ast_ref":"5424573dd6dbe7a2","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}
+{"atom_id":"597a2ae057e4339e","ast_ref":"597a2ae057e4339e","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"CREATE TABLE a","unsupported_messages":["Unsupported property volatileproperty"]}
+{"atom_id":"5dfe3dc8340a4a84","ast_ref":"5dfe3dc8340a4a84","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"FLOOR(__time TO WEEK)","unsupported_messages":[]}
+{"atom_id":"6038c178f1618c11","ast_ref":"6038c178f1618c11","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"LOG(a, 2)","unsupported_messages":[]}
+{"atom_id":"68190d1cf34c0761","ast_ref":"68190d1cf34c0761","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"IF x > 1 THEN 1 ELSE 0 END","unsupported_messages":[]}
+{"atom_id":"6fe0c79934f3bb3a","ast_ref":"6fe0c79934f3bb3a","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"SELECT 11","unsupported_messages":[]}
+{"atom_id":"71838d7a29cc818b","ast_ref":"71838d7a29cc818b","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"FIND(haystack, needle)","unsupported_messages":[]}
+{"atom_id":"72ad164a43e0d548","ast_ref":"72ad164a43e0d548","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"IF x = 'a' THEN y ELSE NULL END","unsupported_messages":[]}
+{"atom_id":"8383a79eff613c38","ast_ref":"8383a79eff613c38","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"COUNTD(a)","unsupported_messages":[]}
+{"atom_id":"95e52b66ea774e97","ast_ref":"95e52b66ea774e97","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"COUNTD((a))","unsupported_messages":[]}
+{"atom_id":"a3f729c2f1c1018f","ast_ref":"a3f729c2f1c1018f","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"IF FINDNTH(SUBSTRING(haystack, position), needle, occurrence) = 0 THEN 0 ELSE FINDNTH(SUBSTRING(haystack, position), needle, occurrence) + position - 1 END","unsupported_messages":[]}
+{"atom_id":"a4af2029ea587f8e","ast_ref":"a4af2029ea587f8e","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"CASE WHEN 1 THEN x ELSE 0 END","unsupported_messages":[]}
+{"atom_id":"ac9383b2ba3afd39","ast_ref":"ac9383b2ba3afd39","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"COUNT(a)","unsupported_messages":[]}
+{"atom_id":"ae4324fd35e897e4","ast_ref":"ae4324fd35e897e4","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"IFNULL(a, 0)","unsupported_messages":[]}
+{"atom_id":"b67d551afefea060","ast_ref":"b67d551afefea060","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"COUNTD(a)","unsupported_messages":[]}
+{"atom_id":"bb756f015a5efed5","ast_ref":"bb756f015a5efed5","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"[x]","unsupported_messages":[]}
+{"atom_id":"c27a431230109a34","ast_ref":"c27a431230109a34","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"LOG(a, 10)","unsupported_messages":[]}
+{"atom_id":"d678ff6ea089bda4","ast_ref":"d678ff6ea089bda4","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}
+{"atom_id":"dcba946aa82f80e3","ast_ref":"dcba946aa82f80e3","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}
+{"atom_id":"e7da12c5ba11de90","ast_ref":"e7da12c5ba11de90","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}
+{"atom_id":"eef255d271bfaa49","ast_ref":"eef255d271bfaa49","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"COUNTD((a))","unsupported_messages":[]}
+{"atom_id":"f29e74859f25e886","ast_ref":"f29e74859f25e886","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"IFNULL(a, 0)","unsupported_messages":[]}
+{"atom_id":"fb1f2ef9b754e2f8","ast_ref":"fb1f2ef9b754e2f8","dialect":"tableau","flags":{"pretty":false,"identify":false},"sql":"SELECT 204","unsupported_messages":[]}

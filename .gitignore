@@ -1,0 +1,7 @@
+# Generated differential-test corpora. Regenerable:
+#   python3 spike/py/gen_num_cases.py     > spike/out/num_cases.jsonl
+#   python3 spike/py/gen_unicode_ref.py   > spike/out/unicode_ref.json
+spike/out/
+node_modules/
+__pycache__/
+*.pyc

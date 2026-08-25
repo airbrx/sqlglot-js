@@ -1,0 +1,333 @@
+{"atom_id":"011d9d5c80e4bd80","ast_ref":"011d9d5c80e4bd80","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_OR(x, 1)","unsupported_messages":[]}
+{"atom_id":"0287244acf3646e8","ast_ref":"0287244acf3646e8","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS SMALLINT)","unsupported_messages":[]}
+{"atom_id":"03e933d502333a34","ast_ref":"03e933d502333a34","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_WEEKS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"0486d9b7959ff680","ast_ref":"0486d9b7959ff680","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"HASH_SHA(x)","unsupported_messages":[]}
+{"atom_id":"0580e473691a698d","ast_ref":"0580e473691a698d","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_SECONDS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"07025ace428bdc60","ast_ref":"07025ace428bdc60","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT LISTAGG(x, ',') WITHIN GROUP (ORDER BY y) FROM t","unsupported_messages":[]}
+{"atom_id":"07f232f1f5c0fe06","ast_ref":"07f232f1f5c0fe06","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT WEEKS_BETWEEN(CAST('2000-02-28 00:00:00' AS TIMESTAMP), CURRENT_TIMESTAMP())","unsupported_messages":[]}
+{"atom_id":"0883d463ba136896","ast_ref":"0883d463ba136896","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"DATE_TRUNC('YYYY', x)","unsupported_messages":[]}
+{"atom_id":"08ee2648cc2ee27f","ast_ref":"08ee2648cc2ee27f","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT LISTAGG(x, ',') WITHIN GROUP (ORDER BY y) FROM t","unsupported_messages":[]}
+{"atom_id":"0a9be8fa8df36ed0","ast_ref":"0a9be8fa8df36ed0","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT a, b, DENSE_RANK() OVER (ORDER BY b) FROM (VALUES ('A1', 2), ('A1', 1), ('A2', 3), ('A1', 1)) AS tab(a, b)","unsupported_messages":["Argument 'expressions' is not supported for expression 'DenseRank' when targeting Exasol."]}
+{"atom_id":"0b77bf8fa752519e","ast_ref":"0b77bf8fa752519e","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"DATE_TRUNC('DD', x)","unsupported_messages":[]}
+{"atom_id":"0bcf6ee21af28414","ast_ref":"0bcf6ee21af28414","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CAST(ADD_DAYS(ADD_MONTHS(DATE_TRUNC('MONTH', DATE '2008-11-25'), 1), -1) AS DATE)","unsupported_messages":[]}
+{"atom_id":"0bdacd1c3084d95e","ast_ref":"0bdacd1c3084d95e","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"TRUNC(3.14159)","unsupported_messages":[]}
+{"atom_id":"0d2f9f03b31bc855","ast_ref":"0d2f9f03b31bc855","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_YEARS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"0e6405bf7add36e2","ast_ref":"0e6405bf7add36e2","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_AND(x, 1)","unsupported_messages":[]}
+{"atom_id":"0fa469b13add7ff9","ast_ref":"0fa469b13add7ff9","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT COUNT(*) AS cnt FROM t HAVING LOCAL.cnt > 1","unsupported_messages":[]}
+{"atom_id":"10caefd77d3f2032","ast_ref":"10caefd77d3f2032","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT SUBSTR('www.apache.org', 1, NVL(NULLIF(INSTR('www.apache.org', '.', 1, 2), 0) - 1, LENGTH('www.apache.org')))","unsupported_messages":[]}
+{"atom_id":"10cf679ad2398fe2","ast_ref":"10cf679ad2398fe2","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CURRENT_USER","unsupported_messages":[]}
+{"atom_id":"110fb78111c9bac9","ast_ref":"110fb78111c9bac9","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DECIMAL)","unsupported_messages":[]}
+{"atom_id":"11a0fe798c12c5e7","ast_ref":"11a0fe798c12c5e7","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_YEARS(CAST('2000-02-28' AS DATE), 1)","unsupported_messages":[]}
+{"atom_id":"11a1eb2be191c518","ast_ref":"11a1eb2be191c518","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT YEAR(a_date) AS a_year FROM my_table GROUP BY LOCAL.a_year","unsupported_messages":[]}
+{"atom_id":"1379b1019b17c329","ast_ref":"1379b1019b17c329","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2024-07-08 13:45:00' AS TIMESTAMP), 'DY') AS day_abbr","unsupported_messages":[]}
+{"atom_id":"155094fabcd05f23","ast_ref":"155094fabcd05f23","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT REGEXP_SUBSTR('My mail address is my_mail@yahoo.com', '(?i)[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,4}') AS EMAIL","unsupported_messages":[]}
+{"atom_id":"15df16cfbbb89af8","ast_ref":"15df16cfbbb89af8","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(-12345.67890, '000G000G000D000000MI') AS TO_CHAR","unsupported_messages":[]}
+{"atom_id":"166d9ed63f255f7e","ast_ref":"166d9ed63f255f7e","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT SCHEMA_NAME FROM SYS.EXA_SCHEMAS","unsupported_messages":[]}
+{"atom_id":"17f5408c2b720fe0","ast_ref":"17f5408c2b720fe0","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"EDIT_DISTANCE(col1, col2)","unsupported_messages":[]}
+{"atom_id":"1877610b79cb27c2","ast_ref":"1877610b79cb27c2","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT s.*, q.*, 7 FROM (SELECT 1 AS x) AS s CROSS JOIN (SELECT 2 AS y) AS q","unsupported_messages":[]}
+{"atom_id":"18cfd4339699756e","ast_ref":"18cfd4339699756e","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_DATE('31-DECEMBER-1999', 'DD-MONTH-YYYY') AS TO_DATE","unsupported_messages":[]}
+{"atom_id":"18de63fe68bc30b0","ast_ref":"18de63fe68bc30b0","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2024-07-08 13:45:00' AS TIMESTAMP), 'DY')","unsupported_messages":[]}
+{"atom_id":"19aafe8104c139b9","ast_ref":"19aafe8104c139b9","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT 1 AS \"CALL\"","unsupported_messages":[]}
+{"atom_id":"1a566923f2caf80e","ast_ref":"1a566923f2caf80e","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('1999-12-31 23:59:00' AS TIMESTAMP), 'HH24:MI:SS DD-MM-YYYY') AS TO_CHAR","unsupported_messages":[]}
+{"atom_id":"1a6a58c9f4c80513","ast_ref":"1a6a58c9f4c80513","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_MONTHS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"1a8d2faf68744578","ast_ref":"1a8d2faf68744578","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TABLE_NAME FROM SYS.EXA_ALL_TABLES WHERE TABLE_SCHEMA = CURRENT_SCHEMA","unsupported_messages":[]}
+{"atom_id":"1b02861f3cdb4a0b","ast_ref":"1b02861f3cdb4a0b","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DATE)","unsupported_messages":[]}
+{"atom_id":"1b811e18f3b0f981","ast_ref":"1b811e18f3b0f981","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TEST.*, 1 FROM TEST","unsupported_messages":[]}
+{"atom_id":"1b893cc5c54e966e","ast_ref":"1b893cc5c54e966e","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT APPROXIMATE_COUNT_DISTINCT(y)","unsupported_messages":[]}
+{"atom_id":"1bb37260a0fcaf4a","ast_ref":"1bb37260a0fcaf4a","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_WEEKS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"1c884fa60ec71c98","ast_ref":"1c884fa60ec71c98","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"FROM_POSIX_TIME(x)","unsupported_messages":[]}
+{"atom_id":"1d63fe7525a63ca4","ast_ref":"1d63fe7525a63ca4","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS BIGINT)","unsupported_messages":[]}
+{"atom_id":"1e3c0ca563875c20","ast_ref":"1e3c0ca563875c20","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TABLE_NAME FROM SYS.EXA_ALL_TABLES WHERE TABLE_SCHEMA = 'TEST'","unsupported_messages":[]}
+{"atom_id":"1e41b21010b09082","ast_ref":"1e41b21010b09082","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT COUNT(*) FROM dealer","unsupported_messages":[]}
+{"atom_id":"1ec652fa35ea89aa","ast_ref":"1ec652fa35ea89aa","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"HASH_MD5(x)","unsupported_messages":[]}
+{"atom_id":"1fd368cab6874ad0","ast_ref":"1fd368cab6874ad0","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"EDIT_DISTANCE(col1, col2)","unsupported_messages":[]}
+{"atom_id":"211ba09f4e596c42","ast_ref":"211ba09f4e596c42","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_HOURS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"2201237e7afe106b","ast_ref":"2201237e7afe106b","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"HASH_SHA256(x)","unsupported_messages":[]}
+{"atom_id":"226dd95212c7d01e","ast_ref":"226dd95212c7d01e","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_NOT(x)","unsupported_messages":[]}
+{"atom_id":"23ac48a29f083ee2","ast_ref":"23ac48a29f083ee2","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CURRENT_SCHEMA","unsupported_messages":[]}
+{"atom_id":"2501d6d4caf17a9a","ast_ref":"2501d6d4caf17a9a","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_TRUNC('YEAR', DATE '2006-12-31') AS TRUNC","unsupported_messages":[]}
+{"atom_id":"25a77787b9933464","ast_ref":"25a77787b9933464","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_TRUNC('MINUTE', DATE '2006-12-31') AS TRUNC","unsupported_messages":[]}
+{"atom_id":"25bb50e66fa34fce","ast_ref":"25bb50e66fa34fce","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_DATE('2024-01-01')","unsupported_messages":[]}
+{"atom_id":"26ffb7a80c5bf2f8","ast_ref":"26ffb7a80c5bf2f8","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CAST((CAST(202305 AS INT) - 100) AS LONG VARCHAR) AS CAL_YEAR_WEEK_ADJUSTED","unsupported_messages":[]}
+{"atom_id":"27ef686b0f328ed6","ast_ref":"27ef686b0f328ed6","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT MONTHS_BETWEEN(CAST('2000-02-28 00:00:00' AS TIMESTAMP), CURRENT_TIMESTAMP())","unsupported_messages":[]}
+{"atom_id":"2889f5eb53916045","ast_ref":"2889f5eb53916045","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"TRUNC(price, 2)","unsupported_messages":[]}
+{"atom_id":"29da090348e059a5","ast_ref":"29da090348e059a5","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_DAYS(CAST('2000-02-28' AS DATE), 1)","unsupported_messages":[]}
+{"atom_id":"2a3e25fc659ac2d0","ast_ref":"2a3e25fc659ac2d0","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"2a7fc036e745593c","ast_ref":"2a7fc036e745593c","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"TRUNC(CAST(x AS DATE))","unsupported_messages":[]}
+{"atom_id":"2a9ce6192e504387","ast_ref":"2a9ce6192e504387","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TABLE_NAME FROM SYS.EXA_ALL_TABLES WHERE TABLE_SCHEMA = 'TEST'","unsupported_messages":[]}
+{"atom_id":"2b5573e4a8f9dbbb","ast_ref":"2b5573e4a8f9dbbb","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_AND(x, 1)","unsupported_messages":[]}
+{"atom_id":"2c22bd4f44d80a79","ast_ref":"2c22bd4f44d80a79","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_XOR(x, 1)","unsupported_messages":[]}
+{"atom_id":"2d261861ba7cbabd","ast_ref":"2d261861ba7cbabd","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"HASH_SHA512(x)","unsupported_messages":[]}
+{"atom_id":"2d27b29564ba0b81","ast_ref":"2d27b29564ba0b81","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT city AS c, COUNT(*) + 1 FROM dealer GROUP BY 1","unsupported_messages":[]}
+{"atom_id":"2e2dc66d3111c4e0","ast_ref":"2e2dc66d3111c4e0","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"DATE_TRUNC('MI', x)","unsupported_messages":[]}
+{"atom_id":"2f104343cc3c1fd1","ast_ref":"2f104343cc3c1fd1","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT department, EVERY(age >= 30) AS EVERY FROM employee_table GROUP BY department","unsupported_messages":[]}
+{"atom_id":"2f25f92c57a5a603","ast_ref":"2f25f92c57a5a603","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CAST(ADD_DAYS(ADD_MONTHS(DATE_TRUNC('MONTH', DATE '2008-11-25'), 1), -1) AS DATE)","unsupported_messages":[]}
+{"atom_id":"2fdeff93279b21bb","ast_ref":"2fdeff93279b21bb","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_MINUTES(CAST('2000-02-28' AS DATE), 1)","unsupported_messages":[]}
+{"atom_id":"306883319188ae27","ast_ref":"306883319188ae27","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(CAST(TO_DATE(date, 'YYYYMMDD') AS TIMESTAMP), 'DY') AS day_of_week","unsupported_messages":[]}
+{"atom_id":"30a140ae559d9d1d","ast_ref":"30a140ae559d9d1d","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT \"A\".*, \"B\".*, 3 FROM \"A\" JOIN \"B\" ON 1 = 1","unsupported_messages":[]}
+{"atom_id":"3131a2e1a188bbcd","ast_ref":"3131a2e1a188bbcd","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2007-10-04 22:23:00' AS TIMESTAMP), 'HH:MI:SS')","unsupported_messages":[]}
+{"atom_id":"31737407a2af7ce7","ast_ref":"31737407a2af7ce7","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"EDIT_DISTANCE(col1, col2)","unsupported_messages":[]}
+{"atom_id":"3288ae589888c231","ast_ref":"3288ae589888c231","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_OR(x, 1)","unsupported_messages":[]}
+{"atom_id":"33b172f839400cc5","ast_ref":"33b172f839400cc5","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT city, COUNT(*) OVER () FROM dealer GROUP BY 1","unsupported_messages":[]}
+{"atom_id":"349597be28535543","ast_ref":"349597be28535543","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT 1 AS \"x\"","unsupported_messages":[]}
+{"atom_id":"349820c509cb719d","ast_ref":"349820c509cb719d","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_WEEKS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"3570e0a56bb5340b","ast_ref":"3570e0a56bb5340b","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT LISTAGG(x, ',') WITHIN GROUP (ORDER BY y) FROM t","unsupported_messages":[]}
+{"atom_id":"35a7d9ab1d85dcb4","ast_ref":"35a7d9ab1d85dcb4","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT city, COUNT(*) AS cnt FROM t GROUP BY LOCAL.cnt","unsupported_messages":[]}
+{"atom_id":"35a8d272586ab473","ast_ref":"35a8d272586ab473","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_AND(x, 1)","unsupported_messages":[]}
+{"atom_id":"362ad00683d09fed","ast_ref":"362ad00683d09fed","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT SCHEMA_NAME FROM SYS.EXA_SCHEMAS","unsupported_messages":[]}
+{"atom_id":"36b3acdd734fce6f","ast_ref":"36b3acdd734fce6f","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT 1 AS \"ADD\"","unsupported_messages":[]}
+{"atom_id":"3738062bccb6e619","ast_ref":"3738062bccb6e619","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT x REGEXP_LIKE '.*pattern.*'","unsupported_messages":[]}
+{"atom_id":"37704a4643e89714","ast_ref":"37704a4643e89714","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"37c9180a3d686031","ast_ref":"37c9180a3d686031","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TRUNC(123.456, 2) AS TRUNC","unsupported_messages":[]}
+{"atom_id":"39c940a6875fbada","ast_ref":"39c940a6875fbada","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CONVERT_TZ(CAST('2012-03-25 02:30:00' AS TIMESTAMP), 'Europe/Berlin', 'UTC', 'INVALID REJECT AMBIGUOUS REJECT') AS CONVERT_TZ","unsupported_messages":[]}
+{"atom_id":"39dfffe5c0c15ac1","ast_ref":"39dfffe5c0c15ac1","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"3a74dc2bb8e5da4e","ast_ref":"3a74dc2bb8e5da4e","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT APPROXIMATE_COUNT_DISTINCT(y)","unsupported_messages":[]}
+{"atom_id":"3acc4aaedd0683ef","ast_ref":"3acc4aaedd0683ef","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT SECONDS_BETWEEN(CAST('2000-02-28 00:00:00' AS TIMESTAMP), CURRENT_TIMESTAMP())","unsupported_messages":[]}
+{"atom_id":"3ba870bebb13eaff","ast_ref":"3ba870bebb13eaff","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"HASH_SHA(x)","unsupported_messages":[]}
+{"atom_id":"3bc946bdfc9f177b","ast_ref":"3bc946bdfc9f177b","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_RSHIFT(x, 1)","unsupported_messages":[]}
+{"atom_id":"3cb9633568f69bc0","ast_ref":"3cb9633568f69bc0","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2024-07-08 13:45:00' AS TIMESTAMP), 'ID') AS iso_weekday","unsupported_messages":[]}
+{"atom_id":"3cd35e8ca7dc3100","ast_ref":"3cd35e8ca7dc3100","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2009-10-04 22:23:00' AS TIMESTAMP), 'DAY MONTH YYYY')","unsupported_messages":[]}
+{"atom_id":"3cf32b8e0b8ee140","ast_ref":"3cf32b8e0b8ee140","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT YEAR(a_date) AS a_year, MONTH(a_date) AS a_month FROM my_table WHERE LOCAL.a_year > 2020 AND LOCAL.a_month < 6","unsupported_messages":[]}
+{"atom_id":"3cf56efee9f7fd18","ast_ref":"3cf56efee9f7fd18","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"a REGEXP_LIKE '.*x.*'","unsupported_messages":[]}
+{"atom_id":"3d4c1b13bf5deb1b","ast_ref":"3d4c1b13bf5deb1b","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_TRUNC('WEEK', TIMESTAMP '2006-12-31 23:59:59') AS DATE_TRUNC","unsupported_messages":[]}
+{"atom_id":"3d97d1d740654f6d","ast_ref":"3d97d1d740654f6d","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"HASH_SHA(x)","unsupported_messages":[]}
+{"atom_id":"3e44296f7d1c0156","ast_ref":"3e44296f7d1c0156","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_HOURS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"3ea137162a254f0b","ast_ref":"3ea137162a254f0b","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DECIMAL)","unsupported_messages":[]}
+{"atom_id":"3fccc2b82962623d","ast_ref":"3fccc2b82962623d","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT YEAR(a_date) AS a_year FROM my_table WHERE LOCAL.a_year > 2020","unsupported_messages":[]}
+{"atom_id":"402156cba414fda0","ast_ref":"402156cba414fda0","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT FROM_POSIX_TIME(col)","unsupported_messages":[]}
+{"atom_id":"41526260114f2171","ast_ref":"41526260114f2171","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS LONG VARCHAR)","unsupported_messages":[]}
+{"atom_id":"41899139bba6bdeb","ast_ref":"41899139bba6bdeb","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT foo, bar FROM table_1 EXCEPT SELECT foo, bar FROM table_2","unsupported_messages":[]}
+{"atom_id":"4250f52e9e445396","ast_ref":"4250f52e9e445396","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_TRUNC('MM', DATE '2006-12-31') AS TRUNC","unsupported_messages":[]}
+{"atom_id":"438c1b23c13c09c7","ast_ref":"438c1b23c13c09c7","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS BOOLEAN)","unsupported_messages":[]}
+{"atom_id":"43c17f9cfd7f613a","ast_ref":"43c17f9cfd7f613a","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CAST(ADD_DAYS(ADD_MONTHS(DATE_TRUNC('MONTH', DATE '2008-11-25'), 1), -1) AS DATE)","unsupported_messages":[]}
+{"atom_id":"4505ac8e010d9909","ast_ref":"4505ac8e010d9909","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CURRENT_USER","unsupported_messages":[]}
+{"atom_id":"471ed058914d7441","ast_ref":"471ed058914d7441","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_WEEKS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"48d424b61caf3733","ast_ref":"48d424b61caf3733","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DISTINCT * FROM t","unsupported_messages":[]}
+{"atom_id":"492966615dca115d","ast_ref":"492966615dca115d","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CURRENT_USER","unsupported_messages":[]}
+{"atom_id":"49369962dd6fc79d","ast_ref":"49369962dd6fc79d","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT a_year AS a_year FROM \"LOCAL\" GROUP BY \"LOCAL\".a_year","unsupported_messages":[]}
+{"atom_id":"4a2c255a0e3287c6","ast_ref":"4a2c255a0e3287c6","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('1999-12-31' AS DATE)) AS TO_CHAR","unsupported_messages":[]}
+{"atom_id":"4b2620db36a2baa3","ast_ref":"4b2620db36a2baa3","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2017-06-15' AS TIMESTAMP), 'YYYY')","unsupported_messages":[]}
+{"atom_id":"4e9fbd2e69a21ae1","ast_ref":"4e9fbd2e69a21ae1","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"4ffd3f7a2863b63a","ast_ref":"4ffd3f7a2863b63a","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_TRUNC('WEEK', CURRENT_TIMESTAMP()) AS DATE_TRUNC","unsupported_messages":[]}
+{"atom_id":"5032932170bd8f11","ast_ref":"5032932170bd8f11","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('1999-12-31' AS DATE)) AS TO_CHAR","unsupported_messages":[]}
+{"atom_id":"50b9cedfa34a19d2","ast_ref":"50b9cedfa34a19d2","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT LISTAGG(x, ',') WITHIN GROUP (ORDER BY y) FROM t","unsupported_messages":[]}
+{"atom_id":"51f33153e4b2cba7","ast_ref":"51f33153e4b2cba7","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"LISTAGG(x, ',' ON OVERFLOW ERROR) WITHIN GROUP (ORDER BY y)","unsupported_messages":[]}
+{"atom_id":"52b09b6ff7b3c13e","ast_ref":"52b09b6ff7b3c13e","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"a REGEXP_LIKE '.*x.*'","unsupported_messages":[]}
+{"atom_id":"52b4c9045b4720e1","ast_ref":"52b4c9045b4720e1","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"HASH_SHA(x)","unsupported_messages":[]}
+{"atom_id":"53af360a7e68e254","ast_ref":"53af360a7e68e254","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"HASH_SHA256(x)","unsupported_messages":[]}
+{"atom_id":"55da5c5f77e25ef7","ast_ref":"55da5c5f77e25ef7","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_HOURS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"585991378cef531c","ast_ref":"585991378cef531c","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_MINUTES('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"58fe6c95123f6ef4","ast_ref":"58fe6c95123f6ef4","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT IF 1 = 0 THEN NULL ELSE 1 ENDIF AS NIZ1","unsupported_messages":[]}
+{"atom_id":"59447bbfc01ce316","ast_ref":"59447bbfc01ce316","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"OPEN SCHEMA test","unsupported_messages":[]}
+{"atom_id":"5aef20bca427e39c","ast_ref":"5aef20bca427e39c","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"DATE_TRUNC('SS', x)","unsupported_messages":[]}
+{"atom_id":"5b894cca0942cb47","ast_ref":"5b894cca0942cb47","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_DAYS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"5ca2bd33eebbce3a","ast_ref":"5ca2bd33eebbce3a","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_LSHIFT(x, 1)","unsupported_messages":[]}
+{"atom_id":"5da76bca6b14121e","ast_ref":"5da76bca6b14121e","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_MINUTES('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"5dce8f91c885fb36","ast_ref":"5dce8f91c885fb36","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_SECONDS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"60d8c3782e8af46a","ast_ref":"60d8c3782e8af46a","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_MONTHS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"627b3a73f1e95464","ast_ref":"627b3a73f1e95464","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_MONTHS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"62b7856122871d5c","ast_ref":"62b7856122871d5c","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_TRUNC('MM', TIMESTAMP '2006-12-31 23:59:59') AS DATE_TRUNC","unsupported_messages":[]}
+{"atom_id":"63abfb103c429d12","ast_ref":"63abfb103c429d12","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"OPEN SCHEMA test","unsupported_messages":[]}
+{"atom_id":"646e3917d353a27c","ast_ref":"646e3917d353a27c","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2024-07-08 13:45:00' AS TIMESTAMP), 'IYYY') AS iso_year","unsupported_messages":[]}
+{"atom_id":"64e82038ec530d60","ast_ref":"64e82038ec530d60","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_MINUTES('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"6533fa1dc713bdf0","ast_ref":"6533fa1dc713bdf0","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_DATE('31-DEC-1999', 'DD-MON-YYYY') AS TO_DATE","unsupported_messages":[]}
+{"atom_id":"6566ea3ca08e1014","ast_ref":"6566ea3ca08e1014","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT a, b, RANK() OVER (ORDER BY b) FROM (VALUES ('A1', 2), ('A1', 1), ('A2', 3), ('A1', 1)) AS tab(a, b)","unsupported_messages":["Argument 'expressions' is not supported for expression 'Rank' when targeting Exasol."]}
+{"atom_id":"65e6ee8cbcb6cbc5","ast_ref":"65e6ee8cbcb6cbc5","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_OR(x, 1)","unsupported_messages":[]}
+{"atom_id":"6613f6f70fb2af68","ast_ref":"6613f6f70fb2af68","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"LISTAGG(x, ',' ON OVERFLOW TRUNCATE '...' WITHOUT COUNT) WITHIN GROUP (ORDER BY y)","unsupported_messages":[]}
+{"atom_id":"675d92e43dff7fb5","ast_ref":"675d92e43dff7fb5","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_LSHIFT(x, 1)","unsupported_messages":[]}
+{"atom_id":"685f26155e90abda","ast_ref":"685f26155e90abda","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_WEEKS(CAST('2000-02-28' AS DATE), 1)","unsupported_messages":[]}
+{"atom_id":"699b4e17dfe7b15a","ast_ref":"699b4e17dfe7b15a","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIMESTAMP WITH LOCAL TIME ZONE)","unsupported_messages":[]}
+{"atom_id":"6a6a8891485855a3","ast_ref":"6a6a8891485855a3","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DECIMAL)","unsupported_messages":[]}
+{"atom_id":"6a7189708fbfb250","ast_ref":"6a7189708fbfb250","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CURRENT_USER","unsupported_messages":[]}
+{"atom_id":"6d221ce8e3df4813","ast_ref":"6d221ce8e3df4813","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT a REGEXP_LIKE '.*x.*'","unsupported_messages":[]}
+{"atom_id":"6dab0db233feb30f","ast_ref":"6dab0db233feb30f","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT YEARS_BETWEEN(CAST('2000-02-28 00:00:00' AS TIMESTAMP), CURRENT_TIMESTAMP())","unsupported_messages":[]}
+{"atom_id":"6e1b794c6e9f4028","ast_ref":"6e1b794c6e9f4028","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT id, city, COUNT(*) FROM dealer GROUP BY 1, 2","unsupported_messages":[]}
+{"atom_id":"70b5fbb56fcec460","ast_ref":"70b5fbb56fcec460","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_HOURS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"7124b09c0fcc3112","ast_ref":"7124b09c0fcc3112","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CURRENT_USER","unsupported_messages":[]}
+{"atom_id":"715d5e0b154a20cb","ast_ref":"715d5e0b154a20cb","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_SECONDS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"7381a9ffaf0accfd","ast_ref":"7381a9ffaf0accfd","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT SUBSTR('555A66A777', 1, NVL(NULLIF(INSTR('555A66A777', 'a', 1, 2), 0) - 1, LENGTH('555A66A777')))","unsupported_messages":[]}
+{"atom_id":"73995b40ecd497ce","ast_ref":"73995b40ecd497ce","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_XOR(x, 1)","unsupported_messages":[]}
+{"atom_id":"73a8b4a0d39c94da","ast_ref":"73a8b4a0d39c94da","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT city, COUNT(*) FROM t GROUP BY city","unsupported_messages":[]}
+{"atom_id":"7455bd8dbd72d1fb","ast_ref":"7455bd8dbd72d1fb","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2024-07-08 13:45:00' AS TIMESTAMP), 'SS') AS seconds","unsupported_messages":[]}
+{"atom_id":"75662b21de2c6643","ast_ref":"75662b21de2c6643","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"DATE_TRUNC('HH', x)","unsupported_messages":[]}
+{"atom_id":"75f47cf7fac7e466","ast_ref":"75f47cf7fac7e466","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT JSON_EXTRACT('{\"firstname\" : \"Ann\", \"surname\" : \"Smith\", \"age\" : 29}', '$.firstname', '$.surname', '$.age') EMITS (firstname VARCHAR(100), surname VARCHAR(100), age INT)","unsupported_messages":[]}
+{"atom_id":"76e41f6b3617b0fc","ast_ref":"76e41f6b3617b0fc","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2024-07-08 13:45:00' AS TIMESTAMP), 'DAY') AS day_full","unsupported_messages":[]}
+{"atom_id":"779936b3cc4a8a83","ast_ref":"779936b3cc4a8a83","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"DATE_TRUNC('MM', x)","unsupported_messages":[]}
+{"atom_id":"77a9ff905e606515","ast_ref":"77a9ff905e606515","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT MOD(x, 10)","unsupported_messages":[]}
+{"atom_id":"78260b20c566f39c","ast_ref":"78260b20c566f39c","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT YEAR(a_date) AS A_YEAR FROM my_table WHERE LOCAL.A_YEAR > 2020","unsupported_messages":[]}
+{"atom_id":"783e568356ec5577","ast_ref":"783e568356ec5577","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"REGR_SLOPE(x, y)","unsupported_messages":[]}
+{"atom_id":"784d4ff1dc256a1a","ast_ref":"784d4ff1dc256a1a","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_AND(x, 1)","unsupported_messages":[]}
+{"atom_id":"7913b2b837c932f4","ast_ref":"7913b2b837c932f4","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"7987018ac3edfd5c","ast_ref":"7987018ac3edfd5c","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT YEAR(TO_DATE(a_date)) AS a_year FROM t GROUP BY LOCAL.a_year","unsupported_messages":[]}
+{"atom_id":"79ac2ae9835e86fa","ast_ref":"79ac2ae9835e86fa","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"REGR_SXX(x, y)","unsupported_messages":[]}
+{"atom_id":"7b5f65122b0a26f6","ast_ref":"7b5f65122b0a26f6","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIMESTAMP WITH LOCAL TIME ZONE)","unsupported_messages":[]}
+{"atom_id":"7c7535d1adbf0b9f","ast_ref":"7c7535d1adbf0b9f","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT name, age, IF age < 18 THEN 'underaged' ELSE 'adult' ENDIF AS LEGALITY FROM persons","unsupported_messages":[]}
+{"atom_id":"7dcb5be14fe1d31f","ast_ref":"7dcb5be14fe1d31f","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS INT)","unsupported_messages":[]}
+{"atom_id":"7e7b2aa84b85ce7c","ast_ref":"7e7b2aa84b85ce7c","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT YEAR(CURRENT_DATE) AS current_year, LOCAL.current_year + 1 AS next_year","unsupported_messages":[]}
+{"atom_id":"7f1d39539a18f4a1","ast_ref":"7f1d39539a18f4a1","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"REGR_COUNT(x, y)","unsupported_messages":[]}
+{"atom_id":"7f612ddade0e09ef","ast_ref":"7f612ddade0e09ef","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT t.*, 1 FROM t","unsupported_messages":[]}
+{"atom_id":"81002a9b761b9fa8","ast_ref":"81002a9b761b9fa8","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_YEARS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"81c12b39e5204d41","ast_ref":"81c12b39e5204d41","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DOUBLE)","unsupported_messages":[]}
+{"atom_id":"8256e444317d17d8","ast_ref":"8256e444317d17d8","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CURRENT_USER","unsupported_messages":[]}
+{"atom_id":"82a1184ae31010b2","ast_ref":"82a1184ae31010b2","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_WEEKS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"83fac9bb4a88dc94","ast_ref":"83fac9bb4a88dc94","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT t.* FROM t","unsupported_messages":[]}
+{"atom_id":"840bfa0cc703caba","ast_ref":"840bfa0cc703caba","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_YEARS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"84752017b7531341","ast_ref":"84752017b7531341","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_HOURS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"85ed3d69388d6d7b","ast_ref":"85ed3d69388d6d7b","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_TRUNC('YEAR', CURRENT_TIMESTAMP()) AS DATE_TRUNC","unsupported_messages":[]}
+{"atom_id":"8985af2c19985b8f","ast_ref":"8985af2c19985b8f","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT 1 AS \"CONTROL\"","unsupported_messages":[]}
+{"atom_id":"8b64f8e6232a328d","ast_ref":"8b64f8e6232a328d","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"TO_DATE(x, 'YYYY-MM-DD')","unsupported_messages":[]}
+{"atom_id":"8b74a2b573c565fe","ast_ref":"8b74a2b573c565fe","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(12345.67890, '9999999.999999999') AS TO_CHAR","unsupported_messages":[]}
+{"atom_id":"8c0a8bc62bbc604a","ast_ref":"8c0a8bc62bbc604a","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_DATE('31-12-1999', 'DD-MM-YYYY') AS TO_DATE","unsupported_messages":[]}
+{"atom_id":"8d791b6a868cc154","ast_ref":"8d791b6a868cc154","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"WEEK(CAST('2025-01-01' AS DATE))","unsupported_messages":[]}
+{"atom_id":"90a36f3debee847b","ast_ref":"90a36f3debee847b","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_RSHIFT(x, 1)","unsupported_messages":[]}
+{"atom_id":"90e5f5b373145d7e","ast_ref":"90e5f5b373145d7e","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT a REGEXP_LIKE '.*x.*'","unsupported_messages":[]}
+{"atom_id":"91dee913eb0b39a1","ast_ref":"91dee913eb0b39a1","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_TRUNC('MINUTE', CURRENT_TIMESTAMP()) AS DATE_TRUNC","unsupported_messages":[]}
+{"atom_id":"926ffbac59882bde","ast_ref":"926ffbac59882bde","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2024-07-08 13:45:00' AS TIMESTAMP), 'VW') AS week_number_VW","unsupported_messages":[]}
+{"atom_id":"92abafd68fc58983","ast_ref":"92abafd68fc58983","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT city, COUNT(*) AS cnt FROM t GROUP BY LOCAL.cnt","unsupported_messages":[]}
+{"atom_id":"9345d70adbdfcb58","ast_ref":"9345d70adbdfcb58","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"9364dee11f222e67","ast_ref":"9364dee11f222e67","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CURRENT_TIMESTAMP()","unsupported_messages":[]}
+{"atom_id":"938a1caece4d1d06","ast_ref":"938a1caece4d1d06","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_TRUNC('QUARTER', CURRENT_TIMESTAMP()) AS DATE_TRUNC","unsupported_messages":[]}
+{"atom_id":"93a410cb088e4894","ast_ref":"93a410cb088e4894","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"EDIT_DISTANCE(col1, col2)","unsupported_messages":[]}
+{"atom_id":"9670878c3ba4e4bf","ast_ref":"9670878c3ba4e4bf","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"HASHTYPE_MD5(x)","unsupported_messages":[]}
+{"atom_id":"96ebb597b05aedfb","ast_ref":"96ebb597b05aedfb","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT 1 AS \"BOOLEAN\"","unsupported_messages":[]}
+{"atom_id":"99cab8ba59e975c4","ast_ref":"99cab8ba59e975c4","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"9a07ca3130af29bf","ast_ref":"9a07ca3130af29bf","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"REGR_INTERCEPT(x, y)","unsupported_messages":[]}
+{"atom_id":"9a6935351e3984fd","ast_ref":"9a6935351e3984fd","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"OPEN SCHEMA \"my_database\"","unsupported_messages":[]}
+{"atom_id":"9b3a763d48ac48b7","ast_ref":"9b3a763d48ac48b7","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"9bca5bf2811b7a79","ast_ref":"9bca5bf2811b7a79","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"REGEXP_REPLACE(subject, pattern, replacement, position, occurrence)","unsupported_messages":[]}
+{"atom_id":"9c69bccbcf727bf2","ast_ref":"9c69bccbcf727bf2","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_NOT(x)","unsupported_messages":[]}
+{"atom_id":"9d8222ac993f9681","ast_ref":"9d8222ac993f9681","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT 1 AS \"CS\"","unsupported_messages":[]}
+{"atom_id":"a0ecbd27414b4ad1","ast_ref":"a0ecbd27414b4ad1","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT JSON_VALUE('{\"d\":\"a\"}', '$.d' NULL ON ERROR) AS x","unsupported_messages":[]}
+{"atom_id":"a21d0761814ce326","ast_ref":"a21d0761814ce326","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CREATE OR REPLACE VIEW \"schema\".\"v\" (\"col\" COMMENT IS 'desc') AS SELECT \"src_col\" AS \"col\"","unsupported_messages":[]}
+{"atom_id":"a22ac4b4af927468","ast_ref":"a22ac4b4af927468","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT VAR_POP(current_salary)","unsupported_messages":[]}
+{"atom_id":"a48df1e83a23944a","ast_ref":"a48df1e83a23944a","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"EDIT_DISTANCE(col1, col2)","unsupported_messages":[]}
+{"atom_id":"a50ce2befc26fa85","ast_ref":"a50ce2befc26fa85","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_TRUNC('WEEK', DATE '2006-12-31') AS TRUNC","unsupported_messages":[]}
+{"atom_id":"a5aa48943c6cd709","ast_ref":"a5aa48943c6cd709","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS SMALLINT)","unsupported_messages":[]}
+{"atom_id":"a6359f7f6b81a38b","ast_ref":"a6359f7f6b81a38b","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_MONTHS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"a671c299e35a8934","ast_ref":"a671c299e35a8934","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"HASH_SHA256(x)","unsupported_messages":[]}
+{"atom_id":"a70d327e4ecc1374","ast_ref":"a70d327e4ecc1374","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT VAR_POP(current_salary)","unsupported_messages":[]}
+{"atom_id":"a8429f629924b111","ast_ref":"a8429f629924b111","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_NOT(x)","unsupported_messages":[]}
+{"atom_id":"a9236ba20c0d3816","ast_ref":"a9236ba20c0d3816","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT YEAR(a_date) AS \"a_year\" FROM MY_SUMMARY_TABLE GROUP BY LOCAL.\"a_year\"","unsupported_messages":[]}
+{"atom_id":"aa7311376af542cb","ast_ref":"aa7311376af542cb","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_TRUNC('YEAR', TIMESTAMP '2006-12-31 23:59:59') AS DATE_TRUNC","unsupported_messages":[]}
+{"atom_id":"aad385e500f69c76","ast_ref":"aad385e500f69c76","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_NOT(x)","unsupported_messages":[]}
+{"atom_id":"aad86b5d8151e228","ast_ref":"aad86b5d8151e228","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"TO_CHAR(b, 'YYYY-MM-DD HH:MI:SS')","unsupported_messages":[]}
+{"atom_id":"ac3b49e75cff40bc","ast_ref":"ac3b49e75cff40bc","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"LISTAGG(x, ',' ON OVERFLOW TRUNCATE '...' WITH COUNT) WITHIN GROUP (ORDER BY y)","unsupported_messages":[]}
+{"atom_id":"ace0c14169633760","ast_ref":"ace0c14169633760","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"LISTAGG(DISTINCT x, ',') WITHIN GROUP (ORDER BY y DESC)","unsupported_messages":[]}
+{"atom_id":"ad5c68b1bec95b1b","ast_ref":"ad5c68b1bec95b1b","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_TIMESTAMP('2024-01-01 12:00:00')","unsupported_messages":[]}
+{"atom_id":"adfa5393cc17a67d","ast_ref":"adfa5393cc17a67d","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"WITH t AS (SELECT 1 AS x) SELECT t.*, 3 FROM t","unsupported_messages":[]}
+{"atom_id":"ae8e4edcf200a2a7","ast_ref":"ae8e4edcf200a2a7","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_DAYS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"afc18b175c6b49bc","ast_ref":"afc18b175c6b49bc","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS DECIMAL)","unsupported_messages":[]}
+{"atom_id":"b07caa4ff59479c1","ast_ref":"b07caa4ff59479c1","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_YEARS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"b0fecd3823a35a87","ast_ref":"b0fecd3823a35a87","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_DAYS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"b1e92cb9d2154925","ast_ref":"b1e92cb9d2154925","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT SUBSTR('555A66A777', 1, NVL(NULLIF(INSTR(LOWER('555A66A777'), 'a', 1, 2), 0) - 1, LENGTH('555A66A777')))","unsupported_messages":[]}
+{"atom_id":"b251d5d4dcbab08f","ast_ref":"b251d5d4dcbab08f","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT SYSTIMESTAMP()","unsupported_messages":[]}
+{"atom_id":"b254581568c1ca6f","ast_ref":"b254581568c1ca6f","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_RSHIFT(x, 1)","unsupported_messages":[]}
+{"atom_id":"b36f1d7cec937b6f","ast_ref":"b36f1d7cec937b6f","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT VAR_POP(current_salary)","unsupported_messages":[]}
+{"atom_id":"b36f6b33b4eac4f2","ast_ref":"b36f6b33b4eac4f2","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_TRUNC('WEEK', d)","unsupported_messages":["WEEK(SUNDAY) is not supported; falling back to the default week start day"]}
+{"atom_id":"b44c5a37872cb3b5","ast_ref":"b44c5a37872cb3b5","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"b541d12998dfdffa","ast_ref":"b541d12998dfdffa","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT id, department, hire_date, LISTAGG(id, ',') WITHIN GROUP (ORDER BY hire_date) OVER (PARTITION BY department rows BETWEEN 1 preceding AND 1 following) AS GROUP_CONCAT_RESULT FROM employee_table ORDER BY department, hire_date","unsupported_messages":[]}
+{"atom_id":"b54fd9c105ef8c67","ast_ref":"b54fd9c105ef8c67","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_XOR(x, 1)","unsupported_messages":[]}
+{"atom_id":"b63f69c4cde1a712","ast_ref":"b63f69c4cde1a712","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2024-07-08 13:45:00' AS TIMESTAMP), 'uW') AS week_number_uW","unsupported_messages":[]}
+{"atom_id":"b67f2bef64f0c08f","ast_ref":"b67f2bef64f0c08f","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_DAYS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"b68d00106747423b","ast_ref":"b68d00106747423b","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_LSHIFT(x, 1)","unsupported_messages":[]}
+{"atom_id":"b79716e64e07ed8f","ast_ref":"b79716e64e07ed8f","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"DATE_TRUNC('WW', x)","unsupported_messages":[]}
+{"atom_id":"b7ce21965d0ef1bd","ast_ref":"b7ce21965d0ef1bd","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_HOURS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"b7ebcdc3597c5c86","ast_ref":"b7ebcdc3597c5c86","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT YEAR(TO_DATE(a_date)) AS a_year FROM t GROUP BY LOCAL.a_year","unsupported_messages":[]}
+{"atom_id":"b896a733785c9eec","ast_ref":"b896a733785c9eec","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_DATE('31-12-1999', 'DD-MM-YY') AS TO_DATE","unsupported_messages":[]}
+{"atom_id":"b9271d043c3f1a6b","ast_ref":"b9271d043c3f1a6b","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT a REGEXP_LIKE '.*x.*'","unsupported_messages":[]}
+{"atom_id":"b9b2439c2c73c84d","ast_ref":"b9b2439c2c73c84d","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT car_model, COUNT(DISTINCT city) FROM dealer GROUP BY 1","unsupported_messages":[]}
+{"atom_id":"bb3a9f53b14b1b44","ast_ref":"bb3a9f53b14b1b44","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CURRENT_USER","unsupported_messages":[]}
+{"atom_id":"bb5b8828ef46a8dd","ast_ref":"bb5b8828ef46a8dd","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT JSON_VALUE('{\"d\":\"a\"}', '$.d' NULL ON ERROR) AS x","unsupported_messages":[]}
+{"atom_id":"bc714aa7725a6543","ast_ref":"bc714aa7725a6543","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"EDIT_DISTANCE(col1, col2)","unsupported_messages":[]}
+{"atom_id":"bd1291ea07b1c9d5","ast_ref":"bd1291ea07b1c9d5","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_TRUNC('QUARTER', DATE '2006-12-31') AS TRUNC","unsupported_messages":[]}
+{"atom_id":"be6b2372a7502473","ast_ref":"be6b2372a7502473","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"WITH t1 AS (SELECT 1 AS c1), t2 AS (SELECT 2 AS c2) SELECT t1.*, t2.*, 3 FROM t1, t2","unsupported_messages":[]}
+{"atom_id":"bf7e3268e85250df","ast_ref":"bf7e3268e85250df","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT YR AS THE_YEAR, ID AS YR, LOCAL.THE_YEAR + 1 AS NEXT_YEAR FROM my_table","unsupported_messages":[]}
+{"atom_id":"bfb237469d911ca8","ast_ref":"bfb237469d911ca8","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"REGR_SYY(x, y)","unsupported_messages":[]}
+{"atom_id":"c27c3ce2bfa81dc4","ast_ref":"c27c3ce2bfa81dc4","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_DAYS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"c44b32d0cf84a5b8","ast_ref":"c44b32d0cf84a5b8","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"c5d2445c50b6b4c7","ast_ref":"c5d2445c50b6b4c7","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_MONTHS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"c608b88599e608c7","ast_ref":"c608b88599e608c7","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"TO_DATE(x, 'YYYY')","unsupported_messages":[]}
+{"atom_id":"c6e216172f89e0d6","ast_ref":"c6e216172f89e0d6","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DAYS_BETWEEN(CAST('2000-02-28 00:00:00' AS TIMESTAMP), CURRENT_TIMESTAMP())","unsupported_messages":[]}
+{"atom_id":"c787a964e6292978","ast_ref":"c787a964e6292978","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_LSHIFT(x, 1)","unsupported_messages":[]}
+{"atom_id":"c8875c652f08b4f7","ast_ref":"c8875c652f08b4f7","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('1999-12-31' AS DATE)) AS TO_CHAR","unsupported_messages":[]}
+{"atom_id":"c8f10a4c7064f89f","ast_ref":"c8f10a4c7064f89f","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CURRENT_USER","unsupported_messages":[]}
+{"atom_id":"c94875e350366afc","ast_ref":"c94875e350366afc","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT FROM_POSIX_TIME(col)","unsupported_messages":[]}
+{"atom_id":"c9d8b1f7c15c2cb8","ast_ref":"c9d8b1f7c15c2cb8","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"REGEXP_REPLACE(subject, pattern, replacement, position, occurrence)","unsupported_messages":[]}
+{"atom_id":"c9d93718c5c8a1a1","ast_ref":"c9d93718c5c8a1a1","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_YEARS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"c9ed3640be00e7a9","ast_ref":"c9ed3640be00e7a9","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_MONTHS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"ca88b7e9a5977c70","ast_ref":"ca88b7e9a5977c70","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT WEEK('2024-05-22')","unsupported_messages":[]}
+{"atom_id":"caf7057f97c9c388","ast_ref":"caf7057f97c9c388","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_SECONDS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"cb3e3146d825c87c","ast_ref":"cb3e3146d825c87c","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_MINUTES('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"cb5c4a5b20a73bee","ast_ref":"cb5c4a5b20a73bee","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT UPPER(city), COUNT(*) FROM dealer GROUP BY 1","unsupported_messages":[]}
+{"atom_id":"cb8f8df8e434f1e8","ast_ref":"cb8f8df8e434f1e8","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"cc16181e531d790e","ast_ref":"cc16181e531d790e","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"DATE_TRUNC('QUARTER', x)","unsupported_messages":[]}
+{"atom_id":"cc201664354f394f","ast_ref":"cc201664354f394f","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"OPEN SCHEMA test","unsupported_messages":[]}
+{"atom_id":"cc33d1c20c9ff540","ast_ref":"cc33d1c20c9ff540","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT COUNT(*) AS cnt FROM t HAVING LOCAL.cnt > 1","unsupported_messages":[]}
+{"atom_id":"ccbc52aa363fa036","ast_ref":"ccbc52aa363fa036","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_RSHIFT(x, 1)","unsupported_messages":[]}
+{"atom_id":"cde962309ecad737","ast_ref":"cde962309ecad737","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DIV(1234, 2) AS DIV","unsupported_messages":[]}
+{"atom_id":"cf6a480578ecd34a","ast_ref":"cf6a480578ecd34a","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CEIL(MONTH(TO_DATE('2016-08-31'))/3)","unsupported_messages":[]}
+{"atom_id":"cf827f9607a5969a","ast_ref":"cf827f9607a5969a","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_OR(x, 1)","unsupported_messages":[]}
+{"atom_id":"d0c9865077c04aa4","ast_ref":"d0c9865077c04aa4","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CAST(ADD_DAYS(ADD_MONTHS(DATE_TRUNC('MONTH', DATE '2008-11-25'), 1), -1) AS DATE)","unsupported_messages":[]}
+{"atom_id":"d2257d28784f9c71","ast_ref":"d2257d28784f9c71","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"d269e123319b1483","ast_ref":"d269e123319b1483","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CAST(CONVERT_TZ(CAST(CURRENT_TIMESTAMP() AS TIMESTAMP), 'UTC', 'CET') AS DATE) - 1","unsupported_messages":[]}
+{"atom_id":"d298a7f2a667ba48","ast_ref":"d298a7f2a667ba48","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT HOURS_BETWEEN(CAST('2000-02-28 00:00:00' AS TIMESTAMP), CURRENT_TIMESTAMP())","unsupported_messages":[]}
+{"atom_id":"d31b2934d597f139","ast_ref":"d31b2934d597f139","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT * FROM t","unsupported_messages":[]}
+{"atom_id":"d3a243a1d47f6009","ast_ref":"d3a243a1d47f6009","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TABLE_NAME FROM SYS.EXA_ALL_TABLES WHERE TABLE_SCHEMA = CURRENT_SCHEMA","unsupported_messages":[]}
+{"atom_id":"d3b3252dfd6505e1","ast_ref":"d3b3252dfd6505e1","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CONVERT_TZ('2012-05-10 12:00:00', 'Europe/Berlin', 'America/New_York')","unsupported_messages":[]}
+{"atom_id":"d3f85174ee2a8efe","ast_ref":"d3f85174ee2a8efe","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_TRUNC('MM', CURRENT_TIMESTAMP()) AS DATE_TRUNC","unsupported_messages":[]}
+{"atom_id":"d45e805f3912b363","ast_ref":"d45e805f3912b363","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CONVERT_TZ('2012-05-10 12:00:00', 'Europe/Berlin', 'America/New_York')","unsupported_messages":[]}
+{"atom_id":"d4815c35b488af62","ast_ref":"d4815c35b488af62","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SYSTIMESTAMP()","unsupported_messages":[]}
+{"atom_id":"d617a1e485764829","ast_ref":"d617a1e485764829","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT FROM_POSIX_TIME(1234567890)","unsupported_messages":[]}
+{"atom_id":"d731c8aad6309bb7","ast_ref":"d731c8aad6309bb7","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2024-07-08 13:45:00' AS TIMESTAMP), 'HH12') AS hour_12","unsupported_messages":[]}
+{"atom_id":"d782d13fc69f5d3d","ast_ref":"d782d13fc69f5d3d","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_SECONDS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"d93af6db61dbb5ee","ast_ref":"d93af6db61dbb5ee","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS CHAR)","unsupported_messages":[]}
+{"atom_id":"daf8bb2821dddaed","ast_ref":"daf8bb2821dddaed","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT SCHEMA_NAME FROM SYS.EXA_SCHEMAS","unsupported_messages":[]}
+{"atom_id":"db849b409e8f2026","ast_ref":"db849b409e8f2026","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"HASH_SHA512(x)","unsupported_messages":[]}
+{"atom_id":"dbee543681c082ea","ast_ref":"dbee543681c082ea","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST(TO_DATE(date, 'YYYYMMDD') AS DATE), 'DY') AS day_of_week","unsupported_messages":[]}
+{"atom_id":"dc3c4325c77e6a52","ast_ref":"dc3c4325c77e6a52","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS VARCHAR)","unsupported_messages":[]}
+{"atom_id":"dc792493f373a112","ast_ref":"dc792493f373a112","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"HASH_SHA(x)","unsupported_messages":[]}
+{"atom_id":"de6bbee653cf1d99","ast_ref":"de6bbee653cf1d99","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"HASH_SHA256(x)","unsupported_messages":[]}
+{"atom_id":"de900bb06cafa88c","ast_ref":"de900bb06cafa88c","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_SECONDS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"df10ca3d1835a536","ast_ref":"df10ca3d1835a536","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT car_model, city FROM dealer GROUP BY 1, 2","unsupported_messages":[]}
+{"atom_id":"df2fc9ddd375fe0e","ast_ref":"df2fc9ddd375fe0e","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2024-07-08 13:45:00' AS TIMESTAMP), 'IW') AS iso_week_number","unsupported_messages":[]}
+{"atom_id":"e04221d928e3bc68","ast_ref":"e04221d928e3bc68","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_TRUNC('QUARTER', TIMESTAMP '2006-12-31 23:59:59') AS DATE_TRUNC","unsupported_messages":[]}
+{"atom_id":"e07326d01756cc1d","ast_ref":"e07326d01756cc1d","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_XOR(x, 1)","unsupported_messages":[]}
+{"atom_id":"e251a5432394b2f4","ast_ref":"e251a5432394b2f4","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2024-07-08 13:45:00' AS TIMESTAMP), 'MI') AS minutes","unsupported_messages":[]}
+{"atom_id":"e274efc2d589efb3","ast_ref":"e274efc2d589efb3","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS FLOAT)","unsupported_messages":[]}
+{"atom_id":"e3112beea6e277b2","ast_ref":"e3112beea6e277b2","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DATE_TRUNC('MINUTE', TIMESTAMP '2006-12-31 23:59:59') AS DATE_TRUNC","unsupported_messages":[]}
+{"atom_id":"e35ee04ebc8a51e9","ast_ref":"e35ee04ebc8a51e9","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_MINUTES('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"e3f39a416403d513","ast_ref":"e3f39a416403d513","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT HASHTYPE_MD5(a, b, c, d)","unsupported_messages":[]}
+{"atom_id":"e43299a4eac6756a","ast_ref":"e43299a4eac6756a","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT MINUTES_BETWEEN(CAST('2000-02-28 00:00:00' AS TIMESTAMP), CURRENT_TIMESTAMP())","unsupported_messages":[]}
+{"atom_id":"e48d8e47cc34a7ad","ast_ref":"e48d8e47cc34a7ad","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT IF NULL IS NULL THEN 0 ELSE NULL ENDIF AS NIZ1","unsupported_messages":[]}
+{"atom_id":"e540ab29c28753ad","ast_ref":"e540ab29c28753ad","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CURRENT_DATE","unsupported_messages":[]}
+{"atom_id":"e6434c276f1ed3b1","ast_ref":"e6434c276f1ed3b1","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT SUBSTR('A|a|A', 1, NVL(NULLIF(INSTR(LOWER('A|a|A'), LOWER('A'), 1, 2), 0) - 1, LENGTH('A|a|A')))","unsupported_messages":[]}
+{"atom_id":"e65afce5b8873098","ast_ref":"e65afce5b8873098","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"REGR_R2(x, y)","unsupported_messages":[]}
+{"atom_id":"e6c07451478e90ad","ast_ref":"e6c07451478e90ad","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"INSTR(haystack, needle)","unsupported_messages":[]}
+{"atom_id":"e7695c28c413a00c","ast_ref":"e7695c28c413a00c","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"TRUNC(123.456, 2)","unsupported_messages":[]}
+{"atom_id":"e788d3f081efd7fa","ast_ref":"e788d3f081efd7fa","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(12345.6789) AS TO_CHAR","unsupported_messages":[]}
+{"atom_id":"e9947169dbb3880c","ast_ref":"e9947169dbb3880c","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_YEARS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"eaacce0dc9ce893a","ast_ref":"eaacce0dc9ce893a","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2024-07-08 13:45:00' AS TIMESTAMP), 'HH24') AS hour_24","unsupported_messages":[]}
+{"atom_id":"eaf2c8206351c449","ast_ref":"eaf2c8206351c449","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT SCHEMA_NAME FROM SYS.EXA_SCHEMAS","unsupported_messages":[]}
+{"atom_id":"ec52368b3653c738","ast_ref":"ec52368b3653c738","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT BIT_XOR(x, 1)","unsupported_messages":[]}
+{"atom_id":"ed4572d7a3189e32","ast_ref":"ed4572d7a3189e32","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"FLOOR(__time TO WEEK)","unsupported_messages":[]}
+{"atom_id":"ed79f54ac734fcc3","ast_ref":"ed79f54ac734fcc3","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_MONTHS(CAST('2000-02-28' AS DATE), 1)","unsupported_messages":[]}
+{"atom_id":"ee2a1ac7150afe29","ast_ref":"ee2a1ac7150afe29","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS INT)","unsupported_messages":[]}
+{"atom_id":"efec01e173d31e32","ast_ref":"efec01e173d31e32","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT CONVERT_TZ('2012-05-10 12:00:00', 'Europe/Berlin', 'America/New_York')","unsupported_messages":[]}
+{"atom_id":"f1d602a19713c13b","ast_ref":"f1d602a19713c13b","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT SYSTIMESTAMP(6)","unsupported_messages":[]}
+{"atom_id":"f351ab4f36e77a95","ast_ref":"f351ab4f36e77a95","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"f3fd1b5eddf11b1d","ast_ref":"f3fd1b5eddf11b1d","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT city, COUNT(*) FROM t GROUP BY city","unsupported_messages":[]}
+{"atom_id":"f4a6162df684c0fe","ast_ref":"f4a6162df684c0fe","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_WEEKS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"f5b464934de7956f","ast_ref":"f5b464934de7956f","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT DAYS_BETWEEN(x, y)","unsupported_messages":[]}
+{"atom_id":"f6466ca0ec475637","ast_ref":"f6466ca0ec475637","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_DAYS('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"f6945d10f4f6622d","ast_ref":"f6945d10f4f6622d","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT JSON_EXTRACT(x, '$.a') AS s FROM t","unsupported_messages":[]}
+{"atom_id":"f6e2080e4a0433f6","ast_ref":"f6e2080e4a0433f6","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT SUM(amount) AS total FROM my_table HAVING LOCAL.total > 10000","unsupported_messages":[]}
+{"atom_id":"f85e78e57d2a2919","ast_ref":"f85e78e57d2a2919","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"CAST(x AS TIMESTAMP)","unsupported_messages":[]}
+{"atom_id":"fa24be9d082bb35f","ast_ref":"fa24be9d082bb35f","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"OPEN SCHEMA \"my_database\"","unsupported_messages":[]}
+{"atom_id":"fa9403fe8c52c3ca","ast_ref":"fa9403fe8c52c3ca","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT SUM(amount) AS Total FROM my_table HAVING LOCAL.Total > 10000","unsupported_messages":[]}
+{"atom_id":"faafee3e0017dbe4","ast_ref":"faafee3e0017dbe4","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_MINUTES('2000-02-28', -'1')","unsupported_messages":[]}
+{"atom_id":"faddd29b39dec53a","ast_ref":"faddd29b39dec53a","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"REGR_SXY(x, y)","unsupported_messages":[]}
+{"atom_id":"fb80ae69a8ef18ab","ast_ref":"fb80ae69a8ef18ab","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_HOURS(CAST('2000-02-28' AS DATE), 1)","unsupported_messages":[]}
+{"atom_id":"fb89773bc3586f15","ast_ref":"fb89773bc3586f15","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"REGEXP_REPLACE(subject, pattern, replacement, position, occurrence)","unsupported_messages":[]}
+{"atom_id":"fca63c61ffc25b48","ast_ref":"fca63c61ffc25b48","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ADD_SECONDS(CAST('2000-02-28' AS DATE), 1)","unsupported_messages":[]}
+{"atom_id":"fcbbc5cf8b0ac95e","ast_ref":"fcbbc5cf8b0ac95e","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT ID FROM \"LOCAL\" WHERE \"LOCAL\".ID IS NULL","unsupported_messages":[]}
+{"atom_id":"fef34568c83a2b7d","ast_ref":"fef34568c83a2b7d","dialect":"exasol","flags":{"pretty":false,"identify":false},"sql":"SELECT TO_CHAR(CAST('2017-06-15' AS TIMESTAMP), 'YYYY-MM-DD')","unsupported_messages":[]}

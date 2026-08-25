@@ -1,0 +1,1 @@
+{"atom_id":"8c1d443bc6c55eb6","ast_ref":"8c1d443bc6c55eb6","dialect":"duckdb, version=1.1","flags":{"pretty":false,"identify":false},"sql":"SELECT SUM(CASE WHEN x > 1 THEN 1 ELSE 0 END) FROM t","unsupported_messages":[]}

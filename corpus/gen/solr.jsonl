@@ -1,0 +1,4 @@
+{"atom_id":"0879645aa4539005","ast_ref":"0879645aa4539005","dialect":"solr","flags":{"pretty":false,"identify":false},"sql":"SELECT column FROM t WHERE column = 'val'","unsupported_messages":[]}
+{"atom_id":"2b664f84d621c84c","ast_ref":"2b664f84d621c84c","dialect":"solr","flags":{"pretty":false,"identify":false},"sql":"SELECT `default`.column FROM t","unsupported_messages":[]}
+{"atom_id":"33fa4aa5e78a8d14","ast_ref":"33fa4aa5e78a8d14","dialect":"solr","flags":{"pretty":false,"identify":false},"sql":"a OR b","unsupported_messages":[]}
+{"atom_id":"6d606d7e8fad420d","ast_ref":"6d606d7e8fad420d","dialect":"solr","flags":{"pretty":false,"identify":false},"sql":"FLOOR(__time TO WEEK)","unsupported_messages":[]}

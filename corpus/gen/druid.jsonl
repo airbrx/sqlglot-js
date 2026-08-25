@@ -1,0 +1,13 @@
+{"atom_id":"0b8f896cb2f02a3e","ast_ref":"0b8f896cb2f02a3e","dialect":"druid","flags":{"pretty":false,"identify":false},"sql":"SELECT JSON_VALUE(x, '$.a' RETURNING BIGINT) FROM t","unsupported_messages":[]}
+{"atom_id":"0eeca0be6e1ea669","ast_ref":"0eeca0be6e1ea669","dialect":"druid","flags":{"pretty":false,"identify":false},"sql":"SELECT JSON_VALUE('{\"item\": \"shoes\", \"price\": \"49.95\"}', '$.price' RETURNING DOUBLE)","unsupported_messages":[]}
+{"atom_id":"1d3281c901d161d0","ast_ref":"1d3281c901d161d0","dialect":"druid","flags":{"pretty":false,"identify":false},"sql":"SELECT FLOOR(__time TO WEEK) FROM t","unsupported_messages":[]}
+{"atom_id":"28c048ba89d04b61","ast_ref":"28c048ba89d04b61","dialect":"druid","flags":{"pretty":false,"identify":false},"sql":"FLOOR(__time TO WEEK)","unsupported_messages":[]}
+{"atom_id":"3d1109be7c4007b4","ast_ref":"3d1109be7c4007b4","dialect":"druid","flags":{"pretty":false,"identify":false},"sql":"SELECT CURRENT_TIMESTAMP","unsupported_messages":[]}
+{"atom_id":"47cd6ff9ce0b0d86","ast_ref":"47cd6ff9ce0b0d86","dialect":"druid","flags":{"pretty":false,"identify":false},"sql":"SELECT FLOOR(price, 2) AS rounded_price FROM t","unsupported_messages":[]}
+{"atom_id":"4e31f44c176d9280","ast_ref":"4e31f44c176d9280","dialect":"druid","flags":{"pretty":false,"identify":false},"sql":"SELECT ARRAY[1, 2, 3]","unsupported_messages":[]}
+{"atom_id":"75f4461051bdb69e","ast_ref":"75f4461051bdb69e","dialect":"druid","flags":{"pretty":false,"identify":false},"sql":"SELECT JSON_VALUE('{\"item\": \"shoes\", \"price\": \"49.95\"}', '$.item')","unsupported_messages":[]}
+{"atom_id":"87db3a4bd4ed1f8d","ast_ref":"87db3a4bd4ed1f8d","dialect":"druid","flags":{"pretty":false,"identify":false},"sql":"SELECT MOD(1000, 60)","unsupported_messages":[]}
+{"atom_id":"aa244f6a29ce37eb","ast_ref":"aa244f6a29ce37eb","dialect":"druid","flags":{"pretty":false,"identify":false},"sql":"SELECT CEIL(price, 2) AS rounded_price FROM t","unsupported_messages":[]}
+{"atom_id":"dc6c31c8e633d6d0","ast_ref":"dc6c31c8e633d6d0","dialect":"druid","flags":{"pretty":false,"identify":false},"sql":"SELECT FLOOR(col) FROM t","unsupported_messages":[]}
+{"atom_id":"f247b9b0f865b37d","ast_ref":"f247b9b0f865b37d","dialect":"druid","flags":{"pretty":false,"identify":false},"sql":"SELECT CEIL(col) FROM t","unsupported_messages":[]}
+{"atom_id":"fdfaa13e530686b5","ast_ref":"fdfaa13e530686b5","dialect":"druid","flags":{"pretty":false,"identify":false},"sql":"SELECT CEIL(__time TO WEEK) FROM t","unsupported_messages":[]}

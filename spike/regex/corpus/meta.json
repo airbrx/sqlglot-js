@@ -1,0 +1,81 @@
+{
+  "python_version": "3.9.25",
+  "unidata_version": "13.0.0",
+  "ref": "/tmp/sqlglot-ref-regex",
+  "counts": {
+    "total": 19597,
+    "oracle": 498,
+    "match": 18148,
+    "sub": 41,
+    "escape": 902,
+    "escape_build": 8
+  },
+  "harvested_patterns": [
+    {
+      "pattern": "\\\\(\\d+)",
+      "flags": 0,
+      "py": "sqlglot/generator.py:28",
+      "call": "re.compile"
+    },
+    {
+      "pattern": "(?<!^)(?=[A-Z])",
+      "flags": 0,
+      "py": "sqlglot/helper.py:36",
+      "call": "re.compile"
+    },
+    {
+      "pattern": ":.*?[a-zA-Z\\+\\-]",
+      "flags": 0,
+      "py": "sqlglot/parser.py:47",
+      "call": "re.compile"
+    },
+    {
+      "pattern": "([dD]{1,2})|([mM]{1,2})|([yY]{1,4})|([hH]{1,2})|([sS]{1,2})",
+      "flags": 0,
+      "py": "sqlglot/parsers/tsql.py:49",
+      "call": "re.compile"
+    },
+    {
+      "pattern": "^[\\-\\w]*$",
+      "flags": 0,
+      "py": "sqlglot/generators/bigquery.py:279",
+      "call": "re.compile"
+    },
+    {
+      "pattern": ":\\d{2}.*?[+\\-]\\d{2}(?::\\d{2})?",
+      "flags": 0,
+      "py": "sqlglot/generators/duckdb.py:50",
+      "call": "re.compile"
+    },
+    {
+      "pattern": "%(?:[mdHIMS]strict|[-:].|.)",
+      "flags": 0,
+      "py": "sqlglot/generators/hive.py:55",
+      "call": "re.compile"
+    },
+    {
+      "pattern": "^[_\\-a-zA-Z][\\-\\w]*$",
+      "flags": 0,
+      "py": "sqlglot/generators/hive.py:237",
+      "call": "re.compile"
+    },
+    {
+      "pattern": "\\s*(-?[0-9]+(?:\\.[0-9]+)?)\\s*([a-zA-Z]+)\\s*",
+      "flags": 0,
+      "py": "sqlglot/expressions/builders.py:335",
+      "call": "re.compile"
+    },
+    {
+      "pattern": "\\s*-?\\s*\\d+(?:\\.\\d+)?\\s+(?:-?(?:\\d+:)?\\d+:\\d+(?:\\.\\d+)?|-?(?:\\d+:){1,2}|:)\\s*",
+      "flags": 0,
+      "py": "sqlglot/expressions/builders.py:338",
+      "call": "re.compile"
+    },
+    {
+      "pattern": "^[_a-zA-Z][\\w]*$",
+      "flags": 0,
+      "py": "sqlglot/expressions/core.py:2810",
+      "call": "re.compile"
+    }
+  ]
+}

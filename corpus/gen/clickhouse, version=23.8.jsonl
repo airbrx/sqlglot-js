@@ -1,0 +1,6 @@
+{"atom_id":"1eede08125a67584","ast_ref":"1eede08125a67584","dialect":"clickhouse, version=23.8","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('week', today())","unsupported_messages":[]}
+{"atom_id":"60ffe105fb676a42","ast_ref":"60ffe105fb676a42","dialect":"clickhouse, version=23.8","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('week', x)","unsupported_messages":[]}
+{"atom_id":"8a1e8bc3f6a986b4","ast_ref":"8a1e8bc3f6a986b4","dialect":"clickhouse, version=23.8","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('month', x)","unsupported_messages":[]}
+{"atom_id":"9a6694f5ff84e5e4","ast_ref":"9a6694f5ff84e5e4","dialect":"clickhouse, version=23.8","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('second', x)","unsupported_messages":[]}
+{"atom_id":"c9c18114278eb23b","ast_ref":"c9c18114278eb23b","dialect":"clickhouse, version=23.8","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('day', x)","unsupported_messages":[]}
+{"atom_id":"f2f4f7395fb7fa49","ast_ref":"f2f4f7395fb7fa49","dialect":"clickhouse, version=23.8","flags":{"pretty":false,"identify":false},"sql":"dateTrunc('year', x)","unsupported_messages":[]}

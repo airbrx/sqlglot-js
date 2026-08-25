@@ -1,0 +1,1 @@
+{"atom_id":"7b6902eb1925bb1f","ast_ref":"7b6902eb1925bb1f","dialect":"postgres, version=13.9","flags":{"pretty":false,"identify":false},"sql":"SELECT MAX(1) AS col","unsupported_messages":[]}
