@@ -43,15 +43,62 @@ import {{ NotPorted }} from "./errors.js";
 """
 
 
+# Python parameter names are not constrained by JS's grammar, and upstream really does
+# use some: `parser.py:3253` is `_parse_mergeblockratio(self, no, default)`. Emitting
+# those verbatim produces a file that does not parse.
+JS_RESERVED = {
+    "await", "break", "case", "catch", "class", "const", "continue", "debugger",
+    "default", "delete", "do", "else", "enum", "export", "extends", "false",
+    "finally", "for", "function", "if", "implements", "import", "in", "instanceof",
+    "interface", "let", "new", "null", "package", "private", "protected", "public",
+    "return", "static", "super", "switch", "this", "throw", "true", "try", "typeof",
+    "var", "void", "while", "with", "yield", "arguments", "eval",
+}
+
+
+def js_param(name):
+    """Return (js_name, renamed?) for a Python parameter name."""
+    if name in JS_RESERVED:
+        return name + "_", True
+    return name, False
+
+
+def render_js(v):
+    """Render a Python value as JS source. Distinguishes the container kinds that
+    json.dumps flattens or rejects: set -> new Set, tuple -> array, dict -> new Map.
+    Map/Set (not object/array) because Python dict keys are not all strings and key
+    ORDER is observable in output SQL (§4.6)."""
+    if v is None:
+        return "null"
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return json.dumps(v)
+    if isinstance(v, str):
+        return json.dumps(v, ensure_ascii=False)
+    if isinstance(v, (list, tuple)):
+        return "[" + ", ".join(render_js(x) for x in v) + "]"
+    if isinstance(v, (set, frozenset)):
+        # Sets are unordered in Python; sort so the seed is deterministic.
+        try:
+            items = sorted(v, key=lambda x: (type(x).__name__, x))
+        except TypeError:
+            items = sorted(v, key=lambda x: repr(x))
+        return "new Set([" + ", ".join(render_js(x) for x in items) + "])"
+    if isinstance(v, dict):
+        return "new Map([" + ", ".join(
+            f"[{render_js(k)}, {render_js(val)}]" for k, val in v.items()
+        ) + "])"
+    return None
+
+
 def js_literal(node):
     """Render a Python AST literal as JS, or None if it is not a literal."""
     try:
         v = ast.literal_eval(node)
     except Exception:  # noqa: BLE001
         return None
-    return json.dumps(v, ensure_ascii=False) if not isinstance(v, tuple) else json.dumps(
-        list(v), ensure_ascii=False
-    )
+    return render_js(v)
 
 
 def describe_value(node):
@@ -153,6 +200,7 @@ def main():
     n_tables = 0
     n_tables_partial = 0
     n_methods = 0
+    n_renamed_params = 0
 
     # Class body in SOURCE ORDER — that order is the contract (§8.1 Rule 2').
     for node in target.body:
@@ -178,15 +226,25 @@ def main():
             out.append("")
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             argnames = [a.arg for a in node.args.args if a.arg != "self"]
-            jsargs = ", ".join(argnames)
+            renamed = []
+            js_names = []
+            for a in argnames:
+                jsn, was = js_param(a)
+                js_names.append(jsn)
+                if was:
+                    renamed.append((a, jsn))
+            jsargs = ", ".join(js_names)
             anchor = f"{args.file}:{node.lineno}"
             out.append(f"  /** @returns {{*}} */")
             out.append(f"  // py: {anchor}")
+            for orig, jsn in renamed:
+                out.append(f"  // note: param `{orig}` renamed to `{jsn}` (JS reserved word)")
             out.append(
                 f'  {node.name}({jsargs}) {{ throw new NotPorted("{node.name}", "{anchor}"); }}'
             )
             out.append("")
             n_methods += 1
+            n_renamed_params += len(renamed)
 
     out.append("}")
     text = "\n".join(out) + "\n"
@@ -204,7 +262,8 @@ def main():
         f"  {args.file}::{args.cls} -> {where}\n"
         f"    {n_methods} method stubs\n"
         f"    {n_tables} class tables ({n_tables_partial} contain non-literal entries "
-        f"needing hand-porting)",
+        f"needing hand-porting)\n"
+        f"    {n_renamed_params} params renamed (JS reserved words)",
         file=sys.stderr,
     )
 

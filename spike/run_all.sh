@@ -45,6 +45,7 @@ run "PARITY: 6 probes"                    node tools/parity/check.mjs
 run "FUZZ: depth (R11/C1)"                node spike/fuzz_depth.mjs
 run "FUZZ: toowide + comments"            node spike/fuzz_toowide_comments.mjs
 run "SELFTEST: sync_report"               python3 tools/sync_report.py --selftest
+run "SEED: stub+table skeletons parse"    bash spike/check_seed.sh
 
 echo
 if [ "$fail" -eq 0 ]; then
