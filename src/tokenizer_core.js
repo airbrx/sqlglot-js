@@ -1054,9 +1054,11 @@ export class TokenizerCore {
           nested_comments &&
           !this._end &&
           // py: yes, `comment_end_size` against `comment_start`. Upstream reads the
-          // END delimiter's width and compares it to the START delimiter. Identical
-          // for every configured pair ("/*"/"*/", "{#"/"#}"), and deliberately kept
-          // as-is rather than "fixed" (§2: transliterate, don't improve).
+          // END delimiter's width and compares it to the START delimiter. The widths
+          // DIFFER for HINT_START ("/*+" -> "*/", 3 code points vs 2) in 17 of 34
+          // configs, which makes this branch dead for hints -- on both sides,
+          // identically. That is upstream's behaviour and must be preserved, not
+          // "fixed" (§2: transliterate, don't improve).
           this._chars(comment_end_size) === comment_start
         ) {
           this._advance(comment_start_size);
