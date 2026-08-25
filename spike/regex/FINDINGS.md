@@ -12,31 +12,58 @@ This is the regex sub-task of AIR-1854. It is **not** the Day 1–3 go/no-go spi
 
 ## 1. Result
 
+`fuzz_regex` is PORT_PLAN.md §3.4 target 2, a mandatory P0 exit criterion. Run it with:
+
 ```
-node spike/fuzz_regex.mjs
+bash spike/run_regex.sh                  # regenerate corpus + differential + spec test
+node spike/fuzz_regex.mjs                # differential only (uses committed corpus)
+node spike/fuzz_regex.mjs --selftest     # the ratchet's own logic
+```
+
+```
+fuzz_regex — _py/re.js vs CPython, 19,597 cases
 
 surface             pass    fail    skip
-oracle               275       2       0
-match               8830       2     230
+oracle               496       2       0
+match              17916       2     230
 sub                   41       0       0
 escape               902       0       0
 escape_build           8       0       0
-TOTAL              10056       4     230
+TOTAL              19363       4     230
 
-ALL sqlglot-reachable patterns    2867 pass    0 fail    0 skip
+ALL sqlglot-reachable patterns   2867 pass    0 fail    0 skip
+
+  FUZZ_REGEX: GREEN — 19,363 pass, 4 known gaps, 0 unexpected
 ```
 
-The 4 failures and 230 skips are all on adversarial patterns from the structural
-sweep, not on anything sqlglot reaches (§5). Both residual failure classes are
-*in the corpus* so they are measured on every run rather than described in prose.
+Three things make this a fuzz target rather than a regression net.
 
-Regenerate with:
+**A ratchet, not a threshold.** `KNOWN_GAPS` in `spike/fuzz_regex.mjs` names the four
+cases that cannot pass, each with a reason and a reachability note. Three ways to go RED:
+a new failure, a listed gap that *starts* passing, or a listed gap whose case has left the
+corpus. That is §3.3 rules 1 and 2 applied locally — the list cannot rot.
 
-```
-python3 spike/py/gen_regex_cases.py --ref /tmp/sqlglot-ref-regex --out spike/regex/corpus
-node spike/fuzz_regex.mjs
-node --test spike/regex/test_identifier_quoting.mjs
-```
+**A vacuity check.** A differential that both the correct and the naive implementation
+pass is not testing anything; `fuzz_toowide` makes the same argument about `.length` vs
+`cpLen`. So the target asserts a naive port *fails*, and by how much:
+
+| naive approach | cases it gets wrong |
+|---|---|
+| `new RegExp(p, 'u')` rejects a CPython-valid pattern | 72 |
+| `new RegExp(p, 'u')` accepts a CPython-**invalid** pattern | 7 |
+| group count = `(` not followed by `?` | 18 |
+| CPython-byte-identical `re.escape` output, used under `/u` | 256 |
+| `\1` → `$1` by string replace | 22 |
+
+Any of these reaching zero is RED: the corpus has stopped exercising that divergence.
+
+**A coverage assertion.** Every surface §3.4 item 2 names by hand must be non-empty —
+group counting (498), named groups (717), `\A`/`\Z` (189), `re.VERBOSE` (1,228),
+`re.sub` templates (41), `re.escape` under `/u` (910), runtime-constructed patterns (428).
+
+The four remaining failures and 230 skips are all on adversarial patterns from the
+structural sweep, not on anything sqlglot reaches (§5), and all four are *in the corpus*
+so they are measured every run rather than described in prose.
 
 ---
 
@@ -223,7 +250,23 @@ returns `js === null` with a reason, and `sub()` uses a replacer function, which
 has no `$` ambiguity at all. The two live templates —
 `generator.py:1660` `r"\\\1"` and `:1663` `r"\\u\1"` — both round-trip exactly.
 
-**4.8 CPython version sensitivity.** Global inline flags not at the start of a
+**4.8 `IGNORECASE` — two divergences, both found only once flag variants existed.**
+The harvested corpus carries `flags=0` everywhere (sqlglot passes flags at exactly one
+site, `qualify_columns.py:1104`'s `re.IGNORECASE`), so until the fuzz target added
+pattern × flag cases neither of these was reachable by the differential at all.
+
+- **`re.ASCII | re.IGNORECASE` folds only the 52 ASCII letters.** JS's `i` flag under `u`
+  applies full Unicode simple case folding, so `/[A-Za-z0-9_]/ui` matches U+017F LONG S
+  where CPython does not. `spike/py/probe_ignorecase.py` measures the whole table: under
+  `I|A` even `é`/`É` and `ж`/`Ж` stop matching. Fixed by not emitting JS's `i` flag in
+  that mode at all and spelling both cases out per literal and per range.
+- **CPython's Unicode `IGNORECASE` matches `i` against U+0130 and U+0131**, which JS
+  simple case folding does not — those fold to themselves. All four of the letters
+  CPython's docs name (U+0130, U+0131, U+017F, U+212A) are now emitted rather than only
+  the two this engine misses: which of them the engine covers depends on its ICU version,
+  and §3a already establishes that Unicode-version skew is a live hazard here.
+
+**4.9 CPython version sensitivity.** Global inline flags not at the start of a
 pattern (`a(?i)b`) are a `DeprecationWarning` on CPython ≤3.10 and a hard
 `re.error` on 3.11+. The parser follows 3.9 (the pinned floor) and surfaces the
 construct through `parsePattern().versionNotes` so a toolchain bump does not
@@ -252,11 +295,18 @@ keeps it visible if that judgement ever needs revisiting.
 
 ---
 
-## 6. What this leaves for `tools/fuzz_regex.py` at P0 exit
+## 6. Outstanding, for P0 exit
 
-`spike/py/gen_regex_cases.py` + `spike/fuzz_regex.mjs` are the working shape of
-that target and should move to `tools/` largely as-is. Outstanding:
+The target itself is built and GREEN. What remains is integration:
 
+0. **Fold into `spike/run_all.sh`.** `spike/run_regex.sh` is deliberately shaped to drop
+   in as two lines:
+   ```
+   python3 spike/py/gen_regex_cases.py --stdout > spike/out/regex_cases.jsonl
+   run "FUZZ: regex (§3.4 target 2)"  node spike/fuzz_regex.mjs
+   ```
+   plus `run "SELFTEST: fuzz_regex ratchet" node spike/fuzz_regex.mjs --selftest`
+   alongside the other `--selftest` entries.
 1. Fold the corpus into the `make corpus` target and `corpus/PROVENANCE.json`,
    adding `unidata_version` / `process.versions.unicode` per §3a.
 2. Re-run the harvest on every upstream resync — `harvest_patterns()` AST-walks
