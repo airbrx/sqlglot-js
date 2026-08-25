@@ -84,7 +84,14 @@ def main():
     def add(cls, py, read, write, sql, expected, pretty, identify, unsupported):
         read = norm(read)
         write = norm(write)
-        input_id = h(sql, read, write, pretty, identify)
+        # §3.2 defines input_id = H(sql, read, write, pretty, identify), but measured on
+        # the real corpus that is NOT a key: 10 inputs are asserted both as an
+        # UnsupportedError sentinel (generated under ErrorLevel.RAISE) and as a concrete
+        # string (under IGNORE). `unsupported_level` is part of the INPUT, so it belongs
+        # in input_id — otherwise ratchet rule 5 sees a phantom changed expectation.
+        # `tools/check_corpus.mjs` asserts this is the only source of conflict.
+        raises = expected is None
+        input_id = h(sql, read, write, pretty, identify, raises)
         expect_hash = h(expected, unsupported)
         atom_id = h(input_id, expect_hash, cls, py)
         key = (input_id, expect_hash, cls, py)
@@ -104,6 +111,8 @@ def main():
                 "pretty": bool(pretty),
                 "identify": bool(identify),
                 "unsupported": unsupported,
+                # True iff this atom asserts UnsupportedError is raised (expected is None).
+                "raises": raises,
                 "py": py,
             }
         )
