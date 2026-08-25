@@ -15,6 +15,8 @@
 // re-renders the negative one through `str(abs(Decimal(...)))` (uppercase 'E',
 // unpadded signed exponent). Both functions must be byte-exact.
 
+import { isSpace, decimalValue } from "../_gen/unicode.js";
+
 /* ------------------------------------------------------------------------- *
  * float                                                                      *
  * ------------------------------------------------------------------------- */
@@ -526,6 +528,85 @@ function specialDiv(a, b, sign) {
   }
   if (a._special === INF) return new PyDecimal(sign, "0", 0, INF);
   return decFromTriple(sign, "0", 0);
+}
+
+/* ------------------------------------------------------------------------- *
+ * int(str) / float(str) — helper.py:244-257 is_int / is_float / is_type       *
+ * ------------------------------------------------------------------------- */
+
+// py: Objects/unicodeobject.c _PyUnicode_TransformDecimalAndSpaceToASCII
+//
+// Both int() and float() run their argument through this before parsing, which is
+// why `int('٢٠٢٣') == 2023` and why a non-breaking space behaves like a plain
+// space (and so still fails *inside* a number). Note the `ch < 127` short-circuit
+// comes FIRST, so ASCII passes through untouched.
+function transformDecimalAndSpaceToAscii(s) {
+  let out = "";
+  for (const ch of s) {
+    const cp = ch.codePointAt(0);
+    if (cp < 127) {
+      out += ch;
+      continue;
+    }
+    if (isSpace(cp)) {
+      out += " ";
+      continue;
+    }
+    const d = decimalValue(cp);
+    out += d < 0 ? "?" : String(d);
+  }
+  return out;
+}
+
+// py: underscores are permitted only BETWEEN digits ('1_000' ok; '_1', '1_', '1__0' not).
+function stripValidUnderscores(s) {
+  if (!s.includes("_")) return s;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] !== "_") continue;
+    const prev = s[i - 1];
+    const next = s[i + 1];
+    const isDigit = (c) => c !== undefined && c >= "0" && c <= "9";
+    if (!isDigit(prev) || !isDigit(next)) return null;
+  }
+  return s.replace(/_/g, "");
+}
+
+const INT_RE = /^[+-]?[0-9]+$/;
+const FLOAT_RE = /^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/;
+const INF_NAN_RE = /^([+-]?)(inf(?:inity)?|nan)$/i;
+
+/**
+ * py: int(text) — returns a BigInt, or null where Python raises ValueError.
+ * Accepts surrounding whitespace, a sign, Unicode decimal digits, and
+ * underscores between digits.
+ */
+export function pyIntFromStr(text) {
+  const t = stripValidUnderscores(transformDecimalAndSpaceToAscii(text).trim());
+  if (t === null || !INT_RE.test(t)) return null;
+  return BigInt(t);
+}
+
+/** py: float(text) — returns a Number, or null where Python raises ValueError. */
+export function pyFloatFromStr(text) {
+  const t = stripValidUnderscores(transformDecimalAndSpaceToAscii(text).trim());
+  if (t === null) return null;
+  const m = INF_NAN_RE.exec(t);
+  if (m) {
+    if (m[2].toLowerCase() === "nan") return NaN;
+    return m[1] === "-" ? -Infinity : Infinity;
+  }
+  if (!FLOAT_RE.test(t)) return null;
+  return Number(t);
+}
+
+/** py: helper.is_int */
+export function pyIsInt(text) {
+  return pyIntFromStr(text) !== null;
+}
+
+/** py: helper.is_float */
+export function pyIsFloat(text) {
+  return pyFloatFromStr(text) !== null;
 }
 
 /* ------------------------------------------------------------------------- *

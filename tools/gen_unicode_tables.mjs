@@ -86,6 +86,17 @@ for (const p of PREDS) {
   body += `\nconst ${NAMES[p]} = decode(\n  "${enc}",\n);\n`;
 }
 
+// Decimal digit runs: flat [start, end, valueAtStart] triples (not delta-encoded —
+// there are only a few hundred and the value column breaks the monotonic delta trick).
+if (ref.decimal_encoding_mismatches?.length) {
+  throw new Error(
+    `decimal run encoding is lossy on ${ref.decimal_encoding_mismatches.length} code points`,
+  );
+}
+const decFlat = ref.decimal_runs.flat();
+counts.decimal = { ranges: ref.decimal_runs.length, bytes: decFlat.join(",").length };
+body += `\nconst DECIMAL_RUNS = new Int32Array([${decFlat.join(",")}]);\n`;
+
 body += `
 // py: str.isprintable() — per code point.
 export function isPrintable(cp) {
@@ -113,6 +124,22 @@ export function isSpace(cp) {
 // character property to compute "cased" for isupper()/islower().
 export function isTitlecase(cp) {
   return inRanges(TITLECASE, cp);
+}
+
+// py: unicodedata.decimal(ch) — decimal digit value, or -1 if not a decimal digit.
+// Python's int()/float() accept any of these: int('٢٠٢٣') == 2023.
+export function decimalValue(cp) {
+  let lo = 0;
+  let hi = DECIMAL_RUNS.length / 3 - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const s = DECIMAL_RUNS[mid * 3];
+    const e = DECIMAL_RUNS[mid * 3 + 1];
+    if (cp < s) hi = mid - 1;
+    else if (cp > e) lo = mid + 1;
+    else return DECIMAL_RUNS[mid * 3 + 2] + (cp - s);
+  }
+  return -1;
 }
 
 export const PROVENANCE = {

@@ -58,6 +58,8 @@ const TITLECASE = decode(
   "cl,1,2,1,2,1,12,1,5ud,8,8,8,8,8,c,1,f,1,1b,1",
 );
 
+const DECIMAL_RUNS = new Int32Array([48,57,0,1632,1641,0,1776,1785,0,1984,1993,0,2406,2415,0,2534,2543,0,2662,2671,0,2790,2799,0,2918,2927,0,3046,3055,0,3174,3183,0,3302,3311,0,3430,3439,0,3558,3567,0,3664,3673,0,3792,3801,0,3872,3881,0,4160,4169,0,4240,4249,0,6112,6121,0,6160,6169,0,6470,6479,0,6608,6617,0,6784,6793,0,6800,6809,0,6992,7001,0,7088,7097,0,7232,7241,0,7248,7257,0,42528,42537,0,43216,43225,0,43264,43273,0,43472,43481,0,43504,43513,0,43600,43609,0,44016,44025,0,65296,65305,0,66720,66729,0,68912,68921,0,69734,69743,0,69872,69881,0,69942,69951,0,70096,70105,0,70384,70393,0,70736,70745,0,70864,70873,0,71248,71257,0,71360,71369,0,71472,71481,0,71904,71913,0,72016,72025,0,72784,72793,0,73040,73049,0,73120,73129,0,92768,92777,0,93008,93017,0,120782,120791,0,120792,120801,0,120802,120811,0,120812,120821,0,120822,120831,0,123200,123209,0,123632,123641,0,125264,125273,0,130032,130041,0]);
+
 // py: str.isprintable() — per code point.
 export function isPrintable(cp) {
   return inRanges(PRINTABLE, cp);
@@ -84,6 +86,22 @@ export function isSpace(cp) {
 // character property to compute "cased" for isupper()/islower().
 export function isTitlecase(cp) {
   return inRanges(TITLECASE, cp);
+}
+
+// py: unicodedata.decimal(ch) — decimal digit value, or -1 if not a decimal digit.
+// Python's int()/float() accept any of these: int('٢٠٢٣') == 2023.
+export function decimalValue(cp) {
+  let lo = 0;
+  let hi = DECIMAL_RUNS.length / 3 - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const s = DECIMAL_RUNS[mid * 3];
+    const e = DECIMAL_RUNS[mid * 3 + 1];
+    if (cp < s) hi = mid - 1;
+    else if (cp > e) lo = mid + 1;
+    else return DECIMAL_RUNS[mid * 3 + 2] + (cp - s);
+  }
+  return -1;
 }
 
 export const PROVENANCE = {

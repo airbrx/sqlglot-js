@@ -84,6 +84,51 @@ def main():
             pass
     out["istitle_identity_mismatches"] = mismatches
 
+    # Decimal digit values, needed because Python's int()/float() accept any
+    # Unicode decimal digit: int('٢٠٢٣') == 2023. Emitted as [start, end, value_at_start]
+    # triples; the assertion below pins that the value increments by 1 across a run,
+    # which is what makes that encoding lossless.
+    dec = []
+    run_start = None
+    run_val = None
+    prev_cp = None
+    for cp in range(maxcp + 1):
+        try:
+            v = unicodedata.decimal(chr(cp))
+        except (ValueError, TypeError):
+            v = None
+        if v is None:
+            if run_start is not None:
+                dec.append([run_start, prev_cp, run_val])
+                run_start = None
+            continue
+        if run_start is not None and cp == prev_cp + 1 and v == (run_val + (cp - run_start)):
+            prev_cp = cp
+            continue
+        if run_start is not None:
+            dec.append([run_start, prev_cp, run_val])
+        run_start = cp
+        run_val = v
+        prev_cp = cp
+    if run_start is not None:
+        dec.append([run_start, prev_cp, run_val])
+    out["decimal_runs"] = dec
+
+    # Verify the encoding round-trips exactly.
+    bad = []
+    lut = {}
+    for s, e, v0 in dec:
+        for cp in range(s, e + 1):
+            lut[cp] = v0 + (cp - s)
+    for cp in range(maxcp + 1):
+        try:
+            v = unicodedata.decimal(chr(cp))
+        except (ValueError, TypeError):
+            v = None
+        if lut.get(cp) != v:
+            bad.append(cp)
+    out["decimal_encoding_mismatches"] = bad
+
     # General_Category per code point, RLE'd by category name. This lets the JS side
     # explain *why* a divergence happened (unassigned-in-13.0 vs assigned-in-15.x)
     # rather than just reporting a count.
