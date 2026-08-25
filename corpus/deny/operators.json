@@ -14,30 +14,97 @@
   "runtime_available": false
  },
  "counts": {
-  "total": 56,
-  "in_scope": 56,
+  "total": 101,
+  "in_scope": 101,
   "executor_only": 0,
   "by_confidence": {
-   "high": 14,
-   "medium": 41,
-   "low": 1
+   "high": 41,
+   "medium": 42,
+   "low": 18
   },
   "by_dunder": {
-   "__add__": 20,
-   "__getitem__": 6,
-   "__sub__": 9,
-   "__rsub__": 1,
+   "__add__": 37,
+   "__sub__": 16,
+   "__getitem__": 7,
+   "__truediv__": 3,
+   "__mod__": 3,
    "__floordiv__": 2,
-   "__mul__": 6,
-   "__radd__": 2,
+   "__mul__": 13,
+   "__lt__": 7,
+   "__rtruediv__": 4,
+   "__rsub__": 1,
+   "__rmul__": 1,
    "__ge__": 4,
-   "__lt__": 4,
+   "__neg__": 1,
    "__le__": 1,
    "__gt__": 1
   },
-  "files": 12
+  "files": 17
  },
  "sites": [
+  {
+   "op": "+",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "high",
+   "why": "assigned from constructor exp.Anonymous(...)",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/dialects/dialect.py:1375",
+   "file": "sqlglot/dialects/dialect.py",
+   "line": 1375,
+   "col": 40,
+   "source": "func + position",
+   "statement": "func_with_offset = exp.Sub(this=func + position, expression=one)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "-",
+   "dunder": "__sub__",
+   "builds": "exp.Sub",
+   "confidence": "high",
+   "why": "constructor exp.Length(...)",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/dialects/dialect.py:1782",
+   "file": "sqlglot/dialects/dialect.py",
+   "line": 1782,
+   "col": 18,
+   "source": "exp.Length(this=expression.this) - exp.paren(expression.expression - 1)",
+   "statement": "start=exp.Length(this=expression.this) - exp.paren(expression.expression - 1),",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "-",
+   "dunder": "__sub__",
+   "builds": "exp.Sub",
+   "confidence": "medium",
+   "why": ".expression is an Expr arg",
+   "operands": {
+    "left": "Expr",
+    "right": "other"
+   },
+   "py": "sqlglot/dialects/dialect.py:1782",
+   "file": "sqlglot/dialects/dialect.py",
+   "line": 1782,
+   "col": 63,
+   "source": "expression.expression - 1",
+   "statement": "start=exp.Length(this=expression.this) - exp.paren(expression.expression - 1),",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
   {
    "op": "+",
    "dunder": "__add__",
@@ -52,7 +119,8 @@
    "file": "sqlglot/expressions/builders.py",
    "line": 1133,
    "col": 30,
-   "source": "expression = simplify(expression + offset)",
+   "source": "expression + offset",
+   "statement": "expression = simplify(expression + offset)",
    "executor": false,
    "found_by": [
     "static"
@@ -62,8 +130,8 @@
    "op": "[]",
    "dunder": "__getitem__",
    "builds": "exp.Bracket",
-   "confidence": "medium",
-   "why": "assigned from element of .args is a dict of Exprs",
+   "confidence": "low",
+   "why": "assigned from element of .args holds Exprs and lists of Exprs",
    "operands": {
     "value": "Expr"
    },
@@ -71,7 +139,29 @@
    "file": "sqlglot/generator.py",
    "line": 4337,
    "col": 12,
-   "source": "actions[0], exp.ColumnDef",
+   "source": "actions[0]",
+   "statement": "actions[0], exp.ColumnDef",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "/",
+   "dunder": "__truediv__",
+   "builds": "exp.Div",
+   "confidence": "medium",
+   "why": "assigned from exp._wrap() returns expr",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generator.py:4476",
+   "file": "sqlglot/generator.py",
+   "line": 4476,
+   "col": 51,
+   "source": "n / d",
+   "statement": "return self.sql(exp.If(this=d.neq(0), true=n / d, false=exp.Null()))",
    "executor": false,
    "found_by": [
     "static"
@@ -90,7 +180,176 @@
    "file": "sqlglot/generator.py",
    "line": 4558,
    "col": 45,
-   "source": "like_expr: exp.Expr = _make_like(exprs[0])",
+   "source": "exprs[0]",
+   "statement": "like_expr: exp.Expr = _make_like(exprs[0])",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "+",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "high",
+   "why": "assigned from constructor exp.Length(...)",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:429",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 429,
+   "col": 24,
+   "source": "arr_len + exp.Literal.number(pos_value)",
+   "statement": "slice_end_pos = arr_len + exp.Literal.number(pos_value)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "+",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "high",
+   "why": "assigned from BinOp over assigned from constructor exp.Length(...)",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:430",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 430,
+   "col": 26,
+   "source": "slice_end_pos + exp.Literal.number(1)",
+   "statement": "slice_start_pos = slice_end_pos + exp.Literal.number(1)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "+",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "high",
+   "why": "assigned from constructor exp.Length(...)",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:512",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 512,
+   "col": 20,
+   "source": "arr_len + exp.Literal.number(-1)",
+   "statement": "slice_end = arr_len + exp.Literal.number(-1)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "+",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "high",
+   "why": "assigned from constructor exp.Length(...)",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:520",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 520,
+   "col": 24,
+   "source": "arr_len + exp.Literal.number(pos_value)",
+   "statement": "slice_end_pos = arr_len + exp.Literal.number(pos_value)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "+",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "high",
+   "why": "assigned from BinOp over assigned from constructor exp.Length(...)",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:521",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 521,
+   "col": 26,
+   "source": "slice_end_pos + exp.Literal.number(2)",
+   "statement": "slice_start_pos = slice_end_pos + exp.Literal.number(2)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "+",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "medium",
+   "why": "exp.column() returns expr",
+   "operands": {
+    "left": "Expr",
+    "right": "other"
+   },
+   "py": "sqlglot/generators/duckdb.py:785",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 785,
+   "col": 23,
+   "source": "exp.column(\"level\", \"_parent_row\") + 1",
+   "statement": "exp.alias_(exp.column(\"level\", \"_parent_row\") + 1, \"level\"),",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "+",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "medium",
+   "why": "BinOp over exp.paren() returns expr",
+   "operands": {
+    "left": "Expr",
+    "right": "other"
+   },
+   "py": "sqlglot/generators/duckdb.py:1112",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 1112,
+   "col": 22,
+   "source": "exp.paren(target_dow - isodow_call + 6, copy=False) % 7 + 1",
+   "statement": "days_offset = exp.paren(target_dow - isodow_call + 6, copy=False) % 7 + 1",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "%",
+   "dunder": "__mod__",
+   "builds": "exp.Mod",
+   "confidence": "medium",
+   "why": "exp.paren() returns expr",
+   "operands": {
+    "left": "Expr",
+    "right": "other"
+   },
+   "py": "sqlglot/generators/duckdb.py:1112",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 1112,
+   "col": 22,
+   "source": "exp.paren(target_dow - isodow_call + 6, copy=False) % 7",
+   "statement": "days_offset = exp.paren(target_dow - isodow_call + 6, copy=False) % 7 + 1",
    "executor": false,
    "found_by": [
     "static"
@@ -110,7 +369,8 @@
    "file": "sqlglot/generators/duckdb.py",
    "line": 1112,
    "col": 32,
-   "source": "days_offset = exp.paren(target_dow - isodow_call + 6, copy=False) % 7 + 1",
+   "source": "target_dow - isodow_call + 6",
+   "statement": "days_offset = exp.paren(target_dow - isodow_call + 6, copy=False) % 7 + 1",
    "executor": false,
    "found_by": [
     "static"
@@ -124,13 +384,14 @@
    "why": "annotated annotated exp.Expr",
    "operands": {
     "left": "Expr",
-    "right": "other"
+    "right": "Expr"
    },
    "py": "sqlglot/generators/duckdb.py:1112",
    "file": "sqlglot/generators/duckdb.py",
    "line": 1112,
    "col": 32,
-   "source": "days_offset = exp.paren(target_dow - isodow_call + 6, copy=False) % 7 + 1",
+   "source": "target_dow - isodow_call",
+   "statement": "days_offset = exp.paren(target_dow - isodow_call + 6, copy=False) % 7 + 1",
    "executor": false,
    "found_by": [
     "static"
@@ -141,16 +402,17 @@
    "dunder": "__add__",
    "builds": "exp.Add",
    "confidence": "medium",
-   "why": "assigned from .this is expr",
+   "why": "assigned from .this is an Expr arg",
    "operands": {
     "left": "Expr",
-    "right": "other"
+    "right": "Expr"
    },
    "py": "sqlglot/generators/duckdb.py:1113",
    "file": "sqlglot/generators/duckdb.py",
    "line": 1113,
    "col": 27,
-   "source": "date_with_offset = date_expr + exp.Interval(this=days_offset, unit=exp.var(\"DAY\"))",
+   "source": "date_expr + exp.Interval(this=days_offset, unit=exp.var(\"DAY\"))",
+   "statement": "date_with_offset = date_expr + exp.Interval(this=days_offset, unit=exp.var(\"DAY\"))",
    "executor": false,
    "found_by": [
     "static"
@@ -160,8 +422,50 @@
    "op": "+",
    "dunder": "__add__",
    "builds": "exp.Add",
-   "confidence": "high",
-   "why": "BinOp over annotated annotated exp.Expr",
+   "confidence": "medium",
+   "why": "BinOp over exp.paren() returns expr",
+   "operands": {
+    "left": "Expr",
+    "right": "other"
+   },
+   "py": "sqlglot/generators/duckdb.py:1116",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 1116,
+   "col": 22,
+   "source": "exp.paren(isodow_call - target_dow + 6, copy=False) % 7 + 1",
+   "statement": "days_offset = exp.paren(isodow_call - target_dow + 6, copy=False) % 7 + 1",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "%",
+   "dunder": "__mod__",
+   "builds": "exp.Mod",
+   "confidence": "medium",
+   "why": "exp.paren() returns expr",
+   "operands": {
+    "left": "Expr",
+    "right": "other"
+   },
+   "py": "sqlglot/generators/duckdb.py:1116",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 1116,
+   "col": 22,
+   "source": "exp.paren(isodow_call - target_dow + 6, copy=False) % 7",
+   "statement": "days_offset = exp.paren(isodow_call - target_dow + 6, copy=False) % 7 + 1",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "+",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "medium",
+   "why": "BinOp over assigned from exp.func() returns expr",
    "operands": {
     "left": "Expr",
     "right": "other"
@@ -170,7 +474,8 @@
    "file": "sqlglot/generators/duckdb.py",
    "line": 1116,
    "col": 32,
-   "source": "days_offset = exp.paren(isodow_call - target_dow + 6, copy=False) % 7 + 1",
+   "source": "isodow_call - target_dow + 6",
+   "statement": "days_offset = exp.paren(isodow_call - target_dow + 6, copy=False) % 7 + 1",
    "executor": false,
    "found_by": [
     "static"
@@ -178,19 +483,20 @@
   },
   {
    "op": "-",
-   "dunder": "__rsub__",
+   "dunder": "__sub__",
    "builds": "exp.Sub",
-   "confidence": "high",
-   "why": "annotated annotated exp.Expr",
+   "confidence": "medium",
+   "why": "assigned from exp.func() returns expr",
    "operands": {
-    "left": "other",
+    "left": "Expr",
     "right": "Expr"
    },
    "py": "sqlglot/generators/duckdb.py:1116",
    "file": "sqlglot/generators/duckdb.py",
    "line": 1116,
    "col": 32,
-   "source": "days_offset = exp.paren(isodow_call - target_dow + 6, copy=False) % 7 + 1",
+   "source": "isodow_call - target_dow",
+   "statement": "days_offset = exp.paren(isodow_call - target_dow + 6, copy=False) % 7 + 1",
    "executor": false,
    "found_by": [
     "static"
@@ -201,16 +507,17 @@
    "dunder": "__sub__",
    "builds": "exp.Sub",
    "confidence": "medium",
-   "why": "assigned from .this is expr",
+   "why": "assigned from .this is an Expr arg",
    "operands": {
     "left": "Expr",
-    "right": "other"
+    "right": "Expr"
    },
    "py": "sqlglot/generators/duckdb.py:1117",
    "file": "sqlglot/generators/duckdb.py",
    "line": 1117,
    "col": 27,
-   "source": "date_with_offset = date_expr - exp.Interval(this=days_offset, unit=exp.var(\"DAY\"))",
+   "source": "date_expr - exp.Interval(this=days_offset, unit=exp.var(\"DAY\"))",
+   "statement": "date_with_offset = date_expr - exp.Interval(this=days_offset, unit=exp.var(\"DAY\"))",
    "executor": false,
    "found_by": [
     "static"
@@ -224,13 +531,14 @@
    "why": "annotated annotated exp.Expr",
    "operands": {
     "left": "Expr",
-    "right": "other"
+    "right": "Expr"
    },
    "py": "sqlglot/generators/duckdb.py:1449",
    "file": "sqlglot/generators/duckdb.py",
    "line": 1449,
    "col": 24,
-   "source": "base_date = base_date + exp.Interval(this=month_expr - 1, unit=exp.var(\"MONTH\"))",
+   "source": "base_date + exp.Interval(this=month_expr - 1, unit=exp.var(\"MONTH\"))",
+   "statement": "base_date = base_date + exp.Interval(this=month_expr - 1, unit=exp.var(\"MONTH\"))",
    "executor": false,
    "found_by": [
     "static"
@@ -244,13 +552,14 @@
    "why": "annotated annotated exp.Expr",
    "operands": {
     "left": "Expr",
-    "right": "other"
+    "right": "Expr"
    },
    "py": "sqlglot/generators/duckdb.py:1452",
    "file": "sqlglot/generators/duckdb.py",
    "line": 1452,
    "col": 24,
-   "source": "base_date = base_date + exp.Interval(this=day_expr - 1, unit=exp.var(\"DAY\"))",
+   "source": "base_date + exp.Interval(this=day_expr - 1, unit=exp.var(\"DAY\"))",
+   "statement": "base_date = base_date + exp.Interval(this=day_expr - 1, unit=exp.var(\"DAY\"))",
    "executor": false,
    "found_by": [
     "static"
@@ -261,7 +570,7 @@
    "dunder": "__add__",
    "builds": "exp.Add",
    "confidence": "medium",
-   "why": "BinOp over BinOp over assigned from .this is expr",
+   "why": "BinOp over BinOp over assigned from .this is an Expr arg",
    "operands": {
     "left": "Expr",
     "right": "other"
@@ -270,7 +579,8 @@
    "file": "sqlglot/generators/duckdb.py",
    "line": 2367,
    "col": 27,
-   "source": "positive_formula = ((value - 1) // 32768) + 1",
+   "source": "((value - 1) // 32768) + 1",
+   "statement": "positive_formula = ((value - 1) // 32768) + 1",
    "executor": false,
    "found_by": [
     "static"
@@ -281,7 +591,7 @@
    "dunder": "__floordiv__",
    "builds": "exp.IntDiv",
    "confidence": "medium",
-   "why": "BinOp over assigned from .this is expr",
+   "why": "BinOp over assigned from .this is an Expr arg",
    "operands": {
     "left": "Expr",
     "right": "other"
@@ -290,7 +600,8 @@
    "file": "sqlglot/generators/duckdb.py",
    "line": 2367,
    "col": 28,
-   "source": "positive_formula = ((value - 1) // 32768) + 1",
+   "source": "(value - 1) // 32768",
+   "statement": "positive_formula = ((value - 1) // 32768) + 1",
    "executor": false,
    "found_by": [
     "static"
@@ -301,7 +612,7 @@
    "dunder": "__sub__",
    "builds": "exp.Sub",
    "confidence": "medium",
-   "why": "assigned from .this is expr",
+   "why": "assigned from .this is an Expr arg",
    "operands": {
     "left": "Expr",
     "right": "other"
@@ -310,7 +621,8 @@
    "file": "sqlglot/generators/duckdb.py",
    "line": 2367,
    "col": 29,
-   "source": "positive_formula = ((value - 1) // 32768) + 1",
+   "source": "value - 1",
+   "statement": "positive_formula = ((value - 1) // 32768) + 1",
    "executor": false,
    "found_by": [
     "static"
@@ -321,7 +633,7 @@
    "dunder": "__floordiv__",
    "builds": "exp.IntDiv",
    "confidence": "medium",
-   "why": "assigned from .this is expr",
+   "why": "assigned from .this is an Expr arg",
    "operands": {
     "left": "Expr",
     "right": "other"
@@ -330,7 +642,8 @@
    "file": "sqlglot/generators/duckdb.py",
    "line": 2368,
    "col": 31,
-   "source": "non_positive_formula = value // 32768",
+   "source": "value // 32768",
+   "statement": "non_positive_formula = value // 32768",
    "executor": false,
    "found_by": [
     "static"
@@ -341,16 +654,59 @@
    "dunder": "__sub__",
    "builds": "exp.Sub",
    "confidence": "medium",
-   "why": "assigned from .this is expr",
+   "why": "assigned from .this is an Expr arg",
    "operands": {
     "left": "Expr",
-    "right": "other"
+    "right": "Expr"
    },
    "py": "sqlglot/generators/duckdb.py:2393",
    "file": "sqlglot/generators/duckdb.py",
    "line": 2393,
    "col": 29,
-   "source": "true=this - exp.Literal.number(1),",
+   "source": "this - exp.Literal.number(1)",
+   "statement": "true=this - exp.Literal.number(1),",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "*",
+   "dunder": "__mul__",
+   "builds": "exp.Mul",
+   "confidence": "medium",
+   "why": "assigned from exp.func() returns expr",
+   "operands": {
+    "left": "Expr",
+    "right": "other"
+   },
+   "py": "sqlglot/generators/duckdb.py:2468",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 2468,
+   "col": 30,
+   "source": "result * 100",
+   "statement": "result = exp.cast(result * 100, \"INTEGER\")",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "/",
+   "dunder": "__truediv__",
+   "builds": "exp.Div",
+   "confidence": "high",
+   "why": "BinOp over assigned from constructor exp.StrPosition(...)",
+   "operands": {
+    "left": "Expr",
+    "right": "other"
+   },
+   "py": "sqlglot/generators/duckdb.py:2706",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 2706,
+   "col": 37,
+   "source": "(hex_strpos + 1) / 2",
+   "statement": "return self.sql(exp.cast((hex_strpos + 1) / 2, exp.DType.INT))",
    "executor": false,
    "found_by": [
     "static"
@@ -360,17 +716,81 @@
    "op": "+",
    "dunder": "__add__",
    "builds": "exp.Add",
-   "confidence": "medium",
-   "why": "assigned from element of .args is a dict of Exprs",
+   "confidence": "high",
+   "why": "assigned from constructor exp.StrPosition(...)",
    "operands": {
     "left": "Expr",
     "right": "other"
+   },
+   "py": "sqlglot/generators/duckdb.py:2706",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 2706,
+   "col": 38,
+   "source": "hex_strpos + 1",
+   "statement": "return self.sql(exp.cast((hex_strpos + 1) / 2, exp.DType.INT))",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "<",
+   "dunder": "__lt__",
+   "builds": "exp.LT",
+   "confidence": "high",
+   "why": "assigned from constructor exp.If(...)",
+   "operands": {
+    "left": "Expr",
+    "right": "other"
+   },
+   "py": "sqlglot/generators/duckdb.py:2730",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 2730,
+   "col": 37,
+   "source": "length < 0",
+   "statement": "length = exp.If(this=length < 0, true=exp.Literal.number(0), false=length)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "+",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "low",
+   "why": "assigned from element of .args holds Exprs and lists of Exprs",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
    },
    "py": "sqlglot/generators/duckdb.py:2966",
    "file": "sqlglot/generators/duckdb.py",
    "line": 2966,
    "col": 22,
-   "source": "sec = sec + nano.pop() / exp.Literal.number(1000000000.0)",
+   "source": "sec + nano.pop() / exp.Literal.number(1000000000.0)",
+   "statement": "sec = sec + nano.pop() / exp.Literal.number(1000000000.0)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "/",
+   "dunder": "__rtruediv__",
+   "builds": "exp.Div",
+   "confidence": "high",
+   "why": "Literal.number(...) builds an Expr",
+   "operands": {
+    "left": "other",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:2966",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 2966,
+   "col": 28,
+   "source": "nano.pop() / exp.Literal.number(1000000000.0)",
+   "statement": "sec = sec + nano.pop() / exp.Literal.number(1000000000.0)",
    "executor": false,
    "found_by": [
     "static"
@@ -380,8 +800,8 @@
    "op": "+",
    "dunder": "__add__",
    "builds": "exp.Add",
-   "confidence": "medium",
-   "why": "BinOp over BinOp over assigned from element of .args is a dict of Exprs",
+   "confidence": "low",
+   "why": "BinOp over BinOp over assigned from element of .args holds Exprs and lists of Exprs",
    "operands": {
     "left": "Expr",
     "right": "Expr"
@@ -390,7 +810,8 @@
    "file": "sqlglot/generators/duckdb.py",
    "line": 2968,
    "col": 28,
-   "source": "total_seconds = hour * exp.Literal.number(3600) + minute * exp.Literal.number(60) + sec",
+   "source": "hour * exp.Literal.number(3600) + minute * exp.Literal.number(60) + sec",
+   "statement": "total_seconds = hour * exp.Literal.number(3600) + minute * exp.Literal.number(60) + sec",
    "executor": false,
    "found_by": [
     "static"
@@ -400,8 +821,8 @@
    "op": "+",
    "dunder": "__add__",
    "builds": "exp.Add",
-   "confidence": "medium",
-   "why": "BinOp over assigned from element of .args is a dict of Exprs",
+   "confidence": "low",
+   "why": "BinOp over assigned from element of .args holds Exprs and lists of Exprs",
    "operands": {
     "left": "Expr",
     "right": "Expr"
@@ -410,7 +831,8 @@
    "file": "sqlglot/generators/duckdb.py",
    "line": 2968,
    "col": 28,
-   "source": "total_seconds = hour * exp.Literal.number(3600) + minute * exp.Literal.number(60) + sec",
+   "source": "hour * exp.Literal.number(3600) + minute * exp.Literal.number(60)",
+   "statement": "total_seconds = hour * exp.Literal.number(3600) + minute * exp.Literal.number(60) + sec",
    "executor": false,
    "found_by": [
     "static"
@@ -420,17 +842,18 @@
    "op": "*",
    "dunder": "__mul__",
    "builds": "exp.Mul",
-   "confidence": "medium",
-   "why": "assigned from element of .args is a dict of Exprs",
+   "confidence": "low",
+   "why": "assigned from element of .args holds Exprs and lists of Exprs",
    "operands": {
     "left": "Expr",
-    "right": "other"
+    "right": "Expr"
    },
    "py": "sqlglot/generators/duckdb.py:2968",
    "file": "sqlglot/generators/duckdb.py",
    "line": 2968,
    "col": 28,
-   "source": "total_seconds = hour * exp.Literal.number(3600) + minute * exp.Literal.number(60) + sec",
+   "source": "hour * exp.Literal.number(3600)",
+   "statement": "total_seconds = hour * exp.Literal.number(3600) + minute * exp.Literal.number(60) + sec",
    "executor": false,
    "found_by": [
     "static"
@@ -440,17 +863,186 @@
    "op": "*",
    "dunder": "__mul__",
    "builds": "exp.Mul",
-   "confidence": "medium",
-   "why": "assigned from element of .args is a dict of Exprs",
+   "confidence": "low",
+   "why": "assigned from element of .args holds Exprs and lists of Exprs",
    "operands": {
     "left": "Expr",
-    "right": "other"
+    "right": "Expr"
    },
    "py": "sqlglot/generators/duckdb.py:2968",
    "file": "sqlglot/generators/duckdb.py",
    "line": 2968,
    "col": 62,
-   "source": "total_seconds = hour * exp.Literal.number(3600) + minute * exp.Literal.number(60) + sec",
+   "source": "minute * exp.Literal.number(60)",
+   "statement": "total_seconds = hour * exp.Literal.number(3600) + minute * exp.Literal.number(60) + sec",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "+",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "low",
+   "why": "element of .args holds Exprs and lists of Exprs",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:2982",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 2982,
+   "col": 23,
+   "source": "expression.args[\"sec\"] + nano.pop() / exp.Literal.number(1000000000.0)",
+   "statement": "\"sec\", expression.args[\"sec\"] + nano.pop() / exp.Literal.number(1000000000.0)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "/",
+   "dunder": "__rtruediv__",
+   "builds": "exp.Div",
+   "confidence": "high",
+   "why": "Literal.number(...) builds an Expr",
+   "operands": {
+    "left": "other",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:2982",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 2982,
+   "col": 48,
+   "source": "nano.pop() / exp.Literal.number(1000000000.0)",
+   "statement": "\"sec\", expression.args[\"sec\"] + nano.pop() / exp.Literal.number(1000000000.0)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "+=",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "high",
+   "why": "augmented assignment over BinOp over Literal.number(...) builds an Expr",
+   "operands": {
+    "left": "other",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:3069",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 3069,
+   "col": 12,
+   "source": "sec += milli.pop() / exp.Literal.number(1000.0)",
+   "statement": "sec += milli.pop() / exp.Literal.number(1000.0)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "/",
+   "dunder": "__rtruediv__",
+   "builds": "exp.Div",
+   "confidence": "high",
+   "why": "Literal.number(...) builds an Expr",
+   "operands": {
+    "left": "other",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:3069",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 3069,
+   "col": 19,
+   "source": "milli.pop() / exp.Literal.number(1000.0)",
+   "statement": "sec += milli.pop() / exp.Literal.number(1000.0)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "+=",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "high",
+   "why": "augmented assignment over BinOp over Literal.number(...) builds an Expr",
+   "operands": {
+    "left": "other",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:3073",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 3073,
+   "col": 12,
+   "source": "sec += nano.pop() / exp.Literal.number(1000000000.0)",
+   "statement": "sec += nano.pop() / exp.Literal.number(1000000000.0)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "/",
+   "dunder": "__rtruediv__",
+   "builds": "exp.Div",
+   "confidence": "high",
+   "why": "Literal.number(...) builds an Expr",
+   "operands": {
+    "left": "other",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:3073",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 3073,
+   "col": 19,
+   "source": "nano.pop() / exp.Literal.number(1000000000.0)",
+   "statement": "sec += nano.pop() / exp.Literal.number(1000000000.0)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "*",
+   "dunder": "__mul__",
+   "builds": "exp.Mul",
+   "confidence": "high",
+   "why": "constructor exp.ByteLength(...)",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:3263",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 3263,
+   "col": 24,
+   "source": "exp.ByteLength(this=blob) * exp.Literal.number(8)",
+   "statement": "return self.sql(exp.ByteLength(this=blob) * exp.Literal.number(8))",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "-",
+   "dunder": "__sub__",
+   "builds": "exp.Sub",
+   "confidence": "medium",
+   "why": "assigned from .expression is an Expr arg",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:3452",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 3452,
+   "col": 27,
+   "source": "length_arg - input_len",
+   "statement": "chars_needed = length_arg - input_len",
    "executor": false,
    "found_by": [
     "static"
@@ -461,16 +1053,58 @@
    "dunder": "__add__",
    "builds": "exp.Add",
    "confidence": "medium",
-   "why": "element of .args is a dict of Exprs",
+   "why": "exp.column() returns expr",
    "operands": {
     "left": "Expr",
     "right": "other"
    },
-   "py": "sqlglot/generators/duckdb.py:2982",
+   "py": "sqlglot/generators/duckdb.py:3616",
    "file": "sqlglot/generators/duckdb.py",
-   "line": 2982,
-   "col": 23,
-   "source": "\"sec\", expression.args[\"sec\"] + nano.pop() / exp.Literal.number(1000000000.0)",
+   "line": 3616,
+   "col": 16,
+   "source": "exp.column(\"__i\") + 1",
+   "statement": "index = exp.column(\"__i\") + 1",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "[]",
+   "dunder": "__getitem__",
+   "builds": "exp.Bracket",
+   "confidence": "medium",
+   "why": "exp.func() returns expr",
+   "operands": {
+    "value": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:3622",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 3622,
+   "col": 31,
+   "source": "exp.func(\"COALESCE\", arg, exp.array())[index]",
+   "statement": "expression=exp.func(\"COALESCE\", arg, exp.array())[index],",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "<",
+   "dunder": "__lt__",
+   "builds": "exp.LT",
+   "confidence": "medium",
+   "why": "assigned from .expression is an Expr arg",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:3675",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 3675,
+   "col": 37,
+   "source": "length < exp.Literal.number(0)",
+   "statement": "result = exp.case().when(length < exp.Literal.number(0), empty).else_(result)",
    "executor": false,
    "found_by": [
     "static"
@@ -484,13 +1118,14 @@
    "why": "BinOp over .copy() returns expr",
    "operands": {
     "left": "Expr",
-    "right": "other"
+    "right": "Expr"
    },
    "py": "sqlglot/generators/duckdb.py:3703",
    "file": "sqlglot/generators/duckdb.py",
    "line": 3703,
    "col": 23,
-   "source": "length=(start.copy() - exp.Literal.number(1)) * exp.Literal.number(2),",
+   "source": "(start.copy() - exp.Literal.number(1)) * exp.Literal.number(2)",
+   "statement": "length=(start.copy() - exp.Literal.number(1)) * exp.Literal.number(2),",
    "executor": false,
    "found_by": [
     "static"
@@ -504,13 +1139,14 @@
    "why": ".copy() returns expr",
    "operands": {
     "left": "Expr",
-    "right": "other"
+    "right": "Expr"
    },
    "py": "sqlglot/generators/duckdb.py:3703",
    "file": "sqlglot/generators/duckdb.py",
    "line": 3703,
    "col": 24,
-   "source": "length=(start.copy() - exp.Literal.number(1)) * exp.Literal.number(2),",
+   "source": "start.copy() - exp.Literal.number(1)",
+   "statement": "length=(start.copy() - exp.Literal.number(1)) * exp.Literal.number(2),",
    "executor": false,
    "found_by": [
     "static"
@@ -520,17 +1156,123 @@
    "op": "+",
    "dunder": "__add__",
    "builds": "exp.Add",
-   "confidence": "medium",
-   "why": "BinOp over BinOp over BinOp over assigned from element of .args is a dict of Exprs",
+   "confidence": "low",
+   "why": "BinOp over BinOp over BinOp over assigned from element of .args holds Exprs and lists of Exprs",
    "operands": {
     "left": "Expr",
-    "right": "other"
+    "right": "Expr"
    },
    "py": "sqlglot/generators/duckdb.py:3707",
    "file": "sqlglot/generators/duckdb.py",
    "line": 3707,
    "col": 22,
-   "source": "start=((start + length) - exp.Literal.number(1)) * exp.Literal.number(2)",
+   "source": "((start + length) - exp.Literal.number(1)) * exp.Literal.number(2) + exp.Literal.number(1)",
+   "statement": "start=((start + length) - exp.Literal.number(1)) * exp.Literal.number(2)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "*",
+   "dunder": "__mul__",
+   "builds": "exp.Mul",
+   "confidence": "low",
+   "why": "BinOp over BinOp over assigned from element of .args holds Exprs and lists of Exprs",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:3707",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 3707,
+   "col": 22,
+   "source": "((start + length) - exp.Literal.number(1)) * exp.Literal.number(2)",
+   "statement": "start=((start + length) - exp.Literal.number(1)) * exp.Literal.number(2)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "-",
+   "dunder": "__sub__",
+   "builds": "exp.Sub",
+   "confidence": "low",
+   "why": "BinOp over assigned from element of .args holds Exprs and lists of Exprs",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:3707",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 3707,
+   "col": 23,
+   "source": "(start + length) - exp.Literal.number(1)",
+   "statement": "start=((start + length) - exp.Literal.number(1)) * exp.Literal.number(2)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "+",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "low",
+   "why": "assigned from element of .args holds Exprs and lists of Exprs",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:3707",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 3707,
+   "col": 24,
+   "source": "start + length",
+   "statement": "start=((start + length) - exp.Literal.number(1)) * exp.Literal.number(2)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "-",
+   "dunder": "__sub__",
+   "builds": "exp.Sub",
+   "confidence": "medium",
+   "why": ".copy() returns expr",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:3714",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 3714,
+   "col": 23,
+   "source": "start.copy() - exp.Literal.number(1)",
+   "statement": "length=start.copy() - exp.Literal.number(1),",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "+",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "low",
+   "why": "assigned from element of .args holds Exprs and lists of Exprs",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:3716",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 3716,
+   "col": 58,
+   "source": "start + length",
+   "statement": "right = exp.Substring(this=base.copy(), start=start + length)",
    "executor": false,
    "found_by": [
     "static"
@@ -541,16 +1283,17 @@
    "dunder": "__mul__",
    "builds": "exp.Mul",
    "confidence": "medium",
-   "why": "BinOp over BinOp over assigned from element of .args is a dict of Exprs",
+   "why": "exp.func() returns expr",
    "operands": {
     "left": "Expr",
-    "right": "other"
+    "right": "Expr"
    },
-   "py": "sqlglot/generators/duckdb.py:3707",
+   "py": "sqlglot/generators/duckdb.py:3737",
    "file": "sqlglot/generators/duckdb.py",
-   "line": 3707,
-   "col": 22,
-   "source": "start=((start + length) - exp.Literal.number(1)) * exp.Literal.number(2)",
+   "line": 3737,
+   "col": 52,
+   "source": "exp.func(\"random\") * range_size",
+   "statement": "scaled = exp.Add(this=lower, expression=exp.func(\"random\") * range_size)",
    "executor": false,
    "found_by": [
     "static"
@@ -558,139 +1301,104 @@
   },
   {
    "op": "-",
-   "dunder": "__sub__",
+   "dunder": "__rsub__",
    "builds": "exp.Sub",
-   "confidence": "medium",
-   "why": "BinOp over assigned from element of .args is a dict of Exprs",
-   "operands": {
-    "left": "Expr",
-    "right": "other"
-   },
-   "py": "sqlglot/generators/duckdb.py:3707",
-   "file": "sqlglot/generators/duckdb.py",
-   "line": 3707,
-   "col": 23,
-   "source": "start=((start + length) - exp.Literal.number(1)) * exp.Literal.number(2)",
-   "executor": false,
-   "found_by": [
-    "static"
-   ]
-  },
-  {
-   "op": "+",
-   "dunder": "__add__",
-   "builds": "exp.Add",
-   "confidence": "medium",
-   "why": "assigned from element of .args is a dict of Exprs",
-   "operands": {
-    "left": "Expr",
-    "right": "Expr"
-   },
-   "py": "sqlglot/generators/duckdb.py:3707",
-   "file": "sqlglot/generators/duckdb.py",
-   "line": 3707,
-   "col": 24,
-   "source": "start=((start + length) - exp.Literal.number(1)) * exp.Literal.number(2)",
-   "executor": false,
-   "found_by": [
-    "static"
-   ]
-  },
-  {
-   "op": "-",
-   "dunder": "__sub__",
-   "builds": "exp.Sub",
-   "confidence": "medium",
-   "why": ".copy() returns expr",
-   "operands": {
-    "left": "Expr",
-    "right": "other"
-   },
-   "py": "sqlglot/generators/duckdb.py:3714",
-   "file": "sqlglot/generators/duckdb.py",
-   "line": 3714,
-   "col": 23,
-   "source": "length=start.copy() - exp.Literal.number(1),",
-   "executor": false,
-   "found_by": [
-    "static"
-   ]
-  },
-  {
-   "op": "+",
-   "dunder": "__add__",
-   "builds": "exp.Add",
-   "confidence": "medium",
-   "why": "assigned from element of .args is a dict of Exprs",
-   "operands": {
-    "left": "Expr",
-    "right": "Expr"
-   },
-   "py": "sqlglot/generators/duckdb.py:3716",
-   "file": "sqlglot/generators/duckdb.py",
-   "line": 3716,
-   "col": 58,
-   "source": "right = exp.Substring(this=base.copy(), start=start + length)",
-   "executor": false,
-   "found_by": [
-    "static"
-   ]
-  },
-  {
-   "op": "+",
-   "dunder": "__add__",
-   "builds": "exp.Add",
-   "confidence": "medium",
-   "why": "BinOp over BinOp over sum_lengths() returns expr",
-   "operands": {
-    "left": "Expr",
-    "right": "Expr"
-   },
-   "py": "sqlglot/generators/duckdb.py:4252",
-   "file": "sqlglot/generators/duckdb.py",
-   "line": 4252,
-   "col": 12,
-   "source": "exp.Literal.number(1)",
-   "executor": false,
-   "found_by": [
-    "static"
-   ]
-  },
-  {
-   "op": "+",
-   "dunder": "__add__",
-   "builds": "exp.Add",
-   "confidence": "medium",
-   "why": "BinOp over sum_lengths() returns expr",
-   "operands": {
-    "left": "Expr",
-    "right": "Expr"
-   },
-   "py": "sqlglot/generators/duckdb.py:4252",
-   "file": "sqlglot/generators/duckdb.py",
-   "line": 4252,
-   "col": 12,
-   "source": "exp.Literal.number(1)",
-   "executor": false,
-   "found_by": [
-    "static"
-   ]
-  },
-  {
-   "op": "+",
-   "dunder": "__radd__",
-   "builds": "exp.Add",
-   "confidence": "medium",
-   "why": "sum_lengths() returns expr",
+   "confidence": "high",
+   "why": "Literal.number(...) builds an Expr",
    "operands": {
     "left": "other",
     "right": "Expr"
    },
+   "py": "sqlglot/generators/duckdb.py:4226",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 4226,
+   "col": 25,
+   "source": "position - exp.Literal.number(1)",
+   "statement": "pos_offset = position - exp.Literal.number(1)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "+",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "high",
+   "why": "BinOp over BinOp over Literal.number(...) builds an Expr",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
    "py": "sqlglot/generators/duckdb.py:4252",
    "file": "sqlglot/generators/duckdb.py",
    "line": 4252,
    "col": 12,
-   "source": "exp.Literal.number(1)",
+   "source": "exp.Literal.number(1) + sum_lengths(\"STRING_SPLIT_REGEX\", occurrence) + sum_lengths(\"REGEXP_EXTRACT_ALL\", occurrence - exp.Literal.number(1)) + pos_offset",
+   "statement": "exp.Literal.number(1)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "+",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "high",
+   "why": "BinOp over Literal.number(...) builds an Expr",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:4252",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 4252,
+   "col": 12,
+   "source": "exp.Literal.number(1) + sum_lengths(\"STRING_SPLIT_REGEX\", occurrence) + sum_lengths(\"REGEXP_EXTRACT_ALL\", occurrence - exp.Literal.number(1))",
+   "statement": "exp.Literal.number(1)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "+",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "high",
+   "why": "Literal.number(...) builds an Expr",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:4252",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 4252,
+   "col": 12,
+   "source": "exp.Literal.number(1) + sum_lengths(\"STRING_SPLIT_REGEX\", occurrence)",
+   "statement": "exp.Literal.number(1)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "-",
+   "dunder": "__sub__",
+   "builds": "exp.Sub",
+   "confidence": "low",
+   "why": "assigned from and/or yielding Literal.number(...) builds an Expr",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:4254",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 4254,
+   "col": 48,
+   "source": "occurrence - exp.Literal.number(1)",
+   "statement": "+ sum_lengths(\"REGEXP_EXTRACT_ALL\", occurrence - exp.Literal.number(1))",
    "executor": false,
    "found_by": [
     "static"
@@ -704,13 +1412,56 @@
    "why": "annotated annotated exp.Expr",
    "operands": {
     "left": "Expr",
-    "right": "other"
+    "right": "Expr"
    },
    "py": "sqlglot/generators/duckdb.py:4265",
    "file": "sqlglot/generators/duckdb.py",
    "line": 4265,
    "col": 23,
-   "source": "base_pos = base_pos + exp.Coalesce(",
+   "source": "base_pos + exp.Coalesce( this=exp.Length(this=match_at_occ), expressions=[exp.Literal.number(0)] )",
+   "statement": "base_pos = base_pos + exp.Coalesce(",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "<",
+   "dunder": "__lt__",
+   "builds": "exp.LT",
+   "confidence": "high",
+   "why": "constructor exp.Length(...)",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:4287",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 4287,
+   "col": 18,
+   "source": "exp.Length(this=matches) < occurrence",
+   "statement": ".when(exp.Length(this=matches) < occurrence, exp.Literal.number(0))",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "-",
+   "dunder": "__sub__",
+   "builds": "exp.Sub",
+   "confidence": "high",
+   "why": "constructor exp.Anonymous(...)",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/duckdb.py:4333",
+   "file": "sqlglot/generators/duckdb.py",
+   "line": 4333,
+   "col": 21,
+   "source": "exp.Anonymous( this=\"GENERATE_SUBSCRIPTS\", expressions=[this, exp.Literal.number(1)] ) - exp.Literal.number(1)",
+   "statement": "this=exp.Anonymous(",
    "executor": false,
    "found_by": [
     "static"
@@ -721,16 +1472,59 @@
    "dunder": "__mul__",
    "builds": "exp.Mul",
    "confidence": "medium",
-   "why": "assigned from .this is expr",
+   "why": "assigned from .this is an Expr arg",
    "operands": {
     "left": "Expr",
-    "right": "other"
+    "right": "Expr"
    },
    "py": "sqlglot/generators/fabric.py:138",
    "file": "sqlglot/generators/fabric.py",
    "line": 138,
    "col": 23,
-   "source": "microseconds = timestamp * exp.Literal.number(\"1e6\")",
+   "source": "timestamp * exp.Literal.number(\"1e6\")",
+   "statement": "microseconds = timestamp * exp.Literal.number(\"1e6\")",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "*=",
+   "dunder": "__mul__",
+   "builds": "exp.Mul",
+   "confidence": "medium",
+   "why": "augmented assignment over assigned from .expression is an Expr arg",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/hive.py:134",
+   "file": "sqlglot/generators/hive.py",
+   "line": 134,
+   "col": 8,
+   "source": "increment *= exp.Literal.number(multiplier)",
+   "statement": "increment *= exp.Literal.number(multiplier)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "*",
+   "dunder": "__mul__",
+   "builds": "exp.Mul",
+   "confidence": "high",
+   "why": "constructor exp.Interval(...)",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/postgres.py:72",
+   "file": "sqlglot/generators/postgres.py",
+   "line": 72,
+   "col": 35,
+   "source": "exp.Interval(this=one, unit=unit) * e",
+   "statement": "interval_times_value = exp.Interval(this=one, unit=unit) * e",
    "executor": false,
    "found_by": [
     "static"
@@ -738,19 +1532,41 @@
   },
   {
    "op": "+",
-   "dunder": "__radd__",
+   "dunder": "__add__",
    "builds": "exp.Add",
-   "confidence": "low",
-   "why": "assigned from conditional yielding .this is expr",
+   "confidence": "medium",
+   "why": "exp.cast() returns expr",
    "operands": {
-    "left": "other",
+    "left": "Expr",
     "right": "Expr"
    },
    "py": "sqlglot/generators/postgres.py:87",
    "file": "sqlglot/generators/postgres.py",
    "line": 87,
    "col": 15,
-   "source": "this = exp.cast(default_date, exp.DType.DATE) + value",
+   "source": "exp.cast(default_date, exp.DType.DATE) + value",
+   "statement": "this = exp.cast(default_date, exp.DType.DATE) + value",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "-",
+   "dunder": "__sub__",
+   "builds": "exp.Sub",
+   "confidence": "medium",
+   "why": "assigned from exp.cast() returns expr",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/postgres.py:99",
+   "file": "sqlglot/generators/postgres.py",
+   "line": 99,
+   "col": 34,
+   "source": "this - expr",
+   "statement": "return self.sql(exp.paren(this - expr))",
    "executor": false,
    "found_by": [
     "static"
@@ -770,7 +1586,29 @@
    "file": "sqlglot/generators/presto.py",
    "line": 165,
    "col": 12,
-   "source": "interval * (-1) if negate_interval else interval,",
+   "source": "interval * (-1)",
+   "statement": "interval * (-1) if negate_interval else interval,",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "/",
+   "dunder": "__truediv__",
+   "builds": "exp.Div",
+   "confidence": "high",
+   "why": "Literal.number(...) builds an Expr",
+   "operands": {
+    "left": "Expr",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/singlestore.py:200",
+   "file": "sqlglot/generators/singlestore.py",
+   "line": 200,
+   "col": 44,
+   "source": "exp.Literal.number(1) / exp.Literal.number(3)",
+   "statement": "exp.Pow(this=e.this, expression=exp.Literal.number(1) / exp.Literal.number(3))",
    "executor": false,
    "found_by": [
     "static"
@@ -790,7 +1628,8 @@
    "file": "sqlglot/generators/snowflake.py",
    "line": 144,
    "col": 32,
-   "source": "[exp.Literal.number(0), _build_datediff([unit, start, end]) + 1]",
+   "source": "_build_datediff([unit, start, end]) + 1",
+   "statement": "[exp.Literal.number(0), _build_datediff([unit, start, end]) + 1]",
    "executor": false,
    "found_by": [
     "static"
@@ -800,8 +1639,8 @@
    "op": "+",
    "dunder": "__add__",
    "builds": "exp.Add",
-   "confidence": "medium",
-   "why": "element of .args is a dict of Exprs",
+   "confidence": "low",
+   "why": "element of .args holds Exprs and lists of Exprs",
    "operands": {
     "left": "Expr",
     "right": "other"
@@ -810,7 +1649,71 @@
    "file": "sqlglot/generators/snowflake.py",
    "line": 494,
    "col": 65,
-   "source": "e.args[\"end\"] if e.args.get(\"is_end_exclusive\") else e.args[\"end\"] + 1,",
+   "source": "e.args[\"end\"] + 1",
+   "statement": "e.args[\"end\"] if e.args.get(\"is_end_exclusive\") else e.args[\"end\"] + 1,",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "*",
+   "dunder": "__rmul__",
+   "builds": "exp.Mul",
+   "confidence": "high",
+   "why": "Literal.number(...) builds an Expr",
+   "operands": {
+    "left": "other",
+    "right": "Expr"
+   },
+   "py": "sqlglot/generators/snowflake.py:738",
+   "file": "sqlglot/generators/snowflake.py",
+   "line": 738,
+   "col": 28,
+   "source": "milli.pop() * exp.Literal.number(1000000)",
+   "statement": "milli_to_nano = milli.pop() * exp.Literal.number(1000000)",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "*",
+   "dunder": "__mul__",
+   "builds": "exp.Mul",
+   "confidence": "medium",
+   "why": ".expression is an Expr arg",
+   "operands": {
+    "left": "Expr",
+    "right": "other"
+   },
+   "py": "sqlglot/generators/snowflake.py:970",
+   "file": "sqlglot/generators/snowflake.py",
+   "line": 970,
+   "col": 27,
+   "source": "expression.expression * -1",
+   "statement": "expression=expression.expression * -1,",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "*",
+   "dunder": "__mul__",
+   "builds": "exp.Mul",
+   "confidence": "medium",
+   "why": "assigned from .expression is an Expr arg",
+   "operands": {
+    "left": "Expr",
+    "right": "other"
+   },
+   "py": "sqlglot/generators/snowflake.py:1001",
+   "file": "sqlglot/generators/snowflake.py",
+   "line": 1001,
+   "col": 26,
+   "source": "value * (-1)",
+   "statement": "value.replace(value * (-1))",
    "executor": false,
    "found_by": [
     "static"
@@ -820,8 +1723,8 @@
    "op": "[]",
    "dunder": "__getitem__",
    "builds": "exp.Bracket",
-   "confidence": "medium",
-   "why": "element of .args is a dict of Exprs",
+   "confidence": "low",
+   "why": "element of .args holds Exprs and lists of Exprs",
    "operands": {
     "value": "Expr"
    },
@@ -829,7 +1732,8 @@
    "file": "sqlglot/generators/spark2.py",
    "line": 89,
    "col": 16,
-   "source": "pivot = expression.this.args[\"pivots\"][0]",
+   "source": "expression.this.args[\"pivots\"][0]",
+   "statement": "pivot = expression.this.args[\"pivots\"][0]",
    "executor": false,
    "found_by": [
     "static"
@@ -839,8 +1743,8 @@
    "op": "[]",
    "dunder": "__getitem__",
    "builds": "exp.Bracket",
-   "confidence": "medium",
-   "why": "assigned from element of .args is a dict of Exprs",
+   "confidence": "low",
+   "why": "assigned from element of .args holds Exprs and lists of Exprs",
    "operands": {
     "value": "Expr"
    },
@@ -848,7 +1752,8 @@
    "file": "sqlglot/lineage.py",
    "line": 627,
    "col": 20,
-   "source": "mapping[pivot_columns[col_index].name] = agg_cols",
+   "source": "pivot_columns[col_index]",
+   "statement": "mapping[pivot_columns[col_index].name] = agg_cols",
    "executor": false,
    "found_by": [
     "static"
@@ -868,7 +1773,8 @@
    "file": "sqlglot/optimizer/simplify.py",
    "line": 259,
    "col": 8,
-   "source": "left >= date_literal(drange[0], target_type),",
+   "source": "left >= date_literal(drange[0], target_type)",
+   "statement": "left >= date_literal(drange[0], target_type),",
    "executor": false,
    "found_by": [
     "static"
@@ -888,7 +1794,8 @@
    "file": "sqlglot/optimizer/simplify.py",
    "line": 260,
    "col": 8,
-   "source": "left < date_literal(drange[1], target_type),",
+   "source": "left < date_literal(drange[1], target_type)",
+   "statement": "left < date_literal(drange[1], target_type),",
    "executor": false,
    "found_by": [
     "static"
@@ -908,7 +1815,8 @@
    "file": "sqlglot/optimizer/simplify.py",
    "line": 291,
    "col": 8,
-   "source": "left < date_literal(drange[0], target_type),",
+   "source": "left < date_literal(drange[0], target_type)",
+   "statement": "left < date_literal(drange[0], target_type),",
    "executor": false,
    "found_by": [
     "static"
@@ -928,7 +1836,8 @@
    "file": "sqlglot/optimizer/simplify.py",
    "line": 292,
    "col": 8,
-   "source": "left >= date_literal(drange[1], target_type),",
+   "source": "left >= date_literal(drange[1], target_type)",
+   "statement": "left >= date_literal(drange[1], target_type),",
    "executor": false,
    "found_by": [
     "static"
@@ -939,7 +1848,7 @@
    "dunder": "__lt__",
    "builds": "exp.LT",
    "confidence": "medium",
-   "why": "assigned from .this is expr",
+   "why": "assigned from .this is an Expr arg",
    "operands": {
     "left": "Expr",
     "right": "Expr"
@@ -948,7 +1857,8 @@
    "file": "sqlglot/optimizer/simplify.py",
    "line": 614,
    "col": 12,
-   "source": "l",
+   "source": "l < date_literal( dt if dt == datetime_floor(dt, u, d) else datetime_floor(dt, u, d) + interval(u), t, )",
+   "statement": "l",
    "executor": false,
    "found_by": [
     "static"
@@ -959,7 +1869,7 @@
    "dunder": "__ge__",
    "builds": "exp.GTE",
    "confidence": "medium",
-   "why": "assigned from .this is expr",
+   "why": "assigned from .this is an Expr arg",
    "operands": {
     "left": "Expr",
     "right": "Expr"
@@ -968,7 +1878,8 @@
    "file": "sqlglot/optimizer/simplify.py",
    "line": 620,
    "col": 39,
-   "source": "exp.GT: lambda l, dt, u, d, t: l >= date_literal(datetime_floor(dt, u, d) + interval(u), t),",
+   "source": "l >= date_literal(datetime_floor(dt, u, d) + interval(u), t)",
+   "statement": "exp.GT: lambda l, dt, u, d, t: l >= date_literal(datetime_floor(dt, u, d) + interval(u), t),",
    "executor": false,
    "found_by": [
     "static"
@@ -979,7 +1890,7 @@
    "dunder": "__lt__",
    "builds": "exp.LT",
    "confidence": "medium",
-   "why": "assigned from .this is expr",
+   "why": "assigned from .this is an Expr arg",
    "operands": {
     "left": "Expr",
     "right": "Expr"
@@ -988,7 +1899,8 @@
    "file": "sqlglot/optimizer/simplify.py",
    "line": 621,
    "col": 40,
-   "source": "exp.LTE: lambda l, dt, u, d, t: l < date_literal(datetime_floor(dt, u, d) + interval(u), t),",
+   "source": "l < date_literal(datetime_floor(dt, u, d) + interval(u), t)",
+   "statement": "exp.LTE: lambda l, dt, u, d, t: l < date_literal(datetime_floor(dt, u, d) + interval(u), t),",
    "executor": false,
    "found_by": [
     "static"
@@ -999,7 +1911,7 @@
    "dunder": "__ge__",
    "builds": "exp.GTE",
    "confidence": "medium",
-   "why": "assigned from .this is expr",
+   "why": "assigned from .this is an Expr arg",
    "operands": {
     "left": "Expr",
     "right": "Expr"
@@ -1008,7 +1920,8 @@
    "file": "sqlglot/optimizer/simplify.py",
    "line": 622,
    "col": 40,
-   "source": "exp.GTE: lambda l, dt, u, d, t: l >= date_literal(date_ceil(dt, u, d), t),",
+   "source": "l >= date_literal(date_ceil(dt, u, d), t)",
+   "statement": "exp.GTE: lambda l, dt, u, d, t: l >= date_literal(date_ceil(dt, u, d), t),",
    "executor": false,
    "found_by": [
     "static"
@@ -1018,8 +1931,8 @@
    "op": "+=",
    "dunder": "__add__",
    "builds": "exp.Add",
-   "confidence": "medium",
-   "why": "augmented assignment over element of .args is a dict of Exprs",
+   "confidence": "low",
+   "why": "augmented assignment over element of .args holds Exprs and lists of Exprs",
    "operands": {
     "left": "Expr",
     "right": "other"
@@ -1029,6 +1942,90 @@
    "line": 4954,
    "col": 16,
    "source": "table.args[\"this\"] += \"*\"",
+   "statement": "table.args[\"this\"] += \"*\"",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "-",
+   "dunder": "__neg__",
+   "builds": "exp.Neg",
+   "confidence": "high",
+   "why": "Literal.number(...) builds an Expr",
+   "operands": {
+    "operand": "Expr"
+   },
+   "py": "sqlglot/parser.py:8041",
+   "file": "sqlglot/parser.py",
+   "line": 8041,
+   "col": 35,
+   "source": "-exp.Literal.number(\"1\")",
+   "statement": "end: exp.Expr | None = -exp.Literal.number(\"1\")",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "+",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "high",
+   "why": "constructor exp.DateDiff(...)",
+   "operands": {
+    "left": "Expr",
+    "right": "other"
+   },
+   "py": "sqlglot/parsers/mysql.py:136",
+   "file": "sqlglot/parsers/mysql.py",
+   "line": 136,
+   "col": 12,
+   "source": "exp.DateDiff( this=exp.TsOrDsToDate(this=seq_get(args, 0)), expression=exp.TsOrDsToDate(this=exp.Literal.string(\"0000-01-01\")), unit=exp.var(\"DAY\"), ) + 1",
+   "statement": "exp.DateDiff(",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "%",
+   "dunder": "__mod__",
+   "builds": "exp.Mod",
+   "confidence": "medium",
+   "why": "exp.paren() returns expr",
+   "operands": {
+    "left": "Expr",
+    "right": "other"
+   },
+   "py": "sqlglot/parsers/singlestore.py:71",
+   "file": "sqlglot/parsers/singlestore.py",
+   "line": 71,
+   "col": 32,
+   "source": "exp.paren(exp.DayOfWeek(this=seq_get(args, 0)) + 5, copy=False) % 7",
+   "statement": "\"WEEKDAY\": lambda args: exp.paren(exp.DayOfWeek(this=seq_get(args, 0)) + 5, copy=False) % 7,",
+   "executor": false,
+   "found_by": [
+    "static"
+   ]
+  },
+  {
+   "op": "+",
+   "dunder": "__add__",
+   "builds": "exp.Add",
+   "confidence": "high",
+   "why": "constructor exp.DayOfWeek(...)",
+   "operands": {
+    "left": "Expr",
+    "right": "other"
+   },
+   "py": "sqlglot/parsers/singlestore.py:71",
+   "file": "sqlglot/parsers/singlestore.py",
+   "line": 71,
+   "col": 42,
+   "source": "exp.DayOfWeek(this=seq_get(args, 0)) + 5",
+   "statement": "\"WEEKDAY\": lambda args: exp.paren(exp.DayOfWeek(this=seq_get(args, 0)) + 5, copy=False) % 7,",
    "executor": false,
    "found_by": [
     "static"
@@ -1048,7 +2045,8 @@
    "file": "sqlglot/transforms.py",
    "line": 110,
    "col": 23,
-   "source": ".where(cast_date_add <= exp.cast(end, \"date\"))",
+   "source": "cast_date_add <= exp.cast(end, \"date\")",
+   "statement": ".where(cast_date_add <= exp.cast(end, \"date\"))",
    "executor": false,
    "found_by": [
     "static"
@@ -1059,7 +2057,7 @@
    "dunder": "__getitem__",
    "builds": "exp.Bracket",
    "confidence": "medium",
-   "why": "assigned from .this is expr",
+   "why": "assigned from .this is an Expr arg",
    "operands": {
     "value": "Expr"
    },
@@ -1067,7 +2065,8 @@
    "file": "sqlglot/transforms.py",
    "line": 453,
    "col": 34,
-   "source": "bracket = explode_arg[0]",
+   "source": "explode_arg[0]",
+   "statement": "bracket = explode_arg[0]",
    "executor": false,
    "found_by": [
     "static"
@@ -1087,7 +2086,8 @@
    "file": "sqlglot/transforms.py",
    "line": 530,
    "col": 31,
-   "source": "size = size - 1",
+   "source": "size - 1",
+   "statement": "size = size - 1",
    "executor": false,
    "found_by": [
     "static"
@@ -1107,7 +2107,8 @@
    "file": "sqlglot/transforms.py",
    "line": 536,
    "col": 29,
-   "source": "(exp.column(series_alias, table=series_table_alias) > size).and_(",
+   "source": "exp.column(series_alias, table=series_table_alias) > size",
+   "statement": "(exp.column(series_alias, table=series_table_alias) > size).and_(",
    "executor": false,
    "found_by": [
     "static"
@@ -1127,7 +2128,8 @@
    "file": "sqlglot/transforms.py",
    "line": 547,
    "col": 26,
-   "source": "end = end - (1 - index_offset)",
+   "source": "end - (1 - index_offset)",
+   "statement": "end = end - (1 - index_offset)",
    "executor": false,
    "found_by": [
     "static"
@@ -1137,8 +2139,8 @@
    "op": "[]",
    "dunder": "__getitem__",
    "builds": "exp.Bracket",
-   "confidence": "medium",
-   "why": "element of .args is a dict of Exprs",
+   "confidence": "low",
+   "why": "element of .args holds Exprs and lists of Exprs",
    "operands": {
     "value": "Expr"
    },
@@ -1146,7 +2148,8 @@
    "file": "sqlglot/transforms.py",
    "line": 662,
    "col": 12,
-   "source": "expression_copy.args[\"joins\"][index].set(\"side\", \"right\")",
+   "source": "expression_copy.args[\"joins\"][index]",
+   "statement": "expression_copy.args[\"joins\"][index].set(\"side\", \"right\")",
    "executor": false,
    "found_by": [
     "static"

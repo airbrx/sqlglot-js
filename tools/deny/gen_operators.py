@@ -46,6 +46,7 @@ from common import (  # noqa: E402
     owning_scope,
     rel,
     source_line,
+    source_segment,
     sqlglot_files,
 )
 
@@ -243,7 +244,8 @@ def analyse(ref: str) -> tuple[list[dict], dict]:
                     "file": relpath,
                     "line": node.lineno,
                     "col": node.col_offset,
-                    "source": source_line(path, node.lineno),
+                    "source": source_segment(path, node),
+                    "statement": source_line(path, node.lineno),
                     "executor": is_executor(relpath),
                     "found_by": ["static"],
                 }

@@ -79,6 +79,15 @@ OPAQUE_HEADS = {"Type", "type", "Callable", "ClassVar", "Final", "Literal", "Ann
 KIND_EXPR = "expr"
 KIND_CONTAINER = "container"
 
+# The canonical arg accessors. These CANNOT be learned from return annotations:
+# upstream declares them `-> t.Any` (expressions/core.py:130,137,144) because the
+# concrete type depends on each class's `arg_types`. Their runtime value is an
+# Expr for the great majority of node classes, but a few hold a plain str or
+# bool, so sites resolved only through these are reported at medium confidence
+# and the runtime pass is what promotes them to confirmed.
+ANY_ANNOTATED_EXPR_ATTRS = {"this", "expression", "left", "right", "unit"}
+ANY_ANNOTATED_LIST_ATTRS = {"expressions", "flatten"}
+
 CONF_HIGH = "high"
 CONF_MEDIUM = "medium"
 CONF_LOW = "low"
@@ -129,8 +138,12 @@ class ModuleImports:
                         self.typing_names.add(alias.asname or alias.name)
                 elif mod.endswith("expressions") or mod == "sqlglot":
                     for alias in node.names:
-                        if alias.name == "expressions":
-                            self.exp_aliases.add(alias.asname or "expressions")
+                        # `from sqlglot import exp` is the dominant idiom — 114 of
+                        # sqlglot's 182 modules use it — and binds the expressions
+                        # module, not a name inside it. `from sqlglot import
+                        # expressions as exp` is the other spelling.
+                        if alias.name in ("expressions", "exp"):
+                            self.exp_aliases.add(alias.asname or alias.name)
                         else:
                             self.exp_names.add(alias.asname or alias.name)
 
@@ -478,11 +491,15 @@ class ExprTyper:
             return self._classify_call(node)
 
         if isinstance(node, ast.Attribute):
+            if node.attr in ANY_ANNOTATED_LIST_ATTRS:
+                return (KIND_CONTAINER, CONF_MEDIUM, f".{node.attr} holds Exprs")
+            if node.attr in ANY_ANNOTATED_EXPR_ATTRS:
+                return (KIND_EXPR, CONF_MEDIUM, f".{node.attr} is an Expr arg")
             kind = self.k.prop_kind.get(node.attr)
             if kind is not None:
                 return (kind, CONF_MEDIUM, f".{node.attr} is {kind}")
             if node.attr == "args":
-                return (KIND_CONTAINER, CONF_MEDIUM, ".args is a dict of Exprs")
+                return (KIND_CONTAINER, CONF_LOW, ".args holds Exprs and lists of Exprs")
             return None
 
         if isinstance(node, ast.Name):
@@ -497,7 +514,13 @@ class ExprTyper:
             if inner[0] == KIND_CONTAINER:
                 if isinstance(node.slice, ast.Slice):
                     return (KIND_CONTAINER, inner[1], f"slice of {inner[2]}")
+                # `.args["joins"]` may itself be a *list* of Exprs, so a further
+                # subscript on it is unresolvable statically rather than a Bracket.
+                if ".args holds" in inner[2]:
+                    return (KIND_EXPR, CONF_LOW, f"element of {inner[2]}")
                 return (KIND_EXPR, inner[1], f"element of {inner[2]}")
+            if inner[1] == CONF_LOW and "element of .args holds" in inner[2]:
+                return None
             # subscripting an Expr is Expr.__getitem__ -> Bracket
             return (KIND_EXPR, inner[1], "Bracket from Expr.__getitem__")
 
@@ -570,6 +593,27 @@ def source_line(path: str, lineno: int) -> str:
     if 1 <= lineno <= len(lines):
         return lines[lineno - 1].strip()
     return ""
+
+
+def source_segment(path: str, node: ast.AST) -> str:
+    """The exact expression text, so a reviewer sees the operator rather than
+    whatever happened to be on the node's first line."""
+    lines = _LINE_CACHE.get(path)
+    if lines is None:
+        try:
+            lines = open(path, encoding="utf-8").read().splitlines()
+        except OSError:
+            lines = []
+        _LINE_CACHE[path] = lines
+    src = "\n".join(lines)
+    try:
+        seg = ast.get_source_segment(src, node)
+    except (ValueError, TypeError):
+        seg = None
+    if not seg:
+        return source_line(path, getattr(node, "lineno", 0))
+    seg = " ".join(part.strip() for part in seg.splitlines())
+    return seg[:200]
 
 
 def sqlglot_files(ref: str) -> list[str]:
