@@ -166,6 +166,8 @@ test/         runner.mjs expressions/ build/ ratchet.json
 
 `tools/lint_fidelity.mjs` enforces: every ported file carries a `// py:` header naming its upstream path and the pinned commit; the exported method-name set equals upstream's; method **order** equals upstream's source order; `cpLen()` is used instead of `.length` inside `generator.js` and `time.js`; and both deny-lists (§4.6) are clean. It cannot check that a *body* is a transliteration — that is §8.5's human gate.
 
+**Confirmed by the P0 go/no-go spike (2026-08-25):** `\p{...}` runtime regex escapes are banned outright inside `src/_py/` and `src/tokenizer*.js` — not a style preference, a correctness requirement. Measured: the best `\p{...}` candidate for `isprintable` diverges from CPython on 11,130 of 1,114,112 code points, and the corpus is 0.024% non-ASCII, so this would pass every corpus test and ship silently wrong (same hazard class as `too_wide`/R4). `isprintable`/`islower`/`isupper`/`isspace`/`istitlechar` must route through the generated tables in `_gen/unicode.js` (§4.3 item 3), which were verified exact over the full range. `lint_fidelity.mjs` denies any `\p{` literal in those paths.
+
 ### 4.3 Code generation, correctly scoped
 
 An earlier draft claimed 12–18 kLOC of codegen savings. Measured: **~4.3 kLOC**, because 76% of dialect dict entries (and 94% in `generators/`) are *callables*, not literals. Codegen is therefore scoped to exactly four things:
@@ -288,7 +290,7 @@ The runtime artifact has zero dependencies. The **verification** toolchain needs
 
 The earlier mitigation ("containerize with a pinned CPython") solved the wrong direction: the container's job is to *run upstream's suite*, so the moment upstream's floor moves past the pin, the container can no longer do its job. Pinning would protect today's corpus and destroy upstream tracking — the thing Ben actually asked for.
 
-Corrected: `tools/Dockerfile` builds CPython from **the pinned upstream tag's own declared `requires-python`**, is rebuilt as part of every resync, and the resync job fails loudly with `toolchain Python floor moved 3.9 → 3.10` rather than silently emitting a stale corpus. `corpus/PROVENANCE.json` records the exact patch version (CPython patch releases have changed float `repr` and `Decimal` behaviour before, and this corpus is byte-exact).
+Corrected: `tools/Dockerfile` builds CPython from **the pinned upstream tag's own declared `requires-python`**, is rebuilt as part of every resync, and the resync job fails loudly with `toolchain Python floor moved 3.9 → 3.10` rather than silently emitting a stale corpus. `corpus/PROVENANCE.json` records the exact patch version (CPython patch releases have changed float `repr` and `Decimal` behaviour before, and this corpus is byte-exact) **and the `unicodedata` version** — the P0 go/no-go spike (2026-08-25) found the generated Unicode tables (§4.3 item 3) are only exact for the interpreter that harvested them; Node 22's ICU ships Unicode 16.0 against this box's CPython 3.9.25 / `unicodedata` 13.0.0, an independent version axis from the CPython patch with an 11,130-code-point blast radius on `isprintable` alone if conflated or ignored.
 
 ### 5.3 Licensing and attribution — before the first ported line
 
@@ -317,8 +319,8 @@ Every exit criterion below is a number emitted by `tools/closure.mjs` and the te
 
 **Ordered, because the first three items decide whether the project is the right shape:**
 
-1. **Day 1–3: the byte-exactness spike.** `Decimal` `+ - * /` + `str(Decimal)` + `str(float)`, fuzzed against CPython; and a full `sys.maxunicode` sweep comparing `isprintable`/`islower`/`isupper`/`isspace` against candidate `\p{...}` classes. Green → proceed. **Red → re-plan on day 3, not on day 40.** Previously this signal sat at the *end* of a 4–6 week serial phase; that was the worst scheduling decision in the plan.
-2. **Day 3–6: the calibration spike.** Port one real file to green and publish measured LOC/agent-hour before committing to §10's numbers. Target: `sqlglot/time.py` (688) + `helper.py` — chosen over the reviewer's suggestion of `tokens.py` because these are pure functions that can be differential-tested directly at P0, whereas `tokens.py` has no oracle until P1. Re-baseline after P1 and again after P3.
+1. **Day 1–3: the byte-exactness spike. VERIFIED GREEN 2026-08-25.** `Decimal` `+ - * /` + `str(Decimal)` + `str(float)`, fuzzed against CPython (621,245 cases, 0 divergences); and a full `sys.maxunicode` sweep — all 1,114,112 code points — comparing `isprintable`/`islower`/`isupper`/`isspace` against candidate `\p{...}` classes (runtime `\p{...}` insufficient, but the §4.3 generated-table mitigation verified exact over the full range; 6 genuine, permanently-enumerated code-point mismatches found and documented, the rest Unicode-version skew). The named `test_snowflake.py:367` go/no-go literal reproduces byte-exactly, with its root cause traced to `expressions/core.py:1755` rendering the two `RANDOM()` bounds through different functions. Full write-up: `SPIKE_RESULTS.md` on branch `p0-foundation`, reproducible via `bash spike/run_all.sh`. Independently re-run and confirmed by the orchestrator. **Proceeding to item 2.** Three small plan amendments folded in above and at §4.2, §5.2, §8.2 item 1.
+2. **Day 3–6: the calibration spike — in progress.** Port one real file to green and publish measured LOC/agent-hour before committing to §10's numbers. Target: `sqlglot/time.py` (688) + `helper.py` — chosen over the reviewer's suggestion of `tokens.py` because these are pure functions that can be differential-tested directly at P0, whereas `tokens.py` has no oracle until P1. Re-baseline after P1 and again after P3.
 3. **Day 6: licensing** (§5.3). Blocks all port PRs.
 4. `CONTRACTS.md` frozen (§8.2).
 5. `_py/num.js` (scoped per §4.6), `_py/str.js`, `_py/re.js`, `_py/sort.js`, `_py/collections.js`, **`_py/datetime.js::pyFromIsoFormat`**.
@@ -429,13 +431,13 @@ One task replaces exactly one stub; two agents produce non-adjacent hunks that g
 
 Freezing these on day one decouples the three serial lanes (tooling / runtime / port):
 
-1. **`_py/` API surface** — every helper's name, arity, and Python-semantics reference, written *before* implementation, so port agents can call functions the runtime agent hasn't written. Now includes `utf8Len`, `pyChr`, `pyFormatInt`, `pyFromIsoFormat`.
+1. **`_py/` API surface** — every helper's name, arity, and Python-semantics reference, written *before* implementation, so port agents can call functions the runtime agent hasn't written. Now includes `utf8Len`, `pyChr`, `pyFormatInt`, `pyFromIsoFormat`. **Also record (found by the P0 go/no-go spike, 2026-08-25): `Py_UNICODE_ISTITLE` ≠ `str.istitle()`.** The former is a per-character property (`Lt`, 10 ranges); the latter is a whole-string predicate (`'A'.istitle()` is `True` because the *string* is titlecase-formatted, even though `'A'` is not a titlecase *character*). Confusing them silently broke `isupper` on 8,197 of 83,307 test strings during the spike — corpus-invisible, same hazard class as `too_wide`.
 2. **Tokenizer output shape** — `{tokens, codePoints}`.
 3. **`_gen/` schema**, including the table-order manifest.
 4. **AST oracle JSON shape** (`astdump.py` ↔ `astDump()`/`astLoad()`), including the `astLoad` no-`INIT_HOOKS` rule.
 5. **Bridge NDJSON protocol**, plus the per-module proxy-satisfiability table.
 6. **`NotPorted` error contract** and the stub JSDoc template.
-7. **Corpus provenance schema**, including `python_version`.
+7. **Corpus provenance schema**, including `python_version` and `unidata_version` (added 2026-08-25 per the P0 go/no-go spike — see §5.2).
 
 ### 8.3 Task briefs carry their own oracle
 
