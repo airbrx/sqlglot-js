@@ -121,12 +121,60 @@ def diff(old, new):
     return report
 
 
+def selftest():
+    checks = []
+
+    def t(name, cond):
+        checks.append((name, bool(cond)))
+
+    M = lambda line, h: {"line": line, "end": line + 5, "hash": h}  # noqa: E731
+
+    old = {"a.py": {"f": M(10, "h1"), "g": M(20, "h2"), "gone": M(30, "h3")}}
+    new = {
+        "a.py": {
+            "f": M(10, "h1"),  # unchanged
+            "g": M(20, "hX"),  # body changed
+            "renamed": M(30, "h3"),  # same body as `gone` -> a rename
+            "brand_new": M(40, "h9"),
+        },
+        "b.py": {"z": M(1, "h0")},
+    }
+    r = diff(old, new)
+    c = r["changed"]["a.py"]
+
+    t("new file detected", r["files_added"] == ["b.py"])
+    t("body change detected", [m for m, _, _ in c["body_changed"]] == ["g"])
+    # The one that matters: a delete+add with an identical body is ONE work item
+    # (a rename), not two. Reporting it as two would send an agent to re-port
+    # code that only moved.
+    t("rename detected", c["renamed"] == [["gone", "renamed"]])
+    t("rename not double-counted as added", [m for m, _ in c["added"]] == ["brand_new"])
+    t("rename not double-counted as removed", c["removed"] == [])
+
+    # A pure line shift must not be reported as a change.
+    old2 = {"a.py": {"f": M(10, "h1")}}
+    new2 = {"a.py": {"f": M(99, "h1")}}
+    t("pure move is not a change", "a.py" not in diff(old2, new2)["changed"])
+
+    bad = 0
+    for name, ok in checks:
+        if not ok:
+            bad += 1
+        print(f"  {'ok  ' if ok else 'FAIL'} {name}")
+    print("\n  SYNC_REPORT SELFTEST: " + ("GREEN\n" if bad == 0 else f"RED ({bad})\n"))
+    return 0 if bad == 0 else 1
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ref", default="/tmp/sqlglot-ref")
     ap.add_argument("--snapshot", action="store_true")
+    ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--out", default=SNAPSHOT)
     args = ap.parse_args()
+
+    if args.selftest:
+        sys.exit(selftest())
 
     new = collect(args.ref)
 
