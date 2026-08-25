@@ -6,7 +6,7 @@ import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 
 import { utf8Len, pyChr, pyOrd, pyFormatInt, pyRepr, pyReprStr } from "../src/_py/str.js";
-import { ExprSet, ExprMap, frozensetKey } from "../src/_py/collections.js";
+import { ExprSet, ExprMap, frozensetKey, frozensetSize } from "../src/_py/collections.js";
 
 const SHOW = 6;
 const stats = new Map();
@@ -27,8 +27,10 @@ function record(bucket, ok, detail) {
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const fromCps = (cps) => cps.map((c) => String.fromCodePoint(c)).join("");
 
-// Python-value marshalling: the generator emits JSON, so `null` means None.
-const pyVal = (v) => (v === null ? null : v);
+// Python-value marshalling. JSON cannot distinguish a Python int from a float, and
+// CONTRACTS.md §1 fixes the convention: BigInt models int, Number models float. The
+// generator's container fixtures all carry ints, so integral JSON numbers become BigInt.
+const pyVal = (v) => (typeof v === "number" && Number.isInteger(v) ? BigInt(v) : v);
 
 function run(rec) {
   switch (rec.k) {
@@ -63,8 +65,21 @@ function run(rec) {
       break;
     }
     case "reprstr": {
-      const got = pyReprStr(fromCps(rec.cps));
+      const s = fromCps(rec.cps);
+      // Guard the exclusion the generator applies, so a regression there is loud
+      // rather than silently shrinking coverage.
+      if ([...s].length !== rec.cps.length) {
+        throw new Error(`unrepresentable case leaked into the corpus: ${JSON.stringify(rec.cps)}`);
+      }
+      const got = pyReprStr(s);
       record("pyReprStr", got === rec.want, { cps: rec.cps, want: rec.want, got });
+      break;
+    }
+    case "reprstr_skipped": {
+      console.log(
+        `  [note] ${rec.count} repr cases excluded: adjacent high+low surrogate pairs are\n` +
+          "         two code points in Python but one astral char in JS (CONTRACTS.md §8).",
+      );
       break;
     }
     case "repr_list": {
@@ -130,7 +145,7 @@ function run(rec) {
         want: rec.same,
         got: ka === kb,
       });
-      const size = ka === "" ? 0 : ka.split(" ").length;
+      const size = frozensetSize(ka);
       record("frozensetKey size", size === rec.size, { a: rec.a, want: rec.size, got: size });
       break;
     }

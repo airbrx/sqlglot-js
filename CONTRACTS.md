@@ -229,6 +229,8 @@ Places where a literal transliteration is impossible. Each is exempt from `lint_
 | `time.format_time` | operates on a code-point array | Python slices `string[start:end]` by code point. |
 | `Generator.sql()` over left-nested binary chains | trampoline | §4.7 — depth ∝ N. |
 | `VALUES`→`UNION` pretty reduction | trampoline | §4.7 — depth ∝ N. |
+| `_py/collections.js` `frozensetKey` separator | `","`, explicitly not `"\0"` | a NUL byte makes `grep` treat a source file as binary, which silently breaks the grep-based fidelity lints. Found the hard way. |
+| adjacent lone surrogates in a string | **unrepresentable; excluded from tests** | a Python `str` can hold a high surrogate followed by a low surrogate as **two** code points; a JS string is UTF-16, so that same pair **is** one astral character. Isolated lone surrogates round-trip fine and are tested; 77 generated repr cases are excluded on this basis and the count is printed, never silently dropped. |
 
 ---
 

@@ -86,6 +86,18 @@ REPR_STRINGS = [
     "\xff", "é", " ", "​", "￿", "\U0001F600", "\U0010FFFF",
     "mixed \t'\"\\ ​\U0001F600", "\ud800", "café",
 ]
+def representable_in_js(cps):
+    """A Python str can hold a high surrogate immediately followed by a low surrogate
+    as TWO code points. A JS string is UTF-16, so that byte sequence IS the astral
+    character — the two-lone-surrogate state is unrepresentable in JS and such cases
+    are excluded rather than counted as port bugs. Isolated lone surrogates are fine
+    and ARE tested. Recorded in CONTRACTS.md §8."""
+    for a, b in zip(cps, cps[1:]):
+        if 0xD800 <= a <= 0xDBFF and 0xDC00 <= b <= 0xDFFF:
+            return False
+    return True
+
+
 for _ in range(4000):
     n = rng.randint(0, 6)
     s = "".join(chr(rng.choice([
@@ -93,8 +105,15 @@ for _ in range(4000):
         rng.randint(0xD800, 0xDFFF), rng.randint(0x10000, 0x10FFFF),
     ])) for _ in range(n))
     REPR_STRINGS.append(s)
+
+skipped = 0
 for s in REPR_STRINGS:
-    emit({"k": "reprstr", "cps": [ord(c) for c in s], "want": repr(s)})
+    cps = [ord(c) for c in s]
+    if not representable_in_js(cps):
+        skipped += 1
+        continue
+    emit({"k": "reprstr", "cps": cps, "want": repr(s)})
+emit({"k": "reprstr_skipped", "count": skipped})
 
 
 # --------------------------------------------------------------------------- #
