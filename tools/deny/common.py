@@ -352,7 +352,21 @@ def _subscript_args(node: ast.Subscript) -> list[ast.AST]:
 class ExprTyper:
     """Local, annotation-driven inference scoped to one function (or module) body.
 
-    `classify(node)` returns `(kind, confidence, reason)` or None.
+    `classify(node, at_line)` returns `(kind, confidence, reason)` or None.
+
+    Inference is **line-ordered**, not first-assignment-wins, because sqlglot's
+    generator methods rebind constantly:
+
+        start = expression.args.get("start")        # an Expr
+        start = f"START WITH {start}" if start else ""   # __str__ fires here
+        ...
+        sequence_opts = f"{start}{increment}..."    # now a plain str
+
+    A flow-insensitive typer reports both f-strings, and the second is a false
+    positive. Each name therefore carries its assignment history keyed by line,
+    and a lookup at line L uses the most recent binding at or before L. This is
+    an approximation of real flow analysis — good for straight-line code, which
+    is what these methods are — not a substitute for it.
     """
 
     def __init__(
@@ -366,8 +380,14 @@ class ExprTyper:
         self.imports = imports
         self.relpath = relpath
         self.scope = scope
-        self.names: dict[str, tuple[str, str, str]] = {}
+        # name -> [(lineno, kind, confidence, reason)], sorted by lineno.
+        # Seeds (parameters, annotations) live at line 0.
+        self.history: dict[str, list[tuple[int, str, str, str]]] = {}
         self.not_expr: set[str] = set()
+        self._assign_nodes = [
+            n for n in ast.walk(scope) if isinstance(n, ast.Assign)
+        ]
+        self._assign_nodes.sort(key=lambda n: n.lineno)
         self._seed()
         for _ in range(3):
             if not self._propagate():
@@ -375,9 +395,30 @@ class ExprTyper:
 
     # ------------------------------------------------------------- seeding
 
-    def _record(self, name: str, kind: str, conf: str, reason: str) -> None:
-        if name not in self.names and name not in self.not_expr:
-            self.names[name] = (kind, conf, reason)
+    def _record(self, name: str, kind: str, conf: str, reason: str, lineno: int = 0) -> None:
+        if name in self.not_expr:
+            return
+        entries = self.history.setdefault(name, [])
+        for i, (ln, *_rest) in enumerate(entries):
+            if ln == lineno:
+                entries[i] = (lineno, kind, conf, reason)
+                return
+        entries.append((lineno, kind, conf, reason))
+        entries.sort(key=lambda e: e[0])
+
+    def _lookup(self, name: str, at_line: int) -> tuple[str, str, str] | None:
+        entries = self.history.get(name)
+        if not entries:
+            return None
+        best = None
+        for lineno, kind, conf, reason in entries:
+            if lineno <= at_line:
+                best = (kind, conf, reason)
+            else:
+                break
+        # A use textually before any binding (e.g. inside a nested def) falls
+        # back to the earliest known binding rather than to nothing.
+        return best if best is not None else (entries[0][1], entries[0][2], entries[0][3])
 
     def _seed(self) -> None:
         node = self.scope
@@ -395,9 +436,12 @@ class ExprTyper:
             if isinstance(sub, ast.AnnAssign) and isinstance(sub.target, ast.Name):
                 self._seed_annotated(sub.target.id, sub.annotation, "annotated")
             elif isinstance(sub, ast.For) and isinstance(sub.target, ast.Name):
-                v = self.classify(sub.iter)
+                v = self.classify(sub.iter, sub.lineno)
                 if v is not None and v[0] == KIND_CONTAINER:
-                    self._record(sub.target.id, KIND_EXPR, CONF_MEDIUM, "loop over a container of Exprs")
+                    self._record(
+                        sub.target.id, KIND_EXPR, CONF_MEDIUM,
+                        "loop over a container of Exprs", sub.lineno,
+                    )
 
     def _seed_annotated(self, name: str, annotation: ast.AST | None, what: str) -> None:
         text = _ann_text(annotation)
@@ -413,25 +457,37 @@ class ExprTyper:
         self._record(name, kind, conf, f"{what} annotated {text}")
 
     def _propagate(self) -> bool:
-        changed = False
-        for sub in ast.walk(self.scope):
-            if not isinstance(sub, ast.Assign):
-                continue
-            verdict = self.classify(sub.value)
-            if verdict is None:
-                continue
-            kind, conf, reason = verdict
+        """Re-derive every assignment's type in source order.
+
+        Each pass rebuilds the non-seed history rather than appending, so running
+        to a fixpoint does not accumulate duplicate bindings. A binding that
+        resolves to nothing (the RHS is a plain string, say) is recorded as a
+        `None` kind so it still *shadows* an earlier Expr binding — that is what
+        stops `start = f"START WITH {start}"` from leaving `start` looking like
+        an Expr for the rest of the method.
+        """
+        before = {k: list(v) for k, v in self.history.items()}
+        for name in list(self.history):
+            self.history[name] = [e for e in self.history[name] if e[0] == 0]
+            if not self.history[name]:
+                del self.history[name]
+
+        for sub in self._assign_nodes:
+            verdict = self.classify(sub.value, sub.lineno)
             for target in sub.targets:
-                if isinstance(target, ast.Name) and target.id not in self.names:
-                    if target.id in self.not_expr:
-                        continue
-                    self.names[target.id] = (kind, conf, f"assigned from {reason}")
-                    changed = True
-        return changed
+                if not isinstance(target, ast.Name) or target.id in self.not_expr:
+                    continue
+                if verdict is None:
+                    self._record(target.id, "", CONF_LOW, "rebound to a non-Expr", sub.lineno)
+                else:
+                    kind, conf, reason = verdict
+                    self._record(target.id, kind, conf, f"assigned from {reason}", sub.lineno)
+
+        return before != self.history
 
     # ---------------------------------------------------------- classifier
 
-    def _classify_call(self, node: ast.Call) -> tuple[str, str, str] | None:
+    def _classify_call(self, node: ast.Call, at_line: int) -> tuple[str, str, str] | None:
         """Resolve a call by looking at what it is called *on*.
 
         Without this, `span.find(q)` (str.find -> int) is read as `Expr.find`
@@ -470,7 +526,7 @@ class ExprTyper:
                 # exp.Literal.number(...) — attribute chain onto a class
                 return None
             # A method call: only trust it if the receiver is itself an Expr.
-            receiver = self.classify(fn.value)
+            receiver = self.classify(fn.value, at_line)
             if receiver is not None and receiver[0] == KIND_EXPR:
                 kind = self.k.expr_method_kind.get(fn.attr)
                 if kind is not None:
@@ -504,9 +560,12 @@ class ExprTyper:
 
         return None
 
-    def classify(self, node: ast.AST) -> tuple[str, str, str] | None:
+    def classify(self, node: ast.AST, at_line: int | None = None) -> tuple[str, str, str] | None:
+        if at_line is None:
+            at_line = getattr(node, "lineno", 10**9)
+
         if isinstance(node, ast.Call):
-            return self._classify_call(node)
+            return self._classify_call(node, at_line)
 
         if isinstance(node, ast.Attribute):
             if node.attr in ANY_ANNOTATED_LIST_ATTRS:
@@ -523,10 +582,13 @@ class ExprTyper:
         if isinstance(node, ast.Name):
             if node.id in self.not_expr:
                 return None
-            return self.names.get(node.id)
+            found = self._lookup(node.id, at_line)
+            if found is None or found[0] == "":
+                return None
+            return found
 
         if isinstance(node, ast.Subscript):
-            inner = self.classify(node.value)
+            inner = self.classify(node.value, at_line)
             if inner is None:
                 return None
             if inner[0] == KIND_CONTAINER:
@@ -544,29 +606,34 @@ class ExprTyper:
 
         if isinstance(node, ast.BinOp):
             for side in (node.left, node.right):
-                v = self.classify(side)
+                v = self.classify(side, at_line)
                 if v is not None and v[0] == KIND_EXPR:
                     return (KIND_EXPR, v[1], f"BinOp over {v[2]}")
             return None
 
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.Invert)):
-            v = self.classify(node.operand)
+            v = self.classify(node.operand, at_line)
             if v is not None and v[0] == KIND_EXPR:
                 return (KIND_EXPR, v[1], f"UnaryOp over {v[2]}")
             return None
 
         if isinstance(node, ast.IfExp):
             for side in (node.body, node.orelse):
-                v = self.classify(side)
+                v = self.classify(side, at_line)
                 if v is not None:
                     return (v[0], CONF_LOW, f"conditional yielding {v[2]}")
             return None
 
         if isinstance(node, ast.BoolOp):
             for side in node.values:
-                v = self.classify(side)
+                v = self.classify(side, at_line)
                 if v is not None:
                     return (v[0], CONF_LOW, f"and/or yielding {v[2]}")
+            return None
+
+        if isinstance(node, ast.JoinedStr):
+            # An f-string is a str, whatever it interpolates. This is what makes
+            # `start = f"START WITH {start}"` shadow the earlier Expr binding.
             return None
 
         if isinstance(node, (ast.List, ast.ListComp, ast.GeneratorExp, ast.SetComp)):
