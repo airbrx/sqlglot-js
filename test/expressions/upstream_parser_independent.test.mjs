@@ -1,7 +1,7 @@
-// Faithful native port of the five parser/generator-independent tests from
+// Faithful native port of the six parser/generator-independent tests from
 // upstream tests/test_expressions.py @ 91119bc (PORT_PLAN.md §3.6 / Q6).
 //
-// P4 DEBT — the remaining 66 upstream tests, explicitly deferred (not dropped):
+// P4 DEBT — the remaining 65 upstream tests, explicitly deferred (not dropped):
 // test_to_s, test_arg_key, test_depth, test_iter, test_eq,
 // test_eq_on_same_instance_short_circuits, test_find, test_find_all,
 // test_find_ancestor, test_to_dot, test_root, test_alias_or_name,
@@ -20,14 +20,14 @@
 // test_union, test_values, test_data_type_builder, test_rename_table,
 // test_to_py, test_is_int, test_is_star, test_set_metadata, test_unnest,
 // test_is_type, test_set_meta, test_assert_is, test_convert_datetime_time,
-// test_hash_large_ast, test_parse_identifier.
+// test_hash_large_ast.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
   Boolean, CollateProperty, Column, EngineProperty, FileFormatProperty, Identifier,
   Literal, Neg, Null, PartitionedByProperty, Properties, Property, Tuple,
-  column, toIdentifier,
+  column, parseIdentifier, toIdentifier,
 } from "../../src/expressions/index.js";
 import { PyValueError } from "../../src/_py/errors.js";
 
@@ -91,4 +91,15 @@ test("test_pipe_and_apply", () => {
   assert(col.equals(col.apply((x) => x)));
   assert(col.pipe(addVal, 5, { squared: true }).equals(added));
   assert(col.pipe((e) => addValAlt(5, true, e)).equals(added));
+});
+
+// Parser-independent, re-derived by measurement rather than by inspection.  The
+// earlier reading was that this test reaches the tokenizer and so belongs to P4.  It
+// does not: `parse_one("a ' b", into=Identifier)` RAISES TokenError upstream, so
+// parse_identifier can only ever return through its `except (ParseError, TokenError)`
+// arm, whose value is to_identifier(name) -- pure expression-layer code.  Verified on
+// CPython @ 91119bc: stubbing maybe_parse to raise ParseError leaves the assertion
+// true, and the unstubbed parser never produces a value here at all.
+test("test_parse_identifier", () => {
+  assert(parseIdentifier("a ' b").equals(toIdentifier("a ' b")));
 });

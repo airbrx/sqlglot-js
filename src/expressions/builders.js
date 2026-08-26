@@ -10,12 +10,34 @@ import {
 } from "./classes.js";
 import {
   Expr, TABLE_PARTS, SAFE_IDENTIFIER_RE, maybeParse, maybeCopy, toIdentifier,
-  convert, alias_, column,
+  convert, alias_, column, trailingOptions,
 } from "./core.js";
+import { PyValueError } from "../_py/errors.js";
+import { ParseError, TokenError } from "../errors.js";
 
 const entries = (value) => value instanceof Map ? value : Object.entries(value || {});
 const arg = (o, snake, camel = snake) => o?.[camel] ?? o?.[snake];
 const construct = (C, args = {}) => new C(args);
+/** Python truthiness for the collection arguments: [] / {} / empty Map are falsy there. */
+function truthy(value) {
+  if (value === null || value === undefined || value === false) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (value instanceof Map || value instanceof Set) return value.size > 0;
+  if (value.constructor === Object) return Object.keys(value).length > 0;
+  return !!value;
+}
+/** Iterating a Python dict yields its keys; a Map or a plain object must do the same. */
+function keysOf(value) {
+  if (value instanceof Map) return [...value.keys()];
+  if (Array.isArray(value)) return value;
+  if (value && value.constructor === Object) return Object.keys(value);
+  return [...value];
+}
+// py: helper.py:274 split_num_words(value, sep, min_num_words) with fill_from_start.
+function splitNumWords(value, sep, minNumWords) {
+  const words = String(value).split(sep);
+  return [...Array(Math.max(0, minNumWords - words.length)).fill(null), ...words];
+}
 
 export function select(...expressions) {
   let opts = {};
@@ -36,15 +58,21 @@ export function update(table, properties = null, options = {}) {
     this: maybeParse(k, { dialect, copy, ...opts }), expression: convert(v),
   })));
   if (fromArg) result.set("from_", maybeParse(fromArg, { into: From, dialect, prefix: "FROM", copy, ...opts }));
-  if (where) result.set("where", where instanceof Condition ? construct(Where, { this: where }) :
-    maybeParse(where, { into: Where, dialect, prefix: "WHERE", copy, ...opts }));
+  // py: builders.py:160 -- the Condition is wrapped and then still handed to
+  // maybe_parse, so with copy=True the caller's node is copied rather than aliased.
+  if (where) {
+    const wrapped = where instanceof Condition ? construct(Where, { this: where }) : where;
+    result.set("where", maybeParse(wrapped, { into: Where, dialect, prefix: "WHERE", copy, ...opts }));
+  }
   if (withArg) result.set("with_", construct(With, { expressions: [...entries(withArg)].map(([name, query]) =>
     alias_(construct(CTE, { this: maybeParse(query, { dialect, copy, ...opts }) }), name, { table: true })) }));
   return result;
 }
 
 export function delete_(table, options = {}) {
-  const { where, returning, dialect = null, ...opts } = options;
+  // `copy` is destructured out and dropped: upstream hardcodes copy=False on all three
+  // calls, and passing it through **opts there is a duplicate-keyword TypeError.
+  const { where, returning, dialect = null, copy: _copy, ...opts } = options;
   let result = new Delete().delete(table, { dialect, copy: false, ...opts });
   if (where) result = result.where(where, { dialect, copy: false, ...opts });
   if (returning) result = result.returning(returning, { dialect, copy: false, ...opts });
@@ -82,10 +110,13 @@ export function merge(...whenExprs) {
 export function parseIdentifier(name, dialect = null) {
   if (typeof name === "string" && SAFE_IDENTIFIER_RE.test(name)) return construct(Identifier, { this: name, quoted: false });
   try {
-    const parsed = maybeParse(name, { dialect, into: Identifier });
-    return parsed.this instanceof Identifier ? toIdentifier(name) : parsed;
+    return maybeParse(name, { dialect, into: Identifier });
+  } catch (error) {
+    // py: `except (ParseError, TokenError)` -- exactly those two.  A ValueError from
+    // to_identifier is not caught upstream, so it must propagate here too.
+    if (!(error instanceof ParseError || error instanceof TokenError)) throw error;
+    return toIdentifier(name);
   }
-  catch { return toIdentifier(name); }
 }
 
 export const INTERVAL_STRING_RE = /^\s*(-?[0-9]+(?:\.[0-9]+)?)\s*([a-zA-Z]+)\s*$/;
@@ -93,9 +124,11 @@ export const INTERVAL_DAY_TIME_RE = /^\s*-?\s*\d+(?:\.\d+)?\s+(?:-?(?:\d+:)?\d+:
 
 export function toInterval(interval) {
   if (interval instanceof Literal) {
-    if (!interval.isString) throw new TypeError("Invalid interval string.");
+    if (!interval.isString) throw new PyValueError("Invalid interval string.");
     interval = interval.this;
   }
+  // py: `maybe_parse(f"INTERVAL {interval}")` then `assert isinstance(..., Interval)`.
+  // Parser-dependent: until P3 registers one this necessarily fails for every input.
   const result = maybeParse(`INTERVAL ${interval}`);
   if (!(result instanceof Interval)) throw new TypeError("Expected Interval");
   return result;
@@ -107,13 +140,15 @@ export function toTable(sqlPath, options = {}) {
   let table;
   try { table = maybeParse(sqlPath, { into: Table, dialect }); }
   catch (error) {
-    const parts = String(sqlPath).split(".");
-    if (!parts.length || parts.length > 3) throw error;
-    const [catalog, db, name] = [null, null, ...parts].slice(-3);
+    // py: split_num_words(sql_path, ".", 3) then a 3-way unpack, so >3 parts is a
+    // ValueError (not the original ParseError) and a falsy last part re-raises.
+    const parts = splitNumWords(sqlPath, ".", 3);
+    if (parts.length > 3) throw new PyValueError(`too many values to unpack (expected 3), got ${parts.length}`);
+    const [catalog, db, name] = parts;
     if (!name) throw error;
     table = table_(name, { db, catalog });
   }
-  return table.setKwargs ? table.setKwargs(kwargs) : (Object.entries(kwargs).forEach(([k,v]) => table.set(k,v)), table);
+  return table.setKwargs(kwargs);
 }
 
 export function toColumn(sqlPath, options = {}) {
@@ -121,7 +156,14 @@ export function toColumn(sqlPath, options = {}) {
   if (sqlPath instanceof Column) return maybeCopy(sqlPath, copy);
   let col;
   try { col = maybeParse(sqlPath, { into: Column, dialect }); }
-  catch { return column(...String(sqlPath).split(".").reverse(), { quoted, ...kwargs }); }
+  catch {
+    // py: column(*reversed(sql_path.split(".")), quoted=quoted, **kwargs).  The four
+    // positionals are spelled out: spreading a shorter list would slide the options
+    // object into `table`, and Python rejects a 5th positional outright.
+    const parts = String(sqlPath).split(".").reverse();
+    if (parts.length > 4) throw new PyValueError(`column() takes from 1 to 4 positional arguments but ${parts.length} were given`);
+    return column(parts[0], parts[1] ?? null, parts[2] ?? null, parts[3] ?? null, { quoted, ...kwargs });
+  }
   for (const [k,v] of Object.entries(kwargs)) col.set(k,v);
   if (quoted) for (const id of col.findAll(Identifier)) id.set("quoted", true);
   return col;
@@ -138,11 +180,17 @@ export function cast(expression, to, options = {}) {
   const { copy = true, dialect = null, ...opts } = options;
   const expr = maybeParse(expression, { copy, dialect, ...opts });
   const dataType = DataType.build(to, { copy, dialect, ...opts });
-  // Full dialect TYPE_MAPPING equivalence is performed when a resolved dialect is supplied.
+  // py: Dialect.get_or_raise(dialect).generator_class.TYPE_MAPPING.  With dialect=None
+  // upstream still resolves the BASE Generator mapping, which is not empty -- it is what
+  // collapses cast(cast(x, 'NCHAR'), 'CHAR') to the inner NCHAR cast.  Treating a missing
+  // dialect as "no mapping" produced a double CAST instead.
   if (expr instanceof Cast) {
-    const mapping = dialect?.generatorClass?.TYPE_MAPPING || dialect?.generator_class?.TYPE_MAPPING;
+    const mapping = dialect?.generatorClass?.TYPE_MAPPING || dialect?.generator_class?.TYPE_MAPPING || BASE_TYPE_MAPPING;
     const oldType = expr.to?.this, newType = dataType.this;
-    const equivalent = mapping && mappingValue(mapping, oldType) === mappingValue(mapping, newType);
+    // `this` is a plain type enum only for simple types; complex ones nest an
+    // expression there, so the equivalence check is skipped for those.
+    const equivalent = oldType?.__enum__ === "DType" && newType?.__enum__ === "DType"
+      && mappingValue(mapping, oldType) === mappingValue(mapping, newType);
     if (expr.isType(dataType) || equivalent) return expr;
   }
   const result = construct(Cast, { this: expr, to: dataType });
@@ -157,16 +205,28 @@ export function table_(table, options = {}) {
     alias: alias ? construct(TableAlias, { this: toIdentifier(alias) }) : null });
 }
 
+// py: builders.py:545.  Upstream is `[convert(tup) for tup in values]` -- one convert
+// per ROW, so a scalar row stays a scalar.  Python's rows are tuples; JS's only
+// sequence literal is Array, so an array row is the tuple spelling and is converted to
+// a Tuple here (convert() alone would make it an Array).  `columns` may be a list or a
+// dict, and iterating a dict yields its keys.  All the emptiness tests use Python
+// truthiness, where [] and {} are falsy.
 export function values(rows, options = {}) {
   const { alias = null, columns = null } = options;
-  if (columns && !alias) throw new TypeError("Alias is required when providing columns");
-  return construct(Values, { expressions: [...rows].map(row => row instanceof Tuple ? row : construct(Tuple, { expressions: [...row].map(v => convert(v)) })), alias: columns?.length ? construct(TableAlias,
-    { this: toIdentifier(alias), columns: [...(columns instanceof Map ? columns.keys() : columns)].map(c => toIdentifier(c)) }) :
-    alias ? construct(TableAlias, { this: toIdentifier(alias) }) : null });
+  if (truthy(columns) && !alias) throw new PyValueError("Alias is required when providing columns");
+  const expressions = [...rows].map(row =>
+    Array.isArray(row) ? construct(Tuple, { expressions: row.map(v => convert(v)) }) : convert(row));
+  let tableAlias = null;
+  if (truthy(columns)) {
+    tableAlias = construct(TableAlias, { this: toIdentifier(alias), columns: keysOf(columns).map(c => toIdentifier(c)) });
+  } else if (alias) {
+    tableAlias = construct(TableAlias, { this: toIdentifier(alias) });
+  }
+  return construct(Values, { expressions, alias: tableAlias });
 }
 
 export function var_(name) {
-  if (!name) throw new TypeError("Cannot convert empty name into var.");
+  if (!name) throw new PyValueError("Cannot convert empty name into var.");
   return construct(Var, { this: name instanceof Expr ? name.name : name });
 }
 export { var_ as var };
@@ -228,8 +288,11 @@ export function replacePlaceholders(expression, ...args) {
   });
 }
 
+// py: builders.py:888.  Upstream normalizes with normalize_table_name, NOT table_name:
+// table_name renders each part through .sql(), which needs a generator that does not
+// exist before P4 and so threw on any quoted table name.
 export function expand(expression, sources, options = {}) {
-  const { dialect = null, copy = true, normalize = x => tableName(toTable(x, { dialect })) } = options;
+  const { dialect = null, copy = true, normalize = x => normalizeTableName(x, { dialect }) } = options;
   const normalized = new Map([...entries(sources)].map(([k,v]) => [normalize(k), v]));
   const expandNode = node => {
     if (node instanceof Table) {
@@ -244,27 +307,38 @@ export function expand(expression, sources, options = {}) {
 }
 
 export function func(name, ...args) {
-  let options = {};
-  if (args.length && isOptions(args.at(-1))) options = args.pop();
+  const options = trailingOptions(args);
   const { copy = true, dialect = null, kwargs = null } = options;
-  const hasKwargs = kwargs != null && Object.keys(kwargs).length > 0;
-  if (args.length && hasKwargs) throw new TypeError("Can't use both args and kwargs to instantiate a function.");
+  const hasKwargs = truthy(kwargs);
+  if (args.length && hasKwargs) throw new PyValueError("Can't use both args and kwargs to instantiate a function.");
   const converted = args.map(value => maybeParse(value, { dialect, copy }));
   const convertedKwargs = Object.fromEntries(Object.entries(kwargs || {}).map(([k,v]) => [k, maybeParse(v, { dialect, copy })]));
   const functions = dialect?.parserClass?.FUNCTIONS || dialect?.parser_class?.FUNCTIONS;
   let result, constructor = functions?.get?.(name.toUpperCase()) || functions?.[name.toUpperCase()];
+  // The three upstream constructor arms (positional retry with dialect, from_arg_list,
+  // the FUNCTION_BY_NAME fallback and its terminal ValueError) are all reachable only
+  // once a dialect exposes a parser class; before P3 `constructor` is always undefined.
   if (constructor) result = converted.length ? constructor(converted, dialect) : constructor(convertedKwargs);
-  else result = construct(Anonymous, { this: name, ...(hasKwargs ? convertedKwargs : { expressions: converted }) });
-  for (const message of result.errorMessages?.(converted) || []) throw new TypeError(message);
+  else {
+    // py: `Anonymous(this=name, **kwargs)` -- a kwargs key of "this" is a duplicate
+    // keyword argument there, not a silent override of the function name.
+    if (hasKwargs && Object.hasOwn(convertedKwargs, "this")) {
+      throw new TypeError("Anonymous() got multiple values for keyword argument 'this'");
+    }
+    result = construct(Anonymous, { this: name, ...(hasKwargs ? convertedKwargs : { expressions: converted }) });
+  }
+  for (const message of result.errorMessages?.(converted) || []) throw new PyValueError(message);
   return result;
 }
 
+// copy defaults to True in all three; forwarding the raw options object instead let
+// maybeParse fall back to its own copy=false default and alias the caller's nodes.
 export function case_(expression = null, options = {}) {
-  return construct(Case, { this: expression == null ? null : maybeParse(expression, options), ifs: [] });
+  return construct(Case, { this: expression == null ? null : maybeParse(expression, { ...options, copy: options.copy ?? true }), ifs: [] });
 }
 export { case_ as case };
-export function array(...expressions) { let opts={}; if (expressions.length && isOptions(expressions.at(-1))) opts=expressions.pop(); return construct(ArrayExpr,{expressions:expressions.map(x=>maybeParse(x,opts))}); }
-export function tuple_(...expressions) { let opts={}; if (expressions.length && isOptions(expressions.at(-1))) opts=expressions.pop(); return construct(Tuple,{expressions:expressions.map(x=>maybeParse(x,opts))}); }
+export function array(...expressions) { const o=trailingOptions(expressions); return construct(ArrayExpr,{expressions:expressions.map(x=>maybeParse(x,{...o,copy:o.copy??true}))}); }
+export function tuple_(...expressions) { const o=trailingOptions(expressions); return construct(Tuple,{expressions:expressions.map(x=>maybeParse(x,{...o,copy:o.copy??true}))}); }
 export function true_() { return construct(Boolean, { this: true }); }
 export function false_() { return construct(Boolean, { this: false }); }
 export function null_() { return new Null(); }
@@ -282,10 +356,23 @@ export const NONNULL_CONSTANTS = Object.freeze([Literal, Boolean]);
 export const CONSTANTS = Object.freeze([Literal, Boolean, Null]);
 
 function isOptions(v) { return v != null && typeof v === "object" && !(v instanceof Expr) && !Array.isArray(v); }
-function isBuilderOptions(v) { return isOptions(v) && Object.hasOwn(v, "properties"); }
 function without(value, keys) { const out={...value}; for(const k of keys) delete out[k]; return out; }
 function ensureCollection(value) { return value == null ? [] : Array.isArray(value) ? value : value instanceof Set ? [...value] : [value]; }
-function mappingValue(mapping, key) { return mapping.get?.(key) ?? mapping[key] ?? key?.value ?? key; }
+// py: TYPE_MAPPING.get(type, type.value).  Dialect mappings are keyed by the DType
+// record itself; BASE_TYPE_MAPPING is a plain object keyed by the member name.
+function mappingValue(mapping, key) {
+  const name = key?.name ?? key;
+  return mapping.get?.(key) ?? mapping.get?.(name) ?? mapping[name] ?? key?.value ?? key;
+}
+// py: generator.py:636 Generator.TYPE_MAPPING -- the BASE mapping, which
+// Dialect.get_or_raise(None) resolves to.  Keyed by DType name to avoid importing the
+// enum records into this module.
+const BASE_TYPE_MAPPING = Object.freeze({
+  DATETIME2: "TIMESTAMP", NCHAR: "CHAR", NVARCHAR: "VARCHAR", MEDIUMTEXT: "TEXT",
+  LONGTEXT: "TEXT", TINYTEXT: "TEXT", BLOB: "VARBINARY", MEDIUMBLOB: "BLOB",
+  LONGBLOB: "BLOB", TINYBLOB: "BLOB", INET: "INET", ROWVERSION: "VARBINARY",
+  SMALLDATETIME: "TIMESTAMP",
+});
 
 /** Case-normalize and unquote a table name. A normalizeIdentifiers callback may
  * be supplied until the optimizer module lands. */
@@ -319,13 +406,17 @@ export function applyIndexOffset(thisExpr, expressions, offset, options = {}) {
   let expression = expressions[0];
   const { dialect = null, annotateTypes = null, simplify = null } = options;
   if (!thisExpr.type && annotateTypes) annotateTypes(thisExpr, { dialect });
+  // py: `if this.type.this not in (UNKNOWN, ARRAY): return expressions`.  An owner with
+  // no resolved type is not in that tuple either, so it takes the early return -- the
+  // previous `ownerType != null &&` guard inverted exactly that case.
   const ownerType = thisExpr.type?.this;
-  if (ownerType != null && !(["UNKNOWN", "ARRAY"].includes(ownerType?.value ?? ownerType))) return expressions;
+  if (!["UNKNOWN", "ARRAY"].includes(ownerType?.name ?? ownerType?.value ?? ownerType)) return expressions;
   if (!expression.type && annotateTypes) annotateTypes(expression, { dialect });
   const integerTypes = DataType.INTEGER_TYPES || DataType.integerTypes;
   if (integerTypes?.has(expression.type?.this)) {
     if (!simplify) throw new TypeError("applyIndexOffset requires simplify callback for integer indexes");
-    expression = simplify(expression.add ? expression.add(offset) : construct(EQ, {}), { dialect });
+    // py: simplify(expression + offset) -- Expr.__add__, i.e. _binop(Add, offset).
+    expression = simplify(expression.add(offset), { dialect });
     return [expression];
   }
   return expressions;

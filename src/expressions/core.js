@@ -92,12 +92,12 @@ export class Expr {
     while (node?.constructor?.name === "Paren" || node?.constructor?.name === "Neg") node = node.this;
     return node?.constructor?.name === "Literal" && !node.args.is_string && /^\d+$/.test(String(node.this));
   }
+  // py: core.py:939.  Only a Star, or a Column wrapping one.  Select, SetOperation,
+  // Subquery and Dot each override this (installed in query_methods.js); nothing else
+  // does -- notably not Alias or Paren, and not "any node with a starred expression",
+  // which would make Tuple([Star]) and Array([Star]) starred when upstream says no.
   get isStar() {
-    if (this.constructor.name === "Star") return true;
-    if (this.constructor.name === "Column") return this.this?.constructor?.name === "Star";
-    if (["Alias", "Paren", "Subquery"].includes(this.constructor.name)) return !!this.this?.isStar;
-    const selections = this.args.expressions;
-    return Array.isArray(selections) && selections.some(x => x instanceof Expr && x.isStar);
+    return this instanceof cls("Star") || (this instanceof cls("Column") && this.this instanceof cls("Star"));
   }
   get alias() { const a = this.args.alias; return typeof a === "string" ? a : (a instanceof Expr ? a.name : ""); }
   get aliasColumnNames() { return (this.args.alias?.args?.columns || []).map(x => x.name); }
@@ -114,7 +114,17 @@ export class Expr {
   isType(...dtypes) { return this._type !== null && this._type !== undefined && !!this._type.isType?.(...dtypes); }
   get meta() { return this._meta || (this._meta = {}); }
   metaGet(k, d = null) { return this._meta && k in this._meta ? this._meta[k] : d; }
-  text(k) { const v = this.args[k]; return typeof v === "string" ? v : (v instanceof Expr && ["Identifier", "Literal", "Var"].includes(v.constructor.name) && typeof v.this === "string" ? v.this : ""); }
+  // py: core.py:911.  The FIELD's type decides, never the owner's -- so
+  // Ordered(this=Identifier(zz)).name is 'zz' on any owner class.  The Star/Null arm
+  // is what keeps `t.*` projections in named_selects and Null.name as 'NULL'.
+  text(k) {
+    const v = this.args[k];
+    if (typeof v === "string") return v;
+    if (!(v instanceof Expr)) return "";
+    if (["Identifier", "Literal", "Var"].includes(v.constructor.name)) return typeof v.this === "string" ? v.this : "";
+    if (["Star", "Null"].includes(v.constructor.name)) return v.name;
+    return "";
+  }
   toPy() {
     const name = this.constructor.name;
     if (name === "Null") return null;
@@ -228,8 +238,8 @@ export class Expr {
   }
   dump() { return astDump(this); }
   static load(obj) { return astLoad(obj); }
-  and_(...expressions) { return combine(this, expressions, "And"); }
-  or_(...expressions) { return combine(this, expressions, "Or"); }
+  and_(...expressions) { const o = trailingOptions(expressions); return combine([this, ...expressions], "And", o); }
+  or_(...expressions) { const o = trailingOptions(expressions); return combine([this, ...expressions], "Or", o); }
   not_(copy = true) { return new (cls("Not"))({ this: maybeCopy(this, copy) }); }
   as_(alias, options = {}) { return alias_(this, alias, options); }
   _binop(klass, other, reverse = false) {
@@ -246,10 +256,23 @@ export class Expr {
     if (!this.constructor.argTypes?.has("expressions")) throw new TypeError(`'${this.constructor.name}' object is not iterable`);
     return this.expressions[Symbol.iterator]();
   }
+  // py: core.py Condition.isin.  `query` and `unnest` are always passed to the In
+  // constructor, so both keys exist in args even when null.
   isin(...expressions) {
-    let options = {};
-    if (expressions.at(-1)?.constructor === Object) options = expressions.pop();
-    return new (cls("In"))({ this: maybeCopy(this, options.copy ?? true), expressions: expressions.map(x => convert(x, options.copy ?? true)), query: options.query ? maybeParse(options.query, options) : null });
+    const options = trailingOptions(expressions);
+    const copy = options.copy ?? true;
+    let subquery = null;
+    if (options.query) {
+      subquery = maybeParse(options.query, { ...options, copy });
+      if (subquery instanceof cls("Query")) subquery = subquery.subquery(null, { copy: false });
+    }
+    const unnestList = options.unnest == null ? [] : (Array.isArray(options.unnest) ? options.unnest : [options.unnest]);
+    return new (cls("In"))({
+      this: maybeCopy(this, copy),
+      expressions: expressions.map(x => convert(x, copy)),
+      query: subquery,
+      unnest: options.unnest ? new (cls("Unnest"))({ expressions: unnestList.map(x => maybeParse(x, { ...options, copy })) }) : null,
+    });
   }
   between(low, high, options = {}) { const n = new (cls("Between"))({ this: maybeCopy(this, options.copy ?? true), low: convert(low, options.copy ?? true), high: convert(high, options.copy ?? true) }); if (options.symmetric !== undefined) n.set("symmetric", options.symmetric); return n; }
   is_(x) { return this._binop(cls("Is"), x); }
@@ -390,6 +413,7 @@ export function astLoad(obj) {
 
 // Builder primitives (core.py). Parsing strings is intentionally injectable until P3.
 export const TABLE_PARTS = Object.freeze(["this", "db", "catalog"]);
+export const COLUMN_PARTS = Object.freeze(["this", "table", "db", "catalog"]);
 export const SAFE_IDENTIFIER_RE = /^[_a-zA-Z][\w]*$/u;
 export const DType = Object.freeze({});
 let PARSE = null;
@@ -399,21 +423,57 @@ export function registerParser(fn) { PARSE = fn; }
 export function registerGenerator(fn) { GENERATE = fn; }
 export function maybeCopy(x, copy = true) { return copy && x instanceof Expr ? x.copy() : x; }
 function cls(name) { const C = CLASS_REGISTRY.get(name) || CLASS_REGISTRY.get(name.toLowerCase()); if (!C) throw new Error(`Unknown expression class: ${name}`); return C; }
-function combine(first, rest, name, options = {}) {
-  const values = [first, ...rest].filter(x => x !== null && x !== undefined).map(x => maybeParse(x, { ...options, copy: options.copy ?? true }));
-  if (!values.length) return null;
-  const K = cls(name), Paren = cls("Paren");
-  return values.slice(1).reduce((left, right) => new K({
-    this: options.wrap === false || !(left instanceof K) ? left : new Paren({ this: left }),
-    expression: options.wrap === false || !(right instanceof K) ? right : new Paren({ this: right }),
-  }), values[0]);
+// py: core.py:2761 _combine, with core.py:2792 _wrap inlined as `wrapOne`.
+//
+// Two details that a reduce()-shaped port loses.  (1) The head operand is wrapped
+// once, up front, and only when at least one further operand follows -- upstream's
+// `if rest and wrap`.  Folding the wrap into the loop instead re-wraps the growing
+// accumulator at every step, and wraps a lone operand that upstream leaves bare.
+// (2) _wrap tests `Connector` -- the shared base of And/Or/Xor -- not the operator
+// being built, so and_(or_(a, b), c) parenthesizes the Or.
+function combine(expressions, name, options = {}) {
+  const K = cls(name), Paren = cls("Paren"), Connector = cls("Connector");
+  const wrap = options.wrap !== false;
+  // py: condition() == maybe_parse(into=Condition).  `into` is deliberately not
+  // threaded: Condition is a trait (never constructed), and until P3 registers a
+  // parser the maybeParse fallback already yields the node the parser would.
+  const conditions = expressions.filter(x => x !== null && x !== undefined)
+    .map(x => maybeParse(x, { ...options, copy: options.copy ?? true }));
+  // py: `this, *rest = conditions` on an empty list.
+  if (!conditions.length) throw new PyValueError("not enough values to unpack (expected at least 1, got 0)");
+  const wrapOne = (x) => (wrap && x instanceof Connector ? new Paren({ this: x }) : x);
+  const [head, ...rest] = conditions;
+  let node = rest.length ? wrapOne(head) : head;
+  for (const x of rest) node = new K({ this: node, expression: wrapOne(x) });
+  return node;
 }
-export function and_(...expressions) { return combine(expressions.shift(), expressions, "And"); }
-export function or_(...expressions) { return combine(expressions.shift(), expressions, "Or"); }
+/** Python keyword arguments arrive as a trailing options object; an Expr is never one. */
+export function trailingOptions(xs) {
+  return xs.length && xs.at(-1) != null && xs.at(-1).constructor === Object ? xs.pop() : {};
+}
+export function and_(...expressions) { const o = trailingOptions(expressions); return combine(expressions, "And", o); }
+export function or_(...expressions) { const o = trailingOptions(expressions); return combine(expressions, "Or", o); }
+export function xor(...expressions) { const o = trailingOptions(expressions); return combine(expressions, "Xor", o); }
 export function not_(expression, options = {}) { return new (cls("Not"))({ this: maybeParse(expression, { ...options, copy: options.copy ?? true }) }); }
+/** py: core.py Dot.build */
+export function dotBuild(expressions) {
+  const xs = [...expressions];
+  if (xs.length < 2) throw new PyValueError("Dot requires >= 2 expressions.");
+  const Dot = cls("Dot");
+  return xs.reduce((x, y) => new Dot({ this: x, expression: y }));
+}
+// py: core.py:2823 to_identifier.  None passes through as None, and anything that is
+// neither a str nor an Identifier is a ValueError -- the `int` in the overload's type
+// hint is not actually accepted by the body.  Coercing with String() instead would
+// silently turn None into the identifier "null" and accept arbitrary expressions.
 export function toIdentifier(name, quoted = null, copy = true) {
-  if (name instanceof Expr) return maybeCopy(name, copy);
-  return new (cls("Identifier"))({ this: String(name), quoted: quoted ?? !SAFE_IDENTIFIER_RE.test(String(name)) });
+  if (name === null || name === undefined) return null;
+  const Identifier = cls("Identifier");
+  if (name instanceof Identifier) return maybeCopy(name, copy);
+  if (typeof name !== "string") {
+    throw new PyValueError(`Name needs to be a string or an Identifier, got: ${name?.constructor?.name ?? typeof name}`);
+  }
+  return new Identifier({ this: name, quoted: quoted ?? !SAFE_IDENTIFIER_RE.test(name) });
 }
 export function convert(value, copy = false) {
   if (value instanceof Expr) return maybeCopy(value, copy);
@@ -433,18 +493,62 @@ export function convert(value, copy = false) {
 export function maybeParse(sqlOrExpression, options = {}) {
   if (sqlOrExpression instanceof Expr) return maybeCopy(sqlOrExpression, options.copy ?? false);
   if (PARSE) return PARSE(sqlOrExpression, options);
-  if (options.into) return new options.into({ this: toIdentifier(sqlOrExpression, null, false) });
-  // P2-safe leaf fallback; P3 replaces this through registerParser.
-  return column(String(sqlOrExpression));
+  // P2-safe leaf fallback; P3 replaces the whole branch through registerParser.
+  // Built directly rather than through column(): the parser emits a Column carrying
+  // only `this`, whereas exp.column() also materialises null table/db/catalog args.
+  const identifier = toIdentifier(String(sqlOrExpression), null, false);
+  if (!options.into) return new (cls("Column"))({ this: identifier });
+  // `into: Identifier` must yield the Identifier itself.  Wrapping it the way every
+  // other `into` is wrapped produced Identifier(this=Identifier(...)); parse_identifier
+  // used to paper over that downstream, which hid the double wrap from every caller.
+  if (options.into === cls("Identifier")) return identifier;
+  // py: parse_one(sql, into=T) parses and then ASSERTS the type -- it does not
+  // construct a T.  So when the leaf already satisfies `into` (Expr, Condition,
+  // Column -- the type-constraint uses), return the leaf rather than wrapping it,
+  // which otherwise fabricated a bare Expr() node for Select.select("a").
+  const leaf = new (cls("Column"))({ this: identifier });
+  if (leaf instanceof options.into) return leaf;
+  // Remaining `into`s are genuine wrapper nodes (Table, From, Where, Limit, ...)
+  // whose parsed form is T(this=<leaf>).  For wrappers the parser would fill
+  // differently -- Order("a") really parses to Order(expressions=[Ordered(...)]) --
+  // this shape is a documented P2 stopgap and is parser-dependent.
+  return new options.into({ this: identifier });
 }
-export function column(col, table = null, db = null, catalog = null, quoted = null) {
-  const args = { this: toIdentifier(col, quoted, false) };
-  if (table !== null) args.table = toIdentifier(table, quoted, false);
-  if (db !== null) args.db = toIdentifier(db, quoted, false);
-  if (catalog !== null) args.catalog = toIdentifier(catalog, quoted, false);
-  return new (cls("Column"))(args);
+// py: core.py:3086 column.  `fields`, `quoted` and `copy` are keyword-only upstream,
+// so they travel in the trailing options object; table/db/catalog stay positional
+// because they are positional there too.  All three are set unconditionally (as None
+// when absent), which is observable in `args` and in astDump even though _to_s hides
+// them.  A Star `col` bypasses to_identifier entirely.
+export function column(col, table = null, db = null, catalog = null, options = {}) {
+  const { fields = null, quoted = null, copy = true } = options;
+  const node = new (cls("Column"))({
+    this: col instanceof cls("Star") ? col : toIdentifier(col, quoted, copy),
+    table: toIdentifier(table, quoted, copy),
+    db: toIdentifier(db, quoted, copy),
+    catalog: toIdentifier(catalog, quoted, copy),
+  });
+  if (!fields || !fields.length) return node;
+  return dotBuild([node, ...fields.map((field) => toIdentifier(field, quoted, copy))]);
 }
+// py: core.py:2999 alias_.  Upstream attaches the alias to the expression itself
+// whenever the node has an `alias` arg -- and always for table aliases -- and only
+// wraps in an Alias node otherwise.  Window is excluded by name because its `alias`
+// arg means "named window", not "aliased expression".
 export function alias_(expression, alias, options = {}) {
-  const A = cls(options.table ? "TableAlias" : "Alias");
-  return new A({ this: maybeCopy(expression, options.copy ?? true), alias: toIdentifier(alias, options.quoted, false) });
+  const { table = false, quoted = null, copy = true } = options;
+  const expr = maybeParse(expression, { ...options, copy });
+  const identifier = toIdentifier(alias, quoted);
+  // py: `if table:` -- an EMPTY column list is falsy there, so alias_(t, "x", table=[])
+  // takes the plain-alias branch, not the TableAlias one.
+  if (table === true || (Array.isArray(table) && table.length) || (table && !Array.isArray(table))) {
+    const tableAlias = new (cls("TableAlias"))({ this: identifier });
+    expr.set("alias", tableAlias);
+    if (Array.isArray(table)) for (const col of table) tableAlias.append("columns", toIdentifier(col, quoted));
+    return expr;
+  }
+  if (expr.constructor.argTypes?.has("alias") && expr.constructor.name !== "Window") {
+    expr.set("alias", identifier);
+    return expr;
+  }
+  return new (cls("Alias"))({ this: expr, alias: identifier });
 }

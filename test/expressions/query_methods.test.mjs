@@ -27,7 +27,12 @@ const id = (name) => new e.Identifier({ this: name });
   assert.equal(built.args.joins[0].kind, "OUTER");
   assert.ok(built.args.joins[0].args.on instanceof e.And);
   assert.deepEqual(built.args.joins[0].args.using.map(x => x.name), ["x", "y"]);
-  assert.ok(built.args.joins[0].this instanceof e.TableAlias);
+  // py: alias_(join.this, join_alias, table=True) sets a TableAlias ON the joined
+  // source; it does not wrap the source in one.  Verified against upstream:
+  //   Join(this=Table(this=Identifier(t), alias=TableAlias(this=Identifier(j))))
+  assert.ok(built.args.joins[0].this instanceof e.Table);
+  assert.ok(built.args.joins[0].this.args.alias instanceof e.TableAlias);
+  assert.equal(built.args.joins[0].this.args.alias.this.name, "j");
   const hinted = base.hint(id("broadcast"));
   assert.ok(hinted.args.hint instanceof e.Hint);
   assert.equal(hinted.args.hint.expressions[0].name, "broadcast");

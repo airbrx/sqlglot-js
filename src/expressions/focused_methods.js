@@ -3,7 +3,8 @@
 // catalogue is generated, but these few non-declarative class bodies cannot be.
 // py: sqlglot/expressions/{array,constraints,datatypes,functions,json,properties,temporal}.py
 import * as C from "./classes.js";
-import { Expr, convert, maybeCopy, maybeParse, registerAstEnums } from "./core.js";
+import { Expr, convert, maybeCopy, maybeParse, registerAstEnums, dotBuild, COLUMN_PARTS } from "./core.js";
+import { PyValueError } from "../_py/errors.js";
 import { literalNumberText } from "../_py/num.js";
 
 function getter(Klass, name, get) {
@@ -81,16 +82,37 @@ export function installFocusedMethods() {
   C.VarMap.varLenArgKey = "values";
   getter(C.DataTypeParam, "name", function () { return nodeName(this.args.this); });
 
+  // py: core.py Dot.build / Dot.parts.  build() is the constructor for the `fields`
+  // form of column(); parts walks the flattened chain and prepends the head Column's
+  // catalog/db/table in order.
+  C.Dot.build = (expressions) => dotBuild(expressions);
+  getter(C.Dot, "parts", function () {
+    const [head, ...rest] = [...this.flatten()];
+    const tail = rest.reverse();
+    for (const key of COLUMN_PARTS) {
+      const part = head.args?.[key];
+      if (part instanceof Expr) tail.push(part);
+    }
+    return tail.reverse();
+  });
+
   C.DataType.build = function (dtype, { udt = false, copy = true, ...kwargs } = {}) {
-    if (dtype instanceof C.DataType) return maybeCopy(dtype, copy);
-    if (dtype && dtype.__enum__ === "DType") return new C.DataType({ this: DType[dtype.name] || dtype, ...kwargs });
     if (typeof dtype === "string") return this.fromStr(dtype, { udt, ...kwargs });
+    if (dtype && dtype.__enum__ === "DType") return new C.DataType({ this: DType[dtype.name] || dtype }).setKwargs(kwargs);
     if (udt && (dtype instanceof C.Identifier || dtype instanceof C.Dot)) return new C.DataType({ this: DType.USERDEFINED, kind: dtype, ...kwargs });
-    throw new TypeError(`Invalid data type: ${String(dtype)}. Expected string or DType`);
+    if (dtype instanceof C.DataType) return maybeCopy(dtype, copy);
+    throw new PyValueError(`Invalid data type: ${String(dtype)}. Expected str or DType`);
   };
+  // py: datatypes.py:386 from_str.  The string form goes through the parser upstream,
+  // and `nested` is set by the parser -- False for a scalar type, True for a nested
+  // one.  So DataType.build("INT") carries nested=False while DataType.build(DType.INT)
+  // and DType.INT.into_expr() do not, and "UNKNOWN" is short-circuited before parsing
+  // and so carries no `nested` either.  Invisible to the AST oracle, which only ever
+  // reaches DataType nodes through astLoad.
   C.DataType.fromStr = function (dtype, { udt = false, ...kwargs } = {}) {
     const upper = String(dtype).toUpperCase();
-    if (DType[upper]) return new C.DataType({ this: DType[upper], ...kwargs });
+    if (upper === "UNKNOWN") return new C.DataType({ this: DType.UNKNOWN, ...kwargs });
+    if (DType[upper]) return new C.DataType({ this: DType[upper], nested: false }).setKwargs(kwargs);
     if (udt) return new C.DataType({ this: DType.USERDEFINED, kind: dtype, ...kwargs });
     throw new TypeError(`Unknown data type: ${dtype}`);
   };

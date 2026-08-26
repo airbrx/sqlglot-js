@@ -1,5 +1,5 @@
 // Behavioral methods from expressions/query.py, ddl.py and dml.py.
-import { maybeCopy, maybeParse, toIdentifier, convert, alias_, column } from "./core.js";
+import { Expr, maybeCopy, maybeParse, toIdentifier, alias_, column, and_, trailingOptions } from "./core.js";
 // Installed after the generated catalogue is registered: generated constructors do
 // not form a JS inheritance hierarchy, so Python traits are applied explicitly.
 function getter(C, name, fn) {
@@ -14,65 +14,92 @@ export function installQueryMethods(classes) {
   const all = Object.values(classes);
   const C = (name) => classes[name];
   const get = (name, prop, fn, snake = null) => { getter(C(name), prop, fn); if (snake) getter(C(name), snake, fn); };
-  const options = xs => xs.length && xs.at(-1) && xs.at(-1).constructor === Object ? xs.pop() : {};
+  const options = xs => trailingOptions(xs);
   const parsed = (x, o = {}) => maybeParse(x, o);
-  const setOne = (self, key, x, Into, o = {}, intoArg = "this") => {
-    const out = maybeCopy(self, o.copy ?? true);
-    let v = parsed(x, { ...o, into: Into, copy: false });
-    if (Into && !(v instanceof Into)) v = new Into({ [intoArg]: v });
-    out.set(key, v); return out;
+
+  // The four `_apply_*_builder` helpers below are ported from core.py verbatim
+  // rather than approximated, because their differences are exactly what the node
+  // shapes depend on: a *list* builder stores a plain array, a *child-list* builder
+  // stores one wrapper node whose non-`expressions` args are hoisted onto it, and a
+  // *conjunction* builder folds through and_() so that _combine's wrap rules apply.
+
+  // py: core.py:2626 _is_wrong_expression
+  const isWrongExpression = (expression, Into) => !!Into && expression instanceof Expr && !(expression instanceof Into);
+
+  // py: core.py:2630 _apply_builder
+  const applyBuilder = (expression, self, key, o = {}, Into = null, intoArg = "this") => {
+    if (isWrongExpression(expression, Into)) expression = new Into({ [intoArg]: expression });
+    const inst = maybeCopy(self, o.copy ?? true);
+    inst.set(key, parsed(expression, { ...o, into: Into, copy: false }));
+    return inst;
   };
-  const setList = (self, key, xs, o = {}, Into = null) => {
-    const out = maybeCopy(self, o.copy ?? true), old = o.append === false ? [] : (out.args[key] || []);
-    const vals = xs.filter(x => x != null).map(x => parsed(x, { ...o, into: Into, copy: false }));
-    out.set(key, [...old, ...vals]); return out;
-  };
-  // py: core.py:2671 _apply_child_list_builder. Unlike setList, the argument
-  // itself is a child expression (Order/Group/Sort/Cluster) whose properties
-  // must be hoisted while its `expressions` are flattened.
-  const childList = (self, key, xs, o, Into) => {
-    const out = maybeCopy(self, o.copy ?? true), expressions = [], properties = {};
-    for (const x of xs) {
+
+  // py: core.py:2655 _apply_child_list_builder
+  const applyChildListBuilder = (xs, self, key, o, Into) => {
+    const inst = maybeCopy(self, o.copy ?? true);
+    const flattened = [], properties = new Map(Object.entries(o.properties || {}));
+    for (let x of xs) {
       if (x == null) continue;
-      let value = parsed(x, { ...o, copy: false });
-      if (!(value instanceof Into)) value = new Into({ expressions: [value] });
-      for (const [k, v] of Object.entries(value.args)) {
-        if (k === "expressions") expressions.push(...(v || []));
-        else properties[k] = v;
+      // Wrapping happens BEFORE parsing and only for Expr inputs, so a string is
+      // handed to the parser with `into` rather than being wrapped as an operand.
+      if (isWrongExpression(x, Into)) x = new Into({ expressions: [x] });
+      x = parsed(x, { ...o, into: Into, copy: false });
+      for (const [k, v] of Object.entries(x.args)) {
+        if (k === "expressions") flattened.push(...(v || []));
+        else properties.set(k, v);
       }
     }
-    const existing = out.args[key];
-    const combined = o.append !== false && existing ? [...existing.expressions, ...expressions] : expressions;
+    const existing = inst.args[key];
+    const combined = (o.append ?? true) && existing ? [...existing.expressions, ...flattened] : flattened;
     const child = new Into({ expressions: combined });
-    for (const [k, v] of Object.entries(properties)) child.set(k, v);
-    out.set(key, child);
-    return out;
+    for (const [k, v] of properties) child.set(k, v);
+    inst.set(key, child);
+    return inst;
   };
-  const wrapConnector = value => value instanceof C("Connector") ? new (C("Paren"))({ this: value }) : value;
-  const conjunction = (self, key, xs, o = {}, Wrapper = null) => {
+
+  // py: core.py:2702 _apply_list_builder
+  const applyListBuilder = (xs, self, key, o = {}, Into = null) => {
+    const inst = maybeCopy(self, o.copy ?? true);
+    const list = xs.filter(x => x != null).map(x => parsed(x, { ...o, into: Into, copy: false }));
+    const existing = inst.args[key];
+    inst.set(key, (o.append ?? true) && existing?.length ? [...existing, ...list] : list);
+    return inst;
+  };
+
+  // py: core.py:2735 _apply_conjunction_builder.  The existing operand is prepended
+  // to the *inputs* of and_(), not combined afterwards -- that is what lets _combine
+  // decide whether it needs a Paren, instead of this helper guessing.
+  const applyConjunctionBuilder = (xs, self, key, o = {}, Into = null) => {
     const filtered = xs.filter(x => x != null && x !== "");
     if (!filtered.length) return self;
-    const out = maybeCopy(self, o.copy ?? true), vals = filtered.map(x => {
-      const value = Wrapper && x instanceof Wrapper ? x.this : parsed(x, { ...o, copy: o.copy ?? true });
-      return wrapConnector(value);
-    });
-    const existing = o.append === false ? null : outArg(out, key);
-    if (existing) vals.unshift(Wrapper && existing instanceof Wrapper ? existing.this : existing);
-    let expr = vals.shift();
-    for (const value of vals) expr = new (C("And"))({ this: expr, expression: value });
-    out.set(key, Wrapper ? new Wrapper({ this: expr }) : expr);
-    return out;
+    const inst = maybeCopy(self, o.copy ?? true);
+    const existing = inst.args[key];
+    const operands = (o.append ?? true) && existing != null
+      ? [Into ? existing.this : existing, ...filtered]
+      : filtered;
+    const node = and_(...operands, { ...o, copy: o.copy ?? true });
+    inst.set(key, Into ? new Into({ this: node }) : node);
+    return inst;
   };
-  const outArg = (x, k) => x.args[k];
+
+  // py: core.py:2796 _apply_set_operation
+  const applySetOperation = (xs, o, Op) =>
+    xs.map(x => parsed(x, { ...o, copy: o.copy ?? true }))
+      .reduce((x, y) => new Op({ this: x, expression: y, distinct: o.distinct ?? true }));
+
+  // py: query.py:47 _cte_helper.  `materialized` and `scalar` are always passed to the
+  // CTE constructor, so both keys exist in args even when null (repr hides them, but
+  // astDump and `"materialized" in args` do not).
   const cte = (self, alias, as_, o = {}) => {
-    let body = parsed(as_, { ...o, copy: o.copy ?? true });
-    if (o.scalar && !(body instanceof C("Subquery"))) body = new (C("Subquery"))({ this: body });
-    const itemArgs = { this: body, alias: parsed(alias, { into: C("TableAlias") }) };
-    if (o.materialized != null) itemArgs.materialized = o.materialized;
-    if (o.scalar != null) itemArgs.scalar = o.scalar;
-    const item = new (C("CTE"))(itemArgs);
-    const out = maybeCopy(self, o.copy ?? true), old = o.append === false ? [] : (out.args.with_?.expressions || []);
-    out.set("with_", new (C("With"))({ expressions: [...old, item], ...(o.recursive ? { recursive: o.recursive } : {}) })); return out;
+    const aliasExpression = parsed(alias, { ...o, into: C("TableAlias"), copy: false });
+    let asExpression = parsed(as_, { ...o, copy: o.copy ?? true });
+    if (o.scalar && !(asExpression instanceof C("Subquery"))) asExpression = new (C("Subquery"))({ this: asExpression });
+    const item = new (C("CTE"))({
+      this: asExpression, alias: aliasExpression,
+      materialized: o.materialized ?? null, scalar: o.scalar ?? null,
+    });
+    return applyChildListBuilder([item], self, "with_",
+      { ...o, properties: o.recursive ? { recursive: o.recursive } : {} }, C("With"));
   };
 
   // Query / Selectable traits (query.py:80-435).
@@ -80,14 +107,16 @@ export function installQueryMethods(classes) {
     getter(K, "ctes", function () { return this.args.with_?.expressions || []; });
     if (!Object.getOwnPropertyDescriptor(K.prototype, "namedSelects")) getter(K, "namedSelects", function () { return this.selects.map(x => value(x, "outputName", "output_name")); });
     getter(K, "named_selects", function () { return this.namedSelects; });
-    method(K, "subquery", function (alias = null, o = {}) { const x = maybeCopy(this, o.copy ?? true); return new (C("Subquery"))({ this: x, alias: alias ? (alias.args ? alias : new (C("TableAlias"))({ this: toIdentifier(alias) })) : null }); });
-    method(K, "limit", function (x, o = {}) { return setOne(this, "limit", x, C("Limit"), o, "expression"); });
-    method(K, "offset", function (x, o = {}) { return setOne(this, "offset", x, C("Offset"), o, "expression"); });
-    method(K, "orderBy", function (...xs) { const o=options(xs); return childList(this,"order",xs,o,C("Order")); });
+    method(K, "subquery", function (alias = null, o = {}) { const x = maybeCopy(this, o.copy ?? true); return new (C("Subquery"))({ this: x, alias: alias instanceof Expr ? alias : (alias ? new (C("TableAlias"))({ this: toIdentifier(alias) }) : null) }); });
+    method(K, "limit", function (x, o = {}) { return applyBuilder(x, this, "limit", o, C("Limit"), "expression"); });
+    method(K, "offset", function (x, o = {}) { return applyBuilder(x, this, "offset", o, C("Offset"), "expression"); });
+    method(K, "orderBy", function (...xs) { const o=options(xs); return applyChildListBuilder(xs,this,"order",o,C("Order")); });
     method(K, "order_by", K.prototype.orderBy);
-    method(K, "where", function (...xs) { const o=options(xs); return conjunction(this,"where",xs,o,C("Where")); });
+    // py: query.py:264 -- `where` (and only `where`) unwraps Where operands before
+    // handing them to the conjunction builder; having/qualify deliberately do not.
+    method(K, "where", function (...xs) { const o=options(xs); return applyConjunctionBuilder(xs.map(x => x instanceof C("Where") ? x.this : x),this,"where",o,C("Where")); });
     method(K, "with_", function (alias, as_, o={}) { return cte(this,alias,as_,o); });
-    for (const [mn, cn] of [["union","Union"],["intersect","Intersect"],["except_","Except"]]) method(K,mn,function(...xs){const o=options(xs); let out=maybeCopy(this,o.copy??true); for(const x of xs) out=new (C(cn))({this:out,expression:parsed(x,{...o,copy:true}),distinct:o.distinct??true}); return out;});
+    for (const [mn, cn] of [["union","Union"],["intersect","Intersect"],["except_","Except"]]) method(K,mn,function(...xs){const o=options(xs); return applySetOperation([this,...xs],o,C(cn));});
   }
   for (const K of all) if (has(K, "DerivedTable")) {
     getter(K, "selects", function () { return query(this.this?.constructor) ? this.this.selects : []; });
@@ -104,6 +133,21 @@ export function installQueryMethods(classes) {
   for (const name of ["Identifier", "Literal", "Star"]) get(name, "outputName", function () { return this.name; }, "output_name");
   get("Alias", "outputName", function () { return this.alias; }, "output_name");
   get("Star", "name", function () { return "*"; });
+  // The remaining upstream `name` / `output_name` / `is_star` overrides in core.py.
+  // These are the sibling cases of the three the review named: enumerated from
+  // `grep "def (name|output_name|is_star)" sqlglot/expressions/`, not from symptoms.
+  get("Placeholder", "name", function () { return this.text("this") || "?"; });            // py: core.py:1860
+  get("Null", "name", function () { return "NULL"; });                                     // py: core.py:1868
+  get("Dot", "name", function () { return value(this.expression, "name"); });               // py: core.py:1888
+  get("Dot", "outputName", function () { return this.name; }, "output_name");               // py: core.py:1892
+  get("Dot", "isStar", function () { return !!this.expression?.isStar; }, "is_star");        // py: core.py:1884
+  get("Ordered", "name", function () { return value(this.this, "name"); });                 // py: core.py:2105
+  get("Paren", "outputName", function () { return value(this.this, "name"); }, "output_name"); // py: core.py:2267
+  // py: core.py:1960 -- a single-element Bracket forwards, otherwise super() ("").
+  get("Bracket", "outputName", function () {
+    const xs = this.expressions;
+    return xs.length === 1 ? value(xs[0], "outputName", "output_name") : "";
+  }, "output_name");
   get("ColumnDef", "constraints", function () { return this.args.constraints || []; });
   get("ColumnDef", "kind", function () { return this.args.kind ?? null; });
   get("From", "name", function () { return value(this.this, "name"); });
@@ -112,8 +156,8 @@ export function installQueryMethods(classes) {
   for (const p of ["method", "kind", "side", "hint"]) get("Join", p, function () { return this.text(p).toUpperCase(); });
   get("Join", "aliasOrName", function () { return value(this.this, "aliasOrName", "alias_or_name"); }, "alias_or_name");
   get("Join", "isSemiOrAntiJoin", function () { return this.kind === "SEMI" || this.kind === "ANTI"; }, "is_semi_or_anti_join");
-  method(C("Join"), "on", function (...xs) { const o=options(xs), out=conjunction(this,"on",xs,o); if(out.kind==="CROSS") out.set("kind",null); return out; });
-  method(C("Join"), "using", function (...xs) { const o=options(xs), out=setList(this,"using",xs,o); if(out.kind==="CROSS") out.set("kind",null); return out; });
+  method(C("Join"), "on", function (...xs) { const o=options(xs), out=applyConjunctionBuilder(xs,this,"on",o); if(out.kind==="CROSS") out.set("kind",null); return out; });
+  method(C("Join"), "using", function (...xs) { const o=options(xs), out=applyListBuilder(xs,this,"using",o); if(out.kind==="CROSS") out.set("kind",null); return out; });
 
   get("Table", "name", function () { return !this.this || this.this.constructor?.traits?.includes("Func") || this.this.constructor?.bases?.includes("Func") ? "" : value(this.this, "name"); });
   get("Table", "db", function () { return this.text("db"); });
@@ -121,7 +165,19 @@ export function installQueryMethods(classes) {
   get("Table", "selects", function () { return []; });
   get("Table", "namedSelects", function () { return []; }, "named_selects");
   get("Table", "parts", function () { const out = []; for (const k of ["catalog", "db", "this"]) { const x = this.args[k]; if (!x) continue; if (x.constructor?.name === "Dot" && typeof x.flatten === "function") out.push(...x.flatten()); else if (x.args) out.push(x); } return out; });
-  method(C("Table"), "toColumn", function (o={}) { const ps=this.parts, last=ps.at(-1); let out=last instanceof C("Identifier") ? column(...ps.slice(0,4).reverse()) : last; if(this.args.alias) out=alias_(out,this.args.alias.this,{copy:o.copy??true}); return out; });
+  // py: query.py:1004.  Parts beyond the fourth become `fields` (a Dot chain), they
+  // are not dropped; `copy` is threaded into column() so copy:false shares the parts.
+  method(C("Table"), "toColumn", function (o={}) {
+    const copy = o.copy ?? true, ps = this.parts, last = ps.at(-1);
+    // Padded to four explicit positionals: spreading a shorter list would slide the
+    // options object into `table`/`db`, which is the whole bug class this fixes.
+    const head = ps.slice(0, 4).reverse();
+    let out = last instanceof C("Identifier")
+      ? column(head[0], head[1] ?? null, head[2] ?? null, head[3] ?? null, { fields: ps.slice(4), copy })
+      : last;
+    if (this.args.alias) out = alias_(out, this.args.alias.this, { copy });
+    return out;
+  });
   method(C("Table"), "to_column", C("Table").prototype.toColumn);
 
   const setOps = ["SetOperation", "Union", "Except", "Intersect"];
@@ -137,14 +193,14 @@ export function installQueryMethods(classes) {
   get("Select", "selects", function () { return this.expressions; });
   get("Select", "namedSelects", function () { const out = []; for (const e of this.expressions) { if (value(e, "aliasOrName", "alias_or_name")) out.push(value(e, "outputName", "output_name")); else if (e.constructor?.name === "Aliases") for (const a of e.args.aliases || []) out.push(value(a, "name")); } return out; }, "named_selects");
   get("Select", "isStar", function () { return this.expressions.some(e => !!value(e, "isStar", "is_star")); }, "is_star");
-  method(C("Select"), "select", function (...xs) { const o=options(xs); return setList(this,"expressions",xs,o); });
-  method(C("Select"), "lateral", function (...xs) { const o=options(xs); return setList(this,"laterals",xs,o,C("Lateral")); });
-  method(C("Select"), "window", function (...xs) { const o=options(xs); return setList(this,"windows",xs,o,C("Window")); });
+  method(C("Select"), "select", function (...xs) { const o=options(xs); return applyListBuilder(xs,this,"expressions",o,Expr); });
+  method(C("Select"), "lateral", function (...xs) { const o=options(xs); return applyListBuilder(xs,this,"laterals",o,C("Lateral")); });
+  method(C("Select"), "window", function (...xs) { const o=options(xs); return applyListBuilder(xs,this,"windows",o,C("Window")); });
   method(C("Select"), "join", function (expression, o = {}) {
     // Parsing the source as a Join first is significant: registered parsers can
     // preserve a complete JOIN clause, while AST callers may pass its source.
     let parsedJoin = parsed(expression, { ...o, into: C("Join"), copy: o.copy ?? true });
-    const join = parsedJoin instanceof C("Join") ? parsedJoin : new (C("Join"))({ this: parsedJoin });
+    let join = parsedJoin instanceof C("Join") ? parsedJoin : new (C("Join"))({ this: parsedJoin });
     if (join.this instanceof C("Select")) join.set("this", join.this.subquery(null, { copy: false }));
 
     if (o.join_type) {
@@ -161,21 +217,19 @@ export function installQueryMethods(classes) {
         else if (kinds.has(word)) join.set("kind", word);
       }
     }
+    // py: query.py:1435 -- and_(), so a single Or operand stays bare and multiple
+    // operands get _combine's Paren treatment. Hand-rolling the And chain skipped both.
     if (o.on) {
       const ons = Array.isArray(o.on) ? o.on : [o.on];
-      let condition = null;
-      for (const x of ons) {
-        const v = parsed(x, { ...o, copy: o.copy ?? true });
-        condition = condition ? new (C("And"))({ this: condition, expression: v }) : v;
-      }
-      join.set("on", condition);
+      join.set("on", and_(...ons, { ...o, copy: o.copy ?? true }));
     }
+    // py: query.py:1441 -- a list builder that APPENDS to any pre-existing `using`.
     if (o.using) {
       const using = Array.isArray(o.using) ? o.using : [o.using];
-      join.set("using", using.map(x => x instanceof C("Identifier") ? maybeCopy(x, o.copy ?? true) : toIdentifier(x)));
+      join = applyListBuilder(using, join, "using", o, C("Identifier"));
     }
-    if (o.join_alias) join.set("this", alias_(join.this, o.join_alias, { table: true, copy: false }));
-    return setList(this, "joins", [join], o);
+    if (o.join_alias) join.set("this", alias_(join.this, o.join_alias, { table: true }));
+    return applyListBuilder([join], this, "joins", o);
   });
   method(C("Select"), "ctas", function (table, o = {}) {
     const properties = o.properties && Object.keys(o.properties).length ? C("Properties").fromDict(o.properties) : null;
@@ -189,14 +243,28 @@ export function installQueryMethods(classes) {
     out.set("hint",new (C("Hint"))({expressions:xs.map(x=>parsed(x,{...o,copy:o.copy??true}))}));
     return out;
   });
-  method(C("Select"), "distinct", function (...xs) { const o=options(xs); const out=maybeCopy(this,o.copy??true); out.set("distinct",o.distinct===false?null:new (C("Distinct"))({on:xs.length?new (C("Tuple"))({expressions:xs.map(x=>parsed(x,o))}):null})); return out; });
+  // py: query.py:1543 -- `ons` is filtered before parsing, so distinct(None) yields an
+  // empty Tuple rather than a Column named "null"; copy is threaded into maybe_parse.
+  method(C("Select"), "distinct", function (...xs) {
+    const o=options(xs), out=maybeCopy(this,o.copy??true), ons=xs.filter(Boolean);
+    const on = xs.length ? new (C("Tuple"))({expressions:ons.map(x=>parsed(x,{...o,copy:o.copy??true}))}) : null;
+    out.set("distinct", (o.distinct ?? true) ? new (C("Distinct"))({on}) : null);
+    return out;
+  });
   method(C("Select"), "lock", function (update=true,o={}) { const out=maybeCopy(this,o.copy??true); out.set("locks",[new (C("Lock"))({update})]); return out; });
-  method(C("Select"), "from_", function (x, o = {}) { return setOne(this, "from_", x, C("From"), o); });
+  method(C("Select"), "from_", function (x, o = {}) { return applyBuilder(x, this, "from_", o, C("From")); });
   for (const [js, py, key, Into] of [["groupBy","group_by","group","Group"],["sortBy","sort_by","sort","Sort"],["clusterBy","cluster_by","cluster","Cluster"]]) {
-    method(C("Select"), js, function (...xs) { const o=options(xs); return childList(this,key,xs,o,C(Into)); });
+    // py: query.py:1212 -- group_by (alone among the four) early-returns on no args,
+    // so it never materialises an empty Group(); order_by/sort_by/cluster_by do.
+    const earlyReturn = js === "groupBy";
+    method(C("Select"), js, function (...xs) {
+      const o=options(xs);
+      if (earlyReturn && !xs.length) return maybeCopy(this, o.copy ?? true);
+      return applyChildListBuilder(xs,this,key,o,C(Into));
+    });
     method(C("Select"), py, C("Select").prototype[js]);
   }
-  for (const [name, Into] of [["having","Having"],["qualify","Qualify"]]) method(C("Select"), name, function (...xs) { const o=options(xs); return conjunction(this,name,xs,o,C(Into)); });
+  for (const [name, Into] of [["having","Having"],["qualify","Qualify"]]) method(C("Select"), name, function (...xs) { const o=options(xs); return applyConjunctionBuilder(xs,this,name,o,C(Into)); });
 
   method(C("Subquery"), "unnest", function () { let x = this; while (x instanceof C("Subquery")) x = x.this; return x; });
   method(C("Subquery"), "unwrap", function () { let x=this; while(x.sameParent && x.isWrapper) x=x.parent; return x; });
@@ -249,15 +317,18 @@ export function installQueryMethods(classes) {
   get("Execute", "name", function () { return value(this.this, "name"); });
 
   // DML methods (dml.py). Kept here to avoid a circular builders dependency.
-  for (const K of all) if (has(K,"DML")) method(K,"returning",function(x,o={}){ return setOne(this,"returning",x,C("Returning"),o); });
-  method(C("Delete"),"delete",function(x,o={}){ return setOne(this,"this",x,C("Table"),o); });
-  method(C("Delete"),"where",function(...xs){const o=options(xs);return conjunction(this,"where",xs,o,C("Where"));});
+  // Delete.where / Update.where call the conjunction builder directly -- unlike
+  // Query.where they do NOT unwrap a Where operand first (dml.py:146, :411).
+  for (const K of all) if (has(K,"DML")) method(K,"returning",function(x,o={}){ return applyBuilder(x,this,"returning",o,C("Returning")); });
+  method(C("Delete"),"delete",function(x,o={}){ return applyBuilder(x,this,"this",o,C("Table")); });
+  method(C("Delete"),"where",function(...xs){const o=options(xs);return applyConjunctionBuilder(xs,this,"where",o,C("Where"));});
   method(C("Insert"),"with_",function(a,b,o={}){return cte(this,a,b,o);});
-  method(C("Update"),"table",function(x,o={}){return setOne(this,"this",x,C("Table"),o);});
-  method(C("Update"),"set_",function(...xs){const o=options(xs);return setList(this,"expressions",xs,o);});
-  method(C("Update"),"where",function(...xs){const o=options(xs);return conjunction(this,"where",xs,o,C("Where"));});
-  method(C("Update"),"from_",function(x=null,o={}){return x ? setOne(this,"from_",x,C("From"),o) : maybeCopy(this,o.copy??true);});
+  method(C("Update"),"table",function(x,o={}){return applyBuilder(x,this,"this",o,C("Table"));});
+  method(C("Update"),"set_",function(...xs){const o=options(xs);return applyListBuilder(xs,this,"expressions",o,Expr);});
+  method(C("Update"),"where",function(...xs){const o=options(xs);return applyConjunctionBuilder(xs,this,"where",o,C("Where"));});
+  method(C("Update"),"from_",function(x=null,o={}){return x ? applyBuilder(x,this,"from_",o,C("From")) : maybeCopy(this,o.copy??true);});
   method(C("Update"),"with_",function(a,b,o={}){return cte(this,a,b,o);});
 
-  method(C("Tuple"),"isin",function(...xs){const o=options(xs);return new (C("In"))({this:maybeCopy(this,o.copy??true),expressions:xs.map(x=>convert(x,o.copy??true)),query:o.query?parsed(o.query,o):null,unnest:o.unnest?new (C("Unnest"))({expressions:(Array.isArray(o.unnest)?o.unnest:[o.unnest]).map(x=>parsed(x,o))}):null});});
+  // Tuple.isin has no upstream override: Tuple is a Condition, so it inherits
+  // Condition.isin (core.js), which now threads `copy` and handles `unnest`.
 }
