@@ -11,6 +11,8 @@ const SQLGLOT_META = "sqlglot.meta";
 // deny:operators sqlglot/expressions/core.py:2729
 // deny:implicit_str sqlglot/expressions/core.py:1782
 // deny:implicit_str sqlglot/expressions/core.py:2567
+import { pyDecimal, pyIntFromStr, decNeg } from "../_py/num.js";
+import { PyValueError } from "../_py/errors.js";
 
 // py: str.splitlines (the JS newline regexes omit several CPython boundaries).
 function pySplitlines(s) { return String(s).split(/\r\n|[\n\r\v\f\x1c-\x1e\x85\u2028\u2029]/); }
@@ -58,7 +60,10 @@ function hashValue(v) {
   if (typeof v === "bigint") return fnv(`i:${v}`);
   if (typeof v === "number") return fnv(`n:${Object.is(v, -0) ? 0 : v}`);
   if (v === null) return fnv("null");
+  if (v?.__enum__) return fnv(`enum:${v.__enum__}:${v.name}:${v.value}`);
+  if (v?.__tuple__) { let h = fnv("tuple"); for (const x of v.__tuple__) h = fnv(hashValue(x), h); return h; }
   if (Array.isArray(v)) { let h = fnv("list"); for (const x of v) h = fnv(hashValue(x), h); return h; }
+  if (v && v.constructor === Object) { let h = fnv("dict"); for (const k of Object.keys(v).sort()) h = fnv(`${k}:${hashValue(v[k])}`, h); return h; }
   return fnv(`o:${String(v)}`);
 }
 
@@ -97,12 +102,10 @@ export class Expr {
   get alias() { const a = this.args.alias; return typeof a === "string" ? a : (a instanceof Expr ? a.name : ""); }
   get aliasColumnNames() { return (this.args.alias?.args?.columns || []).map(x => x.name); }
   get name() {
-    if (typeof this.this === "string") return this.this;
-    if (this.this instanceof Expr && ["Column", "Table", "Var", "Dot"].includes(this.constructor.name)) return this.this.name;
-    return "";
+    return this.text("this");
   }
   get aliasOrName() { return this.alias || this.name; }
-  get outputName() { return this.aliasOrName; }
+  get outputName() { return ""; }
   get type() { return (this.constructor.isDataType || this.constructor.name === "DataType") ? this : (this._type || ((this.constructor.isCast || /Cast$/.test(this.constructor.name)) ? this.args.to : null)); }
   set type(v) {
     const DataType = CLASS_REGISTRY.get("DataType");
@@ -111,7 +114,7 @@ export class Expr {
   isType(...dtypes) { return this._type !== null && this._type !== undefined && !!this._type.isType?.(...dtypes); }
   get meta() { return this._meta || (this._meta = {}); }
   metaGet(k, d = null) { return this._meta && k in this._meta ? this._meta[k] : d; }
-  text(k) { const v = this.args[k]; return typeof v === "string" ? v : (v instanceof Expr && typeof v.this === "string" ? v.this : ""); }
+  text(k) { const v = this.args[k]; return typeof v === "string" ? v : (v instanceof Expr && ["Identifier", "Literal", "Var"].includes(v.constructor.name) && typeof v.this === "string" ? v.this : ""); }
   toPy() {
     const name = this.constructor.name;
     if (name === "Null") return null;
@@ -119,11 +122,12 @@ export class Expr {
     if (name === "Literal") {
       if (this.args.is_string) return this.this;
       const s = String(this.this);
-      if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(s)) throw new Error(`Invalid numeric literal: ${s}`);
-      return s.includes(".") || /e/i.test(s) ? Number(s) : Number.parseInt(s, 10);
+      const integer = pyIntFromStr(s);
+      if (integer !== null) return integer;
+      try { return pyDecimal(s); } catch { throw new PyValueError(`Invalid numeric literal: ${s}`); }
     }
     if (name === "Paren") return this.this.toPy();
-    if (name === "Neg") return -this.this.toPy();
+    if (name === "Neg") { const value = this.this.toPy(); return typeof value === "bigint" ? -value : decNeg(value); }
     throw new Error(`${name} cannot be converted to a JavaScript value`);
   }
   isLeaf() { return !Object.values(this.args).some(v => (v instanceof Expr || Array.isArray(v)) && (Array.isArray(v) ? v.length : true)); }
@@ -141,7 +145,7 @@ export class Expr {
       const n = nodes[ni]; let h = fnv(n.key);
       for (const k of Object.keys(n.args).sort()) {
         const v = n.args[k];
-        if (n.constructor.hashRawArgs) { if (v) h = fnv(`${k}:${hashValue(v)}`, h); continue; }
+        if (n.constructor.hashRawArgs) { if (v && !(Array.isArray(v) && !v.length)) h = fnv(`${k}:${hashValue(v)}`, h); continue; }
         if (Array.isArray(v)) for (const x of v) h = fnv(x !== null && x !== false ? `${k}:${hashValue(typeof x === "string" ? x.toLowerCase() : x)}` : k, h);
         else if (v !== null && v !== false && v !== undefined) h = fnv(`${k}:${hashValue(typeof v === "string" ? v.toLowerCase() : v)}`, h);
       }
@@ -417,8 +421,14 @@ export function convert(value, copy = false) {
   if (typeof value === "boolean") return new (cls("Boolean"))({ this: value });
   if (typeof value === "string") return new (cls("Literal"))({ this: value, is_string: true });
   if (typeof value === "number" || typeof value === "bigint") return new (cls("Literal"))({ this: String(value), is_string: false });
+  if (value?.__tuple__) return new (cls("Tuple"))({ expressions: value.__tuple__.map(x => convert(x, copy)) });
   if (Array.isArray(value)) return new (cls("Array"))({ expressions: value.map(x => convert(x, copy)) });
-  throw new TypeError(`Cannot convert ${String(value)}`);
+  if (value && value.constructor === Object) return new (cls("Map"))({
+    keys: new (cls("Array"))({ expressions: Object.keys(value).map(x => convert(x, copy)) }),
+    values: new (cls("Array"))({ expressions: Object.values(value).map(x => convert(x, copy)) }),
+  });
+  if (value && typeof value === "object") return new (cls("Struct"))({ expressions: Object.entries(value).map(([k, v]) => new (cls("PropertyEQ"))({ this: toIdentifier(k), expression: convert(v, copy) })) });
+  throw new PyValueError(`Cannot convert ${String(value)}`);
 }
 export function maybeParse(sqlOrExpression, options = {}) {
   if (sqlOrExpression instanceof Expr) return maybeCopy(sqlOrExpression, options.copy ?? false);

@@ -4,12 +4,14 @@
 
 import {
   Alias, Anonymous, Array as ArrayExpr, Boolean, Case, Cast, Column, Condition, CTE, DataType,
-  Delete, EQ, Expr, From, Identifier, Insert, Interval, Literal, Merge,
+  Delete, EQ, From, Identifier, Insert, Interval, Literal, Merge,
   Null, Placeholder, Query, RenameColumn, Schema, Select, Table, TableAlias,
   Tuple, Update, Values, Var, When, Whens, Where, With, Alter, AlterRename,
-  TABLE_PARTS, SAFE_IDENTIFIER_RE, maybeParse, maybeCopy, toIdentifier, convert,
-  alias_, column,
-} from "./index.js";
+} from "./classes.js";
+import {
+  Expr, TABLE_PARTS, SAFE_IDENTIFIER_RE, maybeParse, maybeCopy, toIdentifier,
+  convert, alias_, column,
+} from "./core.js";
 
 const entries = (value) => value instanceof Map ? value : Object.entries(value || {});
 const arg = (o, snake, camel = snake) => o?.[camel] ?? o?.[snake];
@@ -26,8 +28,6 @@ export function from_(expression, opts = {}) {
 }
 
 export function update(table, properties = null, options = {}) {
-  // Also accept update(table, {properties, where, ...}).
-  if (properties && isBuilderOptions(properties)) { options = properties; properties = options.properties; }
   const { dialect = null, copy = true, where = null, with_: withArg = null } = options;
   const fromArg = arg(options, "from_", "from");
   const opts = without(options, ["properties", "where", "from", "from_", "with_", "dialect", "copy"]);
@@ -56,7 +56,7 @@ export function insert(expression, into, options = {}) {
   const { columns, overwrite = null, returning, dialect = null, copy = true, ...opts } = options;
   const expr = maybeParse(expression, { dialect, copy, ...opts });
   let target = maybeParse(into, { into: Table, dialect, copy, ...opts });
-  if (columns) target = construct(Schema, { this: target, expressions: [...columns].map(c => toIdentifier(c, { copy })) });
+  if (columns) target = construct(Schema, { this: target, expressions: [...columns].map(c => toIdentifier(c, null, copy)) });
   let result = construct(Insert, { this: target, expression: expr, overwrite });
   if (returning) result = result.returning(returning, { dialect, copy: false, ...opts });
   return result;
@@ -103,7 +103,7 @@ export function toInterval(interval) {
 
 export function toTable(sqlPath, options = {}) {
   const { dialect = null, copy = true, ...kwargs } = options;
-  if (sqlPath instanceof Table) return maybeCopy(sqlPath, { copy });
+  if (sqlPath instanceof Table) return maybeCopy(sqlPath, copy);
   let table;
   try { table = maybeParse(sqlPath, { into: Table, dialect }); }
   catch (error) {
@@ -118,7 +118,7 @@ export function toTable(sqlPath, options = {}) {
 
 export function toColumn(sqlPath, options = {}) {
   const { quoted = null, dialect = null, copy = true, ...kwargs } = options;
-  if (sqlPath instanceof Column) return maybeCopy(sqlPath, { copy });
+  if (sqlPath instanceof Column) return maybeCopy(sqlPath, copy);
   let col;
   try { col = maybeParse(sqlPath, { into: Column, dialect }); }
   catch { return column(...String(sqlPath).split(".").reverse(), { quoted, ...kwargs }); }
@@ -152,16 +152,16 @@ export function cast(expression, to, options = {}) {
 
 export function table_(table, options = {}) {
   const { db = null, catalog = null, quoted = null, alias = null } = options;
-  return construct(Table, { this: table ? toIdentifier(table, { quoted }) : null,
-    db: db ? toIdentifier(db, { quoted }) : null, catalog: catalog ? toIdentifier(catalog, { quoted }) : null,
+  return construct(Table, { this: table ? toIdentifier(table, quoted) : null,
+    db: db ? toIdentifier(db, quoted) : null, catalog: catalog ? toIdentifier(catalog, quoted) : null,
     alias: alias ? construct(TableAlias, { this: toIdentifier(alias) }) : null });
 }
 
 export function values(rows, options = {}) {
   const { alias = null, columns = null } = options;
   if (columns && !alias) throw new TypeError("Alias is required when providing columns");
-  return construct(Values, { expressions: [...rows].map(convert), alias: columns ? construct(TableAlias,
-    { this: toIdentifier(alias), columns: [...(columns instanceof Map ? columns.keys() : columns)].map(toIdentifier) }) :
+  return construct(Values, { expressions: [...rows].map(row => row instanceof Tuple ? row : construct(Tuple, { expressions: [...row].map(v => convert(v)) })), alias: columns?.length ? construct(TableAlias,
+    { this: toIdentifier(alias), columns: [...(columns instanceof Map ? columns.keys() : columns)].map(c => toIdentifier(c)) }) :
     alias ? construct(TableAlias, { this: toIdentifier(alias) }) : null });
 }
 
@@ -193,7 +193,7 @@ export function replaceChildren(expression, fun, ...args) {
 }
 
 export function replaceTree(expression, fun, prune = null) {
-  const stack = [...expression.dfs({ prune })];
+  const stack = [...expression.dfs(prune)];
   let newNode = expression;
   while (stack.length) {
     const node = stack.pop(); newNode = fun(node);
@@ -214,7 +214,7 @@ export function tableName(table, options = {}) {
   // deny:implicit_str sqlglot/expressions/builders.py:778 -- Python f-string uses Expression.__str__.
   if (!expr) throw new TypeError(`Cannot parse ${table}`);
   return expr.parts.map(part => identify || !SAFE_IDENTIFIER_RE.test(part.name) ?
-    part.sql({ dialect, identify: true, copy: false, comments: false }) : part.name).join(".");
+    part.sql(dialect, { identify: true, copy: false, comments: false }) : part.name).join(".");
 }
 
 export function replacePlaceholders(expression, ...args) {
@@ -247,13 +247,14 @@ export function func(name, ...args) {
   let options = {};
   if (args.length && isOptions(args.at(-1))) options = args.pop();
   const { copy = true, dialect = null, kwargs = null } = options;
-  if (args.length && kwargs && Object.keys(kwargs).length) throw new TypeError("Can't use both args and kwargs to instantiate a function.");
+  const hasKwargs = kwargs != null && Object.keys(kwargs).length > 0;
+  if (args.length && hasKwargs) throw new TypeError("Can't use both args and kwargs to instantiate a function.");
   const converted = args.map(value => maybeParse(value, { dialect, copy }));
   const convertedKwargs = Object.fromEntries(Object.entries(kwargs || {}).map(([k,v]) => [k, maybeParse(v, { dialect, copy })]));
   const functions = dialect?.parserClass?.FUNCTIONS || dialect?.parser_class?.FUNCTIONS;
   let result, constructor = functions?.get?.(name.toUpperCase()) || functions?.[name.toUpperCase()];
   if (constructor) result = converted.length ? constructor(converted, dialect) : constructor(convertedKwargs);
-  else result = construct(Anonymous, { this: name, ...(kwargs ? convertedKwargs : { expressions: converted }) });
+  else result = construct(Anonymous, { this: name, ...(hasKwargs ? convertedKwargs : { expressions: converted }) });
   for (const message of result.errorMessages?.(converted) || []) throw new TypeError(message);
   return result;
 }
@@ -281,7 +282,7 @@ export const NONNULL_CONSTANTS = Object.freeze([Literal, Boolean]);
 export const CONSTANTS = Object.freeze([Literal, Boolean, Null]);
 
 function isOptions(v) { return v != null && typeof v === "object" && !(v instanceof Expr) && !Array.isArray(v); }
-function isBuilderOptions(v) { return isOptions(v) && ["properties","where","from","from_","with_","dialect","copy"].some(k=>Object.hasOwn(v,k)); }
+function isBuilderOptions(v) { return isOptions(v) && Object.hasOwn(v, "properties"); }
 function without(value, keys) { const out={...value}; for(const k of keys) delete out[k]; return out; }
 function ensureCollection(value) { return value == null ? [] : Array.isArray(value) ? value : value instanceof Set ? [...value] : [value]; }
 function mappingValue(mapping, key) { return mapping.get?.(key) ?? mapping[key] ?? key?.value ?? key; }

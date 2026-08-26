@@ -1,12 +1,33 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DateAdd, Identifier, Literal, Table, Var, astLoad } from "../../src/expressions/index.js";
+import { Column, DataType, DateAdd, DateTrunc, DType, Identifier, Literal, Table, Var, Week, astLoad } from "../../src/expressions/index.js";
+import { ExprMap, ExprSet } from "../../src/_py/collections.js";
 
 test("DateAdd kwargs normalize unit but astLoad bypasses INIT_HOOKS", () => {
-  const kwargs = new DateAdd({ this: new Var({ this: "x" }), unit: new Var({ this: "day" }) });
-  assert.strictEqual(kwargs.args.unit.args.this, "DAY");
-  const loaded = astLoad({c:"DateAdd",a:[["this",{c:"Var",a:[["this","x"]],m:null,cm:null,t:null}],["unit",{c:"Var",a:[["this","day"]],m:null,cm:null,t:null}]],m:null,cm:null,t:null});
-  assert.strictEqual(loaded.args.unit.args.this, "day");
+  const kwargs = new DateAdd({ this: new Var({ this: "x" }), unit: new Var({ this: "q" }) });
+  assert.strictEqual(kwargs.args.unit.args.this, "Q");
+  const loaded = astLoad({c:"DateAdd",a:[["this",{c:"Var",a:[["this","x"]],m:null,cm:null,t:null}],["unit",{c:"Var",a:[["this","q"]],m:null,cm:null,t:null}]],m:null,cm:null,t:null});
+  assert.strictEqual(loaded.args.unit.args.this, "q");
+});
+
+test("TimeUnit init hook follows upstream name, abbreviation, parts and Week rules", () => {
+  assert.equal(new DateAdd({ unit: new Var({ this: "Q" }) }).args.unit.name, "QUARTER");
+  assert.equal(new DateAdd({ unit: new Var({ this: "ms" }) }).args.unit.name, "MS");
+  assert.equal(new DateAdd({ unit: new Column({ this: new Identifier({ this: "q" }) }) }).args.unit.name, "Q");
+  const multipart = new Column({ table: new Identifier({ this: "t" }), this: new Identifier({ this: "x" }) });
+  assert.strictEqual(new DateAdd({ unit: multipart }).args.unit, multipart);
+  assert.equal(new DateAdd({ unit: new Week({ this: new Var({ this: "mon" }) }) }).args.unit.this.name, "MON");
+  const trunc = new DateTrunc({ unit: new Var({ this: "Q" }), unabbreviate: false });
+  assert.equal(trunc.args.unit.this, "Q");
+  assert.equal(Object.hasOwn(trunc.args, "unabbreviate"), false);
+});
+
+test("DType enum members contribute their identity to expression hashes", () => {
+  const int = DataType.build("INT"), text = DataType.build("TEXT");
+  assert.equal(int.equals(text), false);
+  assert.notEqual(int.hash(), text.hash());
+  assert.equal(new ExprSet([int, text]).size, 2);
+  assert.equal(new ExprMap([[int, 1], [text, 2]]).size, 2);
 });
 
 test("equality matches Python falsy and case projections", () => {
@@ -19,7 +40,7 @@ test("equality matches Python falsy and case projections", () => {
   assert(!new Identifier({ this: "a" }).equals(new Identifier({ this: "A" })));
 });
 
-import { Add, Alias, Boolean as BooleanExpr, Column, Null as NullExpr, Paren, Select, Star } from "../../src/expressions/index.js";
+import { Add, Alias, Boolean as BooleanExpr, Null as NullExpr, Paren, Select, Star } from "../../src/expressions/index.js";
 
 const id = name => new Identifier({ this: name, quoted: false });
 const col = name => new Column({ this: id(name) });
@@ -57,8 +78,8 @@ test("transform does not visit newly returned subtrees and supports removal", ()
 });
 
 test("scalar projections and expression naming", () => {
-  assert.equal(new Literal({ this: "42", is_string: false }).toPy(), 42);
-  assert.equal(new Literal({ this: "4.2", is_string: false }).toPy(), 4.2);
+  assert.equal(new Literal({ this: "42", is_string: false }).toPy(), 42n);
+  assert.equal(String(new Literal({ this: "4.2", is_string: false }).toPy()), "4.2");
   assert.equal(new Literal({ this: "42", is_string: true }).toPy(), "42");
   assert.equal(new BooleanExpr({ this: true }).toPy(), true);
   assert.equal(new NullExpr().toPy(), null);

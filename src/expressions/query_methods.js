@@ -27,19 +27,50 @@ export function installQueryMethods(classes) {
     const vals = xs.filter(x => x != null).map(x => parsed(x, { ...o, into: Into, copy: false }));
     out.set(key, [...old, ...vals]); return out;
   };
+  // py: core.py:2671 _apply_child_list_builder. Unlike setList, the argument
+  // itself is a child expression (Order/Group/Sort/Cluster) whose properties
+  // must be hoisted while its `expressions` are flattened.
+  const childList = (self, key, xs, o, Into) => {
+    const out = maybeCopy(self, o.copy ?? true), expressions = [], properties = {};
+    for (const x of xs) {
+      if (x == null) continue;
+      let value = parsed(x, { ...o, copy: false });
+      if (!(value instanceof Into)) value = new Into({ expressions: [value] });
+      for (const [k, v] of Object.entries(value.args)) {
+        if (k === "expressions") expressions.push(...(v || []));
+        else properties[k] = v;
+      }
+    }
+    const existing = out.args[key];
+    const combined = o.append !== false && existing ? [...existing.expressions, ...expressions] : expressions;
+    const child = new Into({ expressions: combined });
+    for (const [k, v] of Object.entries(properties)) child.set(k, v);
+    out.set(key, child);
+    return out;
+  };
+  const wrapConnector = value => value instanceof C("Connector") ? new (C("Paren"))({ this: value }) : value;
   const conjunction = (self, key, xs, o = {}, Wrapper = null) => {
-    const vals = xs.filter(x => x != null).map(x => parsed(x, { ...o, copy: false }));
-    let expr = vals.shift() || null;
-    for (const v of vals) expr = new (C("And"))({ this: expr, expression: v });
-    const old = o.append === false ? null : outArg(self, key)?.this;
-    if (old && expr) expr = new (C("And"))({ this: old, expression: expr }); else expr ||= old;
-    return setOne(self, key, expr, Wrapper, o);
+    const filtered = xs.filter(x => x != null && x !== "");
+    if (!filtered.length) return self;
+    const out = maybeCopy(self, o.copy ?? true), vals = filtered.map(x => {
+      const value = Wrapper && x instanceof Wrapper ? x.this : parsed(x, { ...o, copy: o.copy ?? true });
+      return wrapConnector(value);
+    });
+    const existing = o.append === false ? null : outArg(out, key);
+    if (existing) vals.unshift(Wrapper && existing instanceof Wrapper ? existing.this : existing);
+    let expr = vals.shift();
+    for (const value of vals) expr = new (C("And"))({ this: expr, expression: value });
+    out.set(key, Wrapper ? new Wrapper({ this: expr }) : expr);
+    return out;
   };
   const outArg = (x, k) => x.args[k];
   const cte = (self, alias, as_, o = {}) => {
     let body = parsed(as_, { ...o, copy: o.copy ?? true });
     if (o.scalar && !(body instanceof C("Subquery"))) body = new (C("Subquery"))({ this: body });
-    const item = new (C("CTE"))({ this: body, alias: parsed(alias, { into: C("TableAlias") }), materialized: o.materialized, scalar: o.scalar });
+    const itemArgs = { this: body, alias: parsed(alias, { into: C("TableAlias") }) };
+    if (o.materialized != null) itemArgs.materialized = o.materialized;
+    if (o.scalar != null) itemArgs.scalar = o.scalar;
+    const item = new (C("CTE"))(itemArgs);
     const out = maybeCopy(self, o.copy ?? true), old = o.append === false ? [] : (out.args.with_?.expressions || []);
     out.set("with_", new (C("With"))({ expressions: [...old, item], ...(o.recursive ? { recursive: o.recursive } : {}) })); return out;
   };
@@ -52,7 +83,7 @@ export function installQueryMethods(classes) {
     method(K, "subquery", function (alias = null, o = {}) { const x = maybeCopy(this, o.copy ?? true); return new (C("Subquery"))({ this: x, alias: alias ? (alias.args ? alias : new (C("TableAlias"))({ this: toIdentifier(alias) })) : null }); });
     method(K, "limit", function (x, o = {}) { return setOne(this, "limit", x, C("Limit"), o, "expression"); });
     method(K, "offset", function (x, o = {}) { return setOne(this, "offset", x, C("Offset"), o, "expression"); });
-    method(K, "orderBy", function (...xs) { const o=options(xs); return setList(this,"order",xs,o,C("Order")); });
+    method(K, "orderBy", function (...xs) { const o=options(xs); return childList(this,"order",xs,o,C("Order")); });
     method(K, "order_by", K.prototype.orderBy);
     method(K, "where", function (...xs) { const o=options(xs); return conjunction(this,"where",xs,o,C("Where")); });
     method(K, "with_", function (alias, as_, o={}) { return cte(this,alias,as_,o); });
@@ -67,6 +98,12 @@ export function installQueryMethods(classes) {
 
   get("With", "recursive", function () { return !!this.args.recursive; });
   get("TableAlias", "columns", function () { return this.args.columns || []; });
+  for (const part of ["table", "db", "catalog"]) get("Column", part, function () { return this.text(part); });
+  get("Column", "outputName", function () { return this.name; }, "output_name");
+  get("Column", "parts", function () { return ["catalog", "db", "table", "this"].map(k => this.args[k]).filter(Boolean); });
+  for (const name of ["Identifier", "Literal", "Star"]) get(name, "outputName", function () { return this.name; }, "output_name");
+  get("Alias", "outputName", function () { return this.alias; }, "output_name");
+  get("Star", "name", function () { return "*"; });
   get("ColumnDef", "constraints", function () { return this.args.constraints || []; });
   get("ColumnDef", "kind", function () { return this.args.kind ?? null; });
   get("From", "name", function () { return value(this.this, "name"); });
@@ -141,7 +178,7 @@ export function installQueryMethods(classes) {
     return setList(this, "joins", [join], o);
   });
   method(C("Select"), "ctas", function (table, o = {}) {
-    const properties = o.properties ? C("Properties").fromDict(o.properties) : null;
+    const properties = o.properties && Object.keys(o.properties).length ? C("Properties").fromDict(o.properties) : null;
     return new (C("Create"))({
       this: parsed(table, { ...o, into: C("Table"), copy: false }),
       kind: "TABLE", expression: maybeCopy(this, o.copy ?? true), properties,
@@ -153,15 +190,17 @@ export function installQueryMethods(classes) {
     return out;
   });
   method(C("Select"), "distinct", function (...xs) { const o=options(xs); const out=maybeCopy(this,o.copy??true); out.set("distinct",o.distinct===false?null:new (C("Distinct"))({on:xs.length?new (C("Tuple"))({expressions:xs.map(x=>parsed(x,o))}):null})); return out; });
-  method(C("Select"), "lock", function (update=true,o={}) { const out=maybeCopy(this,o.copy??true); out.set("locks",[...(out.args.locks||[]),new (C("Lock"))({update})]); return out; });
-  for (const [js, py, key, Into] of [["from_","from_","from_","From"],["groupBy","group_by","group","Group"],["sortBy","sort_by","sort","Sort"],["clusterBy","cluster_by","cluster","Cluster"],["having","having","having","Having"],["qualify","qualify","qualify","Qualify"]]) {
-    method(C("Select"), js, function (...xs) { const o=options(xs); return xs.length===1 && ["from_"].includes(key) ? setOne(this,key,xs[0],C(Into),o) : setList(this,key,xs,o,C(Into)); });
-    if(py!==js) method(C("Select"),py,C("Select").prototype[js]);
+  method(C("Select"), "lock", function (update=true,o={}) { const out=maybeCopy(this,o.copy??true); out.set("locks",[new (C("Lock"))({update})]); return out; });
+  method(C("Select"), "from_", function (x, o = {}) { return setOne(this, "from_", x, C("From"), o); });
+  for (const [js, py, key, Into] of [["groupBy","group_by","group","Group"],["sortBy","sort_by","sort","Sort"],["clusterBy","cluster_by","cluster","Cluster"]]) {
+    method(C("Select"), js, function (...xs) { const o=options(xs); return childList(this,key,xs,o,C(Into)); });
+    method(C("Select"), py, C("Select").prototype[js]);
   }
+  for (const [name, Into] of [["having","Having"],["qualify","Qualify"]]) method(C("Select"), name, function (...xs) { const o=options(xs); return conjunction(this,name,xs,o,C(Into)); });
 
   method(C("Subquery"), "unnest", function () { let x = this; while (x instanceof C("Subquery")) x = x.this; return x; });
-  method(C("Subquery"), "unwrap", function () { let x=this; while(x.this instanceof C("Subquery")) x=x.this; return x; });
-  method(C("Subquery"), "select", function (...xs) { const o=options(xs), out=maybeCopy(this,o.copy??true); out.this.select(...xs,{...o,copy:false}); return out; });
+  method(C("Subquery"), "unwrap", function () { let x=this; while(x.sameParent && x.isWrapper) x=x.parent; return x; });
+  method(C("Subquery"), "select", function (...xs) { const o=options(xs), out=maybeCopy(this,o.copy??true), inner=out.unnest(); if(typeof inner.select === "function") inner.select(...xs,{...o,copy:false}); return out; });
   get("Subquery", "isWrapper", function () { return Object.entries(this.args).every(([k,v]) => k === "this" || v == null); }, "is_wrapper");
   get("Subquery", "isStar", function () { return !!value(this.this, "isStar", "is_star"); }, "is_star");
   get("Subquery", "outputName", function () { return value(this, "alias"); }, "output_name");

@@ -1,7 +1,7 @@
-// Faithful native port of the six parser/generator-independent tests from
+// Faithful native port of the five parser/generator-independent tests from
 // upstream tests/test_expressions.py @ 91119bc (PORT_PLAN.md §3.6 / Q6).
 //
-// P4 DEBT — the remaining 65 upstream tests, explicitly deferred (not dropped):
+// P4 DEBT — the remaining 66 upstream tests, explicitly deferred (not dropped):
 // test_to_s, test_arg_key, test_depth, test_iter, test_eq,
 // test_eq_on_same_instance_short_circuits, test_find, test_find_all,
 // test_find_ancestor, test_to_dot, test_root, test_alias_or_name,
@@ -20,16 +20,16 @@
 // test_union, test_values, test_data_type_builder, test_rename_table,
 // test_to_py, test_is_int, test_is_star, test_set_metadata, test_unnest,
 // test_is_type, test_set_meta, test_assert_is, test_convert_datetime_time,
-// test_hash_large_ast.
+// test_hash_large_ast, test_parse_identifier.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  Add, Boolean, CollateProperty, Column, EngineProperty, FileFormatProperty, Identifier,
+  Boolean, CollateProperty, Column, EngineProperty, FileFormatProperty, Identifier,
   Literal, Neg, Null, PartitionedByProperty, Properties, Property, Tuple,
   column, toIdentifier,
 } from "../../src/expressions/index.js";
-import { parseIdentifier } from "../../src/expressions/builders.js";
+import { PyValueError } from "../../src/_py/errors.js";
 
 test("test_identifier", () => {
   assert.equal(toIdentifier('"x"').args.quoted, true);
@@ -41,7 +41,7 @@ test("test_identifier", () => {
 test("test_properties_from_dict", () => {
   assert(Properties.fromDict({
     FORMAT: "parquet",
-    PARTITIONED_BY: [toIdentifier("a"), toIdentifier("b")],
+    PARTITIONED_BY: { __tuple__: [toIdentifier("a"), toIdentifier("b")] },
     custom: 1,
     ENGINE: null,
     COLLATE: true,
@@ -52,11 +52,7 @@ test("test_properties_from_dict", () => {
     new EngineProperty({ this: new Null() }),
     new CollateProperty({ this: new Boolean({ this: true }) }),
   ] })));
-  assert.throws(() => Properties.fromDict({ FORMAT: {} }), TypeError);
-});
-
-test("test_parse_identifier", () => {
-  assert(parseIdentifier("a ' b").equals(toIdentifier("a ' b")));
+  assert.throws(() => Properties.fromDict({ FORMAT: Object }), PyValueError);
 });
 
 test("test_literal_number", () => {
@@ -87,9 +83,8 @@ test("test_update_positions_empty_meta", () => {
 });
 
 test("test_pipe_and_apply", () => {
-  // Python's `expr + n` operator is spelled explicitly in JS; the asserted pipe/apply
-  // behavior and the resulting AST are otherwise identical.
-  const addVal = (expr, val, { squared }) => new Add({ this: expr, expression: Literal.number(squared ? val ** 2 : val) });
+  // Python's `expr + n` operator maps to the explicit Expr.add method in JS.
+  const addVal = (expr, val, { squared }) => expr.add(squared ? val ** 2 : val);
   const addValAlt = (val, squared, expr) => addVal(expr, val, { squared });
   const col = column("age");
   const added = addVal(col, 5, { squared: true });

@@ -150,9 +150,7 @@ export function installFocusedMethods() {
   C.Properties.fromDict = function (properties) {
     return new C.Properties({ expressions: Object.entries(properties).map(([key,value]) => {
       const P = propertyNames[key.toUpperCase()];
-      const converted = key.toUpperCase() === "PARTITIONED_BY" && Array.isArray(value)
-        ? new C.Tuple({ expressions: value.map((v) => convert(v)) })
-        : convert(value);
+      const converted = convert(value);
       return P ? new P({ this: converted }) : new C.Property({ this: new C.Literal({ this: key, is_string: true }), value: converted });
     }) });
   };
