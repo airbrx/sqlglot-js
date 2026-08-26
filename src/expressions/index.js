@@ -1,0 +1,22 @@
+// py: sqlglot/expressions/__init__.py @ 91119bc
+import * as classes from "./classes.js";
+import { registerExprClasses, registerInitHook } from "./core.js";
+import { installQueryMethods } from "./query_methods.js";
+import { installFocusedMethods, DType, PropertiesLocation } from "./focused_methods.js";
+import { EXPR_META, TRAITS, INIT_HOOKS } from "../_gen/expr_meta.js";
+import { ALL_FUNCTION_NAMES, FUNCTION_ALIASES } from "../_gen/function_meta.js";
+export * from "./core.js";
+export * from "./classes.js";
+export * from "./builders.js";
+export { EXPR_META, TRAITS, INIT_HOOKS, DType, PropertiesLocation };
+export const EXPR_CLASSES = Object.freeze(Object.fromEntries(Object.entries(EXPR_META).map(([key, meta]) => [key, classes[meta.name]])));
+registerExprClasses(Object.fromEntries(Object.values(EXPR_META).flatMap((meta) => [[meta.name, classes[meta.name]], [meta.key, classes[meta.name]]])));
+installQueryMethods(classes);
+installFocusedMethods();
+const UNIT_NAMES = Object.freeze({D:"DAY",H:"HOUR",M:"MINUTE",MS:"MILLISECOND",NS:"NANOSECOND",Q:"QUARTER",S:"SECOND",US:"MICROSECOND",W:"WEEK",Y:"YEAR"});
+const isSimpleUnit = unit => unit?.constructor === classes.Column || unit?.constructor === classes.Literal || unit?.constructor === classes.Var;
+const isMultipartColumn = unit => unit?.constructor === classes.Column && unit.parts.length !== 1;
+for (const meta of Object.values(EXPR_META)) if (meta.initOwner === "TimeUnit") registerInitHook(meta.name, node => { const unit = node.args.unit; if (unit && isSimpleUnit(unit) && !isMultipartColumn(unit)) { const name = unit.name; node.set("unit", new classes.Var({this:(UNIT_NAMES[name] || name).toUpperCase()})); } else if (unit?.constructor?.name === "Week") unit.set("this", new classes.Var({this:unit.this.name.toUpperCase()})); });
+for (const meta of Object.values(EXPR_META)) if (meta.initOwner === "DateTrunc") registerInitHook(meta.name, (node,args) => { const unabbreviate = args.unabbreviate ?? true; delete args.unabbreviate; delete node.args.unabbreviate; const unit=node.args.unit; if (isSimpleUnit(unit) && !isMultipartColumn(unit)) { let name=unit.name.toUpperCase(); if (unabbreviate && UNIT_NAMES[name]) name=UNIT_NAMES[name]; node.set("unit", classes.Literal.string(name)); } });
+export const ALL_FUNCTIONS = Object.freeze(ALL_FUNCTION_NAMES.map((name) => classes[name]));
+export const FUNCTION_BY_NAME = Object.freeze(Object.fromEntries(Object.entries(FUNCTION_ALIASES).map(([name, className]) => [name, classes[className]])));

@@ -86,12 +86,21 @@ def main():
     # ---- probe 2: expression classes ----------------------------------------
     exprs = OrderedDict()
     for key, cls in exp.EXPR_CLASSES.items():
+        bases = [b.__name__ for b in cls.__mro__[1:] if b is not object]
+        traits = [b for b in bases if b not in ("Expression", "Expr")]
+        init_owner = None
+        if cls.__name__ == "DateTrunc" or "DateTrunc" in bases:
+            init_owner = "DateTrunc"
+        elif cls.__name__ == "TimeUnit" or "TimeUnit" in bases:
+            init_owner = "TimeUnit"
         exprs[key] = {
             "name": cls.__name__,
             # ORDERED — this is what pins arg_types insertion order, observable in SQL.
             "arg_types": [[k, bool(v)] for k, v in cls.arg_types.items()],
             "required_args": sorted(cls.required_args),
-            "bases": [b.__name__ for b in cls.__mro__[1:] if b is not object],
+            "bases": bases,
+            "traits": traits,
+            "init_owner": init_owner,
             "is_primitive": bool(getattr(cls, "is_primitive", False)),
             "hash_raw_args": bool(getattr(cls, "_hash_raw_args", False)),
         }

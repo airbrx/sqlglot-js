@@ -122,7 +122,10 @@ class OrderedHash {
  * explicitly (`_py/sort.js`) rather than rely on either language's incidental order.
  */
 export class ExprSet {
-  constructor(iterable = [], opts) {
+  constructor(iterable = [], opts = {
+    hash: (x) => x && typeof x.hash === "function" ? x.hash() : x,
+    eq: (a, b) => a && typeof a.equals === "function" ? a.equals(b) : Object.is(a, b),
+  }) {
     this._h = new OrderedHash(opts);
     for (const v of iterable) this.add(v);
   }
@@ -165,7 +168,10 @@ export class ExprSet {
 
 /** py: `dict` keyed by Expression. */
 export class ExprMap {
-  constructor(entries = [], opts) {
+  constructor(entries = [], opts = {
+    hash: (x) => x && typeof x.hash === "function" ? x.hash() : x,
+    eq: (a, b) => a && typeof a.equals === "function" ? a.equals(b) : Object.is(a, b),
+  }) {
     this._h = new OrderedHash(opts);
     for (const [k, v] of entries) this.set(k, v);
   }
