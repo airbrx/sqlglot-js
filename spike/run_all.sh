@@ -10,7 +10,23 @@ cd "$(dirname "$0")/.."
 
 mkdir -p spike/out
 fail=0
-run() { echo; echo "===== $1 ====="; shift; "$@" || fail=1; }
+# Prints an explicit marker on failure. Without it a red probe is invisible in the
+# transcript unless it happens to print the word FAIL itself, and the only signal is the
+# summary line at the very bottom — which says SOMETHING failed, not what.
+failed_probes=()
+run() {
+  local name="$1"
+  echo
+  echo "===== $name ====="
+  shift
+  if "$@"; then
+    return 0
+  fi
+  local rc=$?
+  echo "  >>> PROBE FAILED (exit $rc): $name"
+  failed_probes+=("$name")
+  fail=1
+}
 
 echo "toolchain:"
 echo "  $(python3 --version 2>&1)"
@@ -28,6 +44,14 @@ python3 spike/py/gen_builtins_cases.py > spike/out/builtins.jsonl   || fail=1
 python3 spike/py/gen_toowide_comments.py > spike/out/toowide_comments.jsonl || fail=1
 python3 spike/py/gen_tokens_cases.py   > spike/out/tokens_fuzz.jsonl || fail=1
 python3 spike/py/gen_depth_ref.py      > spike/out/depth_py.json   || fail=1
+# P3 oracles. Each is CPython evaluating the same probe the JS side runs, so a
+# divergence is a byte diff rather than an argument (PORT_PLAN.md §8.3).
+python3 spike/p3/gen_from_arg_list_ref.py    > spike/out/from_arg_list.jsonl    || fail=1
+python3 spike/p3/gen_walk_in_scope_ref.py    > spike/out/walk_in_scope.jsonl    || fail=1
+python3 spike/p3/gen_generator_kernel_ref.py > spike/out/generator_kernel.jsonl || fail=1
+python3 spike/p3/gen_parse_path_sql_ref.py   > spike/out/parse_path_sql.jsonl   || fail=1
+python3 spike/p3/gen_raise_error_ref.py      > spike/out/raise_error.jsonl      || fail=1
+python3 spike/p3/gen_command_warning_ref.py  > spike/out/command_warnings.jsonl || fail=1
 
 run "PROBE 1a: numeric differential"      node spike/fuzz_num.mjs
 run "PROBE 1b: named go/no-go literal"    node spike/gonogo_snowflake367.mjs
@@ -56,12 +80,28 @@ run "TOKENS: streams byte-exact"         node tools/tokens/check_streams.mjs
 run "TOKENS: table transcription"        python3 tools/tokens/transcribe_tables.py --check
 run "SELFTEST: sync_report"               python3 tools/sync_report.py --selftest
 run "SEED: stub+table skeletons parse"    bash spike/check_seed.sh
+run "PARSER: class tables vs upstream"    node tools/parity/check_parser_tables.mjs
+run "P3: from_arg_list (all 563 funcs)"   node spike/p3/fuzz_from_arg_list.mjs
+run "P3: optimizer Tier A walk/find"      node spike/p3/fuzz_walk_in_scope.mjs
+run "P3: generator kernel (73k nodes)"    node spike/p3/fuzz_generator_kernel.mjs
+run "P3: parse-path generate call sites"  node spike/p3/fuzz_parse_path_sql.mjs
+run "P3: raise_error + unicode columns"   node spike/p3/fuzz_raise_error.mjs
+run "P3: check_command_warning strings"   node spike/p3/fuzz_command_warning.mjs
+run "P3: AST oracle coverage (honest)"    node spike/p3/fuzz_ast_coverage.mjs
 run "BRIDGE: 2 end-to-end proofs"         python3 tools/bridge/proof.py
 
 echo
 if [ "$fail" -eq 0 ]; then
   echo "  ALL PROBES GREEN"
 else
-  echo "  SOME PROBES RED"
+  echo "  SOME PROBES RED:"
+  for p in "${failed_probes[@]:-}"; do
+    [ -n "$p" ] && echo "    - $p"
+  done
+  # The corpus generators above are not run() calls, so a red one sets `fail` without
+  # naming itself here. Say so rather than letting the list look complete.
+  if [ "${#failed_probes[@]}" -eq 0 ]; then
+    echo "    (no named probe failed — a corpus generator above returned non-zero)"
+  fi
 fi
 exit "$fail"

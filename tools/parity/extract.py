@@ -103,6 +103,14 @@ def main():
             "init_owner": init_owner,
             "is_primitive": bool(getattr(cls, "is_primitive", False)),
             "hash_raw_args": bool(getattr(cls, "_hash_raw_args", False)),
+            # P3: `Func.from_arg_list` (core.py:1663) reads both, and the parser's
+            # FUNCTIONS table binds it for hundreds of names. Extracted rather than
+            # hand-listed — `focused_methods.js` carried a hand-written list that had
+            # drifted to 46 of upstream's 55 var-len classes, which `from_arg_list`
+            # would have silently mis-shaped (filling positional keys instead of
+            # collecting the tail into one list arg).
+            "is_var_len_args": bool(getattr(cls, "is_var_len_args", False)),
+            "var_len_arg_key": getattr(cls, "var_len_arg_key", "expressions"),
         }
     write("exprs", {"count": len(exprs), "classes": exprs})
 

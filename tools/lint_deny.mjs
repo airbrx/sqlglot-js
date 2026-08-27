@@ -187,8 +187,14 @@ function checkMarkers(manifest, kind) {
   }
   const missing = [...expected].filter((py) => !seen.has(py));
   if (missing.length) {
-    // Only a failure once the owning file is ported; before that it is a to-do.
-    const portedMissing = missing.filter((py) => jsSources.has(pyToJsPath(py.split(":")[0])));
+    // Only a failure once the owning METHOD is ported; before that it is a to-do.
+    //
+    // File-level granularity was enough while files were ported all-or-nothing. P3
+    // introduces the first partially-ported file — `src/parser.js` is 405 stubs with a
+    // couple of dozen real bodies — and at file granularity every deny site in
+    // `parser.py` became a failure the moment the seeded skeleton landed, demanding
+    // markers on code that does not exist yet.
+    const portedMissing = missing.filter((py) => isPortedSite(py));
     for (const py of portedMissing) {
       failures.push({
         check: "missing-marker",
@@ -196,8 +202,69 @@ function checkMarkers(manifest, kind) {
         detail: `no "// deny:${kind} ${py}" marker at the ported site`,
       });
     }
-    notes.push(`deny:${kind} — ${missing.length - portedMissing.length} sites in files not ported yet`);
+    const stubbed = missing.filter((py) => !portedMissing.includes(py) && jsSources.has(pyToJsPath(py.split(":")[0])));
+    notes.push(
+      `deny:${kind} — ${missing.length - portedMissing.length} sites not ported yet` +
+      (stubbed.length ? ` (${stubbed.length} of them inside NotPorted stubs)` : ""),
+    );
   }
+}
+
+/**
+ * Is the upstream line `file:line` inside a method the port has actually IMPLEMENTED?
+ *
+ * Derived from the port's own source, so it needs no extra manifest and cannot drift:
+ * `tools/seed_static.py` gives every method a `// py: <file>:<line>` anchor immediately
+ * above it, in upstream order, and an unported one throws `NotPorted`. The method
+ * owning a deny site is the one with the greatest anchor line <= the site's line; the
+ * site counts as ported iff that method's body is not a `NotPorted` stub.
+ */
+function isPortedSite(py) {
+  const [pyFile, lineStr] = py.split(":");
+  const jsPath = pyToJsPath(pyFile);
+  const src = jsSources.get(jsPath);
+  if (src === undefined) return false;
+
+  // An explicit `// @ported-ranges <pyfile> <a-b> <c-d> ...` directive wins: a file that
+  // deliberately ports only part of an upstream module (e.g. optimizer Tier A) says so
+  // once, instead of every deny site in the untouched half becoming a failure the
+  // moment the file is created.
+  const rangeRe = /@ported-ranges\s+(\S+)((?:\s+\d+-\d+)+)/g;
+  let declared = null;
+  for (const m of src.matchAll(rangeRe)) {
+    if (m[1] !== pyFile) continue;
+    declared ??= [];
+    for (const r of m[2].trim().split(/\s+/)) {
+      const [a, b] = r.split("-").map(Number);
+      declared.push([a, b]);
+    }
+  }
+  if (declared) {
+    const line = Number(lineStr);
+    return declared.some(([a, b]) => line >= a && line <= b);
+  }
+
+  const anchors = [];
+  const re = /\/\/\s*py:\s*(\S+?):(\d+)\s*\n([\s\S]{0,400}?)(?=\n\s*\/\*\*|\n\s*\/\/\s*py:|$)/g;
+  for (const m of src.matchAll(re)) {
+    if (m[1] !== pyFile) continue;
+    anchors.push({ line: Number(m[2]), stub: m[3].includes("new NotPorted(") });
+  }
+  if (!anchors.length) {
+    // No anchors at all — a hand-written port with no seeded skeleton. Keep the old
+    // file-level behaviour rather than silently excusing every site in it.
+    return true;
+  }
+  anchors.sort((a, b) => a.line - b.line);
+
+  const line = Number(lineStr);
+  let owner = null;
+  for (const a of anchors) {
+    if (a.line <= line) owner = a;
+    else break;
+  }
+  // Before the first anchor means module level, which is always hand-written.
+  return owner === null ? true : !owner.stub;
 }
 
 /** sqlglot/generators/duckdb.py -> src/generators/duckdb.js (PORT_PLAN.md §4.1) */

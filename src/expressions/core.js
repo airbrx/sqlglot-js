@@ -106,7 +106,9 @@ export class Expr {
   }
   get aliasOrName() { return this.alias || this.name; }
   get outputName() { return ""; }
-  get type() { return (this.constructor.isDataType || this.constructor.name === "DataType") ? this : (this._type || ((this.constructor.isCast || /Cast$/.test(this.constructor.name)) ? this.args.to : null)); }
+  // py: core.py:969.  `self._type or self.to` reads the `to` PROPERTY, not args["to"] —
+  // so a Cast missing its required `to` raises KeyError here, exactly as upstream.
+  get type() { return (this.constructor.isDataType || this.constructor.name === "DataType") ? this : (this.constructor.isCast ? (this._type || this.to) : this._type); }
   set type(v) {
     const DataType = CLASS_REGISTRY.get("DataType");
     this._type = v && DataType && !(v instanceof DataType) ? DataType.build(v) : v;
@@ -330,9 +332,36 @@ export function defineExpr(meta, Base = Expr) {
   C.isPrimitive = !!(meta.is_primitive ?? meta.isPrimitive); C.hashRawArgs = !!(meta.hash_raw_args ?? meta.hashRawArgs);
   C.traits = Object.freeze([...(meta.traits || [])]);
   C.bases = Object.freeze([...(meta.bases || [])]); C.initOwner = meta.init_owner ?? meta.initOwner ?? null;
+  C.isVarLenArgs = !!(meta.is_var_len_args ?? meta.isVarLenArgs);
+  C.varLenArgKey = meta.var_len_arg_key ?? meta.varLenArgKey ?? "expressions";
   const names = Object.freeze([...(meta.sqlNames || [name.toUpperCase()])]);
   C.sqlNames = () => names;
   C.sqlName = () => names[0];
+  // py: core.py:1663 Func.from_arg_list.
+  //
+  // An ARROW closed over `C`, not a `static` method, because `Parser.FUNCTIONS` stores
+  // the bare reference (`exp.StrPosition.from_arg_list`) and calls it later with no
+  // receiver. Python's bound classmethod survives that; a JS `static` would arrive with
+  // `this === undefined` and throw. Closing over the class reproduces the binding.
+  C.from_arg_list = (args) => {
+    const argsDict = {};
+    const allArgKeys = [...C.argTypes.keys()];
+    // py: `zip(args, keys)` stops at the SHORTER of the two — extra args are dropped
+    // here, not appended, and a short call simply leaves later keys unset.
+    const fill = (keys) => {
+      for (let i = 0; i < Math.min(args.length, keys.length); i++) argsDict[keys[i]] = args[i];
+    };
+    if (C.isVarLenArgs) {
+      const varLenIndex = allArgKeys.indexOf(C.varLenArgKey);
+      fill(allArgKeys.slice(0, varLenIndex));
+      // py: `args[var_len_index:]` — the tail collects into ONE list argument. Keys
+      // after it (dialect flags) are deliberately never populated.
+      argsDict[C.varLenArgKey] = args.slice(varLenIndex);
+    } else {
+      fill(allArgKeys);
+    }
+    return new C(argsDict);
+  };
   // Python's multiple inheritance is represented by the generated `bases` closure.
   // This preserves the useful `instanceof Trait` spelling without attempting to copy
   // trait prototypes onto 1,048 constructors.

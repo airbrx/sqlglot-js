@@ -4,7 +4,7 @@
 // py: sqlglot/expressions/{array,constraints,datatypes,functions,json,properties,temporal}.py
 import * as C from "./classes.js";
 import { Expr, convert, maybeCopy, maybeParse, registerAstEnums, dotBuild, COLUMN_PARTS } from "./core.js";
-import { PyValueError } from "../_py/errors.js";
+import { PyValueError, PyKeyError } from "../_py/errors.js";
 import { literalNumberText } from "../_py/num.js";
 
 function getter(Klass, name, get) {
@@ -69,17 +69,20 @@ export function installFocusedMethods() {
   C.DataType.REAL_TYPES = dtypeSet("DOUBLE", "FLOAT", "BIGDECIMAL", "DECIMAL", "DECIMAL32", "DECIMAL64", "DECIMAL128", "DECIMAL256", "DECFLOAT", "MONEY", "SMALLMONEY", "UDECIMAL", "UDOUBLE");
   C.DataType.NUMERIC_TYPES = new Set([...C.DataType.INTEGER_TYPES, ...C.DataType.REAL_TYPES]);
   C.DataType.TEMPORAL_TYPES = dtypeSet("DATE", "DATE32", "DATETIME", "DATETIME2", "DATETIME64", "SMALLDATETIME", "TIME", "TIMESTAMP", "TIMESTAMPNTZ", "TIMESTAMPLTZ", "TIMESTAMPTZ", "TIMESTAMP_MS", "TIMESTAMP_NS", "TIMESTAMP_S", "TIMETZ");
-  C.Cast.isCast = true;
-  // These markers are consumed by Func.from_arg_list / error_messages. They
-  // are class attributes upstream rather than part of arg_types.
-  for (const name of [
-    "Count","CumeDist","DenseRank","Grouping","GroupingId","Max","Min","Minhash","PercentRank","Rank",
-    "Array","ArrayConstructCompact","List","ArrayConcat","ArrayIntersect","ArraysZip","Explode","MapDelete","MapPick","VarMap","Struct",
-    "Coalesce","DecodeCase","Greatest","Least","AIEmbed","AISimilarity","AIGenerate","ReadCSV","ReadParquet",
-    "JSONArray","JSONArrayAppend","JSONArrayInsert","JSONExtract","JSONExtractScalar","JSONKeys","JSONRemove","JSONSet",
-    "Chr","Concat","Elt","Format","CityHash64","FarmFingerprint","MD5Digest","Date",
-  ]) C[name].isVarLenArgs = true;
-  C.VarMap.varLenArgKey = "values";
+  // py: functions.py:35 `is_cast: t.ClassVar[bool] = True` on Cast; JSONCast and
+  // TryCast INHERIT it (neither declares its own). `defineExpr` always extends `Expr`
+  // rather than the Python base, so static inheritance does not carry it here and each
+  // subclass is marked explicitly. Enumerated against upstream, not guessed: exactly
+  // these three have `is_cast` truthy. This replaces a `/Cast$/` name regex in
+  // `core.js`'s `type` getter, which matched the same three only by coincidence.
+  for (const name of ["Cast", "JSONCast", "TryCast"]) C[name].isCast = true;
+  // `isVarLenArgs` / `varLenArgKey` were a hand-written list here. It had drifted to 46
+  // of upstream's 55 var-len Func classes (missing Anonymous, AnonymousAggFunc,
+  // CombinedAggFunc, ConcatWs, HashAgg, Hll, Posexplode, PosexplodeOuter and
+  // _ExplodeOuter) — invisible until P3's `Func.from_arg_list` needed it, and it would
+  // have mis-shaped those nine silently. Both markers are now extracted by
+  // tools/parity/extract.py and applied in `defineExpr`, so the list cannot drift
+  // again (§4.3: generate the mechanical part).
   getter(C.DataTypeParam, "name", function () { return nodeName(this.args.this); });
 
   // py: core.py Dot.build / Dot.parts.  build() is the constructor for the `fields`
@@ -126,10 +129,25 @@ export function installFocusedMethods() {
     });
   };
 
-  getter(C.Cast, "name", function () { return nodeName(this.this); });
-  getter(C.Cast, "to", function () { return this.args.to; });
-  getter(C.Cast, "outputName", function () { return this.name; });
-  C.Cast.prototype.isType = function (...dtypes) { return this.to.isType(...dtypes); };
+  // py: functions.py:34 `class Cast`; JSONCast and TryCast are SUBCLASSES of it and
+  // inherit every member below. `defineExpr` always extends `Expr`, so that inheritance
+  // is not automatic here and each member is installed on all three. Missing this made
+  // `JSONCast.to` undefined while `Cast.to` worked — invisible while `type` reached
+  // around the property to `args.to`.
+  for (const K of [C.Cast, C.JSONCast, C.TryCast]) {
+    getter(K, "name", function () { return nodeName(this.this); });
+    // py: functions.py:51 `return self.args["to"]` — a SUBSCRIPT, so a Cast built
+    // without its required `to` raises KeyError rather than yielding None. Observable:
+    // `.type` falls back to `.to` (core.py:973), so `repr(Cast.from_arg_list([]))`
+    // raises upstream. Found by spike/p3/fuzz_from_arg_list.mjs; `this.args.to`
+    // returned undefined and silently produced a repr Python cannot produce.
+    getter(K, "to", function () {
+      if (!("to" in this.args)) throw new PyKeyError("to");
+      return this.args.to;
+    });
+    getter(K, "outputName", function () { return this.name; });
+    K.prototype.isType = function (...dtypes) { return this.to.isType(...dtypes); };
+  }
 
   C.Case.prototype.when = function (condition, then, options = {}) {
     const copy = options.copy ?? true, instance = maybeCopy(this, copy);
