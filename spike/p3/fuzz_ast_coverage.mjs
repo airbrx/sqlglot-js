@@ -63,8 +63,18 @@ for (const name of readdirSync("corpus/ast")) {
       // from DATE_PART_MAPPING land with the real dialects/dialect.js port (P5). Until
       // then this synthetic harness dialect must still be Dialect-shaped so
       // `_parse_interval`/`_parse_types` can call `.has()` on it without crashing.
+      //
+      // CREATABLE_KIND_MAPPING: same deal, base default `{}` (dialect.py:743). Needed
+      // once STATEMENT_PARSERS routes CREATE to `_parse_create`, which does
+      // `self.dialect.CREATABLE_KIND_MAPPING.get(kind) or kind` (py:2437) -- without it
+      // 740 CREATE rows died on `.get` of undefined, which is a hole in this stand-in
+      // rather than in the parser.
       const p = new Parser({
-        dialect: { tokenizer_class: { COMMANDS: tk.commands }, VALID_INTERVAL_UNITS: new Set() },
+        dialect: {
+          tokenizer_class: { COMMANDS: tk.commands },
+          VALID_INTERVAL_UNITS: new Set(),
+          CREATABLE_KIND_MAPPING: new Map(),
+        },
       });
       // The Command fallback logs a warning per row; capture it so the probe's own
       // output stays readable. `fuzz_command_warning.mjs` is what asserts those strings.

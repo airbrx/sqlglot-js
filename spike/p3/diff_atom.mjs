@@ -24,7 +24,11 @@ function parseWith(dialect, sql) {
   const tk = tokenizerFor(dialect);
   const { tokens } = tk.core.tokenize(sql);
   const p = new Parser({
-    dialect: { tokenizer_class: { COMMANDS: tk.commands }, VALID_INTERVAL_UNITS: new Set() },
+    dialect: {
+      tokenizer_class: { COMMANDS: tk.commands },
+      VALID_INTERVAL_UNITS: new Set(),
+      CREATABLE_KIND_MAPPING: new Map(),
+    },
   });
   const { result } = captureLogs(() => p.parse(tokens, sql));
   return result[0];

@@ -782,6 +782,8 @@ export class Parser {
   ]);
 
   /** py: sqlglot/parser.py:991 */
+  // EMPTY ON THE BASE PARSER UPSTREAM (parser.py:991, `dict[TokenType, type[exp.Expr]] = {}`) -- populated only by
+  // dialect subclasses, so zero entries here is CORRECT, not an unwired seed.
   static EXPONENT = new Map([
   ]);
 
@@ -832,6 +834,8 @@ export class Parser {
   ]);
 
   /** py: sqlglot/parser.py:1033 */
+  // EMPTY ON THE BASE PARSER UPSTREAM (parser.py:1033, `set[str] = set()`) -- populated only by
+  // dialect subclasses, so zero entries here is CORRECT, not an unwired seed.
   static JOIN_HINTS = new Set([
   ]);
 
@@ -856,8 +860,12 @@ export class Parser {
 
   /** py: sqlglot/parser.py:1056 */
   static LAMBDAS = new Map([
-    // py:1057  [TokenType.ARROW, /* TODO lambda */],
-    // py:1066  [TokenType.FARROW, /* TODO lambda */],
+    // Invoked as `LAMBDAS.get(tt)(this, expressions)`.
+    // py:1057  [TokenType.ARROW, ...]  — `_replace_lambda` is still a NotPorted stub
+    /* py:1066 */ [TokenType.FARROW, (self, expressions) => self.expression(new exp.Kwarg({
+      this: exp.var(expressions[0].name),
+      expression: self._parse_disjunction() || self._parse_select(),
+    }))],
   ]);
 
   /** py: sqlglot/parser.py:1075 */
@@ -882,6 +890,8 @@ export class Parser {
   ]);
 
   /** py: sqlglot/parser.py:1113 */
+  // EMPTY ON THE BASE PARSER UPSTREAM (parser.py:1113, `dict[TokenType, t.Callable] = {}`) -- populated only by
+  // dialect subclasses, so zero entries here is CORRECT, not an unwired seed.
   static JSON_OPERATORS = new Map([
   ]);
 
@@ -893,73 +903,75 @@ export class Parser {
 
   /** py: sqlglot/parser.py:1120 */
   static EXPRESSION_PARSERS = new Map([
-    // py:1121  [exp.Cluster, /* TODO lambda */],
-    // py:1122  [exp.Column, /* TODO lambda */],
-    // py:1123  [exp.ColumnDef, /* TODO lambda */],
-    // py:1124  [exp.Condition, /* TODO lambda */],
-    // py:1125  [exp.DataType, /* TODO lambda */],
-    // py:1126  [exp.Expr, /* TODO lambda */],
-    // py:1127  [exp.From, /* TODO lambda */],
-    // py:1128  [exp.GrantPrincipal, /* TODO lambda */],
-    // py:1129  [exp.GrantPrivilege, /* TODO lambda */],
-    // py:1130  [exp.Group, /* TODO lambda */],
-    // py:1131  [exp.Having, /* TODO lambda */],
-    // py:1132  [exp.Hint, /* TODO lambda */],
-    // py:1133  [exp.Identifier, /* TODO lambda */],
-    // py:1134  [exp.Join, /* TODO lambda */],
-    // py:1135  [exp.Lambda, /* TODO lambda */],
-    // py:1136  [exp.Lateral, /* TODO lambda */],
-    // py:1137  [exp.Limit, /* TODO lambda */],
-    // py:1138  [exp.Offset, /* TODO lambda */],
-    // py:1139  [exp.Order, /* TODO lambda */],
-    // py:1140  [exp.Ordered, /* TODO lambda */],
-    // py:1141  [exp.Properties, /* TODO lambda */],
-    // py:1142  [exp.PartitionedByProperty, /* TODO lambda */],
-    // py:1143  [exp.Qualify, /* TODO lambda */],
-    // py:1144  [exp.Returning, /* TODO lambda */],
-    // py:1145  [exp.Select, /* TODO lambda */],
-    // py:1146  [exp.Sort, /* TODO lambda */],
-    // py:1147  [exp.Table, /* TODO lambda */],
-    // py:1148  [exp.TableAlias, /* TODO lambda */],
-    // py:1149  [exp.Tuple, /* TODO lambda */],
-    // py:1150  [exp.Whens, /* TODO lambda */],
-    // py:1151  [exp.Where, /* TODO lambda */],
-    // py:1152  [exp.Window, /* TODO lambda */],
-    // py:1153  [exp.With, /* TODO lambda */],
+    // py:1121  [exp.Cluster, ...]  — `_parse_sort` is still a NotPorted stub
+    /* py:1122 */ [exp.Column, (self) => self._parse_column()],
+    /* py:1123 */ [exp.ColumnDef, (self) => self._parse_column_def(self._parse_column())],
+    /* py:1124 */ [exp.Condition, (self) => self._parse_disjunction()],
+    /* py:1125 */ [exp.DataType, (self) => self._parse_types(false, true, false)],
+    /* py:1126 */ [exp.Expr, (self) => self._parse_expression()],
+    /* py:1127 */ [exp.From, (self) => self._parse_from(true)],
+    /* py:1128 */ [exp.GrantPrincipal, (self) => self._parse_grant_principal()],
+    /* py:1129 */ [exp.GrantPrivilege, (self) => self._parse_grant_privilege()],
+    /* py:1130 */ [exp.Group, (self) => self._parse_group()],
+    // py:1131  [exp.Having, ...]  — `_parse_having` is still a NotPorted stub
+    /* py:1132 */ [exp.Hint, (self) => self._parse_hint_body()],
+    /* py:1133 */ [exp.Identifier, (self) => self._parse_id_var()],
+    /* py:1134 */ [exp.Join, (self) => self._parse_join()],
+    /* py:1135 */ [exp.Lambda, (self) => self._parse_lambda()],
+    /* py:1136 */ [exp.Lateral, (self) => self._parse_lateral()],
+    /* py:1137 */ [exp.Limit, (self) => self._parse_limit()],
+    /* py:1138 */ [exp.Offset, (self) => self._parse_offset()],
+    /* py:1139 */ [exp.Order, (self) => self._parse_order()],
+    /* py:1140 */ [exp.Ordered, (self) => self._parse_ordered()],
+    /* py:1141 */ [exp.Properties, (self) => self._parse_properties()],
+    /* py:1142 */ [exp.PartitionedByProperty, (self) => self._parse_partitioned_by()],
+    // py:1143  [exp.Qualify, ...]  — `_parse_qualify` is still a NotPorted stub
+    /* py:1144 */ [exp.Returning, (self) => self._parse_returning()],
+    /* py:1145 */ [exp.Select, (self) => self._parse_select()],
+    // py:1146  [exp.Sort, ...]  — `_parse_sort` is still a NotPorted stub
+    /* py:1147 */ [exp.Table, (self) => self._parse_table_parts()],
+    /* py:1148 */ [exp.TableAlias, (self) => self._parse_table_alias()],
+    /* py:1149 */ [exp.Tuple, (self) => self._parse_value(false)],
+    // py:1150  [exp.Whens, ...]  — `_parse_when_matched` is still a NotPorted stub
+    /* py:1151 */ [exp.Where, (self) => self._parse_where()],
+    // py:1152  [exp.Window, ...]  — `_parse_named_window` is still a NotPorted stub
+    /* py:1153 */ [exp.With, (self) => self._parse_with()],
   ]);
 
   /** py: sqlglot/parser.py:1156 */
   static STATEMENT_PARSERS = new Map([
-    // py:1157  [TokenType.ALTER, /* TODO lambda */],
-    // py:1158  [TokenType.ANALYZE, /* TODO lambda */],
-    // py:1159  [TokenType.BEGIN, /* TODO lambda */],
-    // py:1160  [TokenType.CACHE, /* TODO lambda */],
-    // py:1161  [TokenType.COMMENT, /* TODO lambda */],
-    // py:1162  [TokenType.COMMIT, /* TODO lambda */],
-    // py:1163  [TokenType.COPY, /* TODO lambda */],
-    // py:1164  [TokenType.CREATE, /* TODO lambda */],
-    // py:1165  [TokenType.DECLARE, /* TODO lambda */],
-    // py:1166  [TokenType.DELETE, /* TODO lambda */],
-    // py:1167  [TokenType.DESC, /* TODO lambda */],
-    // py:1168  [TokenType.DESCRIBE, /* TODO lambda */],
-    // py:1169  [TokenType.DROP, /* TODO lambda */],
-    // py:1170  [TokenType.GRANT, /* TODO lambda */],
-    // py:1171  [TokenType.REVOKE, /* TODO lambda */],
-    // py:1172  [TokenType.INSERT, /* TODO lambda */],
-    // py:1173  [TokenType.KILL, /* TODO lambda */],
-    // py:1174  [TokenType.LOAD, /* TODO lambda */],
-    // py:1175  [TokenType.MERGE, /* TODO lambda */],
-    // py:1176  [TokenType.PIVOT, /* TODO lambda */],
-    // py:1177  [TokenType.PRAGMA, /* TODO lambda */],
-    // py:1178  [TokenType.REFRESH, /* TODO lambda */],
-    // py:1179  [TokenType.ROLLBACK, /* TODO lambda */],
-    // py:1180  [TokenType.SET, /* TODO lambda */],
-    // py:1181  [TokenType.TRUNCATE, /* TODO lambda */],
-    // py:1182  [TokenType.UNCACHE, /* TODO lambda */],
-    // py:1183  [TokenType.UNPIVOT, /* TODO lambda */],
-    // py:1184  [TokenType.UPDATE, /* TODO lambda */],
-    // py:1185  [TokenType.USE, /* TODO lambda */],
-    // py:1186  [TokenType.SEMICOLON, /* TODO lambda */],
+    /* py:1157 */ [TokenType.ALTER, (self) => self._parse_alter()],
+    /* py:1158 */ [TokenType.ANALYZE, (self) => self._parse_analyze()],
+    /* py:1159 */ [TokenType.BEGIN, (self) => self._parse_transaction()],
+    // py:1160  [TokenType.CACHE, ...]  — `_parse_cache` is still a NotPorted stub
+    /* py:1161 */ [TokenType.COMMENT, (self) => self._parse_comment()],
+    /* py:1162 */ [TokenType.COMMIT, (self) => self._parse_commit_or_rollback()],
+    // py:1163  [TokenType.COPY, ...]  — `_parse_copy` is still a NotPorted stub
+    /* py:1164 */ [TokenType.CREATE, (self) => self._parse_create()],
+    /* py:1165 */ [TokenType.DECLARE, (self) => self._parse_declare()],
+    /* py:1166 */ [TokenType.DELETE, (self) => self._parse_delete()],
+    /* py:1167 */ [TokenType.DESC, (self) => self._parse_describe()],
+    /* py:1168 */ [TokenType.DESCRIBE, (self) => self._parse_describe()],
+    /* py:1169 */ [TokenType.DROP, (self) => self._parse_drop()],
+    /* py:1170 */ [TokenType.GRANT, (self) => self._parse_grant()],
+    /* py:1171 */ [TokenType.REVOKE, (self) => self._parse_revoke()],
+    /* py:1172 */ [TokenType.INSERT, (self) => self._parse_insert()],
+    // py:1173  [TokenType.KILL, ...]  — `_parse_kill` is still a NotPorted stub
+    /* py:1174 */ [TokenType.LOAD, (self) => self._parse_load()],
+    // py:1175  [TokenType.MERGE, ...]  — `_parse_merge` is still a NotPorted stub
+    /* py:1176 */ [TokenType.PIVOT, (self) => self._parse_simplified_pivot()],
+    /* py:1177 */ [TokenType.PRAGMA, (self) => self.expression(new exp.Pragma({ this: self._parse_expression() }))],
+    /* py:1178 */ [TokenType.REFRESH, (self) => self._parse_refresh()],
+    /* py:1179 */ [TokenType.ROLLBACK, (self) => self._parse_commit_or_rollback()],
+    /* py:1180 */ [TokenType.SET, (self) => self._parse_set()],
+    /* py:1181 */ [TokenType.TRUNCATE, (self) => self._parse_truncate_table()],
+    // py:1182  [TokenType.UNCACHE, ...]  — `_parse_uncache` is still a NotPorted stub
+    /* py:1183 */ [TokenType.UNPIVOT, (self) => self._parse_simplified_pivot(true)],
+    /* py:1184 */ [TokenType.UPDATE, (self) => self._parse_update()],
+    /* py:1185 */ [TokenType.USE, (self) => self._parse_use()],
+    // py:1186  Upstream returns a BARE `exp.Semicolon()` here, NOT `self.expression(...)`
+    // — so it deliberately gets no comments and no token position attached.
+    /* py:1186 */ [TokenType.SEMICOLON, () => new exp.Semicolon()],
   ]);
 
   /** py: sqlglot/parser.py:1189 */
@@ -1008,9 +1020,13 @@ export class Parser {
 
   /** py: sqlglot/parser.py:1251 */
   static PLACEHOLDER_PARSERS = new Map([
-    // py:1252  [TokenType.PLACEHOLDER, /* TODO lambda */],
-    // py:1253  [TokenType.PARAMETER, /* TODO lambda */],
-    // py:1254  [TokenType.COLON, /* TODO lambda */],
+    /* py:1252 */ [TokenType.PLACEHOLDER, (self) => self.expression(new exp.Placeholder())],
+    /* py:1253 */ [TokenType.PARAMETER, (self) => self._parse_parameter()],
+    // Returns null to DECLINE (see `_parse_placeholder`, which then rewinds).
+    // `COLON_PLACEHOLDER_TOKENS` is class-level: `self.constructor.` is required.
+    /* py:1254 */ [TokenType.COLON, (self) => (self._match_set(self.constructor.COLON_PLACEHOLDER_TOKENS)
+      ? self.expression(new exp.Placeholder({ this: self._prev.text }))
+      : null)],
   ]);
 
   /** py: sqlglot/parser.py:1261 */
@@ -1203,23 +1219,23 @@ export class Parser {
 
   /** py: sqlglot/parser.py:1509 */
   static ALTER_PARSERS = new Map([
-    // py:1510  ["ADD", /* TODO lambda */],
-    // py:1511  ["AS", /* TODO lambda */],
-    // py:1512  ["ALTER", /* TODO lambda */],
-    // py:1513  ["CLUSTER BY", /* TODO lambda */],
-    // py:1514  ["DELETE", /* TODO lambda */],
-    // py:1515  ["DROP", /* TODO lambda */],
-    // py:1516  ["RENAME", /* TODO lambda */],
-    // py:1517  ["SET", /* TODO lambda */],
-    // py:1518  ["SWAP", /* TODO lambda */],
+    /* py:1510 */ ["ADD", (self) => self._parse_alter_table_add()],
+    /* py:1511 */ ["AS", (self) => self._parse_select()],
+    /* py:1512 */ ["ALTER", (self) => self._parse_alter_table_alter()],
+    /* py:1513 */ ["CLUSTER BY", (self) => self._parse_cluster_property()],
+    /* py:1514 */ ["DELETE", (self) => self.expression(new exp.Delete({ where: self._parse_where() }))],
+    /* py:1515 */ ["DROP", (self) => self._parse_alter_table_drop()],
+    /* py:1516 */ ["RENAME", (self) => self._parse_alter_table_rename()],
+    /* py:1517 */ ["SET", (self) => self._parse_alter_table_set()],
+    /* py:1518 */ ["SWAP", (self) => self.expression(new exp.SwapTable({ this: self._match(TokenType.WITH) && self._parse_table(true) }))],
   ]);
 
   /** py: sqlglot/parser.py:1523 */
   static ALTER_ALTER_PARSERS = new Map([
-    // py:1524  ["DISTKEY", /* TODO lambda */],
-    // py:1525  ["DISTSTYLE", /* TODO lambda */],
-    // py:1526  ["SORTKEY", /* TODO lambda */],
-    // py:1527  ["COMPOUND", /* TODO lambda */],
+    /* py:1524 */ ["DISTKEY", (self) => self._parse_alter_diststyle()],
+    /* py:1525 */ ["DISTSTYLE", (self) => self._parse_alter_diststyle()],
+    /* py:1526 */ ["SORTKEY", (self) => self._parse_alter_sortkey()],
+    /* py:1527 */ ["COMPOUND", (self) => self._parse_alter_sortkey(true)],
   ]);
 
   /** py: sqlglot/parser.py:1530 */
@@ -1237,10 +1253,10 @@ export class Parser {
 
   /** py: sqlglot/parser.py:1542 */
   static NO_PAREN_FUNCTION_PARSERS = new Map([
-    // py:1543  ["ANY", /* TODO lambda */],
-    // py:1544  ["CASE", /* TODO lambda */],
-    // py:1545  ["CONNECT_BY_ROOT", /* TODO lambda */],
-    // py:1548  ["IF", /* TODO lambda */],
+    /* py:1543 */ ["ANY", (self) => self.expression(new exp.Any({ this: self._parse_bitwise() }))],
+    /* py:1544 */ ["CASE", (self) => self._parse_case()],
+    /* py:1545 */ ["CONNECT_BY_ROOT", (self) => self.expression(new exp.ConnectByRoot({ this: self._parse_column() }))],
+    /* py:1548 */ ["IF", (self) => self._parse_if()],
   ]);
 
   /** py: sqlglot/parser.py:1551 */
@@ -1303,25 +1319,28 @@ export class Parser {
 
   /** py: sqlglot/parser.py:1597 */
   static QUERY_MODIFIER_PARSERS = new Map([
-    // py:1598  [TokenType.MATCH_RECOGNIZE, /* TODO lambda */],
-    // py:1599  [TokenType.PREWHERE, /* TODO lambda */],
-    // py:1600  [TokenType.WHERE, /* TODO lambda */],
-    // py:1601  [TokenType.GROUP_BY, /* TODO lambda */],
-    // py:1602  [TokenType.HAVING, /* TODO lambda */],
-    // py:1603  [TokenType.QUALIFY, /* TODO lambda */],
-    // py:1604  [TokenType.WINDOW, /* TODO lambda */],
-    // py:1605  [TokenType.ORDER_BY, /* TODO lambda */],
-    // py:1606  [TokenType.LIMIT, /* TODO lambda */],
-    // py:1607  [TokenType.FETCH, /* TODO lambda */],
-    // py:1608  [TokenType.OFFSET, /* TODO lambda */],
-    // py:1609  [TokenType.FOR, /* TODO lambda */],
-    // py:1610  [TokenType.LOCK, /* TODO lambda */],
-    // py:1611  [TokenType.TABLE_SAMPLE, /* TODO lambda */],
-    // py:1612  [TokenType.USING, /* TODO lambda */],
-    // py:1613  [TokenType.CLUSTER_BY, /* TODO lambda */],
-    // py:1617  [TokenType.DISTRIBUTE_BY, /* TODO lambda */],
-    // py:1621  [TokenType.SORT_BY, /* TODO lambda */],
-    // py:1622  [TokenType.CONNECT_BY, /* TODO lambda */],
+    // Values are `(key, expression)` tuples upstream; `_parse_query_modifiers`
+    // destructures them as `const [key, expression] = parser(this)`, so they are
+    // 2-element ARRAYS here.
+    // py:1598  [TokenType.MATCH_RECOGNIZE, ...]  — `_parse_match_recognize` is a stub
+    // py:1599  [TokenType.PREWHERE, ...]         — `_parse_prewhere` is a stub
+    /* py:1600 */ [TokenType.WHERE, (self) => ["where", self._parse_where()]],
+    /* py:1601 */ [TokenType.GROUP_BY, (self) => ["group", self._parse_group()]],
+    // py:1602  [TokenType.HAVING, ...]   — `_parse_having` is a stub
+    // py:1603  [TokenType.QUALIFY, ...]  — `_parse_qualify` is a stub
+    // py:1604  [TokenType.WINDOW, ...]   — `_parse_window_clause` is a stub
+    /* py:1605 */ [TokenType.ORDER_BY, (self) => ["order", self._parse_order()]],
+    /* py:1606 */ [TokenType.LIMIT, (self) => ["limit", self._parse_limit()]],
+    /* py:1607 */ [TokenType.FETCH, (self) => ["limit", self._parse_limit()]],
+    /* py:1608 */ [TokenType.OFFSET, (self) => ["offset", self._parse_offset()]],
+    // py:1609  [TokenType.FOR, ...]   — `_parse_locks` is a stub
+    // py:1610  [TokenType.LOCK, ...]  — `_parse_locks` is a stub
+    /* py:1611 */ [TokenType.TABLE_SAMPLE, (self) => ["sample", self._parse_table_sample(true)]],
+    /* py:1612 */ [TokenType.USING, (self) => ["sample", self._parse_table_sample(true)]],
+    // py:1613  [TokenType.CLUSTER_BY, ...]     — `_parse_cluster` is a stub
+    // py:1617  [TokenType.DISTRIBUTE_BY, ...]  — `_parse_sort` is a stub
+    // py:1621  [TokenType.SORT_BY, ...]        — `_parse_sort` is a stub
+    // py:1622  [TokenType.CONNECT_BY, ...]     — `_parse_connect` is a stub
   ]);
 
   /** py: sqlglot/parser.py:1624 */
@@ -1329,22 +1348,27 @@ export class Parser {
 
   /** py: sqlglot/parser.py:1626 */
   static SET_PARSERS = new Map([
-    // py:1627  ["GLOBAL", /* TODO lambda */],
-    // py:1628  ["LOCAL", /* TODO lambda */],
-    // py:1629  ["SESSION", /* TODO lambda */],
-    // py:1630  ["TRANSACTION", /* TODO lambda */],
+    /* py:1627 */ ["GLOBAL", (self) => self._parse_set_item_assignment("GLOBAL")],
+    /* py:1628 */ ["LOCAL", (self) => self._parse_set_item_assignment("LOCAL")],
+    /* py:1629 */ ["SESSION", (self) => self._parse_set_item_assignment("SESSION")],
+    /* py:1630 */ ["TRANSACTION", (self) => self._parse_set_transaction()],
   ]);
 
   /** py: sqlglot/parser.py:1633 */
+  // EMPTY ON THE BASE PARSER UPSTREAM (parser.py:1633, `dict[str, t.Callable] = {}`) -- populated only by
+  // dialect subclasses, so zero entries here is CORRECT, not an unwired seed.
   static SHOW_PARSERS = new Map([
   ]);
 
   /** py: sqlglot/parser.py:1635 */
   static TYPE_LITERAL_PARSERS = new Map([
-    // py:1636  [exp.DType.JSON, /* TODO lambda */],
+    // Invoked as `parser(this, this_, dataType)`; upstream ignores the third arg (`_`).
+    /* py:1636 */ [exp.DType.JSON, (self, this_) => self.expression(new exp.ParseJSON({ this: this_ }))],
   ]);
 
   /** py: sqlglot/parser.py:1639 */
+  // EMPTY ON THE BASE PARSER UPSTREAM (parser.py:1639, `dict[exp.DType, ...] = {}`) -- populated only by
+  // dialect subclasses, so zero entries here is CORRECT, not an unwired seed.
   static TYPE_CONVERTERS = new Map([
   ]);
 
@@ -1448,6 +1472,8 @@ export class Parser {
   ]);
 
   /** py: sqlglot/parser.py:1709 */
+  // EMPTY ON THE BASE PARSER UPSTREAM (parser.py:1709, `OPTIONS_TYPE = {}`) -- populated only by
+  // dialect subclasses, so zero entries here is CORRECT, not an unwired seed.
   static PROCEDURE_OPTIONS = new Map([
   ]);
 
@@ -1628,6 +1654,8 @@ export class Parser {
   ]);
 
   /** py: sqlglot/parser.py:1792 */
+  // EMPTY ON THE BASE PARSER UPSTREAM (parser.py:1792, `dict[str, type[exp.Expr]] = {}`) -- populated only by
+  // dialect subclasses, so zero entries here is CORRECT, not an unwired seed.
   static ODBC_DATETIME_LITERALS = new Map([
   ]);
 
@@ -1675,15 +1703,15 @@ export class Parser {
 
   /** py: sqlglot/parser.py:1814 */
   static ANALYZE_EXPRESSION_PARSERS = new Map([
-    // py:1815  ["ALL", /* TODO lambda */],
-    // py:1816  ["COMPUTE", /* TODO lambda */],
-    // py:1817  ["DELETE", /* TODO lambda */],
-    // py:1818  ["DROP", /* TODO lambda */],
-    // py:1819  ["ESTIMATE", /* TODO lambda */],
-    // py:1820  ["LIST", /* TODO lambda */],
-    // py:1821  ["PREDICATE", /* TODO lambda */],
-    // py:1822  ["UPDATE", /* TODO lambda */],
-    // py:1823  ["VALIDATE", /* TODO lambda */],
+    /* py:1815 */ ["ALL", (self) => self._parse_analyze_columns()],
+    /* py:1816 */ ["COMPUTE", (self) => self._parse_analyze_statistics()],
+    /* py:1817 */ ["DELETE", (self) => self._parse_analyze_delete()],
+    /* py:1818 */ ["DROP", (self) => self._parse_analyze_histogram()],
+    /* py:1819 */ ["ESTIMATE", (self) => self._parse_analyze_statistics()],
+    /* py:1820 */ ["LIST", (self) => self._parse_analyze_list()],
+    /* py:1821 */ ["PREDICATE", (self) => self._parse_analyze_columns()],
+    /* py:1822 */ ["UPDATE", (self) => self._parse_analyze_histogram()],
+    /* py:1823 */ ["VALIDATE", (self) => self._parse_analyze_validate()],
   ]);
 
   /** py: sqlglot/parser.py:1826 */
@@ -1704,6 +1732,8 @@ export class Parser {
   ]);
 
   /** py: sqlglot/parser.py:1830 */
+  // EMPTY ON THE BASE PARSER UPSTREAM (parser.py:1830, `set[str] = set()`) -- populated only by
+  // dialect subclasses, so zero entries here is CORRECT, not an unwired seed.
   static OPERATION_MODIFIERS = new Set([
   ]);
 
@@ -3846,7 +3876,7 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5689
-  _parse_ordered(parse_method = null) { let this_ = parse_method ? parse_method() : this._parse_disjunction(); if (!this_) return null; if (pyUpper(this_.name) === "ALL" && this.dialect.SUPPORTS_ORDER_BY_ALL) this_ = exp.var("ALL"); const asc = this._match(TokenType.ASC); const desc = this._match(TokenType.DESC) ? true : asc ? false : null; const first = this._match_text_seq("NULLS", "FIRST"), last = this._match_text_seq("NULLS", "LAST"); let nulls_first = first || false; if (!(first || last) && ((!desc && this.dialect.NULL_ORDERING === "nulls_are_small") || (desc && this.dialect.NULL_ORDERING !== "nulls_are_small")) && this.dialect.NULL_ORDERING !== "nulls_are_last") nulls_first = true; let with_fill = null; if (this._match_text_seq("WITH", "FILL")) with_fill = this.expression(new exp.WithFill({ from: this._match(TokenType.FROM) && this._parse_bitwise(), to: this._match_text_seq("TO") && this._parse_bitwise(), step: this._match_text_seq("STEP") && this._parse_bitwise(), interpolate: this._parse_interpolate() })); return this.expression(new exp.Ordered({ this: this_, desc, nulls_first, with_fill })); }
+  _parse_ordered(parse_method = null) { let this_ = parse_method ? parse_method() : this._parse_disjunction(); if (!this_) return null; if (pyUpper(this_.name) === "ALL" && this.dialect.SUPPORTS_ORDER_BY_ALL) this_ = exp.var("ALL"); const asc = this._match(TokenType.ASC); const desc = this._match(TokenType.DESC) ? true : asc ? false : null; const first = this._match_text_seq("NULLS", "FIRST"), last = this._match_text_seq("NULLS", "LAST"); let nulls_first = first || false; if (!(first || last) && ((!desc && this.dialect.NULL_ORDERING === "nulls_are_small") || (desc && this.dialect.NULL_ORDERING !== "nulls_are_small")) && this.dialect.NULL_ORDERING !== "nulls_are_last") nulls_first = true; let with_fill = null; if (this._match_text_seq("WITH", "FILL")) with_fill = this.expression(new exp.WithFill({ from_: this._match(TokenType.FROM) && this._parse_bitwise(), to: this._match_text_seq("TO") && this._parse_bitwise(), step: this._match_text_seq("STEP") && this._parse_bitwise(), interpolate: this._parse_interpolate() })); return this.expression(new exp.Ordered({ this: this_, desc, nulls_first, with_fill })); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5734
@@ -5635,7 +5665,7 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10003
-  _parse_star_ops() { const starToken = this._prev; if (this._match_text_seq("COLUMNS", "(", false)) { const this_ = this._parse_function(); if (this_ instanceof exp.Columns) this_.set("unpack", true); return this_; } const index = this._index; const ilike = this._match(TokenType.ILIKE) ? this._parse_string() : null; if (!ilike) this._retreat(index); return this.expression(new exp.Star({ ilike, except: this._parse_star_op("EXCEPT", "EXCLUDE"), replace: this._parse_star_op("REPLACE"), rename: this._parse_star_op("RENAME") })).updatePositions(starToken); }
+  _parse_star_ops() { const starToken = this._prev; if (this._match_text_seq("COLUMNS", "(", false)) { const this_ = this._parse_function(); if (this_ instanceof exp.Columns) this_.set("unpack", true); return this_; } const index = this._index; const ilike = this._match(TokenType.ILIKE) ? this._parse_string() : null; if (!ilike) this._retreat(index); return this.expression(new exp.Star({ ilike, except_: this._parse_star_op("EXCEPT", "EXCLUDE"), replace: this._parse_star_op("REPLACE"), rename: this._parse_star_op("RENAME") })).updatePositions(starToken); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10027
