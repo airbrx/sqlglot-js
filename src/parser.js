@@ -2419,7 +2419,31 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3112
-  _parse_with_property() { throw new NotPorted("_parse_with_property", "sqlglot/parser.py:3112"); }
+  _parse_with_property() {
+    if (this._match_text_seq("(", "SYSTEM_VERSIONING")) {
+      const prop = this._parse_system_versioning_property(true);
+      this._match_r_paren();
+      return prop;
+    }
+    if (this._match(TokenType.L_PAREN, false)) {
+      const result = [];
+      for (const item of this._parse_wrapped_properties()) Array.isArray(item) ? result.push(...item) : result.push(item);
+      return result;
+    }
+    if (this._match_text_seq("JOURNAL")) return this._parse_withjournaltable();
+    if (this._match_texts(this.constructor.VIEW_ATTRIBUTES)) {
+      return this.expression(new exp.ViewAttributeProperty({ this: pyUpper(this._prev.text) }));
+    }
+    if (this._match_text_seq("DATA")) return this._parse_withdata(false);
+    if (this._match_text_seq("NO", "DATA")) return this._parse_withdata(true);
+    if (this._match(TokenType.SERDE_PROPERTIES, false)) return this._parse_serde_properties(true);
+    if (this._match(TokenType.SCHEMA)) return this.expression(new exp.WithSchemaBindingProperty({ this: this._parse_var_from_options(this.constructor.SCHEMA_BINDING_OPTIONS) }));
+    if (this._match_texts(this.constructor.PROCEDURE_OPTIONS, false)) {
+      return this.expression(new exp.WithProcedureOptions({ expressions: this._parse_csv(() => this._parse_procedure_option()) }));
+    }
+    if (!this._next.bool()) return null;
+    return this._parse_withisolatedloading();
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3155
@@ -2542,11 +2566,17 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:3492
   // note: param `default` renamed to `default_` (JS reserved word)
-  _parse_character_set(default_) { throw new NotPorted("_parse_character_set", "sqlglot/parser.py:3492"); }
+  _parse_character_set(default_ = false) {
+    this._match(TokenType.EQ);
+    return this.expression(new exp.CharacterSetProperty({ this: this._parse_var_or_string(), default: default_ }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3498
-  _parse_remote_with_connection() { throw new NotPorted("_parse_remote_with_connection", "sqlglot/parser.py:3498"); }
+  _parse_remote_with_connection() {
+    this._match_text_seq("WITH", "CONNECTION");
+    return this.expression(new exp.RemoteWithConnectionModelProperty({ this: this._parse_table_parts() }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3504
@@ -2634,11 +2664,79 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3994
-  _parse_select(nested, table, parse_subquery_alias, parse_set_operation, consume_pipe, from_) { throw new NotPorted("_parse_select", "sqlglot/parser.py:3994"); }
+  _parse_select(nested = false, table = false, parse_subquery_alias = true, parse_set_operation = true, consume_pipe = true, from_ = null) {
+    let query = this._parse_select_query(nested, table, parse_subquery_alias, parse_set_operation);
+    if (consume_pipe && this._match(TokenType.PIPE_GT, false)) {
+      if (!query && from_) query = exp.select("*").from_(from_);
+      if (query instanceof exp.Query) {
+        query = this._parse_pipe_syntax_query(query);
+        query = query && table ? query.subquery(null, { copy: false }) : query;
+      }
+    }
+    return query;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4019
-  _parse_select_query(nested, table, parse_subquery_alias, parse_set_operation) { throw new NotPorted("_parse_select_query", "sqlglot/parser.py:4019"); }
+  _parse_select_query(nested = false, table = false, parse_subquery_alias = true, parse_set_operation = true) {
+    const cte = this._parse_with();
+    if (cte) {
+      let self = this._parse_statement();
+      if (!self) { this.raise_error("Failed to parse any statement following CTE"); return cte; }
+      while (self instanceof exp.Subquery && self.isWrapper) self = self.this;
+      if (self.constructor.argTypes.has("with_")) {
+        const inner = self.args.with_;
+        if (inner) {
+          cte.set("expressions", [...cte.expressions, ...inner.expressions]);
+          if (inner.args.recursive) cte.set("recursive", true);
+        }
+        self.set("with_", cte);
+      } else { this.raise_error(`${self.key} does not support CTE`); self = cte; }
+      return self;
+    }
+    let from_ = this._match(TokenType.FROM, false) ? this._parse_from(true, false, true) : null;
+    let self;
+    if (this._match(TokenType.SELECT)) {
+      const comments = this._prev_comments;
+      const hint = this._parse_hint();
+      let all_, matchedDistinct;
+      if (this._next.bool() && this._next.token_type !== TokenType.DOT) {
+        all_ = this._match(TokenType.ALL); matchedDistinct = this._match_set(this.constructor.DISTINCT_TOKENS);
+      } else { all_ = null; matchedDistinct = false; }
+      const kind = this._match(TokenType.ALIAS) && this._match_texts(["STRUCT", "VALUE"]) ? pyUpper(this._prev.text) : null;
+      let distinct = matchedDistinct ? this.expression(new exp.Distinct({ on: this._match(TokenType.ON) ? this._parse_value(false) : null })) : null;
+      const operationModifiers = [];
+      while (this._curr.bool() && this._match_texts(this.constructor.OPERATION_MODIFIERS)) operationModifiers.push(exp.var(pyUpper(this._prev.text)));
+      const limit = this._parse_limit(null, true);
+      if (limit && !matchedDistinct && !all_) {
+        matchedDistinct = this._match_set(this.constructor.DISTINCT_TOKENS);
+        if (matchedDistinct) distinct = this.expression(new exp.Distinct({ on: this._match(TokenType.ON) ? this._parse_value(false) : null }));
+        else all_ = this._match(TokenType.ALL);
+      }
+      if (all_ && distinct) this.raise_error("Cannot specify both ALL and DISTINCT after SELECT");
+      const [projections, exclude] = this._parse_projections();
+      self = this.expression(new exp.Select({ kind, hint, distinct, expressions: projections, limit, exclude, operation_modifiers: operationModifiers.length ? operationModifiers : null }));
+      self.comments = comments;
+      const into = this._parse_into(); if (into) self.set("into", into);
+      if (!from_) from_ = this._parse_from();
+      if (from_) self.set("from_", from_);
+      self = this._parse_query_modifiers(self);
+    } else if ((table || nested) && this._match(TokenType.L_PAREN)) {
+      const comments = this._prev_comments;
+      self = this._parse_wrapped_select(table);
+      if (self) self.addComments(comments, true);
+      this._match_r_paren();
+      return this._parse_subquery(self, parse_subquery_alias);
+    } else if (this._match(TokenType.VALUES, false)) self = this._parse_derived_table_values();
+    else if (from_) { self = exp.select("*").from_(from_.this, { copy: false }); self = this._parse_query_modifiers(self); }
+    else if (this._match(TokenType.SUMMARIZE)) {
+      const isTable = this._match(TokenType.TABLE);
+      self = this._parse_select() || this._parse_string() || this._parse_table();
+      return this.expression(new exp.Summarize({ this: self, table: isTable }));
+    } else if (this._match(TokenType.DESCRIBE)) self = this._parse_describe();
+    else self = null;
+    return parse_set_operation ? this._parse_set_operations(self) : self;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4161
@@ -2646,7 +2744,24 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4180
-  _parse_with(skip_with_token) { throw new NotPorted("_parse_with", "sqlglot/parser.py:4180"); }
+  _parse_with(skip_with_token = false) {
+    if (!skip_with_token && !this._match(TokenType.WITH)) return null;
+    const comments = this._prev_comments;
+    let recursive = this._match(TokenType.RECURSIVE), lastComments = null;
+    const expressions = [], udfs = [];
+    while (true) {
+      const cte = this._parse_cte();
+      if (cte) {
+        (cte instanceof exp.FunctionSpecification ? udfs : expressions).push(cte);
+        if (lastComments?.length) cte.addComments(lastComments);
+      }
+      if (!this._match(TokenType.COMMA) && !this._match(TokenType.WITH)) break;
+      this._match(TokenType.WITH);
+      recursive = this._match(TokenType.RECURSIVE) || recursive;
+      lastComments = this._prev_comments;
+    }
+    return this.expression(new exp.With({ expressions, recursive: recursive || null, search: this._parse_recursive_with_search(), udfs: udfs.length ? udfs : null }), null, comments);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4219
@@ -2720,7 +2835,13 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4634
-  _parse_join_parts() { throw new NotPorted("_parse_join_parts", "sqlglot/parser.py:4634"); }
+  _parse_join_parts() {
+    return [
+      this._match_set(this.constructor.JOIN_METHODS) ? this._prev : null,
+      this._match_set(this.constructor.JOIN_SIDES) ? this._prev : null,
+      this._match_set(this.constructor.JOIN_KINDS) ? this._prev : null,
+    ];
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4643
@@ -2776,7 +2897,26 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5198
-  _parse_unnest(with_alias) { throw new NotPorted("_parse_unnest", "sqlglot/parser.py:5198"); }
+  _parse_unnest(with_alias = true) {
+    if (!this._match_pair(TokenType.UNNEST, TokenType.L_PAREN, false)) return null;
+    this._advance();
+    const expressions = this._parse_wrapped_csv(() => this._parse_equality());
+    let offset = this._match_pair(TokenType.WITH, TokenType.ORDINALITY);
+    const alias = with_alias ? this._parse_table_alias() : null;
+    if (alias) {
+      if (this.dialect.UNNEST_COLUMN_ONLY) {
+        if (alias.args.columns) this.raise_error("Unexpected extra column alias in unnest.");
+        alias.set("columns", [alias.this]); alias.set("this", null);
+      }
+      const columns = alias.args.columns || [];
+      if (offset && expressions.length < columns.length) offset = columns.pop();
+    }
+    if (!offset && this._match_pair(TokenType.WITH, TokenType.OFFSET)) {
+      this._match(TokenType.ALIAS);
+      offset = this._parse_id_var(false, this.constructor.UNNEST_OFFSET_ALIAS_TOKENS) || exp.toIdentifier("offset");
+    }
+    return this.expression(new exp.Unnest({ expressions, alias, offset }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5229
@@ -2788,7 +2928,12 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5313
-  _parse_pivots() { throw new NotPorted("_parse_pivots", "sqlglot/parser.py:5313"); }
+  _parse_pivots() {
+    if (this._curr.token_type !== TokenType.PIVOT && this._curr.token_type !== TokenType.UNPIVOT) return null;
+    const pivots = []; let pivot;
+    while ((pivot = this._parse_pivot()) !== null && pivot !== undefined) pivots.push(pivot);
+    return pivots.length ? pivots : null;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5318
@@ -2796,11 +2941,30 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5323
-  _parse_unpivot_columns() { throw new NotPorted("_parse_unpivot_columns", "sqlglot/parser.py:5323"); }
+  _parse_unpivot_columns() {
+    if (!this._match(TokenType.INTO)) return null;
+    return this.expression(new exp.UnpivotColumns({
+      this: this._match_text_seq("NAME") ? this._parse_column() : false,
+      expressions: this._match_text_seq("VALUE") ? this._parse_csv(() => this._parse_column()) : false,
+    }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5335
-  _parse_simplified_pivot(is_unpivot) { throw new NotPorted("_parse_simplified_pivot", "sqlglot/parser.py:5335"); }
+  _parse_simplified_pivot(is_unpivot = null) {
+    const parseOn = () => {
+      const self = this._parse_bitwise();
+      if (this._match(TokenType.IN)) return this._parse_in(self);
+      if (this._match(TokenType.ALIAS, false)) return this._parse_alias(self);
+      return self;
+    };
+    const self = this._parse_table();
+    const expressions = this._match(TokenType.ON) ? this._parse_csv(parseOn) : false;
+    const into = this._parse_unpivot_columns();
+    const using = this._match(TokenType.USING) ? this._parse_csv(() => this._parse_alias(this._parse_column())) : false;
+    const group = this._parse_group();
+    return this.expression(new exp.Pivot({ this: self, expressions, using, group, unpivot: is_unpivot, into }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5367
@@ -3391,7 +3555,13 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:8626
   // note: param `this` renamed to `this_` (JS reserved word)
-  _parse_having_max(this_) { throw new NotPorted("_parse_having_max", "sqlglot/parser.py:8626"); }
+  _parse_having_max(this_) {
+    if (this._match(TokenType.HAVING)) {
+      this._match_texts(["MAX", "MIN"]);
+      return this.expression(new exp.HavingMax({ this: this_, expression: this._parse_column(), max: pyUpper(this._prev.text) !== "MIN" }));
+    }
+    return this_;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8636
@@ -3507,11 +3677,15 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8958
-  _parse_select_or_expression(alias) { throw new NotPorted("_parse_select_or_expression", "sqlglot/parser.py:8958"); }
+  _parse_select_or_expression(alias = false) {
+    return this._parse_set_operations(alias ? this._parse_alias(this._parse_assignment(), true) : this._parse_assignment()) || this._parse_select();
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8968
-  _parse_ddl_select() { throw new NotPorted("_parse_ddl_select", "sqlglot/parser.py:8968"); }
+  _parse_ddl_select() {
+    return this._parse_query_modifiers(this._parse_set_operations(this._parse_select(true, false, false)));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8973
@@ -3639,7 +3813,23 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9608
-  _parse_var_from_options(options, raise_unmatched) { throw new NotPorted("_parse_var_from_options", "sqlglot/parser.py:9608"); }
+  _parse_var_from_options(options, raise_unmatched = true) {
+    const start = this._curr;
+    if (!start.bool()) return null;
+    let option = pyUpper(start.text);
+    const continuations = this.constructor.TEXT_MATCH_EXCLUDED_TOKENS.has(start.token_type) ? null : options.get(option);
+    const index = this._index; this._advance();
+    let matched = false;
+    for (let keywords of continuations || []) {
+      if (typeof keywords === "string") keywords = [keywords];
+      if (this._match_text_seq(...keywords)) { option = `${option} ${keywords.join(" ")}`; matched = true; break; }
+    }
+    if (!matched && (!pyFalsy(continuations) || continuations === null || continuations === undefined)) {
+      if (raise_unmatched) this.raise_error(`Unknown option ${option}`);
+      this._retreat(index); return null;
+    }
+    return exp.var(option);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9639
@@ -3690,7 +3880,12 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9853
-  _parse_with_operator() { throw new NotPorted("_parse_with_operator", "sqlglot/parser.py:9853"); }
+  _parse_with_operator() {
+    const self = this._parse_indexed_column();
+    if (!this._match(TokenType.WITH)) return self;
+    const op = this._parse_var(true, this.constructor.RESERVED_TOKENS);
+    return this.expression(new exp.WithOperator({ this: self, op }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9863
