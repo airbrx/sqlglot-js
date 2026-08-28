@@ -1,0 +1,10404 @@
+{
+ "_comment": "Full contents of every sqlglot.parser.Parser class-level container, for PORT_PLAN.md §8.1 Rule 2'. dict tables assert key ORDER; set tables assert MEMBERSHIP only (a Python set has no insertion order). Regenerate: python3 tools/parity/extract_parser_tables.py",
+ "ref": "/tmp/sqlglot-ref",
+ "python": "3.9.25",
+ "counts": {
+  "tables": 128,
+  "entries": 4000,
+  "callable_entries": 992
+ },
+ "tables": {
+  "ADD_CONSTRAINT_TOKENS": {
+   "kind": "set",
+   "size": 6,
+   "entries": {
+    "__set__": [
+     "TokenType.CONSTRAINT",
+     "TokenType.FOREIGN_KEY",
+     "TokenType.INDEX",
+     "TokenType.KEY",
+     "TokenType.PRIMARY_KEY",
+     "TokenType.UNIQUE"
+    ]
+   }
+  },
+  "AGGREGATE_TYPE_TOKENS": {
+   "kind": "set",
+   "size": 2,
+   "entries": {
+    "__set__": [
+     "TokenType.AGGREGATEFUNCTION",
+     "TokenType.SIMPLEAGGREGATEFUNCTION"
+    ]
+   }
+  },
+  "ALIAS_TOKENS": {
+   "kind": "set",
+   "size": 258,
+   "entries": {
+    "__set__": [
+     "TokenType.AGGREGATEFUNCTION",
+     "TokenType.ALL",
+     "TokenType.ANALYZE",
+     "TokenType.ANTI",
+     "TokenType.ANY",
+     "TokenType.APPLY",
+     "TokenType.ARRAY",
+     "TokenType.ASC",
+     "TokenType.ASOF",
+     "TokenType.ATTACH",
+     "TokenType.AUTO_INCREMENT",
+     "TokenType.BEGIN",
+     "TokenType.BIGDECIMAL",
+     "TokenType.BIGINT",
+     "TokenType.BIGNUM",
+     "TokenType.BIGSERIAL",
+     "TokenType.BINARY",
+     "TokenType.BIT",
+     "TokenType.BLOB",
+     "TokenType.BOOLEAN",
+     "TokenType.BPCHAR",
+     "TokenType.CACHE",
+     "TokenType.CASE",
+     "TokenType.CHAR",
+     "TokenType.COLLATE",
+     "TokenType.COLUMN",
+     "TokenType.COMMAND",
+     "TokenType.COMMENT",
+     "TokenType.COMMIT",
+     "TokenType.CONSTRAINT",
+     "TokenType.COPY",
+     "TokenType.CUBE",
+     "TokenType.CURRENT_CATALOG",
+     "TokenType.CURRENT_DATE",
+     "TokenType.CURRENT_DATETIME",
+     "TokenType.CURRENT_ROLE",
+     "TokenType.CURRENT_SCHEMA",
+     "TokenType.CURRENT_TIME",
+     "TokenType.CURRENT_TIMESTAMP",
+     "TokenType.CURRENT_USER",
+     "TokenType.DATABASE",
+     "TokenType.DATE",
+     "TokenType.DATE32",
+     "TokenType.DATEMULTIRANGE",
+     "TokenType.DATERANGE",
+     "TokenType.DATETIME",
+     "TokenType.DATETIME2",
+     "TokenType.DATETIME64",
+     "TokenType.DECFLOAT",
+     "TokenType.DECIMAL",
+     "TokenType.DECIMAL128",
+     "TokenType.DECIMAL256",
+     "TokenType.DECIMAL32",
+     "TokenType.DECIMAL64",
+     "TokenType.DECLARE",
+     "TokenType.DEFAULT",
+     "TokenType.DELETE",
+     "TokenType.DESC",
+     "TokenType.DESCRIBE",
+     "TokenType.DETACH",
+     "TokenType.DICTIONARY",
+     "TokenType.DIV",
+     "TokenType.DOUBLE",
+     "TokenType.DYNAMIC",
+     "TokenType.END",
+     "TokenType.ENUM",
+     "TokenType.ENUM16",
+     "TokenType.ENUM8",
+     "TokenType.ESCAPE",
+     "TokenType.EXECUTE",
+     "TokenType.EXISTS",
+     "TokenType.EXPORT",
+     "TokenType.FALSE",
+     "TokenType.FILE",
+     "TokenType.FILE_FORMAT",
+     "TokenType.FILTER",
+     "TokenType.FINAL",
+     "TokenType.FIRST",
+     "TokenType.FIXEDSTRING",
+     "TokenType.FLOAT",
+     "TokenType.FOREIGN_KEY",
+     "TokenType.FORMAT",
+     "TokenType.FULL",
+     "TokenType.FUNCTION",
+     "TokenType.GEOGRAPHY",
+     "TokenType.GEOGRAPHYPOINT",
+     "TokenType.GEOMETRY",
+     "TokenType.GET",
+     "TokenType.HLLSKETCH",
+     "TokenType.HSTORE",
+     "TokenType.IDENTIFIER",
+     "TokenType.IMAGE",
+     "TokenType.INDEX",
+     "TokenType.INET",
+     "TokenType.INOUT",
+     "TokenType.INT",
+     "TokenType.INT128",
+     "TokenType.INT256",
+     "TokenType.INT4MULTIRANGE",
+     "TokenType.INT4RANGE",
+     "TokenType.INT8MULTIRANGE",
+     "TokenType.INT8RANGE",
+     "TokenType.INTERVAL",
+     "TokenType.IPADDRESS",
+     "TokenType.IPPREFIX",
+     "TokenType.IPV4",
+     "TokenType.IPV6",
+     "TokenType.IS",
+     "TokenType.ISNULL",
+     "TokenType.JSON",
+     "TokenType.JSONB",
+     "TokenType.KEEP",
+     "TokenType.KILL",
+     "TokenType.LEFT",
+     "TokenType.LIMIT",
+     "TokenType.LINESTRING",
+     "TokenType.LIST",
+     "TokenType.LOAD",
+     "TokenType.LOCALTIME",
+     "TokenType.LOCALTIMESTAMP",
+     "TokenType.LOCK",
+     "TokenType.LONGBLOB",
+     "TokenType.LONGTEXT",
+     "TokenType.LOWCARDINALITY",
+     "TokenType.MAP",
+     "TokenType.MATCH",
+     "TokenType.MEDIUMBLOB",
+     "TokenType.MEDIUMINT",
+     "TokenType.MEDIUMTEXT",
+     "TokenType.MERGE",
+     "TokenType.MODEL",
+     "TokenType.MONEY",
+     "TokenType.MULTILINESTRING",
+     "TokenType.MULTIPOLYGON",
+     "TokenType.NAME",
+     "TokenType.NAMESPACE",
+     "TokenType.NATURAL",
+     "TokenType.NCHAR",
+     "TokenType.NESTED",
+     "TokenType.NEXT",
+     "TokenType.NOTHING",
+     "TokenType.NULL",
+     "TokenType.NULLABLE",
+     "TokenType.NUMMULTIRANGE",
+     "TokenType.NUMRANGE",
+     "TokenType.NVARCHAR",
+     "TokenType.OBJECT",
+     "TokenType.OBJECT_IDENTIFIER",
+     "TokenType.OFFSET",
+     "TokenType.OPERATOR",
+     "TokenType.ORDINALITY",
+     "TokenType.OUT",
+     "TokenType.OVER",
+     "TokenType.OVERLAPS",
+     "TokenType.OVERWRITE",
+     "TokenType.PARTITION",
+     "TokenType.PERCENT",
+     "TokenType.PIVOT",
+     "TokenType.POINT",
+     "TokenType.POLYGON",
+     "TokenType.PRAGMA",
+     "TokenType.PROCEDURE",
+     "TokenType.PROJECTION",
+     "TokenType.PSEUDO_TYPE",
+     "TokenType.PUT",
+     "TokenType.RANGE",
+     "TokenType.RECURSIVE",
+     "TokenType.REFERENCES",
+     "TokenType.REFRESH",
+     "TokenType.RENAME",
+     "TokenType.REPLACE",
+     "TokenType.RIGHT",
+     "TokenType.RING",
+     "TokenType.ROLLUP",
+     "TokenType.ROW",
+     "TokenType.ROWS",
+     "TokenType.ROWVERSION",
+     "TokenType.SCHEMA",
+     "TokenType.SEMANTIC_VIEW",
+     "TokenType.SEMI",
+     "TokenType.SEQUENCE",
+     "TokenType.SERIAL",
+     "TokenType.SESSION",
+     "TokenType.SESSION_USER",
+     "TokenType.SET",
+     "TokenType.SETTINGS",
+     "TokenType.SHOW",
+     "TokenType.SIMPLEAGGREGATEFUNCTION",
+     "TokenType.SINK",
+     "TokenType.SMALLDATETIME",
+     "TokenType.SMALLINT",
+     "TokenType.SMALLMONEY",
+     "TokenType.SMALLSERIAL",
+     "TokenType.SOME",
+     "TokenType.SOURCE",
+     "TokenType.STAGE",
+     "TokenType.STORAGE_INTEGRATION",
+     "TokenType.STRAIGHT_JOIN",
+     "TokenType.STREAM",
+     "TokenType.STREAMLIT",
+     "TokenType.STRUCT",
+     "TokenType.SUPER",
+     "TokenType.TABLE",
+     "TokenType.TAG",
+     "TokenType.TDIGEST",
+     "TokenType.TEMPORARY",
+     "TokenType.TEXT",
+     "TokenType.TIME",
+     "TokenType.TIMESTAMP",
+     "TokenType.TIMESTAMPLTZ",
+     "TokenType.TIMESTAMPNTZ",
+     "TokenType.TIMESTAMPTZ",
+     "TokenType.TIMESTAMP_MS",
+     "TokenType.TIMESTAMP_NS",
+     "TokenType.TIMESTAMP_S",
+     "TokenType.TIMETZ",
+     "TokenType.TIME_NS",
+     "TokenType.TINYBLOB",
+     "TokenType.TINYINT",
+     "TokenType.TINYTEXT",
+     "TokenType.TOP",
+     "TokenType.TRIGGER",
+     "TokenType.TRUE",
+     "TokenType.TRUNCATE",
+     "TokenType.TSMULTIRANGE",
+     "TokenType.TSRANGE",
+     "TokenType.TSTZMULTIRANGE",
+     "TokenType.TSTZRANGE",
+     "TokenType.TYPE",
+     "TokenType.UBIGINT",
+     "TokenType.UDECIMAL",
+     "TokenType.UDOUBLE",
+     "TokenType.UINT",
+     "TokenType.UINT128",
+     "TokenType.UINT256",
+     "TokenType.UMEDIUMINT",
+     "TokenType.UNIQUE",
+     "TokenType.UNKNOWN",
+     "TokenType.UNNEST",
+     "TokenType.UNPIVOT",
+     "TokenType.UPDATE",
+     "TokenType.USE",
+     "TokenType.USERDEFINED",
+     "TokenType.USMALLINT",
+     "TokenType.UTINYINT",
+     "TokenType.UUID",
+     "TokenType.VAR",
+     "TokenType.VARBINARY",
+     "TokenType.VARCHAR",
+     "TokenType.VARIANT",
+     "TokenType.VECTOR",
+     "TokenType.VIEW",
+     "TokenType.VOID",
+     "TokenType.VOLATILE",
+     "TokenType.WAREHOUSE",
+     "TokenType.WINDOW",
+     "TokenType.XML",
+     "TokenType.YEAR"
+    ]
+   }
+  },
+  "ALTERABLES": {
+   "kind": "set",
+   "size": 4,
+   "entries": {
+    "__set__": [
+     "TokenType.INDEX",
+     "TokenType.SESSION",
+     "TokenType.TABLE",
+     "TokenType.VIEW"
+    ]
+   }
+  },
+  "ALTER_ALTER_PARSERS": {
+   "kind": "dict",
+   "size": 4,
+   "entries": {
+    "__dict__": [
+     [
+      "DISTKEY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "DISTSTYLE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "SORTKEY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "COMPOUND",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "ALTER_PARSERS": {
+   "kind": "dict",
+   "size": 9,
+   "entries": {
+    "__dict__": [
+     [
+      "ADD",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "AS",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ALTER",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "CLUSTER BY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "DELETE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "DROP",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "RENAME",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "SET",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "SWAP",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "AMBIGUOUS_ALIAS_TOKENS": {
+   "kind": "seq",
+   "size": 2,
+   "entries": [
+    "TokenType.LIMIT",
+    "TokenType.OFFSET"
+   ]
+  },
+  "ANALYZE_EXPRESSION_PARSERS": {
+   "kind": "dict",
+   "size": 9,
+   "entries": {
+    "__dict__": [
+     [
+      "ALL",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "COMPUTE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "DELETE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "DROP",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ESTIMATE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "LIST",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "PREDICATE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "UPDATE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "VALIDATE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "ANALYZE_STYLES": {
+   "kind": "set",
+   "size": 7,
+   "entries": {
+    "__set__": [
+     "BUFFER_USAGE_LIMIT",
+     "FULL",
+     "LOCAL",
+     "NO_WRITE_TO_BINLOG",
+     "SAMPLE",
+     "SKIP_LOCKED",
+     "VERBOSE"
+    ]
+   }
+  },
+  "ARRAY_CONSTRUCTORS": {
+   "kind": "dict",
+   "size": 2,
+   "entries": {
+    "__dict__": [
+     [
+      "ARRAY",
+      "exp.Array"
+     ],
+     [
+      "LIST",
+      "exp.List"
+     ]
+    ]
+   }
+  },
+  "ASSIGNMENT": {
+   "kind": "dict",
+   "size": 1,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.COLON_EQ",
+      "exp.PropertyEQ"
+     ]
+    ]
+   }
+  },
+  "BITWISE": {
+   "kind": "dict",
+   "size": 3,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.AMP",
+      "exp.BitwiseAnd"
+     ],
+     [
+      "TokenType.CARET",
+      "exp.BitwiseXor"
+     ],
+     [
+      "TokenType.PIPE",
+      "exp.BitwiseOr"
+     ]
+    ]
+   }
+  },
+  "BRACKETS": {
+   "kind": "set",
+   "size": 2,
+   "entries": {
+    "__set__": [
+     "TokenType.L_BRACE",
+     "TokenType.L_BRACKET"
+    ]
+   }
+  },
+  "CAST_ACTIONS": {
+   "kind": "dict",
+   "size": 2,
+   "entries": {
+    "__dict__": [
+     [
+      "RENAME",
+      [
+       "FIELDS"
+      ]
+     ],
+     [
+      "ADD",
+      [
+       "FIELDS"
+      ]
+     ]
+    ]
+   }
+  },
+  "CAST_COLUMN_OPERATORS": {
+   "kind": "set",
+   "size": 2,
+   "entries": {
+    "__set__": [
+     "TokenType.DCOLON",
+     "TokenType.DOTCOLON"
+    ]
+   }
+  },
+  "CLONE_KEYWORDS": {
+   "kind": "set",
+   "size": 2,
+   "entries": {
+    "__set__": [
+     "CLONE",
+     "COPY"
+    ]
+   }
+  },
+  "COLON_PLACEHOLDER_TOKENS": {
+   "kind": "set",
+   "size": 258,
+   "entries": {
+    "__set__": [
+     "TokenType.AGGREGATEFUNCTION",
+     "TokenType.ALL",
+     "TokenType.ANALYZE",
+     "TokenType.ANTI",
+     "TokenType.ANY",
+     "TokenType.APPLY",
+     "TokenType.ARRAY",
+     "TokenType.ASC",
+     "TokenType.ASOF",
+     "TokenType.ATTACH",
+     "TokenType.AUTO_INCREMENT",
+     "TokenType.BEGIN",
+     "TokenType.BIGDECIMAL",
+     "TokenType.BIGINT",
+     "TokenType.BIGNUM",
+     "TokenType.BIGSERIAL",
+     "TokenType.BINARY",
+     "TokenType.BIT",
+     "TokenType.BLOB",
+     "TokenType.BOOLEAN",
+     "TokenType.BPCHAR",
+     "TokenType.CACHE",
+     "TokenType.CASE",
+     "TokenType.CHAR",
+     "TokenType.COLLATE",
+     "TokenType.COLUMN",
+     "TokenType.COMMAND",
+     "TokenType.COMMENT",
+     "TokenType.COMMIT",
+     "TokenType.CONSTRAINT",
+     "TokenType.COPY",
+     "TokenType.CUBE",
+     "TokenType.CURRENT_CATALOG",
+     "TokenType.CURRENT_DATE",
+     "TokenType.CURRENT_DATETIME",
+     "TokenType.CURRENT_ROLE",
+     "TokenType.CURRENT_SCHEMA",
+     "TokenType.CURRENT_TIME",
+     "TokenType.CURRENT_TIMESTAMP",
+     "TokenType.CURRENT_USER",
+     "TokenType.DATABASE",
+     "TokenType.DATE",
+     "TokenType.DATE32",
+     "TokenType.DATEMULTIRANGE",
+     "TokenType.DATERANGE",
+     "TokenType.DATETIME",
+     "TokenType.DATETIME2",
+     "TokenType.DATETIME64",
+     "TokenType.DECFLOAT",
+     "TokenType.DECIMAL",
+     "TokenType.DECIMAL128",
+     "TokenType.DECIMAL256",
+     "TokenType.DECIMAL32",
+     "TokenType.DECIMAL64",
+     "TokenType.DECLARE",
+     "TokenType.DEFAULT",
+     "TokenType.DELETE",
+     "TokenType.DESC",
+     "TokenType.DESCRIBE",
+     "TokenType.DETACH",
+     "TokenType.DICTIONARY",
+     "TokenType.DIV",
+     "TokenType.DOUBLE",
+     "TokenType.DYNAMIC",
+     "TokenType.END",
+     "TokenType.ENUM",
+     "TokenType.ENUM16",
+     "TokenType.ENUM8",
+     "TokenType.ESCAPE",
+     "TokenType.EXECUTE",
+     "TokenType.EXISTS",
+     "TokenType.EXPORT",
+     "TokenType.FALSE",
+     "TokenType.FILE",
+     "TokenType.FILE_FORMAT",
+     "TokenType.FILTER",
+     "TokenType.FINAL",
+     "TokenType.FIRST",
+     "TokenType.FIXEDSTRING",
+     "TokenType.FLOAT",
+     "TokenType.FOREIGN_KEY",
+     "TokenType.FORMAT",
+     "TokenType.FULL",
+     "TokenType.FUNCTION",
+     "TokenType.GEOGRAPHY",
+     "TokenType.GEOGRAPHYPOINT",
+     "TokenType.GEOMETRY",
+     "TokenType.GET",
+     "TokenType.HLLSKETCH",
+     "TokenType.HSTORE",
+     "TokenType.IDENTIFIER",
+     "TokenType.IMAGE",
+     "TokenType.INDEX",
+     "TokenType.INET",
+     "TokenType.INOUT",
+     "TokenType.INT",
+     "TokenType.INT128",
+     "TokenType.INT256",
+     "TokenType.INT4MULTIRANGE",
+     "TokenType.INT4RANGE",
+     "TokenType.INT8MULTIRANGE",
+     "TokenType.INT8RANGE",
+     "TokenType.INTERVAL",
+     "TokenType.IPADDRESS",
+     "TokenType.IPPREFIX",
+     "TokenType.IPV4",
+     "TokenType.IPV6",
+     "TokenType.IS",
+     "TokenType.ISNULL",
+     "TokenType.JSON",
+     "TokenType.JSONB",
+     "TokenType.KEEP",
+     "TokenType.KILL",
+     "TokenType.LEFT",
+     "TokenType.LIMIT",
+     "TokenType.LINESTRING",
+     "TokenType.LIST",
+     "TokenType.LOAD",
+     "TokenType.LOCALTIME",
+     "TokenType.LOCALTIMESTAMP",
+     "TokenType.LOCK",
+     "TokenType.LONGBLOB",
+     "TokenType.LONGTEXT",
+     "TokenType.LOWCARDINALITY",
+     "TokenType.MAP",
+     "TokenType.MATCH",
+     "TokenType.MEDIUMBLOB",
+     "TokenType.MEDIUMINT",
+     "TokenType.MEDIUMTEXT",
+     "TokenType.MERGE",
+     "TokenType.MODEL",
+     "TokenType.MONEY",
+     "TokenType.MULTILINESTRING",
+     "TokenType.MULTIPOLYGON",
+     "TokenType.NAME",
+     "TokenType.NAMESPACE",
+     "TokenType.NATURAL",
+     "TokenType.NCHAR",
+     "TokenType.NESTED",
+     "TokenType.NEXT",
+     "TokenType.NOTHING",
+     "TokenType.NULL",
+     "TokenType.NULLABLE",
+     "TokenType.NUMMULTIRANGE",
+     "TokenType.NUMRANGE",
+     "TokenType.NVARCHAR",
+     "TokenType.OBJECT",
+     "TokenType.OBJECT_IDENTIFIER",
+     "TokenType.OFFSET",
+     "TokenType.OPERATOR",
+     "TokenType.ORDINALITY",
+     "TokenType.OUT",
+     "TokenType.OVER",
+     "TokenType.OVERLAPS",
+     "TokenType.OVERWRITE",
+     "TokenType.PARTITION",
+     "TokenType.PERCENT",
+     "TokenType.PIVOT",
+     "TokenType.POINT",
+     "TokenType.POLYGON",
+     "TokenType.PRAGMA",
+     "TokenType.PROCEDURE",
+     "TokenType.PROJECTION",
+     "TokenType.PSEUDO_TYPE",
+     "TokenType.PUT",
+     "TokenType.RANGE",
+     "TokenType.RECURSIVE",
+     "TokenType.REFERENCES",
+     "TokenType.REFRESH",
+     "TokenType.RENAME",
+     "TokenType.REPLACE",
+     "TokenType.RIGHT",
+     "TokenType.RING",
+     "TokenType.ROLLUP",
+     "TokenType.ROW",
+     "TokenType.ROWS",
+     "TokenType.ROWVERSION",
+     "TokenType.SCHEMA",
+     "TokenType.SEMANTIC_VIEW",
+     "TokenType.SEMI",
+     "TokenType.SEQUENCE",
+     "TokenType.SERIAL",
+     "TokenType.SESSION",
+     "TokenType.SESSION_USER",
+     "TokenType.SET",
+     "TokenType.SETTINGS",
+     "TokenType.SHOW",
+     "TokenType.SIMPLEAGGREGATEFUNCTION",
+     "TokenType.SINK",
+     "TokenType.SMALLDATETIME",
+     "TokenType.SMALLINT",
+     "TokenType.SMALLMONEY",
+     "TokenType.SMALLSERIAL",
+     "TokenType.SOME",
+     "TokenType.SOURCE",
+     "TokenType.STAGE",
+     "TokenType.STORAGE_INTEGRATION",
+     "TokenType.STRAIGHT_JOIN",
+     "TokenType.STREAM",
+     "TokenType.STREAMLIT",
+     "TokenType.STRUCT",
+     "TokenType.SUPER",
+     "TokenType.TABLE",
+     "TokenType.TAG",
+     "TokenType.TDIGEST",
+     "TokenType.TEMPORARY",
+     "TokenType.TEXT",
+     "TokenType.TIME",
+     "TokenType.TIMESTAMP",
+     "TokenType.TIMESTAMPLTZ",
+     "TokenType.TIMESTAMPNTZ",
+     "TokenType.TIMESTAMPTZ",
+     "TokenType.TIMESTAMP_MS",
+     "TokenType.TIMESTAMP_NS",
+     "TokenType.TIMESTAMP_S",
+     "TokenType.TIMETZ",
+     "TokenType.TIME_NS",
+     "TokenType.TINYBLOB",
+     "TokenType.TINYINT",
+     "TokenType.TINYTEXT",
+     "TokenType.TOP",
+     "TokenType.TRIGGER",
+     "TokenType.TRUE",
+     "TokenType.TRUNCATE",
+     "TokenType.TSMULTIRANGE",
+     "TokenType.TSRANGE",
+     "TokenType.TSTZMULTIRANGE",
+     "TokenType.TSTZRANGE",
+     "TokenType.TYPE",
+     "TokenType.UBIGINT",
+     "TokenType.UDECIMAL",
+     "TokenType.UDOUBLE",
+     "TokenType.UINT",
+     "TokenType.UINT128",
+     "TokenType.UINT256",
+     "TokenType.UMEDIUMINT",
+     "TokenType.UNIQUE",
+     "TokenType.UNKNOWN",
+     "TokenType.UNNEST",
+     "TokenType.UNPIVOT",
+     "TokenType.UPDATE",
+     "TokenType.USE",
+     "TokenType.USERDEFINED",
+     "TokenType.USMALLINT",
+     "TokenType.UTINYINT",
+     "TokenType.UUID",
+     "TokenType.VAR",
+     "TokenType.VARBINARY",
+     "TokenType.VARCHAR",
+     "TokenType.VARIANT",
+     "TokenType.VECTOR",
+     "TokenType.VIEW",
+     "TokenType.VOID",
+     "TokenType.VOLATILE",
+     "TokenType.WAREHOUSE",
+     "TokenType.WINDOW",
+     "TokenType.XML",
+     "TokenType.YEAR"
+    ]
+   }
+  },
+  "COLUMN_OPERATORS": {
+   "kind": "dict",
+   "size": 8,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.DOT",
+      null
+     ],
+     [
+      "TokenType.DOTCOLON",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.DCOLON",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.ARROW",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.DARROW",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.HASH_ARROW",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.DHASH_ARROW",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.PLACEHOLDER",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "COLUMN_POSTFIX_TOKENS": {
+   "kind": "set",
+   "size": 5,
+   "entries": {
+    "__set__": [
+     "TokenType.COLON",
+     "TokenType.JOIN_MARKER",
+     "TokenType.L_BRACE",
+     "TokenType.L_BRACKET",
+     "TokenType.L_PAREN"
+    ]
+   }
+  },
+  "COMMENT_TABLE_ALIAS_TOKENS": {
+   "kind": "set",
+   "size": 248,
+   "entries": {
+    "__set__": [
+     "TokenType.AGGREGATEFUNCTION",
+     "TokenType.ALL",
+     "TokenType.ANALYZE",
+     "TokenType.ANY",
+     "TokenType.APPLY",
+     "TokenType.ARRAY",
+     "TokenType.ASC",
+     "TokenType.ATTACH",
+     "TokenType.AUTO_INCREMENT",
+     "TokenType.BEGIN",
+     "TokenType.BIGDECIMAL",
+     "TokenType.BIGINT",
+     "TokenType.BIGNUM",
+     "TokenType.BIGSERIAL",
+     "TokenType.BINARY",
+     "TokenType.BIT",
+     "TokenType.BLOB",
+     "TokenType.BOOLEAN",
+     "TokenType.BPCHAR",
+     "TokenType.CACHE",
+     "TokenType.CASE",
+     "TokenType.CHAR",
+     "TokenType.COLLATE",
+     "TokenType.COLUMN",
+     "TokenType.COMMAND",
+     "TokenType.COMMENT",
+     "TokenType.COMMIT",
+     "TokenType.CONSTRAINT",
+     "TokenType.COPY",
+     "TokenType.CUBE",
+     "TokenType.CURRENT_CATALOG",
+     "TokenType.CURRENT_DATE",
+     "TokenType.CURRENT_DATETIME",
+     "TokenType.CURRENT_ROLE",
+     "TokenType.CURRENT_SCHEMA",
+     "TokenType.CURRENT_TIME",
+     "TokenType.CURRENT_TIMESTAMP",
+     "TokenType.CURRENT_USER",
+     "TokenType.DATABASE",
+     "TokenType.DATE",
+     "TokenType.DATE32",
+     "TokenType.DATEMULTIRANGE",
+     "TokenType.DATERANGE",
+     "TokenType.DATETIME",
+     "TokenType.DATETIME2",
+     "TokenType.DATETIME64",
+     "TokenType.DECFLOAT",
+     "TokenType.DECIMAL",
+     "TokenType.DECIMAL128",
+     "TokenType.DECIMAL256",
+     "TokenType.DECIMAL32",
+     "TokenType.DECIMAL64",
+     "TokenType.DECLARE",
+     "TokenType.DEFAULT",
+     "TokenType.DELETE",
+     "TokenType.DESC",
+     "TokenType.DESCRIBE",
+     "TokenType.DETACH",
+     "TokenType.DICTIONARY",
+     "TokenType.DIV",
+     "TokenType.DOUBLE",
+     "TokenType.DYNAMIC",
+     "TokenType.END",
+     "TokenType.ENUM",
+     "TokenType.ENUM16",
+     "TokenType.ENUM8",
+     "TokenType.ESCAPE",
+     "TokenType.EXECUTE",
+     "TokenType.EXISTS",
+     "TokenType.EXPORT",
+     "TokenType.FALSE",
+     "TokenType.FILE",
+     "TokenType.FILE_FORMAT",
+     "TokenType.FILTER",
+     "TokenType.FINAL",
+     "TokenType.FIRST",
+     "TokenType.FIXEDSTRING",
+     "TokenType.FLOAT",
+     "TokenType.FOREIGN_KEY",
+     "TokenType.FORMAT",
+     "TokenType.FUNCTION",
+     "TokenType.GEOGRAPHY",
+     "TokenType.GEOGRAPHYPOINT",
+     "TokenType.GEOMETRY",
+     "TokenType.GET",
+     "TokenType.HLLSKETCH",
+     "TokenType.HSTORE",
+     "TokenType.IDENTIFIER",
+     "TokenType.IMAGE",
+     "TokenType.INDEX",
+     "TokenType.INET",
+     "TokenType.INOUT",
+     "TokenType.INT",
+     "TokenType.INT128",
+     "TokenType.INT256",
+     "TokenType.INT4MULTIRANGE",
+     "TokenType.INT4RANGE",
+     "TokenType.INT8MULTIRANGE",
+     "TokenType.INT8RANGE",
+     "TokenType.INTERVAL",
+     "TokenType.IPADDRESS",
+     "TokenType.IPPREFIX",
+     "TokenType.IPV4",
+     "TokenType.IPV6",
+     "TokenType.ISNULL",
+     "TokenType.JSON",
+     "TokenType.JSONB",
+     "TokenType.KEEP",
+     "TokenType.KILL",
+     "TokenType.LIMIT",
+     "TokenType.LINESTRING",
+     "TokenType.LIST",
+     "TokenType.LOAD",
+     "TokenType.LOCALTIME",
+     "TokenType.LOCALTIMESTAMP",
+     "TokenType.LONGBLOB",
+     "TokenType.LONGTEXT",
+     "TokenType.LOWCARDINALITY",
+     "TokenType.MAP",
+     "TokenType.MATCH",
+     "TokenType.MEDIUMBLOB",
+     "TokenType.MEDIUMINT",
+     "TokenType.MEDIUMTEXT",
+     "TokenType.MERGE",
+     "TokenType.MODEL",
+     "TokenType.MONEY",
+     "TokenType.MULTILINESTRING",
+     "TokenType.MULTIPOLYGON",
+     "TokenType.NAME",
+     "TokenType.NAMESPACE",
+     "TokenType.NCHAR",
+     "TokenType.NESTED",
+     "TokenType.NEXT",
+     "TokenType.NOTHING",
+     "TokenType.NULL",
+     "TokenType.NULLABLE",
+     "TokenType.NUMMULTIRANGE",
+     "TokenType.NUMRANGE",
+     "TokenType.NVARCHAR",
+     "TokenType.OBJECT",
+     "TokenType.OBJECT_IDENTIFIER",
+     "TokenType.OFFSET",
+     "TokenType.OPERATOR",
+     "TokenType.ORDINALITY",
+     "TokenType.OUT",
+     "TokenType.OVER",
+     "TokenType.OVERLAPS",
+     "TokenType.OVERWRITE",
+     "TokenType.PARTITION",
+     "TokenType.PERCENT",
+     "TokenType.PIVOT",
+     "TokenType.POINT",
+     "TokenType.POLYGON",
+     "TokenType.PRAGMA",
+     "TokenType.PROCEDURE",
+     "TokenType.PROJECTION",
+     "TokenType.PSEUDO_TYPE",
+     "TokenType.PUT",
+     "TokenType.RANGE",
+     "TokenType.RECURSIVE",
+     "TokenType.REFERENCES",
+     "TokenType.REFRESH",
+     "TokenType.RENAME",
+     "TokenType.REPLACE",
+     "TokenType.RING",
+     "TokenType.ROLLUP",
+     "TokenType.ROW",
+     "TokenType.ROWS",
+     "TokenType.ROWVERSION",
+     "TokenType.SCHEMA",
+     "TokenType.SEMANTIC_VIEW",
+     "TokenType.SEQUENCE",
+     "TokenType.SERIAL",
+     "TokenType.SESSION",
+     "TokenType.SESSION_USER",
+     "TokenType.SET",
+     "TokenType.SETTINGS",
+     "TokenType.SHOW",
+     "TokenType.SIMPLEAGGREGATEFUNCTION",
+     "TokenType.SINK",
+     "TokenType.SMALLDATETIME",
+     "TokenType.SMALLINT",
+     "TokenType.SMALLMONEY",
+     "TokenType.SMALLSERIAL",
+     "TokenType.SOME",
+     "TokenType.SOURCE",
+     "TokenType.STAGE",
+     "TokenType.STORAGE_INTEGRATION",
+     "TokenType.STRAIGHT_JOIN",
+     "TokenType.STREAM",
+     "TokenType.STREAMLIT",
+     "TokenType.STRUCT",
+     "TokenType.SUPER",
+     "TokenType.TABLE",
+     "TokenType.TAG",
+     "TokenType.TDIGEST",
+     "TokenType.TEMPORARY",
+     "TokenType.TEXT",
+     "TokenType.TIME",
+     "TokenType.TIMESTAMP",
+     "TokenType.TIMESTAMPLTZ",
+     "TokenType.TIMESTAMPNTZ",
+     "TokenType.TIMESTAMPTZ",
+     "TokenType.TIMESTAMP_MS",
+     "TokenType.TIMESTAMP_NS",
+     "TokenType.TIMESTAMP_S",
+     "TokenType.TIMETZ",
+     "TokenType.TIME_NS",
+     "TokenType.TINYBLOB",
+     "TokenType.TINYINT",
+     "TokenType.TINYTEXT",
+     "TokenType.TOP",
+     "TokenType.TRIGGER",
+     "TokenType.TRUE",
+     "TokenType.TRUNCATE",
+     "TokenType.TSMULTIRANGE",
+     "TokenType.TSRANGE",
+     "TokenType.TSTZMULTIRANGE",
+     "TokenType.TSTZRANGE",
+     "TokenType.TYPE",
+     "TokenType.UBIGINT",
+     "TokenType.UDECIMAL",
+     "TokenType.UDOUBLE",
+     "TokenType.UINT",
+     "TokenType.UINT128",
+     "TokenType.UINT256",
+     "TokenType.UMEDIUMINT",
+     "TokenType.UNIQUE",
+     "TokenType.UNKNOWN",
+     "TokenType.UNNEST",
+     "TokenType.UNPIVOT",
+     "TokenType.UPDATE",
+     "TokenType.USE",
+     "TokenType.USERDEFINED",
+     "TokenType.USMALLINT",
+     "TokenType.UTINYINT",
+     "TokenType.UUID",
+     "TokenType.VAR",
+     "TokenType.VARBINARY",
+     "TokenType.VARCHAR",
+     "TokenType.VARIANT",
+     "TokenType.VECTOR",
+     "TokenType.VIEW",
+     "TokenType.VOID",
+     "TokenType.VOLATILE",
+     "TokenType.WAREHOUSE",
+     "TokenType.XML",
+     "TokenType.YEAR"
+    ]
+   }
+  },
+  "COMPARISON": {
+   "kind": "dict",
+   "size": 4,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.GT",
+      "exp.GT"
+     ],
+     [
+      "TokenType.GTE",
+      "exp.GTE"
+     ],
+     [
+      "TokenType.LT",
+      "exp.LT"
+     ],
+     [
+      "TokenType.LTE",
+      "exp.LTE"
+     ]
+    ]
+   }
+  },
+  "CONFLICT_ACTIONS": {
+   "kind": "dict",
+   "size": 7,
+   "entries": {
+    "__dict__": [
+     [
+      "ABORT",
+      []
+     ],
+     [
+      "FAIL",
+      []
+     ],
+     [
+      "IGNORE",
+      []
+     ],
+     [
+      "REPLACE",
+      []
+     ],
+     [
+      "ROLLBACK",
+      []
+     ],
+     [
+      "UPDATE",
+      []
+     ],
+     [
+      "DO",
+      [
+       "NOTHING",
+       "UPDATE"
+      ]
+     ]
+    ]
+   }
+  },
+  "CONJUNCTION": {
+   "kind": "dict",
+   "size": 1,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.AND",
+      "exp.And"
+     ]
+    ]
+   }
+  },
+  "CONSTRAINT_PARSERS": {
+   "kind": "dict",
+   "size": 33,
+   "entries": {
+    "__dict__": [
+     [
+      "AUTOINCREMENT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "AUTO_INCREMENT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "CASESPECIFIC",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "CHECK",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "COLLATE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "COMMENT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "COMPRESS",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "CLUSTERED",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "NONCLUSTERED",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "DEFAULT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ENCODE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "EPHEMERAL",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "EXCLUDE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "FOREIGN KEY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "FORMAT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "GENERATED",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "IDENTITY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "INLINE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "LIKE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "NOT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "NULL",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ON",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "PATH",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "PERIOD",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "PRIMARY KEY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "REFERENCES",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TITLE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TTL",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "UNIQUE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "UPPERCASE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "WITH",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "BUCKET",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TRUNCATE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "COPY_INTO_VARLEN_OPTIONS": {
+   "kind": "set",
+   "size": 4,
+   "entries": {
+    "__set__": [
+     "COPY_OPTIONS",
+     "CREDENTIAL",
+     "FILE_FORMAT",
+     "FORMAT_OPTIONS"
+    ]
+   }
+  },
+  "CREATABLES": {
+   "kind": "set",
+   "size": 25,
+   "entries": {
+    "__set__": [
+     "TokenType.COLUMN",
+     "TokenType.CONSTRAINT",
+     "TokenType.DATABASE",
+     "TokenType.DICTIONARY",
+     "TokenType.FILE_FORMAT",
+     "TokenType.FOREIGN_KEY",
+     "TokenType.FUNCTION",
+     "TokenType.INDEX",
+     "TokenType.MODEL",
+     "TokenType.NAMESPACE",
+     "TokenType.PROCEDURE",
+     "TokenType.SCHEMA",
+     "TokenType.SEMANTIC_VIEW",
+     "TokenType.SEQUENCE",
+     "TokenType.SINK",
+     "TokenType.SOURCE",
+     "TokenType.STAGE",
+     "TokenType.STORAGE_INTEGRATION",
+     "TokenType.STREAMLIT",
+     "TokenType.TABLE",
+     "TokenType.TAG",
+     "TokenType.TRIGGER",
+     "TokenType.TYPE",
+     "TokenType.VIEW",
+     "TokenType.WAREHOUSE"
+    ]
+   }
+  },
+  "CREATE_SEQUENCE": {
+   "kind": "dict",
+   "size": 16,
+   "entries": {
+    "__dict__": [
+     [
+      "SCALE",
+      [
+       "EXTEND",
+       "NOEXTEND"
+      ]
+     ],
+     [
+      "SHARD",
+      [
+       "EXTEND",
+       "NOEXTEND"
+      ]
+     ],
+     [
+      "NO",
+      [
+       "CYCLE",
+       "CACHE",
+       "MAXVALUE",
+       "MINVALUE"
+      ]
+     ],
+     [
+      "SESSION",
+      []
+     ],
+     [
+      "GLOBAL",
+      []
+     ],
+     [
+      "KEEP",
+      []
+     ],
+     [
+      "NOKEEP",
+      []
+     ],
+     [
+      "ORDER",
+      []
+     ],
+     [
+      "NOORDER",
+      []
+     ],
+     [
+      "NOCACHE",
+      []
+     ],
+     [
+      "CYCLE",
+      []
+     ],
+     [
+      "NOCYCLE",
+      []
+     ],
+     [
+      "NOMINVALUE",
+      []
+     ],
+     [
+      "NOMAXVALUE",
+      []
+     ],
+     [
+      "NOSCALE",
+      []
+     ],
+     [
+      "NOSHARD",
+      []
+     ]
+    ]
+   }
+  },
+  "DB_CREATABLES": {
+   "kind": "set",
+   "size": 17,
+   "entries": {
+    "__set__": [
+     "TokenType.DATABASE",
+     "TokenType.DICTIONARY",
+     "TokenType.FILE_FORMAT",
+     "TokenType.MODEL",
+     "TokenType.NAMESPACE",
+     "TokenType.SCHEMA",
+     "TokenType.SEMANTIC_VIEW",
+     "TokenType.SEQUENCE",
+     "TokenType.SINK",
+     "TokenType.SOURCE",
+     "TokenType.STAGE",
+     "TokenType.STORAGE_INTEGRATION",
+     "TokenType.STREAMLIT",
+     "TokenType.TABLE",
+     "TokenType.TAG",
+     "TokenType.VIEW",
+     "TokenType.WAREHOUSE"
+    ]
+   }
+  },
+  "DDL_SELECT_TOKENS": {
+   "kind": "set",
+   "size": 3,
+   "entries": {
+    "__set__": [
+     "TokenType.L_PAREN",
+     "TokenType.SELECT",
+     "TokenType.WITH"
+    ]
+   }
+  },
+  "DESCRIBE_STYLES": {
+   "kind": "set",
+   "size": 4,
+   "entries": {
+    "__set__": [
+     "ANALYZE",
+     "EXTENDED",
+     "FORMATTED",
+     "HISTORY"
+    ]
+   }
+  },
+  "DISJUNCTION": {
+   "kind": "dict",
+   "size": 1,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.OR",
+      "exp.Or"
+     ]
+    ]
+   }
+  },
+  "DISTINCT_TOKENS": {
+   "kind": "set",
+   "size": 1,
+   "entries": {
+    "__set__": [
+     "TokenType.DISTINCT"
+    ]
+   }
+  },
+  "ENUM_TYPE_TOKENS": {
+   "kind": "set",
+   "size": 4,
+   "entries": {
+    "__set__": [
+     "TokenType.DYNAMIC",
+     "TokenType.ENUM",
+     "TokenType.ENUM16",
+     "TokenType.ENUM8"
+    ]
+   }
+  },
+  "EQUALITY": {
+   "kind": "dict",
+   "size": 3,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.EQ",
+      "exp.EQ"
+     ],
+     [
+      "TokenType.NEQ",
+      "exp.NEQ"
+     ],
+     [
+      "TokenType.NULLSAFE_EQ",
+      "exp.NullSafeEQ"
+     ]
+    ]
+   }
+  },
+  "EXECUTE_AS_OPTIONS": {
+   "kind": "dict",
+   "size": 3,
+   "entries": {
+    "__dict__": [
+     [
+      "CALLER",
+      []
+     ],
+     [
+      "SELF",
+      []
+     ],
+     [
+      "OWNER",
+      []
+     ]
+    ]
+   }
+  },
+  "EXPONENT": {
+   "kind": "dict",
+   "size": 0,
+   "entries": {
+    "__dict__": []
+   }
+  },
+  "EXPRESSION_PARSERS": {
+   "kind": "dict",
+   "size": 33,
+   "entries": {
+    "__dict__": [
+     [
+      "exp.Cluster",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Column",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.ColumnDef",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Condition",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.DataType",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Expr",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.From",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.GrantPrincipal",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.GrantPrivilege",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Group",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Having",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Hint",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Identifier",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Join",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Lambda",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Lateral",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Limit",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Offset",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Order",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Ordered",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Properties",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.PartitionedByProperty",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Qualify",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Returning",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Select",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Sort",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Table",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.TableAlias",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Tuple",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Whens",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Where",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.Window",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "exp.With",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "FACTOR": {
+   "kind": "dict",
+   "size": 5,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.DIV",
+      "exp.IntDiv"
+     ],
+     [
+      "TokenType.LR_ARROW",
+      "exp.Distance"
+     ],
+     [
+      "TokenType.LLRR_ARROW",
+      "exp.DistanceNd"
+     ],
+     [
+      "TokenType.SLASH",
+      "exp.Div"
+     ],
+     [
+      "TokenType.STAR",
+      "exp.Mul"
+     ]
+    ]
+   }
+  },
+  "FETCH_TOKENS": {
+   "kind": "set",
+   "size": 255,
+   "entries": {
+    "__set__": [
+     "TokenType.AGGREGATEFUNCTION",
+     "TokenType.ALL",
+     "TokenType.ANALYZE",
+     "TokenType.ANTI",
+     "TokenType.ANY",
+     "TokenType.APPLY",
+     "TokenType.ARRAY",
+     "TokenType.ASC",
+     "TokenType.ASOF",
+     "TokenType.ATTACH",
+     "TokenType.AUTO_INCREMENT",
+     "TokenType.BEGIN",
+     "TokenType.BIGDECIMAL",
+     "TokenType.BIGINT",
+     "TokenType.BIGNUM",
+     "TokenType.BIGSERIAL",
+     "TokenType.BINARY",
+     "TokenType.BIT",
+     "TokenType.BLOB",
+     "TokenType.BOOLEAN",
+     "TokenType.BPCHAR",
+     "TokenType.CACHE",
+     "TokenType.CASE",
+     "TokenType.CHAR",
+     "TokenType.COLLATE",
+     "TokenType.COLUMN",
+     "TokenType.COMMAND",
+     "TokenType.COMMENT",
+     "TokenType.COMMIT",
+     "TokenType.CONSTRAINT",
+     "TokenType.COPY",
+     "TokenType.CUBE",
+     "TokenType.CURRENT_CATALOG",
+     "TokenType.CURRENT_DATE",
+     "TokenType.CURRENT_DATETIME",
+     "TokenType.CURRENT_ROLE",
+     "TokenType.CURRENT_SCHEMA",
+     "TokenType.CURRENT_TIME",
+     "TokenType.CURRENT_TIMESTAMP",
+     "TokenType.CURRENT_USER",
+     "TokenType.DATABASE",
+     "TokenType.DATE",
+     "TokenType.DATE32",
+     "TokenType.DATEMULTIRANGE",
+     "TokenType.DATERANGE",
+     "TokenType.DATETIME",
+     "TokenType.DATETIME2",
+     "TokenType.DATETIME64",
+     "TokenType.DECFLOAT",
+     "TokenType.DECIMAL",
+     "TokenType.DECIMAL128",
+     "TokenType.DECIMAL256",
+     "TokenType.DECIMAL32",
+     "TokenType.DECIMAL64",
+     "TokenType.DECLARE",
+     "TokenType.DEFAULT",
+     "TokenType.DELETE",
+     "TokenType.DESC",
+     "TokenType.DESCRIBE",
+     "TokenType.DETACH",
+     "TokenType.DICTIONARY",
+     "TokenType.DIV",
+     "TokenType.DOUBLE",
+     "TokenType.DYNAMIC",
+     "TokenType.END",
+     "TokenType.ENUM",
+     "TokenType.ENUM16",
+     "TokenType.ENUM8",
+     "TokenType.ESCAPE",
+     "TokenType.EXECUTE",
+     "TokenType.EXISTS",
+     "TokenType.EXPORT",
+     "TokenType.FALSE",
+     "TokenType.FILE",
+     "TokenType.FILE_FORMAT",
+     "TokenType.FILTER",
+     "TokenType.FINAL",
+     "TokenType.FIRST",
+     "TokenType.FIXEDSTRING",
+     "TokenType.FLOAT",
+     "TokenType.FOREIGN_KEY",
+     "TokenType.FORMAT",
+     "TokenType.FULL",
+     "TokenType.FUNCTION",
+     "TokenType.GEOGRAPHY",
+     "TokenType.GEOGRAPHYPOINT",
+     "TokenType.GEOMETRY",
+     "TokenType.GET",
+     "TokenType.HLLSKETCH",
+     "TokenType.HSTORE",
+     "TokenType.IDENTIFIER",
+     "TokenType.IMAGE",
+     "TokenType.INDEX",
+     "TokenType.INET",
+     "TokenType.INOUT",
+     "TokenType.INT",
+     "TokenType.INT128",
+     "TokenType.INT256",
+     "TokenType.INT4MULTIRANGE",
+     "TokenType.INT4RANGE",
+     "TokenType.INT8MULTIRANGE",
+     "TokenType.INT8RANGE",
+     "TokenType.INTERVAL",
+     "TokenType.IPADDRESS",
+     "TokenType.IPPREFIX",
+     "TokenType.IPV4",
+     "TokenType.IPV6",
+     "TokenType.IS",
+     "TokenType.ISNULL",
+     "TokenType.JSON",
+     "TokenType.JSONB",
+     "TokenType.KEEP",
+     "TokenType.KILL",
+     "TokenType.LEFT",
+     "TokenType.LIMIT",
+     "TokenType.LINESTRING",
+     "TokenType.LIST",
+     "TokenType.LOAD",
+     "TokenType.LOCALTIME",
+     "TokenType.LOCALTIMESTAMP",
+     "TokenType.LOCK",
+     "TokenType.LONGBLOB",
+     "TokenType.LONGTEXT",
+     "TokenType.LOWCARDINALITY",
+     "TokenType.MAP",
+     "TokenType.MATCH",
+     "TokenType.MEDIUMBLOB",
+     "TokenType.MEDIUMINT",
+     "TokenType.MEDIUMTEXT",
+     "TokenType.MERGE",
+     "TokenType.MODEL",
+     "TokenType.MONEY",
+     "TokenType.MULTILINESTRING",
+     "TokenType.MULTIPOLYGON",
+     "TokenType.NAME",
+     "TokenType.NAMESPACE",
+     "TokenType.NATURAL",
+     "TokenType.NCHAR",
+     "TokenType.NESTED",
+     "TokenType.NEXT",
+     "TokenType.NOTHING",
+     "TokenType.NULL",
+     "TokenType.NULLABLE",
+     "TokenType.NUMMULTIRANGE",
+     "TokenType.NUMRANGE",
+     "TokenType.NVARCHAR",
+     "TokenType.OBJECT",
+     "TokenType.OBJECT_IDENTIFIER",
+     "TokenType.OFFSET",
+     "TokenType.OPERATOR",
+     "TokenType.ORDINALITY",
+     "TokenType.OUT",
+     "TokenType.OVER",
+     "TokenType.OVERLAPS",
+     "TokenType.OVERWRITE",
+     "TokenType.PARTITION",
+     "TokenType.PIVOT",
+     "TokenType.POINT",
+     "TokenType.POLYGON",
+     "TokenType.PRAGMA",
+     "TokenType.PROCEDURE",
+     "TokenType.PROJECTION",
+     "TokenType.PSEUDO_TYPE",
+     "TokenType.PUT",
+     "TokenType.RANGE",
+     "TokenType.RECURSIVE",
+     "TokenType.REFERENCES",
+     "TokenType.REFRESH",
+     "TokenType.RENAME",
+     "TokenType.REPLACE",
+     "TokenType.RIGHT",
+     "TokenType.RING",
+     "TokenType.ROLLUP",
+     "TokenType.ROWVERSION",
+     "TokenType.SCHEMA",
+     "TokenType.SEMANTIC_VIEW",
+     "TokenType.SEMI",
+     "TokenType.SEQUENCE",
+     "TokenType.SERIAL",
+     "TokenType.SESSION",
+     "TokenType.SESSION_USER",
+     "TokenType.SET",
+     "TokenType.SETTINGS",
+     "TokenType.SHOW",
+     "TokenType.SIMPLEAGGREGATEFUNCTION",
+     "TokenType.SINK",
+     "TokenType.SMALLDATETIME",
+     "TokenType.SMALLINT",
+     "TokenType.SMALLMONEY",
+     "TokenType.SMALLSERIAL",
+     "TokenType.SOME",
+     "TokenType.SOURCE",
+     "TokenType.STAGE",
+     "TokenType.STORAGE_INTEGRATION",
+     "TokenType.STRAIGHT_JOIN",
+     "TokenType.STREAM",
+     "TokenType.STREAMLIT",
+     "TokenType.STRUCT",
+     "TokenType.SUPER",
+     "TokenType.TABLE",
+     "TokenType.TAG",
+     "TokenType.TDIGEST",
+     "TokenType.TEMPORARY",
+     "TokenType.TEXT",
+     "TokenType.TIME",
+     "TokenType.TIMESTAMP",
+     "TokenType.TIMESTAMPLTZ",
+     "TokenType.TIMESTAMPNTZ",
+     "TokenType.TIMESTAMPTZ",
+     "TokenType.TIMESTAMP_MS",
+     "TokenType.TIMESTAMP_NS",
+     "TokenType.TIMESTAMP_S",
+     "TokenType.TIMETZ",
+     "TokenType.TIME_NS",
+     "TokenType.TINYBLOB",
+     "TokenType.TINYINT",
+     "TokenType.TINYTEXT",
+     "TokenType.TOP",
+     "TokenType.TRIGGER",
+     "TokenType.TRUE",
+     "TokenType.TRUNCATE",
+     "TokenType.TSMULTIRANGE",
+     "TokenType.TSRANGE",
+     "TokenType.TSTZMULTIRANGE",
+     "TokenType.TSTZRANGE",
+     "TokenType.TYPE",
+     "TokenType.UBIGINT",
+     "TokenType.UDECIMAL",
+     "TokenType.UDOUBLE",
+     "TokenType.UINT",
+     "TokenType.UINT128",
+     "TokenType.UINT256",
+     "TokenType.UMEDIUMINT",
+     "TokenType.UNIQUE",
+     "TokenType.UNKNOWN",
+     "TokenType.UNNEST",
+     "TokenType.UNPIVOT",
+     "TokenType.UPDATE",
+     "TokenType.USE",
+     "TokenType.USERDEFINED",
+     "TokenType.USMALLINT",
+     "TokenType.UTINYINT",
+     "TokenType.UUID",
+     "TokenType.VAR",
+     "TokenType.VARBINARY",
+     "TokenType.VARCHAR",
+     "TokenType.VARIANT",
+     "TokenType.VECTOR",
+     "TokenType.VIEW",
+     "TokenType.VOID",
+     "TokenType.VOLATILE",
+     "TokenType.WAREHOUSE",
+     "TokenType.WINDOW",
+     "TokenType.XML",
+     "TokenType.YEAR"
+    ]
+   }
+  },
+  "FUNCTIONS": {
+   "kind": "dict",
+   "size": 648,
+   "entries": {
+    "__dict__": [
+     [
+      "AI_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "AI_CLASSIFY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "AI_EMBED",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "A_I_FORECAST",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "AI_GENERATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "AI_SIMILARITY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "AI_SUMMARIZE_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ABS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ACOS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ACOSH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ADD_MONTHS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "AND",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ANONYMOUS_AGG_FUNC",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ANY_VALUE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "APPLY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "APPROX_DISTINCT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "APPROX_COUNT_DISTINCT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "APPROX_PERCENTILE_ACCUMULATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "APPROX_PERCENTILE_COMBINE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "APPROX_PERCENTILE_ESTIMATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "APPROX_QUANTILE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "APPROX_QUANTILES",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "APPROX_TOP_K",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "APPROX_TOP_K_ACCUMULATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "APPROX_TOP_K_COMBINE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "APPROX_TOP_K_ESTIMATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "APPROX_TOP_SUM",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "APPROXIMATE_SIMILARITY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "APPROXIMATE_JACCARD_INDEX",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARG_MAX",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARGMAX",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MAX_BY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARG_MIN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARGMIN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MIN_BY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ARRAY_AGG",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ARRAY_ALL",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_ANY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_APPEND",
+      {
+       "__callable__": "build_array_append"
+      }
+     ],
+     [
+      "ARRAY_COMPACT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_CONCAT",
+      {
+       "__callable__": "build_array_concat"
+      }
+     ],
+     [
+      "ARRAY_CAT",
+      {
+       "__callable__": "build_array_concat"
+      }
+     ],
+     [
+      "ARRAY_CONCAT_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_CONSTRUCT_COMPACT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_CONTAINED_BY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_CONTAINS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_HAS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_CONTAINS_ALL",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_HAS_ALL",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_DISTINCT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_EXCEPT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "FILTER",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_FILTER",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_FIRST",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_INSERT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_INTERSECT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ARRAY_INTERSECTION",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ARRAY_LAST",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_MAX",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_MIN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_OVERLAPS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_POSITION",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_PREPEND",
+      {
+       "__callable__": "build_array_prepend"
+      }
+     ],
+     [
+      "ARRAY_REMOVE",
+      {
+       "__callable__": "build_array_remove"
+      }
+     ],
+     [
+      "ARRAY_REMOVE_AT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_REVERSE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_SIZE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_LENGTH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_SLICE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_SORT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_SUM",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_TO_STRING",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_JOIN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_UNION_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAY_UNIQUE_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAYS_ZIP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ASCII",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ASIN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ASINH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ATAN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ATAN2",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ATANH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "AVG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BASE64_DECODE_BINARY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BASE64_DECODE_STRING",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BASE64_ENCODE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BIT_LENGTH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BITMAP_BIT_POSITION",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BITMAP_BUCKET_NUMBER",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BITMAP_CONSTRUCT_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BITMAP_COUNT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BITMAP_OR_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BITWISE_AND_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BITWISE_COUNT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BITWISE_OR_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BITWISE_XOR_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BOOLAND",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BOOLNOT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BOOLOR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BOOLXOR_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BYTE_LENGTH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CASE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CAST",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CAST_TO_STR_TYPE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CBRT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CEIL",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CEILING",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CHECK_JSON",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CHECK_XML",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CHR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CHAR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CITY_HASH64",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "COALESCE",
+      {
+       "__callable__": "build_coalesce"
+      }
+     ],
+     [
+      "IFNULL",
+      {
+       "__callable__": "build_coalesce"
+      }
+     ],
+     [
+      "NVL",
+      {
+       "__callable__": "build_coalesce"
+      }
+     ],
+     [
+      "CODE_POINTS_TO_BYTES",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CODE_POINTS_TO_STRING",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "COLLATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "COLLATION",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "COLUMNS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "COMBINED_AGG_FUNC",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "COMBINED_PARAMETERIZED_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "COMPRESS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CONCAT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "CONCAT_WS",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "CONNECT_BY_ROOT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CONTAINS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CONVERT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CONVERT_TIMEZONE",
+      {
+       "__callable__": "build_convert_timezone"
+      }
+     ],
+     [
+      "CONVERT_TO_CHARSET",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CORR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "COS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "COSH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "COSINE_DISTANCE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "COT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "COTH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "COUNT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "COUNT_IF",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "COUNTIF",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "COVAR_POP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "COVAR_SAMP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CSC",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CSCH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CUME_DIST",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_ACCOUNT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_ACCOUNT_NAME",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_AVAILABLE_ROLES",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_CATALOG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_CLIENT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_DATABASE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_DATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_DATETIME",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_IP_ADDRESS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_ORGANIZATION_NAME",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_ORGANIZATION_USER",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_REGION",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_ROLE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_ROLE_TYPE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_SCHEMA",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_SCHEMAS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_SECONDARY_ROLES",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_SESSION",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_STATEMENT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_TIME",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_TIMESTAMP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_TIMESTAMP_L_T_Z",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_TIMEZONE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_TRANSACTION",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_USER",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_USER_ID",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_VERSION",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CURRENT_WAREHOUSE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DATE_ADD",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DATE_BIN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DATEDIFF",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DATE_DIFF",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DATE_FROM_PARTS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DATEFROMPARTS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DATE_FROM_UNIX_DATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DATE_STR_TO_DATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DATE_SUB",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DATE_TO_DATE_STR",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "DATE_TO_DI",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DATE_TRUNC",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DATETIME",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DATETIME_ADD",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DATETIME_DIFF",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DATETIME_SUB",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DATETIME_TRUNC",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DAY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DAY_OF_MONTH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DAYOFMONTH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DAY_OF_WEEK",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DAYOFWEEK",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DAYOFWEEK_ISO",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ISODOW",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DAY_OF_YEAR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DAYOFYEAR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DAYNAME",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DECODE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DECODE_CASE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DECOMPRESS_BINARY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DECOMPRESS_STRING",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DECRYPT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DECRYPT_RAW",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DEGREES",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DENSE_RANK",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DI_TO_DATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DOT_PRODUCT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "DYNAMIC_IDENTIFIER",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ELT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ENCODE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ENCRYPT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ENCRYPT_RAW",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ENDS_WITH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ENDSWITH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "EQUAL_NULL",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "EUCLIDEAN_DISTANCE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "EXISTS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "EXP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "EXPLODE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "EXPLODING_GENERATE_SERIES",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "EXTRACT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "FACTORIAL",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "FARM_FINGERPRINT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "FARMFINGERPRINT64",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "FEATURES_AT_TIME",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "FIRST",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "FIRST_VALUE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "FLATTEN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "FLOAT64",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "FLOOR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "FORMAT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "FROM_BASE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "FROM_BASE32",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "FROM_BASE64",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "FROM_ISO8601_DATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "FROM_ISO8601_TIMESTAMP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "FROM_ISO8601_TIMESTAMP_NANOS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "GAP_FILL",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "GENERATE_BOOL",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "GENERATE_DATE_ARRAY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "GENERATE_DOUBLE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "GENERATE_EMBEDDING",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "GENERATE_INT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "GENERATE_SERIES",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "GENERATE_TABLE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "GENERATE_TEXT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "GENERATE_TIMESTAMP_ARRAY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "GENERATOR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "GET_EXTRACT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "GET_IGNORE_CASE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "GETBIT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "GET_BIT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "GREATEST",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "GROUP_CONCAT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "GROUPING",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "GROUPING_ID",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "HASH_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "HEX",
+      {
+       "__callable__": "build_hex"
+      }
+     ],
+     [
+      "HEX_DECODE_STRING",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "HLL",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "HOST",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "HOUR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "IF",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "IIF",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "INITCAP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "INLINE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "INT64",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "IS_ARRAY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "IS_ASCII",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "IS_INF",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ISINF",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "IS_NAN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ISNAN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "IS_NULL_VALUE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "J_S_O_N_ARRAY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "J_S_O_N_ARRAY_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "JSON_ARRAY_APPEND",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "JSON_ARRAY_CONTAINS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "JSON_ARRAY_INSERT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "JSONB_CONTAINS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "J_S_O_N_B_CONTAINS_ALL_TOP_KEYS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "J_S_O_N_B_CONTAINS_ANY_TOP_KEYS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "J_S_O_N_B_CONTAINS_TOP_KEY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "J_S_O_N_B_DELETE_AT_PATH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "JSONB_EXISTS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "JSONB_EXTRACT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "JSONB_EXTRACT_SCALAR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "J_S_O_N_B_OBJECT_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "J_S_O_N_B_PATH_EXISTS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "J_S_O_N_BOOL",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "J_S_O_N_CAST",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "J_S_O_N_EXISTS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "JSON_EXTRACT",
+      {
+       "__callable__": "_builder"
+      }
+     ],
+     [
+      "JSON_EXTRACT_ARRAY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "JSON_EXTRACT_SCALAR",
+      {
+       "__callable__": "_builder"
+      }
+     ],
+     [
+      "JSON_FORMAT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "JSON_KEYS",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "J_S_O_N_KEYS_AT_DEPTH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "J_S_O_N_OBJECT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "J_S_O_N_OBJECT_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "JSON_REMOVE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "JSON_SET",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "JSON_STRIP_NULLS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "J_S_O_N_TABLE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "JSON_TYPE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "J_S_O_N_VALUE_ARRAY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "JAROWINKLER_SIMILARITY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "JUSTIFY_DAYS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "JUSTIFY_HOURS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "JUSTIFY_INTERVAL",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "KURTOSIS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LAG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LAST",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LAST_DAY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LAST_DAY_OF_MONTH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LAST_VALUE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LAX_BOOL",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LAX_FLOAT64",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LAX_INT64",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LAX_STRING",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LEAD",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LEAST",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "LEFT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LENGTH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LEN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CHAR_LENGTH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CHARACTER_LENGTH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LEVENSHTEIN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LIST",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LOCALTIME",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LOCALTIMESTAMP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LOG",
+      {
+       "__callable__": "build_logarithm"
+      }
+     ],
+     [
+      "LOGICAL_AND",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BOOL_AND",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BOOLAND_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LOGICAL_OR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BOOL_OR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "BOOLOR_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LOWER",
+      {
+       "__callable__": "build_lower"
+      }
+     ],
+     [
+      "LCASE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LOWER_HEX",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MD5",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MD5_DIGEST",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "M_D5_NUMBER_LOWER64",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "M_D5_NUMBER_UPPER64",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "M_L_FORECAST",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "M_L_TRANSLATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MAKE_INTERVAL",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MANHATTAN_DISTANCE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MAP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MAP_CAT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MAP_CONTAINS_KEY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MAP_DELETE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MAP_FROM_ENTRIES",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MAP_INSERT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MAP_KEYS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MAP_PICK",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MAP_SIZE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MATCH_AGAINST",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MAX",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MEDIAN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MIN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MINHASH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MINHASH_COMBINE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MINUTE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MODE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MONTH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MONTHNAME",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "MONTHS_BETWEEN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "NANVL",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "NEGATIVE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "NET_FUNC",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "NEXT_DAY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "NEXT_VALUE_FOR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "NORMAL",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "NORMALIZE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "NTH_VALUE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "NTILE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "NULLIF",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "NUMBER_TO_STR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "NVL2",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "OBJECT_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "OBJECT_ID",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "OBJECT_INSERT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "OBJECT_TRANSFORM",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "OPEN_J_S_O_N",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "OR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "OVERLAY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "PAD",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "PARAMETERIZED_AGG",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "PARSE_BIGNUMERIC",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "PARSE_DATETIME",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "PARSE_IP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "PARSE_JSON",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "JSON_PARSE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "PARSE_NUMERIC",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "PARSE_TIME",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "PARSE_URL",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "PERCENT_RANK",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "PERCENTILE_CONT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "PERCENTILE_DISC",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "PI",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "POSEXPLODE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "POSEXPLODE_OUTER",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "POWER",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "POW",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "PREDICT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "PREVIOUS_DAY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "QUANTILE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "QUARTER",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "RADIANS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "RAND",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "RANDOM",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "RANDN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "RANDSTR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "RANGE_BUCKET",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "RANGE_N",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "RANK",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "READ_CSV",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "READ_PARQUET",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REDUCE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REG_DOMAIN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGEXP_COUNT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGEXP_EXTRACT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGEXP_EXTRACT_ALL",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGEXP_FULL_MATCH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGEXP_I_LIKE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGEXP_INSTR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGEXP_LIKE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGEXP_REPLACE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGEXP_SPLIT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGEXP_SUBSTR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGR_AVGX",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGR_AVGY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGR_COUNT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGR_INTERCEPT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGR_R2",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGR_SLOPE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGR_SXX",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGR_SXY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGR_SYY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGR_VALX",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REGR_VALY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REPEAT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REPLACE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "REVERSE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "RIGHT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "RINT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ROUND",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ROW_NUMBER",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "RTRIMMED_LENGTH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SHA",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SHA1",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "S_H_A1_DIGEST",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SHA2",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "S_H_A2_DIGEST",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SAFE_ADD",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SAFE_CONVERT_BYTES_TO_STRING",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SAFE_DIVIDE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SAFE_FUNC",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SAFE_MULTIPLY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SAFE_NEGATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SAFE_SUBTRACT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SEARCH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SEARCH_IP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SEC",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SECH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SECOND",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SECRET",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SEQ1",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SEQ2",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SEQ4",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SEQ8",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SESSION_USER",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SHUFFLE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SIGN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SIGNUM",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SIN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SINH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SKEWNESS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SORT_ARRAY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SOUNDEX",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SOUNDEX_P123",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SPACE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SPLIT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SPLIT_PART",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SQRT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ST_DISTANCE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ST_POINT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ST_MAKEPOINT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STANDARD_HASH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STAR_MAP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STARTS_WITH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STARTSWITH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STDDEV",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STDEV",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STDDEV_POP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STDDEV_SAMP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STR_POSITION",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STR_TO_DATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STR_TO_MAP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STR_TO_TIME",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STR_TO_UNIX",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STRING",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STRING_TO_ARRAY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SPLIT_BY_STRING",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STRIP_NULL_VALUE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STRTOK",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STRTOK_TO_ARRAY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STRUCT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STRUCT_EXTRACT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "STUFF",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "INSERT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SUBSTRING",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SUBSTR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SUBSTRING_INDEX",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SUM",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "SYSTIMESTAMP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TAN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TANH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIME",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIME_ADD",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIME_DIFF",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIME_FROM_PARTS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIMEFROMPARTS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIME_SLICE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIME_STR_TO_DATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIME_STR_TO_TIME",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIME_STR_TO_UNIX",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIME_SUB",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIME_TO_STR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIME_TO_TIME_STR",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TIME_TO_UNIX",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIME_TRUNC",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIMESTAMP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIMESTAMP_ADD",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIMESTAMPDIFF",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIMESTAMP_DIFF",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIMESTAMP_FROM_PARTS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIMESTAMPFROMPARTS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIMESTAMP_LTZ_FROM_PARTS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIMESTAMPLTZFROMPARTS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIMESTAMP_SUB",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIMESTAMP_TRUNC",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIMESTAMP_TZ_FROM_PARTS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TIMESTAMPTZFROMPARTS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TO_ARRAY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TO_BASE32",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TO_BASE64",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TO_BINARY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TO_BOOLEAN",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TO_CHAR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TO_CODE_POINTS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TO_DAYS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TO_DECFLOAT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TO_DOUBLE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TO_FILE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TO_MAP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TO_NUMBER",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TO_VARIANT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TRANSFORM",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TRANSLATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TRIM",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TRUNC",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TRUNCATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TRY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TRY_BASE64_DECODE_BINARY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TRY_BASE64_DECODE_STRING",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TRY_CAST",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TRY_HEX_DECODE_BINARY",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TRY_HEX_DECODE_STRING",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TRY_TO_DECFLOAT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TS_OR_DI_TO_DI",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TS_OR_DS_ADD",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TS_OR_DS_DIFF",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TS_OR_DS_TO_DATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TS_OR_DS_TO_DATE_STR",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TS_OR_DS_TO_DATETIME",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TS_OR_DS_TO_TIME",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TS_OR_DS_TO_TIMESTAMP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "TYPEOF",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "UNHEX",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "UNICODE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "UNIFORM",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "UNIX_DATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "UNIX_MICROS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "UNIX_MILLIS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "UNIX_SECONDS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "UNIX_TO_STR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "UNIX_TO_TIME",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "UNIX_TO_TIME_STR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "UNNEST",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "UPPER",
+      {
+       "__callable__": "build_upper"
+      }
+     ],
+     [
+      "UCASE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "UTC_DATE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "UTC_TIME",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "UTC_TIMESTAMP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "UUID",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "GEN_RANDOM_UUID",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "GENERATE_UUID",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "UUID_STRING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "VAR_MAP",
+      {
+       "__callable__": "build_var_map"
+      }
+     ],
+     [
+      "VARIANCE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "VARIANCE_SAMP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "VAR_SAMP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "VARIANCE_POP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "VAR_POP",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "VECTOR_SEARCH",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "WEEK",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "WEEK_OF_YEAR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "WEEKOFYEAR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "WEEK_START",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "WIDTH_BUCKET",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "XMLELEMENT",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "XMLGET",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "X_M_L_TABLE",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "XOR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "YEAR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "YEAR_OF_WEEK",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "YEAROFWEEK",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "YEAR_OF_WEEK_ISO",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "YEAROFWEEKISO",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ZIPF",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "EXPLODE_OUTER",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "ARRAYAGG",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "GLOB",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "JSON_EXTRACT_PATH_TEXT",
+      {
+       "__callable__": "_builder"
+      }
+     ],
+     [
+      "LIKE",
+      {
+       "__callable__": "build_like"
+      }
+     ],
+     [
+      "LOG2",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "LOG10",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "LPAD",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "LEFTPAD",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "LTRIM",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "MOD",
+      {
+       "__callable__": "build_mod"
+      }
+     ],
+     [
+      "RIGHTPAD",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "RPAD",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "RTRIM",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "SCOPE_RESOLUTION",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "STRPOS",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "CHARINDEX",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "INSTR",
+      {
+       "__callable__": "from_arg_list"
+      }
+     ],
+     [
+      "LOCATE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TO_HEX",
+      {
+       "__callable__": "build_hex"
+      }
+     ]
+    ]
+   }
+  },
+  "FUNCTIONS_WITH_ALIASED_ARGS": {
+   "kind": "set",
+   "size": 1,
+   "entries": {
+    "__set__": [
+     "STRUCT"
+    ]
+   }
+  },
+  "FUNCTION_PARSERS": {
+   "kind": "dict",
+   "size": 32,
+   "entries": {
+    "__dict__": [
+     [
+      "ARG_MAX",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ARGMAX",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "MAX_BY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ARG_MIN",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ARGMIN",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "MIN_BY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "CAST",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "CEIL",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "CONVERT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "CHAR",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "CHR",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "DECODE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "EXTRACT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "FLOOR",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "GAP_FILL",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "INITCAP",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "JSON_OBJECT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "JSON_OBJECTAGG",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "JSON_TABLE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "MATCH",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "NORMALIZE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "OPENJSON",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "OVERLAY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "POSITION",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "SAFE_CAST",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "STRING_AGG",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "SUBSTRING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TRIM",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TRY_CAST",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TRY_CONVERT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "XMLELEMENT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "XMLTABLE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "FUNC_TOKENS": {
+   "kind": "set",
+   "size": 176,
+   "entries": {
+    "__set__": [
+     "TokenType.AGGREGATEFUNCTION",
+     "TokenType.ALL",
+     "TokenType.ANY",
+     "TokenType.ARRAY",
+     "TokenType.BIGDECIMAL",
+     "TokenType.BIGINT",
+     "TokenType.BIGNUM",
+     "TokenType.BIGSERIAL",
+     "TokenType.BINARY",
+     "TokenType.BIT",
+     "TokenType.BLOB",
+     "TokenType.BOOLEAN",
+     "TokenType.BPCHAR",
+     "TokenType.CHAR",
+     "TokenType.COLLATE",
+     "TokenType.COMMAND",
+     "TokenType.CURRENT_CATALOG",
+     "TokenType.CURRENT_DATE",
+     "TokenType.CURRENT_DATETIME",
+     "TokenType.CURRENT_SCHEMA",
+     "TokenType.CURRENT_TIME",
+     "TokenType.CURRENT_TIMESTAMP",
+     "TokenType.CURRENT_USER",
+     "TokenType.DATE",
+     "TokenType.DATE32",
+     "TokenType.DATEMULTIRANGE",
+     "TokenType.DATERANGE",
+     "TokenType.DATETIME",
+     "TokenType.DATETIME2",
+     "TokenType.DATETIME64",
+     "TokenType.DECFLOAT",
+     "TokenType.DECIMAL",
+     "TokenType.DECIMAL128",
+     "TokenType.DECIMAL256",
+     "TokenType.DECIMAL32",
+     "TokenType.DECIMAL64",
+     "TokenType.DECLARE",
+     "TokenType.DOUBLE",
+     "TokenType.DYNAMIC",
+     "TokenType.ENUM",
+     "TokenType.ENUM16",
+     "TokenType.ENUM8",
+     "TokenType.EXISTS",
+     "TokenType.FILTER",
+     "TokenType.FIRST",
+     "TokenType.FIXEDSTRING",
+     "TokenType.FLOAT",
+     "TokenType.FORMAT",
+     "TokenType.GEOGRAPHY",
+     "TokenType.GEOGRAPHYPOINT",
+     "TokenType.GEOMETRY",
+     "TokenType.GET",
+     "TokenType.GLOB",
+     "TokenType.HLLSKETCH",
+     "TokenType.HSTORE",
+     "TokenType.IDENTIFIER",
+     "TokenType.ILIKE",
+     "TokenType.IMAGE",
+     "TokenType.INDEX",
+     "TokenType.INET",
+     "TokenType.INSERT",
+     "TokenType.INT",
+     "TokenType.INT128",
+     "TokenType.INT256",
+     "TokenType.INT4MULTIRANGE",
+     "TokenType.INT4RANGE",
+     "TokenType.INT8MULTIRANGE",
+     "TokenType.INT8RANGE",
+     "TokenType.INTERVAL",
+     "TokenType.IPADDRESS",
+     "TokenType.IPPREFIX",
+     "TokenType.IPV4",
+     "TokenType.IPV6",
+     "TokenType.ISNULL",
+     "TokenType.JSON",
+     "TokenType.JSONB",
+     "TokenType.LEFT",
+     "TokenType.LIKE",
+     "TokenType.LINESTRING",
+     "TokenType.LIST",
+     "TokenType.LOCALTIME",
+     "TokenType.LOCALTIMESTAMP",
+     "TokenType.LONGBLOB",
+     "TokenType.LONGTEXT",
+     "TokenType.LOWCARDINALITY",
+     "TokenType.MAP",
+     "TokenType.MEDIUMBLOB",
+     "TokenType.MEDIUMINT",
+     "TokenType.MEDIUMTEXT",
+     "TokenType.MERGE",
+     "TokenType.MONEY",
+     "TokenType.MULTILINESTRING",
+     "TokenType.MULTIPOLYGON",
+     "TokenType.NAME",
+     "TokenType.NCHAR",
+     "TokenType.NESTED",
+     "TokenType.NEXT",
+     "TokenType.NOTHING",
+     "TokenType.NULL",
+     "TokenType.NULLABLE",
+     "TokenType.NUMMULTIRANGE",
+     "TokenType.NUMRANGE",
+     "TokenType.NVARCHAR",
+     "TokenType.OBJECT",
+     "TokenType.OBJECT_IDENTIFIER",
+     "TokenType.OFFSET",
+     "TokenType.POINT",
+     "TokenType.POLYGON",
+     "TokenType.PRIMARY_KEY",
+     "TokenType.PSEUDO_TYPE",
+     "TokenType.RANGE",
+     "TokenType.REPLACE",
+     "TokenType.RIGHT",
+     "TokenType.RING",
+     "TokenType.RLIKE",
+     "TokenType.ROW",
+     "TokenType.ROWVERSION",
+     "TokenType.SEQUENCE",
+     "TokenType.SERIAL",
+     "TokenType.SESSION_USER",
+     "TokenType.SIMPLEAGGREGATEFUNCTION",
+     "TokenType.SMALLDATETIME",
+     "TokenType.SMALLINT",
+     "TokenType.SMALLMONEY",
+     "TokenType.SMALLSERIAL",
+     "TokenType.SOME",
+     "TokenType.STRUCT",
+     "TokenType.SUPER",
+     "TokenType.TABLE",
+     "TokenType.TDIGEST",
+     "TokenType.TEXT",
+     "TokenType.TIME",
+     "TokenType.TIMESTAMP",
+     "TokenType.TIMESTAMPLTZ",
+     "TokenType.TIMESTAMPNTZ",
+     "TokenType.TIMESTAMPTZ",
+     "TokenType.TIMESTAMP_MS",
+     "TokenType.TIMESTAMP_NS",
+     "TokenType.TIMESTAMP_S",
+     "TokenType.TIMETZ",
+     "TokenType.TIME_NS",
+     "TokenType.TINYBLOB",
+     "TokenType.TINYINT",
+     "TokenType.TINYTEXT",
+     "TokenType.TRUNCATE",
+     "TokenType.TSMULTIRANGE",
+     "TokenType.TSRANGE",
+     "TokenType.TSTZMULTIRANGE",
+     "TokenType.TSTZRANGE",
+     "TokenType.UBIGINT",
+     "TokenType.UDECIMAL",
+     "TokenType.UDOUBLE",
+     "TokenType.UINT",
+     "TokenType.UINT128",
+     "TokenType.UINT256",
+     "TokenType.UMEDIUMINT",
+     "TokenType.UNION",
+     "TokenType.UNKNOWN",
+     "TokenType.UNNEST",
+     "TokenType.USERDEFINED",
+     "TokenType.USMALLINT",
+     "TokenType.UTC_DATE",
+     "TokenType.UTC_TIME",
+     "TokenType.UTC_TIMESTAMP",
+     "TokenType.UTINYINT",
+     "TokenType.UUID",
+     "TokenType.VAR",
+     "TokenType.VARBINARY",
+     "TokenType.VARCHAR",
+     "TokenType.VARIANT",
+     "TokenType.VECTOR",
+     "TokenType.VOID",
+     "TokenType.WINDOW",
+     "TokenType.XML",
+     "TokenType.XOR",
+     "TokenType.YEAR"
+    ]
+   }
+  },
+  "HISTORICAL_DATA_KIND": {
+   "kind": "set",
+   "size": 5,
+   "entries": {
+    "__set__": [
+     "OFFSET",
+     "STATEMENT",
+     "STREAM",
+     "TIMESTAMP",
+     "VERSION"
+    ]
+   }
+  },
+  "HISTORICAL_DATA_PREFIX": {
+   "kind": "set",
+   "size": 3,
+   "entries": {
+    "__set__": [
+     "AT",
+     "BEFORE",
+     "END"
+    ]
+   }
+  },
+  "IDENTIFIER_TOKENS": {
+   "kind": "set",
+   "size": 2,
+   "entries": {
+    "__set__": [
+     "TokenType.IDENTIFIER",
+     "TokenType.VAR"
+    ]
+   }
+  },
+  "ID_VAR_TOKENS": {
+   "kind": "set",
+   "size": 258,
+   "entries": {
+    "__set__": [
+     "TokenType.AGGREGATEFUNCTION",
+     "TokenType.ALL",
+     "TokenType.ANALYZE",
+     "TokenType.ANTI",
+     "TokenType.ANY",
+     "TokenType.APPLY",
+     "TokenType.ARRAY",
+     "TokenType.ASC",
+     "TokenType.ASOF",
+     "TokenType.ATTACH",
+     "TokenType.AUTO_INCREMENT",
+     "TokenType.BEGIN",
+     "TokenType.BIGDECIMAL",
+     "TokenType.BIGINT",
+     "TokenType.BIGNUM",
+     "TokenType.BIGSERIAL",
+     "TokenType.BINARY",
+     "TokenType.BIT",
+     "TokenType.BLOB",
+     "TokenType.BOOLEAN",
+     "TokenType.BPCHAR",
+     "TokenType.CACHE",
+     "TokenType.CASE",
+     "TokenType.CHAR",
+     "TokenType.COLLATE",
+     "TokenType.COLUMN",
+     "TokenType.COMMAND",
+     "TokenType.COMMENT",
+     "TokenType.COMMIT",
+     "TokenType.CONSTRAINT",
+     "TokenType.COPY",
+     "TokenType.CUBE",
+     "TokenType.CURRENT_CATALOG",
+     "TokenType.CURRENT_DATE",
+     "TokenType.CURRENT_DATETIME",
+     "TokenType.CURRENT_ROLE",
+     "TokenType.CURRENT_SCHEMA",
+     "TokenType.CURRENT_TIME",
+     "TokenType.CURRENT_TIMESTAMP",
+     "TokenType.CURRENT_USER",
+     "TokenType.DATABASE",
+     "TokenType.DATE",
+     "TokenType.DATE32",
+     "TokenType.DATEMULTIRANGE",
+     "TokenType.DATERANGE",
+     "TokenType.DATETIME",
+     "TokenType.DATETIME2",
+     "TokenType.DATETIME64",
+     "TokenType.DECFLOAT",
+     "TokenType.DECIMAL",
+     "TokenType.DECIMAL128",
+     "TokenType.DECIMAL256",
+     "TokenType.DECIMAL32",
+     "TokenType.DECIMAL64",
+     "TokenType.DECLARE",
+     "TokenType.DEFAULT",
+     "TokenType.DELETE",
+     "TokenType.DESC",
+     "TokenType.DESCRIBE",
+     "TokenType.DETACH",
+     "TokenType.DICTIONARY",
+     "TokenType.DIV",
+     "TokenType.DOUBLE",
+     "TokenType.DYNAMIC",
+     "TokenType.END",
+     "TokenType.ENUM",
+     "TokenType.ENUM16",
+     "TokenType.ENUM8",
+     "TokenType.ESCAPE",
+     "TokenType.EXECUTE",
+     "TokenType.EXISTS",
+     "TokenType.EXPORT",
+     "TokenType.FALSE",
+     "TokenType.FILE",
+     "TokenType.FILE_FORMAT",
+     "TokenType.FILTER",
+     "TokenType.FINAL",
+     "TokenType.FIRST",
+     "TokenType.FIXEDSTRING",
+     "TokenType.FLOAT",
+     "TokenType.FOREIGN_KEY",
+     "TokenType.FORMAT",
+     "TokenType.FULL",
+     "TokenType.FUNCTION",
+     "TokenType.GEOGRAPHY",
+     "TokenType.GEOGRAPHYPOINT",
+     "TokenType.GEOMETRY",
+     "TokenType.GET",
+     "TokenType.HLLSKETCH",
+     "TokenType.HSTORE",
+     "TokenType.IDENTIFIER",
+     "TokenType.IMAGE",
+     "TokenType.INDEX",
+     "TokenType.INET",
+     "TokenType.INOUT",
+     "TokenType.INT",
+     "TokenType.INT128",
+     "TokenType.INT256",
+     "TokenType.INT4MULTIRANGE",
+     "TokenType.INT4RANGE",
+     "TokenType.INT8MULTIRANGE",
+     "TokenType.INT8RANGE",
+     "TokenType.INTERVAL",
+     "TokenType.IPADDRESS",
+     "TokenType.IPPREFIX",
+     "TokenType.IPV4",
+     "TokenType.IPV6",
+     "TokenType.IS",
+     "TokenType.ISNULL",
+     "TokenType.JSON",
+     "TokenType.JSONB",
+     "TokenType.KEEP",
+     "TokenType.KILL",
+     "TokenType.LEFT",
+     "TokenType.LIMIT",
+     "TokenType.LINESTRING",
+     "TokenType.LIST",
+     "TokenType.LOAD",
+     "TokenType.LOCALTIME",
+     "TokenType.LOCALTIMESTAMP",
+     "TokenType.LOCK",
+     "TokenType.LONGBLOB",
+     "TokenType.LONGTEXT",
+     "TokenType.LOWCARDINALITY",
+     "TokenType.MAP",
+     "TokenType.MATCH",
+     "TokenType.MEDIUMBLOB",
+     "TokenType.MEDIUMINT",
+     "TokenType.MEDIUMTEXT",
+     "TokenType.MERGE",
+     "TokenType.MODEL",
+     "TokenType.MONEY",
+     "TokenType.MULTILINESTRING",
+     "TokenType.MULTIPOLYGON",
+     "TokenType.NAME",
+     "TokenType.NAMESPACE",
+     "TokenType.NATURAL",
+     "TokenType.NCHAR",
+     "TokenType.NESTED",
+     "TokenType.NEXT",
+     "TokenType.NOTHING",
+     "TokenType.NULL",
+     "TokenType.NULLABLE",
+     "TokenType.NUMMULTIRANGE",
+     "TokenType.NUMRANGE",
+     "TokenType.NVARCHAR",
+     "TokenType.OBJECT",
+     "TokenType.OBJECT_IDENTIFIER",
+     "TokenType.OFFSET",
+     "TokenType.OPERATOR",
+     "TokenType.ORDINALITY",
+     "TokenType.OUT",
+     "TokenType.OVER",
+     "TokenType.OVERLAPS",
+     "TokenType.OVERWRITE",
+     "TokenType.PARTITION",
+     "TokenType.PERCENT",
+     "TokenType.PIVOT",
+     "TokenType.POINT",
+     "TokenType.POLYGON",
+     "TokenType.PRAGMA",
+     "TokenType.PROCEDURE",
+     "TokenType.PROJECTION",
+     "TokenType.PSEUDO_TYPE",
+     "TokenType.PUT",
+     "TokenType.RANGE",
+     "TokenType.RECURSIVE",
+     "TokenType.REFERENCES",
+     "TokenType.REFRESH",
+     "TokenType.RENAME",
+     "TokenType.REPLACE",
+     "TokenType.RIGHT",
+     "TokenType.RING",
+     "TokenType.ROLLUP",
+     "TokenType.ROW",
+     "TokenType.ROWS",
+     "TokenType.ROWVERSION",
+     "TokenType.SCHEMA",
+     "TokenType.SEMANTIC_VIEW",
+     "TokenType.SEMI",
+     "TokenType.SEQUENCE",
+     "TokenType.SERIAL",
+     "TokenType.SESSION",
+     "TokenType.SESSION_USER",
+     "TokenType.SET",
+     "TokenType.SETTINGS",
+     "TokenType.SHOW",
+     "TokenType.SIMPLEAGGREGATEFUNCTION",
+     "TokenType.SINK",
+     "TokenType.SMALLDATETIME",
+     "TokenType.SMALLINT",
+     "TokenType.SMALLMONEY",
+     "TokenType.SMALLSERIAL",
+     "TokenType.SOME",
+     "TokenType.SOURCE",
+     "TokenType.STAGE",
+     "TokenType.STORAGE_INTEGRATION",
+     "TokenType.STRAIGHT_JOIN",
+     "TokenType.STREAM",
+     "TokenType.STREAMLIT",
+     "TokenType.STRUCT",
+     "TokenType.SUPER",
+     "TokenType.TABLE",
+     "TokenType.TAG",
+     "TokenType.TDIGEST",
+     "TokenType.TEMPORARY",
+     "TokenType.TEXT",
+     "TokenType.TIME",
+     "TokenType.TIMESTAMP",
+     "TokenType.TIMESTAMPLTZ",
+     "TokenType.TIMESTAMPNTZ",
+     "TokenType.TIMESTAMPTZ",
+     "TokenType.TIMESTAMP_MS",
+     "TokenType.TIMESTAMP_NS",
+     "TokenType.TIMESTAMP_S",
+     "TokenType.TIMETZ",
+     "TokenType.TIME_NS",
+     "TokenType.TINYBLOB",
+     "TokenType.TINYINT",
+     "TokenType.TINYTEXT",
+     "TokenType.TOP",
+     "TokenType.TRIGGER",
+     "TokenType.TRUE",
+     "TokenType.TRUNCATE",
+     "TokenType.TSMULTIRANGE",
+     "TokenType.TSRANGE",
+     "TokenType.TSTZMULTIRANGE",
+     "TokenType.TSTZRANGE",
+     "TokenType.TYPE",
+     "TokenType.UBIGINT",
+     "TokenType.UDECIMAL",
+     "TokenType.UDOUBLE",
+     "TokenType.UINT",
+     "TokenType.UINT128",
+     "TokenType.UINT256",
+     "TokenType.UMEDIUMINT",
+     "TokenType.UNIQUE",
+     "TokenType.UNKNOWN",
+     "TokenType.UNNEST",
+     "TokenType.UNPIVOT",
+     "TokenType.UPDATE",
+     "TokenType.USE",
+     "TokenType.USERDEFINED",
+     "TokenType.USMALLINT",
+     "TokenType.UTINYINT",
+     "TokenType.UUID",
+     "TokenType.VAR",
+     "TokenType.VARBINARY",
+     "TokenType.VARCHAR",
+     "TokenType.VARIANT",
+     "TokenType.VECTOR",
+     "TokenType.VIEW",
+     "TokenType.VOID",
+     "TokenType.VOLATILE",
+     "TokenType.WAREHOUSE",
+     "TokenType.WINDOW",
+     "TokenType.XML",
+     "TokenType.YEAR"
+    ]
+   }
+  },
+  "INSERT_ALTERNATIVES": {
+   "kind": "set",
+   "size": 5,
+   "entries": {
+    "__set__": [
+     "ABORT",
+     "FAIL",
+     "IGNORE",
+     "REPLACE",
+     "ROLLBACK"
+    ]
+   }
+  },
+  "INVALID_FUNC_NAME_TOKENS": {
+   "kind": "set",
+   "size": 2,
+   "entries": {
+    "__set__": [
+     "TokenType.IDENTIFIER",
+     "TokenType.STRING"
+    ]
+   }
+  },
+  "ISOLATED_LOADING_OPTIONS": {
+   "kind": "dict",
+   "size": 1,
+   "entries": {
+    "__dict__": [
+     [
+      "FOR",
+      [
+       "ALL",
+       "INSERT",
+       "NONE"
+      ]
+     ]
+    ]
+   }
+  },
+  "IS_JSON_PREDICATE_KIND": {
+   "kind": "set",
+   "size": 4,
+   "entries": {
+    "__set__": [
+     "ARRAY",
+     "OBJECT",
+     "SCALAR",
+     "VALUE"
+    ]
+   }
+  },
+  "JOIN_HINTS": {
+   "kind": "set",
+   "size": 0,
+   "entries": {
+    "__set__": []
+   }
+  },
+  "JOIN_KINDS": {
+   "kind": "set",
+   "size": 6,
+   "entries": {
+    "__set__": [
+     "TokenType.ANTI",
+     "TokenType.CROSS",
+     "TokenType.INNER",
+     "TokenType.OUTER",
+     "TokenType.SEMI",
+     "TokenType.STRAIGHT_JOIN"
+    ]
+   }
+  },
+  "JOIN_METHODS": {
+   "kind": "set",
+   "size": 3,
+   "entries": {
+    "__set__": [
+     "TokenType.ASOF",
+     "TokenType.NATURAL",
+     "TokenType.POSITIONAL"
+    ]
+   }
+  },
+  "JOIN_SIDES": {
+   "kind": "set",
+   "size": 3,
+   "entries": {
+    "__set__": [
+     "TokenType.FULL",
+     "TokenType.LEFT",
+     "TokenType.RIGHT"
+    ]
+   }
+  },
+  "JSON_KEY_VALUE_SEPARATOR_TOKENS": {
+   "kind": "set",
+   "size": 3,
+   "entries": {
+    "__set__": [
+     "TokenType.COLON",
+     "TokenType.COMMA",
+     "TokenType.IS"
+    ]
+   }
+  },
+  "JSON_OPERATORS": {
+   "kind": "dict",
+   "size": 0,
+   "entries": {
+    "__dict__": []
+   }
+  },
+  "KEY_CONSTRAINT_OPTIONS": {
+   "kind": "dict",
+   "size": 7,
+   "entries": {
+    "__dict__": [
+     [
+      "NOT",
+      [
+       "ENFORCED"
+      ]
+     ],
+     [
+      "MATCH",
+      [
+       "FULL",
+       "PARTIAL",
+       "SIMPLE"
+      ]
+     ],
+     [
+      "INITIALLY",
+      [
+       "DEFERRED",
+       "IMMEDIATE"
+      ]
+     ],
+     [
+      "USING",
+      [
+       "BTREE",
+       "HASH"
+      ]
+     ],
+     [
+      "DEFERRABLE",
+      []
+     ],
+     [
+      "NORELY",
+      []
+     ],
+     [
+      "RELY",
+      []
+     ]
+    ]
+   }
+  },
+  "KEY_VALUE_DEFINITIONS": {
+   "kind": "seq",
+   "size": 4,
+   "entries": [
+    "exp.Alias",
+    "exp.EQ",
+    "exp.PropertyEQ",
+    "exp.Slice"
+   ]
+  },
+  "LAMBDAS": {
+   "kind": "dict",
+   "size": 2,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.ARROW",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.FARROW",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "LAMBDA_ARG_TERMINATORS": {
+   "kind": "set",
+   "size": 2,
+   "entries": {
+    "__set__": [
+     "TokenType.COMMA",
+     "TokenType.R_PAREN"
+    ]
+   }
+  },
+  "MODIFIABLES": {
+   "kind": "seq",
+   "size": 4,
+   "entries": [
+    "exp.Query",
+    "exp.Table",
+    "exp.TableFromRows",
+    "exp.Values"
+   ]
+  },
+  "NESTED_TYPE_TOKENS": {
+   "kind": "set",
+   "size": 10,
+   "entries": {
+    "__set__": [
+     "TokenType.ARRAY",
+     "TokenType.LIST",
+     "TokenType.LOWCARDINALITY",
+     "TokenType.MAP",
+     "TokenType.NESTED",
+     "TokenType.NULLABLE",
+     "TokenType.OBJECT",
+     "TokenType.RANGE",
+     "TokenType.STRUCT",
+     "TokenType.UNION"
+    ]
+   }
+  },
+  "NO_PAREN_FUNCTIONS": {
+   "kind": "dict",
+   "size": 6,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.CURRENT_DATE",
+      "exp.CurrentDate"
+     ],
+     [
+      "TokenType.CURRENT_DATETIME",
+      "exp.CurrentDate"
+     ],
+     [
+      "TokenType.CURRENT_TIME",
+      "exp.CurrentTime"
+     ],
+     [
+      "TokenType.CURRENT_TIMESTAMP",
+      "exp.CurrentTimestamp"
+     ],
+     [
+      "TokenType.CURRENT_USER",
+      "exp.CurrentUser"
+     ],
+     [
+      "TokenType.CURRENT_ROLE",
+      "exp.CurrentRole"
+     ]
+    ]
+   }
+  },
+  "NO_PAREN_FUNCTION_PARSERS": {
+   "kind": "dict",
+   "size": 4,
+   "entries": {
+    "__dict__": [
+     [
+      "ANY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "CASE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "CONNECT_BY_ROOT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "IF",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "NUMERIC_PARSERS": {
+   "kind": "dict",
+   "size": 4,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.BIT_STRING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.BYTE_STRING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.HEX_STRING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.NUMBER",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "ODBC_DATETIME_LITERALS": {
+   "kind": "dict",
+   "size": 0,
+   "entries": {
+    "__dict__": []
+   }
+  },
+  "ON_CONDITION_TOKENS": {
+   "kind": "set",
+   "size": 5,
+   "entries": {
+    "__set__": [
+     "EMPTY",
+     "ERROR",
+     "FALSE",
+     "NULL",
+     "TRUE"
+    ]
+   }
+  },
+  "OPCLASS_FOLLOW_KEYWORDS": {
+   "kind": "set",
+   "size": 4,
+   "entries": {
+    "__set__": [
+     "ASC",
+     "DESC",
+     "NULLS",
+     "WITH"
+    ]
+   }
+  },
+  "OPERATION_MODIFIERS": {
+   "kind": "set",
+   "size": 0,
+   "entries": {
+    "__set__": []
+   }
+  },
+  "OPTYPE_FOLLOW_TOKENS": {
+   "kind": "set",
+   "size": 2,
+   "entries": {
+    "__set__": [
+     "TokenType.COMMA",
+     "TokenType.R_PAREN"
+    ]
+   }
+  },
+  "PARTITION_KEYWORDS": {
+   "kind": "set",
+   "size": 2,
+   "entries": {
+    "__set__": [
+     "PARTITION",
+     "SUBPARTITION"
+    ]
+   }
+  },
+  "PIPE_SYNTAX_TRANSFORM_PARSERS": {
+   "kind": "dict",
+   "size": 11,
+   "entries": {
+    "__dict__": [
+     [
+      "AGGREGATE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "AS",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "DISTINCT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "EXTEND",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "LIMIT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ORDER BY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "PIVOT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "SELECT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TABLESAMPLE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "UNPIVOT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "WHERE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "PLACEHOLDER_PARSERS": {
+   "kind": "dict",
+   "size": 3,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.PLACEHOLDER",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.PARAMETER",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.COLON",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "PRE_VOLATILE_TOKENS": {
+   "kind": "set",
+   "size": 3,
+   "entries": {
+    "__set__": [
+     "TokenType.CREATE",
+     "TokenType.REPLACE",
+     "TokenType.UNIQUE"
+    ]
+   }
+  },
+  "PRIMARY_PARSERS": {
+   "kind": "dict",
+   "size": 15,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.HEREDOC_STRING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.NATIONAL_STRING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.RAW_STRING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.STRING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.UNICODE_STRING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.BIT_STRING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.BYTE_STRING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.HEX_STRING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.NUMBER",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.INTRODUCER",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.NULL",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.TRUE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.FALSE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.SESSION_PARAMETER",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.STAR",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "PRIVILEGE_FOLLOW_TOKENS": {
+   "kind": "set",
+   "size": 3,
+   "entries": {
+    "__set__": [
+     "TokenType.COMMA",
+     "TokenType.L_PAREN",
+     "TokenType.ON"
+    ]
+   }
+  },
+  "PROCEDURE_OPTIONS": {
+   "kind": "dict",
+   "size": 0,
+   "entries": {
+    "__dict__": []
+   }
+  },
+  "PROPERTY_PARSERS": {
+   "kind": "dict",
+   "size": 92,
+   "entries": {
+    "__dict__": [
+     [
+      "ALLOWED_VALUES",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ALGORITHM",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "AUTO",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "AUTO_INCREMENT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "BACKUP",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "BLOCKCOMPRESSION",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "CALLED",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "CHARSET",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "CHECKSUM",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "CLUSTER BY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "CLUSTERED",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "COLLATE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "COMMENT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "CONTAINS",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "COPY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "DATABLOCKSIZE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "DATA_DELETION",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "DEFINER",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "DETERMINISTIC",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "DISTRIBUTED",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "DUPLICATE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "DYNAMIC",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "DISTKEY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "DISTSTYLE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "EMPTY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ENGINE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ENVIRONMENT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "HANDLER",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "EXECUTE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "EXTERNAL",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "FALLBACK",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "FORMAT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "FREESPACE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "GLOBAL",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "HEAP",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ICEBERG",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "IMMUTABLE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "INHERITS",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "INPUT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "JOURNAL",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "LANGUAGE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "LAYOUT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "LIFETIME",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "LIKE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "LOCATION",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "LOCK",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "LOCKING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "LOG",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "MATERIALIZED",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "MERGEBLOCKRATIO",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "MODIFIES",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "MULTISET",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "NO",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ON",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ORDER BY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "OUTPUT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "PARTITION",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "PARTITION BY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "PARTITIONED BY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "PARTITIONED_BY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "PRIMARY KEY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "RANGE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "READS",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "REMOTE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "RETURNS",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "STRICT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "STREAMING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ROW",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "ROW_FORMAT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "SAMPLE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "SECURE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "SECURITY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "SQL SECURITY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "SET",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "SETTINGS",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "SHARING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "SORTKEY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "SOURCE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "STABLE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "STORED",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "SYSTEM_VERSIONING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TBLPROPERTIES",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TEMP",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TEMPORARY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TO",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TRANSIENT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TRANSFORM",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TTL",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "USING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "UNLOGGED",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "VOLATILE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "WITH",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "QUERY_MODIFIER_PARSERS": {
+   "kind": "dict",
+   "size": 19,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.MATCH_RECOGNIZE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.PREWHERE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.WHERE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.GROUP_BY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.HAVING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.QUALIFY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.WINDOW",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.ORDER_BY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.LIMIT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.FETCH",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.OFFSET",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.FOR",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.LOCK",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.TABLE_SAMPLE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.USING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.CLUSTER_BY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.DISTRIBUTE_BY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.SORT_BY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.CONNECT_BY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "QUERY_MODIFIER_TOKENS": {
+   "kind": "set",
+   "size": 19,
+   "entries": {
+    "__set__": [
+     "TokenType.CLUSTER_BY",
+     "TokenType.CONNECT_BY",
+     "TokenType.DISTRIBUTE_BY",
+     "TokenType.FETCH",
+     "TokenType.FOR",
+     "TokenType.GROUP_BY",
+     "TokenType.HAVING",
+     "TokenType.LIMIT",
+     "TokenType.LOCK",
+     "TokenType.MATCH_RECOGNIZE",
+     "TokenType.OFFSET",
+     "TokenType.ORDER_BY",
+     "TokenType.PREWHERE",
+     "TokenType.QUALIFY",
+     "TokenType.SORT_BY",
+     "TokenType.TABLE_SAMPLE",
+     "TokenType.USING",
+     "TokenType.WHERE",
+     "TokenType.WINDOW"
+    ]
+   }
+  },
+  "RANGE_PARSERS": {
+   "kind": "dict",
+   "size": 21,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.AT_GT",
+      {
+       "__callable__": "_parse_binary_range"
+      }
+     ],
+     [
+      "TokenType.BETWEEN",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.GLOB",
+      {
+       "__callable__": "_parse_binary_range"
+      }
+     ],
+     [
+      "TokenType.ILIKE",
+      {
+       "__callable__": "_parse_binary_range"
+      }
+     ],
+     [
+      "TokenType.IN",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.IRLIKE",
+      {
+       "__callable__": "_parse_binary_range"
+      }
+     ],
+     [
+      "TokenType.IS",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.LIKE",
+      {
+       "__callable__": "_parse_binary_range"
+      }
+     ],
+     [
+      "TokenType.LT_AT",
+      {
+       "__callable__": "_parse_binary_range"
+      }
+     ],
+     [
+      "TokenType.OVERLAPS",
+      {
+       "__callable__": "_parse_binary_range"
+      }
+     ],
+     [
+      "TokenType.RLIKE",
+      {
+       "__callable__": "_parse_binary_range"
+      }
+     ],
+     [
+      "TokenType.SIMILAR_TO",
+      {
+       "__callable__": "_parse_binary_range"
+      }
+     ],
+     [
+      "TokenType.FOR",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.QMARK_AMP",
+      {
+       "__callable__": "_parse_binary_range"
+      }
+     ],
+     [
+      "TokenType.QMARK_PIPE",
+      {
+       "__callable__": "_parse_binary_range"
+      }
+     ],
+     [
+      "TokenType.HASH_DASH",
+      {
+       "__callable__": "_parse_binary_range"
+      }
+     ],
+     [
+      "TokenType.AT_QMARK",
+      {
+       "__callable__": "_parse_binary_range"
+      }
+     ],
+     [
+      "TokenType.ADJACENT",
+      {
+       "__callable__": "_parse_binary_range"
+      }
+     ],
+     [
+      "TokenType.OPERATOR",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.AMP_LT",
+      {
+       "__callable__": "_parse_binary_range"
+      }
+     ],
+     [
+      "TokenType.AMP_GT",
+      {
+       "__callable__": "_parse_binary_range"
+      }
+     ]
+    ]
+   }
+  },
+  "RECURSIVE_CTE_SEARCH_KIND": {
+   "kind": "set",
+   "size": 3,
+   "entries": {
+    "__set__": [
+     "BREADTH",
+     "CYCLE",
+     "DEPTH"
+    ]
+   }
+  },
+  "RESERVED_TOKENS": {
+   "kind": "set",
+   "size": 29,
+   "entries": {
+    "__set__": [
+     "TokenType.AMP",
+     "TokenType.BACKSLASH",
+     "TokenType.CARET",
+     "TokenType.COLON",
+     "TokenType.COMMA",
+     "TokenType.DASH",
+     "TokenType.DOT",
+     "TokenType.EQ",
+     "TokenType.GT",
+     "TokenType.HASH",
+     "TokenType.LT",
+     "TokenType.L_BRACE",
+     "TokenType.L_BRACKET",
+     "TokenType.L_PAREN",
+     "TokenType.MOD",
+     "TokenType.NOT",
+     "TokenType.PARAMETER",
+     "TokenType.PIPE",
+     "TokenType.PLACEHOLDER",
+     "TokenType.PLUS",
+     "TokenType.R_BRACE",
+     "TokenType.R_BRACKET",
+     "TokenType.R_PAREN",
+     "TokenType.SELECT",
+     "TokenType.SEMICOLON",
+     "TokenType.SLASH",
+     "TokenType.STAR",
+     "TokenType.TILDE",
+     "TokenType.UNKNOWN"
+    ]
+   }
+  },
+  "SCHEMA_BINDING_OPTIONS": {
+   "kind": "dict",
+   "size": 4,
+   "entries": {
+    "__dict__": [
+     [
+      "TYPE",
+      [
+       "EVOLUTION"
+      ]
+     ],
+     [
+      "BINDING",
+      []
+     ],
+     [
+      "COMPENSATION",
+      []
+     ],
+     [
+      "EVOLUTION",
+      []
+     ]
+    ]
+   }
+  },
+  "SCHEMA_UNNAMED_CONSTRAINTS": {
+   "kind": "set",
+   "size": 9,
+   "entries": {
+    "__set__": [
+     "BUCKET",
+     "CHECK",
+     "EXCLUDE",
+     "FOREIGN KEY",
+     "LIKE",
+     "PERIOD",
+     "PRIMARY KEY",
+     "TRUNCATE",
+     "UNIQUE"
+    ]
+   }
+  },
+  "SECURITY_PROPERTY_KEYWORDS": {
+   "kind": "set",
+   "size": 3,
+   "entries": {
+    "__set__": [
+     "DEFINER",
+     "INVOKER",
+     "NONE"
+    ]
+   }
+  },
+  "SELECT_START_TOKENS": {
+   "kind": "set",
+   "size": 3,
+   "entries": {
+    "__set__": [
+     "TokenType.L_PAREN",
+     "TokenType.SELECT",
+     "TokenType.WITH"
+    ]
+   }
+  },
+  "SET_ASSIGNMENT_DELIMITERS": {
+   "kind": "set",
+   "size": 3,
+   "entries": {
+    "__set__": [
+     ":=",
+     "=",
+     "TO"
+    ]
+   }
+  },
+  "SET_OPERATIONS": {
+   "kind": "set",
+   "size": 3,
+   "entries": {
+    "__set__": [
+     "TokenType.EXCEPT",
+     "TokenType.INTERSECT",
+     "TokenType.UNION"
+    ]
+   }
+  },
+  "SET_OP_MODIFIERS": {
+   "kind": "set",
+   "size": 3,
+   "entries": {
+    "__set__": [
+     "limit",
+     "offset",
+     "order"
+    ]
+   }
+  },
+  "SET_PARSERS": {
+   "kind": "dict",
+   "size": 4,
+   "entries": {
+    "__dict__": [
+     [
+      "GLOBAL",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "LOCAL",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "SESSION",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TRANSACTION",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "SET_TRIE": {
+   "kind": "dict",
+   "size": 4,
+   "entries": {
+    "__dict__": [
+     [
+      "GLOBAL",
+      {
+       "__dict__": [
+        [
+         "0",
+         true
+        ]
+       ]
+      }
+     ],
+     [
+      "LOCAL",
+      {
+       "__dict__": [
+        [
+         "0",
+         true
+        ]
+       ]
+      }
+     ],
+     [
+      "SESSION",
+      {
+       "__dict__": [
+        [
+         "0",
+         true
+        ]
+       ]
+      }
+     ],
+     [
+      "TRANSACTION",
+      {
+       "__dict__": [
+        [
+         "0",
+         true
+        ]
+       ]
+      }
+     ]
+    ]
+   }
+  },
+  "SHOW_PARSERS": {
+   "kind": "dict",
+   "size": 0,
+   "entries": {
+    "__dict__": []
+   }
+  },
+  "SHOW_TRIE": {
+   "kind": "dict",
+   "size": 0,
+   "entries": {
+    "__dict__": []
+   }
+  },
+  "SIGNED_TO_UNSIGNED_TYPE_TOKEN": {
+   "kind": "dict",
+   "size": 7,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.BIGINT",
+      "TokenType.UBIGINT"
+     ],
+     [
+      "TokenType.INT",
+      "TokenType.UINT"
+     ],
+     [
+      "TokenType.MEDIUMINT",
+      "TokenType.UMEDIUMINT"
+     ],
+     [
+      "TokenType.SMALLINT",
+      "TokenType.USMALLINT"
+     ],
+     [
+      "TokenType.TINYINT",
+      "TokenType.UTINYINT"
+     ],
+     [
+      "TokenType.DECIMAL",
+      "TokenType.UDECIMAL"
+     ],
+     [
+      "TokenType.DOUBLE",
+      "TokenType.UDOUBLE"
+     ]
+    ]
+   }
+  },
+  "STATEMENT_PARSERS": {
+   "kind": "dict",
+   "size": 30,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.ALTER",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.ANALYZE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.BEGIN",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.CACHE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.COMMENT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.COMMIT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.COPY",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.CREATE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.DECLARE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.DELETE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.DESC",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.DESCRIBE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.DROP",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.GRANT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.REVOKE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.INSERT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.KILL",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.LOAD",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.MERGE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.PIVOT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.PRAGMA",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.REFRESH",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.ROLLBACK",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.SET",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.TRUNCATE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.UNCACHE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.UNPIVOT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.UPDATE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.USE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.SEMICOLON",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "STRING_PARSERS": {
+   "kind": "dict",
+   "size": 5,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.HEREDOC_STRING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.NATIONAL_STRING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.RAW_STRING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.STRING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.UNICODE_STRING",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "STRUCT_TYPE_TOKENS": {
+   "kind": "set",
+   "size": 4,
+   "entries": {
+    "__set__": [
+     "TokenType.NESTED",
+     "TokenType.OBJECT",
+     "TokenType.STRUCT",
+     "TokenType.UNION"
+    ]
+   }
+  },
+  "SUBQUERY_PREDICATES": {
+   "kind": "dict",
+   "size": 4,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.ANY",
+      "exp.Any"
+     ],
+     [
+      "TokenType.ALL",
+      "exp.All"
+     ],
+     [
+      "TokenType.EXISTS",
+      "exp.Exists"
+     ],
+     [
+      "TokenType.SOME",
+      "exp.Any"
+     ]
+    ]
+   }
+  },
+  "SUBQUERY_TOKENS": {
+   "kind": "set",
+   "size": 3,
+   "entries": {
+    "__set__": [
+     "TokenType.FROM",
+     "TokenType.SELECT",
+     "TokenType.WITH"
+    ]
+   }
+  },
+  "TABLE_ALIAS_TOKENS": {
+   "kind": "set",
+   "size": 249,
+   "entries": {
+    "__set__": [
+     "TokenType.AGGREGATEFUNCTION",
+     "TokenType.ALL",
+     "TokenType.ANALYZE",
+     "TokenType.ANY",
+     "TokenType.APPLY",
+     "TokenType.ARRAY",
+     "TokenType.ASC",
+     "TokenType.ATTACH",
+     "TokenType.AUTO_INCREMENT",
+     "TokenType.BEGIN",
+     "TokenType.BIGDECIMAL",
+     "TokenType.BIGINT",
+     "TokenType.BIGNUM",
+     "TokenType.BIGSERIAL",
+     "TokenType.BINARY",
+     "TokenType.BIT",
+     "TokenType.BLOB",
+     "TokenType.BOOLEAN",
+     "TokenType.BPCHAR",
+     "TokenType.CACHE",
+     "TokenType.CASE",
+     "TokenType.CHAR",
+     "TokenType.COLLATE",
+     "TokenType.COLUMN",
+     "TokenType.COMMAND",
+     "TokenType.COMMENT",
+     "TokenType.COMMIT",
+     "TokenType.CONSTRAINT",
+     "TokenType.COPY",
+     "TokenType.CUBE",
+     "TokenType.CURRENT_CATALOG",
+     "TokenType.CURRENT_DATE",
+     "TokenType.CURRENT_DATETIME",
+     "TokenType.CURRENT_ROLE",
+     "TokenType.CURRENT_SCHEMA",
+     "TokenType.CURRENT_TIME",
+     "TokenType.CURRENT_TIMESTAMP",
+     "TokenType.CURRENT_USER",
+     "TokenType.DATABASE",
+     "TokenType.DATE",
+     "TokenType.DATE32",
+     "TokenType.DATEMULTIRANGE",
+     "TokenType.DATERANGE",
+     "TokenType.DATETIME",
+     "TokenType.DATETIME2",
+     "TokenType.DATETIME64",
+     "TokenType.DECFLOAT",
+     "TokenType.DECIMAL",
+     "TokenType.DECIMAL128",
+     "TokenType.DECIMAL256",
+     "TokenType.DECIMAL32",
+     "TokenType.DECIMAL64",
+     "TokenType.DECLARE",
+     "TokenType.DEFAULT",
+     "TokenType.DELETE",
+     "TokenType.DESC",
+     "TokenType.DESCRIBE",
+     "TokenType.DETACH",
+     "TokenType.DICTIONARY",
+     "TokenType.DIV",
+     "TokenType.DOUBLE",
+     "TokenType.DYNAMIC",
+     "TokenType.END",
+     "TokenType.ENUM",
+     "TokenType.ENUM16",
+     "TokenType.ENUM8",
+     "TokenType.ESCAPE",
+     "TokenType.EXECUTE",
+     "TokenType.EXISTS",
+     "TokenType.EXPORT",
+     "TokenType.FALSE",
+     "TokenType.FILE",
+     "TokenType.FILE_FORMAT",
+     "TokenType.FILTER",
+     "TokenType.FINAL",
+     "TokenType.FIRST",
+     "TokenType.FIXEDSTRING",
+     "TokenType.FLOAT",
+     "TokenType.FOREIGN_KEY",
+     "TokenType.FORMAT",
+     "TokenType.FUNCTION",
+     "TokenType.GEOGRAPHY",
+     "TokenType.GEOGRAPHYPOINT",
+     "TokenType.GEOMETRY",
+     "TokenType.GET",
+     "TokenType.HLLSKETCH",
+     "TokenType.HSTORE",
+     "TokenType.IDENTIFIER",
+     "TokenType.IMAGE",
+     "TokenType.INDEX",
+     "TokenType.INET",
+     "TokenType.INOUT",
+     "TokenType.INT",
+     "TokenType.INT128",
+     "TokenType.INT256",
+     "TokenType.INT4MULTIRANGE",
+     "TokenType.INT4RANGE",
+     "TokenType.INT8MULTIRANGE",
+     "TokenType.INT8RANGE",
+     "TokenType.INTERVAL",
+     "TokenType.IPADDRESS",
+     "TokenType.IPPREFIX",
+     "TokenType.IPV4",
+     "TokenType.IPV6",
+     "TokenType.IS",
+     "TokenType.ISNULL",
+     "TokenType.JSON",
+     "TokenType.JSONB",
+     "TokenType.KEEP",
+     "TokenType.KILL",
+     "TokenType.LIMIT",
+     "TokenType.LINESTRING",
+     "TokenType.LIST",
+     "TokenType.LOAD",
+     "TokenType.LOCALTIME",
+     "TokenType.LOCALTIMESTAMP",
+     "TokenType.LONGBLOB",
+     "TokenType.LONGTEXT",
+     "TokenType.LOWCARDINALITY",
+     "TokenType.MAP",
+     "TokenType.MATCH",
+     "TokenType.MEDIUMBLOB",
+     "TokenType.MEDIUMINT",
+     "TokenType.MEDIUMTEXT",
+     "TokenType.MERGE",
+     "TokenType.MODEL",
+     "TokenType.MONEY",
+     "TokenType.MULTILINESTRING",
+     "TokenType.MULTIPOLYGON",
+     "TokenType.NAME",
+     "TokenType.NAMESPACE",
+     "TokenType.NCHAR",
+     "TokenType.NESTED",
+     "TokenType.NEXT",
+     "TokenType.NOTHING",
+     "TokenType.NULL",
+     "TokenType.NULLABLE",
+     "TokenType.NUMMULTIRANGE",
+     "TokenType.NUMRANGE",
+     "TokenType.NVARCHAR",
+     "TokenType.OBJECT",
+     "TokenType.OBJECT_IDENTIFIER",
+     "TokenType.OFFSET",
+     "TokenType.OPERATOR",
+     "TokenType.ORDINALITY",
+     "TokenType.OUT",
+     "TokenType.OVER",
+     "TokenType.OVERLAPS",
+     "TokenType.OVERWRITE",
+     "TokenType.PARTITION",
+     "TokenType.PERCENT",
+     "TokenType.PIVOT",
+     "TokenType.POINT",
+     "TokenType.POLYGON",
+     "TokenType.PRAGMA",
+     "TokenType.PROCEDURE",
+     "TokenType.PROJECTION",
+     "TokenType.PSEUDO_TYPE",
+     "TokenType.PUT",
+     "TokenType.RANGE",
+     "TokenType.RECURSIVE",
+     "TokenType.REFERENCES",
+     "TokenType.REFRESH",
+     "TokenType.RENAME",
+     "TokenType.REPLACE",
+     "TokenType.RING",
+     "TokenType.ROLLUP",
+     "TokenType.ROW",
+     "TokenType.ROWS",
+     "TokenType.ROWVERSION",
+     "TokenType.SCHEMA",
+     "TokenType.SEMANTIC_VIEW",
+     "TokenType.SEQUENCE",
+     "TokenType.SERIAL",
+     "TokenType.SESSION",
+     "TokenType.SESSION_USER",
+     "TokenType.SET",
+     "TokenType.SETTINGS",
+     "TokenType.SHOW",
+     "TokenType.SIMPLEAGGREGATEFUNCTION",
+     "TokenType.SINK",
+     "TokenType.SMALLDATETIME",
+     "TokenType.SMALLINT",
+     "TokenType.SMALLMONEY",
+     "TokenType.SMALLSERIAL",
+     "TokenType.SOME",
+     "TokenType.SOURCE",
+     "TokenType.STAGE",
+     "TokenType.STORAGE_INTEGRATION",
+     "TokenType.STRAIGHT_JOIN",
+     "TokenType.STREAM",
+     "TokenType.STREAMLIT",
+     "TokenType.STRUCT",
+     "TokenType.SUPER",
+     "TokenType.TABLE",
+     "TokenType.TAG",
+     "TokenType.TDIGEST",
+     "TokenType.TEMPORARY",
+     "TokenType.TEXT",
+     "TokenType.TIME",
+     "TokenType.TIMESTAMP",
+     "TokenType.TIMESTAMPLTZ",
+     "TokenType.TIMESTAMPNTZ",
+     "TokenType.TIMESTAMPTZ",
+     "TokenType.TIMESTAMP_MS",
+     "TokenType.TIMESTAMP_NS",
+     "TokenType.TIMESTAMP_S",
+     "TokenType.TIMETZ",
+     "TokenType.TIME_NS",
+     "TokenType.TINYBLOB",
+     "TokenType.TINYINT",
+     "TokenType.TINYTEXT",
+     "TokenType.TOP",
+     "TokenType.TRIGGER",
+     "TokenType.TRUE",
+     "TokenType.TRUNCATE",
+     "TokenType.TSMULTIRANGE",
+     "TokenType.TSRANGE",
+     "TokenType.TSTZMULTIRANGE",
+     "TokenType.TSTZRANGE",
+     "TokenType.TYPE",
+     "TokenType.UBIGINT",
+     "TokenType.UDECIMAL",
+     "TokenType.UDOUBLE",
+     "TokenType.UINT",
+     "TokenType.UINT128",
+     "TokenType.UINT256",
+     "TokenType.UMEDIUMINT",
+     "TokenType.UNIQUE",
+     "TokenType.UNKNOWN",
+     "TokenType.UNNEST",
+     "TokenType.UNPIVOT",
+     "TokenType.UPDATE",
+     "TokenType.USE",
+     "TokenType.USERDEFINED",
+     "TokenType.USMALLINT",
+     "TokenType.UTINYINT",
+     "TokenType.UUID",
+     "TokenType.VAR",
+     "TokenType.VARBINARY",
+     "TokenType.VARCHAR",
+     "TokenType.VARIANT",
+     "TokenType.VECTOR",
+     "TokenType.VIEW",
+     "TokenType.VOID",
+     "TokenType.VOLATILE",
+     "TokenType.WAREHOUSE",
+     "TokenType.XML",
+     "TokenType.YEAR"
+    ]
+   }
+  },
+  "TABLE_INDEX_HINT_TOKENS": {
+   "kind": "set",
+   "size": 3,
+   "entries": {
+    "__set__": [
+     "TokenType.FORCE",
+     "TokenType.IGNORE",
+     "TokenType.USE"
+    ]
+   }
+  },
+  "TABLE_POSTFIX_TOKENS": {
+   "kind": "set",
+   "size": 6,
+   "entries": {
+    "__set__": [
+     "TokenType.L_BRACE",
+     "TokenType.L_BRACKET",
+     "TokenType.L_PAREN",
+     "TokenType.PIVOT",
+     "TokenType.TABLE_SAMPLE",
+     "TokenType.UNPIVOT"
+    ]
+   }
+  },
+  "TABLE_TERMINATORS": {
+   "kind": "set",
+   "size": 26,
+   "entries": {
+    "__set__": [
+     "TokenType.ANTI",
+     "TokenType.ASOF",
+     "TokenType.COMMA",
+     "TokenType.CROSS",
+     "TokenType.EXCEPT",
+     "TokenType.FULL",
+     "TokenType.GROUP_BY",
+     "TokenType.HAVING",
+     "TokenType.INNER",
+     "TokenType.INTERSECT",
+     "TokenType.JOIN",
+     "TokenType.LEFT",
+     "TokenType.LIMIT",
+     "TokenType.NATURAL",
+     "TokenType.ON",
+     "TokenType.ORDER_BY",
+     "TokenType.OUTER",
+     "TokenType.POSITIONAL",
+     "TokenType.RIGHT",
+     "TokenType.R_PAREN",
+     "TokenType.SEMI",
+     "TokenType.SEMICOLON",
+     "TokenType.SENTINEL",
+     "TokenType.STRAIGHT_JOIN",
+     "TokenType.UNION",
+     "TokenType.WHERE"
+    ]
+   }
+  },
+  "TERM": {
+   "kind": "dict",
+   "size": 4,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.DASH",
+      "exp.Sub"
+     ],
+     [
+      "TokenType.PLUS",
+      "exp.Add"
+     ],
+     [
+      "TokenType.MOD",
+      "exp.Mod"
+     ],
+     [
+      "TokenType.COLLATE",
+      "exp.Collate"
+     ]
+    ]
+   }
+  },
+  "TEXT_MATCH_EXCLUDED_TOKENS": {
+   "kind": "set",
+   "size": 9,
+   "entries": {
+    "__set__": [
+     "TokenType.BIT_STRING",
+     "TokenType.BYTE_STRING",
+     "TokenType.HEREDOC_STRING",
+     "TokenType.HEX_STRING",
+     "TokenType.IDENTIFIER",
+     "TokenType.NATIONAL_STRING",
+     "TokenType.RAW_STRING",
+     "TokenType.STRING",
+     "TokenType.UNICODE_STRING"
+    ]
+   }
+  },
+  "TIMES": {
+   "kind": "set",
+   "size": 2,
+   "entries": {
+    "__set__": [
+     "TokenType.TIME",
+     "TokenType.TIMETZ"
+    ]
+   }
+  },
+  "TIMESTAMPS": {
+   "kind": "set",
+   "size": 6,
+   "entries": {
+    "__set__": [
+     "TokenType.TIME",
+     "TokenType.TIMESTAMP",
+     "TokenType.TIMESTAMPLTZ",
+     "TokenType.TIMESTAMPNTZ",
+     "TokenType.TIMESTAMPTZ",
+     "TokenType.TIMETZ"
+    ]
+   }
+  },
+  "TRANSACTION_CHARACTERISTICS": {
+   "kind": "dict",
+   "size": 2,
+   "entries": {
+    "__dict__": [
+     [
+      "ISOLATION",
+      [
+       [
+        "LEVEL",
+        "REPEATABLE",
+        "READ"
+       ],
+       [
+        "LEVEL",
+        "READ",
+        "COMMITTED"
+       ],
+       [
+        "LEVEL",
+        "READ",
+        "UNCOMITTED"
+       ],
+       [
+        "LEVEL",
+        "SERIALIZABLE"
+       ]
+      ]
+     ],
+     [
+      "READ",
+      [
+       "WRITE",
+       "ONLY"
+      ]
+     ]
+    ]
+   }
+  },
+  "TRANSACTION_KIND": {
+   "kind": "set",
+   "size": 3,
+   "entries": {
+    "__set__": [
+     "DEFERRED",
+     "EXCLUSIVE",
+     "IMMEDIATE"
+    ]
+   }
+  },
+  "TRIGGER_DEFERRABLE": {
+   "kind": "dict",
+   "size": 2,
+   "entries": {
+    "__dict__": [
+     [
+      "NOT",
+      [
+       [
+        "DEFERRABLE"
+       ]
+      ]
+     ],
+     [
+      "DEFERRABLE",
+      []
+     ]
+    ]
+   }
+  },
+  "TRIGGER_EVENTS": {
+   "kind": "set",
+   "size": 4,
+   "entries": {
+    "__set__": [
+     "TokenType.DELETE",
+     "TokenType.INSERT",
+     "TokenType.TRUNCATE",
+     "TokenType.UPDATE"
+    ]
+   }
+  },
+  "TRIGGER_TIMING": {
+   "kind": "dict",
+   "size": 3,
+   "entries": {
+    "__dict__": [
+     [
+      "INSTEAD",
+      [
+       [
+        "OF"
+       ]
+      ]
+     ],
+     [
+      "BEFORE",
+      []
+     ],
+     [
+      "AFTER",
+      []
+     ]
+    ]
+   }
+  },
+  "TRIM_TYPES": {
+   "kind": "set",
+   "size": 3,
+   "entries": {
+    "__set__": [
+     "BOTH",
+     "LEADING",
+     "TRAILING"
+    ]
+   }
+  },
+  "TYPE_CONVERTERS": {
+   "kind": "dict",
+   "size": 0,
+   "entries": {
+    "__dict__": []
+   }
+  },
+  "TYPE_LITERAL_PARSERS": {
+   "kind": "dict",
+   "size": 1,
+   "entries": {
+    "__dict__": [
+     [
+      "{\"__repr__\":\"<DType.JSON: 'JSON'>\"}",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "TYPE_TOKENS": {
+   "kind": "set",
+   "size": 129,
+   "entries": {
+    "__set__": [
+     "TokenType.AGGREGATEFUNCTION",
+     "TokenType.ARRAY",
+     "TokenType.BIGDECIMAL",
+     "TokenType.BIGINT",
+     "TokenType.BIGNUM",
+     "TokenType.BIGSERIAL",
+     "TokenType.BINARY",
+     "TokenType.BIT",
+     "TokenType.BLOB",
+     "TokenType.BOOLEAN",
+     "TokenType.BPCHAR",
+     "TokenType.CHAR",
+     "TokenType.DATE",
+     "TokenType.DATE32",
+     "TokenType.DATEMULTIRANGE",
+     "TokenType.DATERANGE",
+     "TokenType.DATETIME",
+     "TokenType.DATETIME2",
+     "TokenType.DATETIME64",
+     "TokenType.DECFLOAT",
+     "TokenType.DECIMAL",
+     "TokenType.DECIMAL128",
+     "TokenType.DECIMAL256",
+     "TokenType.DECIMAL32",
+     "TokenType.DECIMAL64",
+     "TokenType.DOUBLE",
+     "TokenType.DYNAMIC",
+     "TokenType.ENUM",
+     "TokenType.ENUM16",
+     "TokenType.ENUM8",
+     "TokenType.FIXEDSTRING",
+     "TokenType.FLOAT",
+     "TokenType.GEOGRAPHY",
+     "TokenType.GEOGRAPHYPOINT",
+     "TokenType.GEOMETRY",
+     "TokenType.HLLSKETCH",
+     "TokenType.HSTORE",
+     "TokenType.IMAGE",
+     "TokenType.INET",
+     "TokenType.INT",
+     "TokenType.INT128",
+     "TokenType.INT256",
+     "TokenType.INT4MULTIRANGE",
+     "TokenType.INT4RANGE",
+     "TokenType.INT8MULTIRANGE",
+     "TokenType.INT8RANGE",
+     "TokenType.INTERVAL",
+     "TokenType.IPADDRESS",
+     "TokenType.IPPREFIX",
+     "TokenType.IPV4",
+     "TokenType.IPV6",
+     "TokenType.JSON",
+     "TokenType.JSONB",
+     "TokenType.LINESTRING",
+     "TokenType.LIST",
+     "TokenType.LONGBLOB",
+     "TokenType.LONGTEXT",
+     "TokenType.LOWCARDINALITY",
+     "TokenType.MAP",
+     "TokenType.MEDIUMBLOB",
+     "TokenType.MEDIUMINT",
+     "TokenType.MEDIUMTEXT",
+     "TokenType.MONEY",
+     "TokenType.MULTILINESTRING",
+     "TokenType.MULTIPOLYGON",
+     "TokenType.NAME",
+     "TokenType.NCHAR",
+     "TokenType.NESTED",
+     "TokenType.NOTHING",
+     "TokenType.NULL",
+     "TokenType.NULLABLE",
+     "TokenType.NUMMULTIRANGE",
+     "TokenType.NUMRANGE",
+     "TokenType.NVARCHAR",
+     "TokenType.OBJECT",
+     "TokenType.OBJECT_IDENTIFIER",
+     "TokenType.POINT",
+     "TokenType.POLYGON",
+     "TokenType.PSEUDO_TYPE",
+     "TokenType.RANGE",
+     "TokenType.RING",
+     "TokenType.ROWVERSION",
+     "TokenType.SERIAL",
+     "TokenType.SIMPLEAGGREGATEFUNCTION",
+     "TokenType.SMALLDATETIME",
+     "TokenType.SMALLINT",
+     "TokenType.SMALLMONEY",
+     "TokenType.SMALLSERIAL",
+     "TokenType.STRUCT",
+     "TokenType.SUPER",
+     "TokenType.TDIGEST",
+     "TokenType.TEXT",
+     "TokenType.TIME",
+     "TokenType.TIMESTAMP",
+     "TokenType.TIMESTAMPLTZ",
+     "TokenType.TIMESTAMPNTZ",
+     "TokenType.TIMESTAMPTZ",
+     "TokenType.TIMESTAMP_MS",
+     "TokenType.TIMESTAMP_NS",
+     "TokenType.TIMESTAMP_S",
+     "TokenType.TIMETZ",
+     "TokenType.TIME_NS",
+     "TokenType.TINYBLOB",
+     "TokenType.TINYINT",
+     "TokenType.TINYTEXT",
+     "TokenType.TSMULTIRANGE",
+     "TokenType.TSRANGE",
+     "TokenType.TSTZMULTIRANGE",
+     "TokenType.TSTZRANGE",
+     "TokenType.UBIGINT",
+     "TokenType.UDECIMAL",
+     "TokenType.UDOUBLE",
+     "TokenType.UINT",
+     "TokenType.UINT128",
+     "TokenType.UINT256",
+     "TokenType.UMEDIUMINT",
+     "TokenType.UNION",
+     "TokenType.UNKNOWN",
+     "TokenType.USERDEFINED",
+     "TokenType.USMALLINT",
+     "TokenType.UTINYINT",
+     "TokenType.UUID",
+     "TokenType.VARBINARY",
+     "TokenType.VARCHAR",
+     "TokenType.VARIANT",
+     "TokenType.VECTOR",
+     "TokenType.VOID",
+     "TokenType.XML",
+     "TokenType.YEAR"
+    ]
+   }
+  },
+  "UNARY_PARSERS": {
+   "kind": "dict",
+   "size": 6,
+   "entries": {
+    "__dict__": [
+     [
+      "TokenType.PLUS",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.NOT",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.TILDE",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.DASH",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.PIPE_SLASH",
+      {
+       "__callable__": "<lambda>"
+      }
+     ],
+     [
+      "TokenType.DPIPE_SLASH",
+      {
+       "__callable__": "<lambda>"
+      }
+     ]
+    ]
+   }
+  },
+  "UNNEST_OFFSET_ALIAS_TOKENS": {
+   "kind": "set",
+   "size": 249,
+   "entries": {
+    "__set__": [
+     "TokenType.AGGREGATEFUNCTION",
+     "TokenType.ALL",
+     "TokenType.ANALYZE",
+     "TokenType.ANY",
+     "TokenType.APPLY",
+     "TokenType.ARRAY",
+     "TokenType.ASC",
+     "TokenType.ATTACH",
+     "TokenType.AUTO_INCREMENT",
+     "TokenType.BEGIN",
+     "TokenType.BIGDECIMAL",
+     "TokenType.BIGINT",
+     "TokenType.BIGNUM",
+     "TokenType.BIGSERIAL",
+     "TokenType.BINARY",
+     "TokenType.BIT",
+     "TokenType.BLOB",
+     "TokenType.BOOLEAN",
+     "TokenType.BPCHAR",
+     "TokenType.CACHE",
+     "TokenType.CASE",
+     "TokenType.CHAR",
+     "TokenType.COLLATE",
+     "TokenType.COLUMN",
+     "TokenType.COMMAND",
+     "TokenType.COMMENT",
+     "TokenType.COMMIT",
+     "TokenType.CONSTRAINT",
+     "TokenType.COPY",
+     "TokenType.CUBE",
+     "TokenType.CURRENT_CATALOG",
+     "TokenType.CURRENT_DATE",
+     "TokenType.CURRENT_DATETIME",
+     "TokenType.CURRENT_ROLE",
+     "TokenType.CURRENT_SCHEMA",
+     "TokenType.CURRENT_TIME",
+     "TokenType.CURRENT_TIMESTAMP",
+     "TokenType.CURRENT_USER",
+     "TokenType.DATABASE",
+     "TokenType.DATE",
+     "TokenType.DATE32",
+     "TokenType.DATEMULTIRANGE",
+     "TokenType.DATERANGE",
+     "TokenType.DATETIME",
+     "TokenType.DATETIME2",
+     "TokenType.DATETIME64",
+     "TokenType.DECFLOAT",
+     "TokenType.DECIMAL",
+     "TokenType.DECIMAL128",
+     "TokenType.DECIMAL256",
+     "TokenType.DECIMAL32",
+     "TokenType.DECIMAL64",
+     "TokenType.DECLARE",
+     "TokenType.DEFAULT",
+     "TokenType.DELETE",
+     "TokenType.DESC",
+     "TokenType.DESCRIBE",
+     "TokenType.DETACH",
+     "TokenType.DICTIONARY",
+     "TokenType.DIV",
+     "TokenType.DOUBLE",
+     "TokenType.DYNAMIC",
+     "TokenType.END",
+     "TokenType.ENUM",
+     "TokenType.ENUM16",
+     "TokenType.ENUM8",
+     "TokenType.ESCAPE",
+     "TokenType.EXECUTE",
+     "TokenType.EXISTS",
+     "TokenType.EXPORT",
+     "TokenType.FALSE",
+     "TokenType.FILE",
+     "TokenType.FILE_FORMAT",
+     "TokenType.FILTER",
+     "TokenType.FINAL",
+     "TokenType.FIRST",
+     "TokenType.FIXEDSTRING",
+     "TokenType.FLOAT",
+     "TokenType.FOREIGN_KEY",
+     "TokenType.FORMAT",
+     "TokenType.FUNCTION",
+     "TokenType.GEOGRAPHY",
+     "TokenType.GEOGRAPHYPOINT",
+     "TokenType.GEOMETRY",
+     "TokenType.GET",
+     "TokenType.HLLSKETCH",
+     "TokenType.HSTORE",
+     "TokenType.IDENTIFIER",
+     "TokenType.IMAGE",
+     "TokenType.INDEX",
+     "TokenType.INET",
+     "TokenType.INOUT",
+     "TokenType.INT",
+     "TokenType.INT128",
+     "TokenType.INT256",
+     "TokenType.INT4MULTIRANGE",
+     "TokenType.INT4RANGE",
+     "TokenType.INT8MULTIRANGE",
+     "TokenType.INT8RANGE",
+     "TokenType.INTERVAL",
+     "TokenType.IPADDRESS",
+     "TokenType.IPPREFIX",
+     "TokenType.IPV4",
+     "TokenType.IPV6",
+     "TokenType.IS",
+     "TokenType.ISNULL",
+     "TokenType.JSON",
+     "TokenType.JSONB",
+     "TokenType.KEEP",
+     "TokenType.KILL",
+     "TokenType.LIMIT",
+     "TokenType.LINESTRING",
+     "TokenType.LIST",
+     "TokenType.LOAD",
+     "TokenType.LOCALTIME",
+     "TokenType.LOCALTIMESTAMP",
+     "TokenType.LONGBLOB",
+     "TokenType.LONGTEXT",
+     "TokenType.LOWCARDINALITY",
+     "TokenType.MAP",
+     "TokenType.MATCH",
+     "TokenType.MEDIUMBLOB",
+     "TokenType.MEDIUMINT",
+     "TokenType.MEDIUMTEXT",
+     "TokenType.MERGE",
+     "TokenType.MODEL",
+     "TokenType.MONEY",
+     "TokenType.MULTILINESTRING",
+     "TokenType.MULTIPOLYGON",
+     "TokenType.NAME",
+     "TokenType.NAMESPACE",
+     "TokenType.NCHAR",
+     "TokenType.NESTED",
+     "TokenType.NEXT",
+     "TokenType.NOTHING",
+     "TokenType.NULL",
+     "TokenType.NULLABLE",
+     "TokenType.NUMMULTIRANGE",
+     "TokenType.NUMRANGE",
+     "TokenType.NVARCHAR",
+     "TokenType.OBJECT",
+     "TokenType.OBJECT_IDENTIFIER",
+     "TokenType.OFFSET",
+     "TokenType.OPERATOR",
+     "TokenType.ORDINALITY",
+     "TokenType.OUT",
+     "TokenType.OVER",
+     "TokenType.OVERLAPS",
+     "TokenType.OVERWRITE",
+     "TokenType.PARTITION",
+     "TokenType.PERCENT",
+     "TokenType.PIVOT",
+     "TokenType.POINT",
+     "TokenType.POLYGON",
+     "TokenType.PRAGMA",
+     "TokenType.PROCEDURE",
+     "TokenType.PROJECTION",
+     "TokenType.PSEUDO_TYPE",
+     "TokenType.PUT",
+     "TokenType.RANGE",
+     "TokenType.RECURSIVE",
+     "TokenType.REFERENCES",
+     "TokenType.REFRESH",
+     "TokenType.RENAME",
+     "TokenType.REPLACE",
+     "TokenType.RING",
+     "TokenType.ROLLUP",
+     "TokenType.ROW",
+     "TokenType.ROWS",
+     "TokenType.ROWVERSION",
+     "TokenType.SCHEMA",
+     "TokenType.SEMANTIC_VIEW",
+     "TokenType.SEQUENCE",
+     "TokenType.SERIAL",
+     "TokenType.SESSION",
+     "TokenType.SESSION_USER",
+     "TokenType.SET",
+     "TokenType.SETTINGS",
+     "TokenType.SHOW",
+     "TokenType.SIMPLEAGGREGATEFUNCTION",
+     "TokenType.SINK",
+     "TokenType.SMALLDATETIME",
+     "TokenType.SMALLINT",
+     "TokenType.SMALLMONEY",
+     "TokenType.SMALLSERIAL",
+     "TokenType.SOME",
+     "TokenType.SOURCE",
+     "TokenType.STAGE",
+     "TokenType.STORAGE_INTEGRATION",
+     "TokenType.STRAIGHT_JOIN",
+     "TokenType.STREAM",
+     "TokenType.STREAMLIT",
+     "TokenType.STRUCT",
+     "TokenType.SUPER",
+     "TokenType.TABLE",
+     "TokenType.TAG",
+     "TokenType.TDIGEST",
+     "TokenType.TEMPORARY",
+     "TokenType.TEXT",
+     "TokenType.TIME",
+     "TokenType.TIMESTAMP",
+     "TokenType.TIMESTAMPLTZ",
+     "TokenType.TIMESTAMPNTZ",
+     "TokenType.TIMESTAMPTZ",
+     "TokenType.TIMESTAMP_MS",
+     "TokenType.TIMESTAMP_NS",
+     "TokenType.TIMESTAMP_S",
+     "TokenType.TIMETZ",
+     "TokenType.TIME_NS",
+     "TokenType.TINYBLOB",
+     "TokenType.TINYINT",
+     "TokenType.TINYTEXT",
+     "TokenType.TOP",
+     "TokenType.TRIGGER",
+     "TokenType.TRUE",
+     "TokenType.TRUNCATE",
+     "TokenType.TSMULTIRANGE",
+     "TokenType.TSRANGE",
+     "TokenType.TSTZMULTIRANGE",
+     "TokenType.TSTZRANGE",
+     "TokenType.TYPE",
+     "TokenType.UBIGINT",
+     "TokenType.UDECIMAL",
+     "TokenType.UDOUBLE",
+     "TokenType.UINT",
+     "TokenType.UINT128",
+     "TokenType.UINT256",
+     "TokenType.UMEDIUMINT",
+     "TokenType.UNIQUE",
+     "TokenType.UNKNOWN",
+     "TokenType.UNNEST",
+     "TokenType.UNPIVOT",
+     "TokenType.UPDATE",
+     "TokenType.USE",
+     "TokenType.USERDEFINED",
+     "TokenType.USMALLINT",
+     "TokenType.UTINYINT",
+     "TokenType.UUID",
+     "TokenType.VAR",
+     "TokenType.VARBINARY",
+     "TokenType.VARCHAR",
+     "TokenType.VARIANT",
+     "TokenType.VECTOR",
+     "TokenType.VIEW",
+     "TokenType.VOID",
+     "TokenType.VOLATILE",
+     "TokenType.WAREHOUSE",
+     "TokenType.XML",
+     "TokenType.YEAR"
+    ]
+   }
+  },
+  "UPDATE_ALIAS_TOKENS": {
+   "kind": "set",
+   "size": 248,
+   "entries": {
+    "__set__": [
+     "TokenType.AGGREGATEFUNCTION",
+     "TokenType.ALL",
+     "TokenType.ANALYZE",
+     "TokenType.ANY",
+     "TokenType.APPLY",
+     "TokenType.ARRAY",
+     "TokenType.ASC",
+     "TokenType.ATTACH",
+     "TokenType.AUTO_INCREMENT",
+     "TokenType.BEGIN",
+     "TokenType.BIGDECIMAL",
+     "TokenType.BIGINT",
+     "TokenType.BIGNUM",
+     "TokenType.BIGSERIAL",
+     "TokenType.BINARY",
+     "TokenType.BIT",
+     "TokenType.BLOB",
+     "TokenType.BOOLEAN",
+     "TokenType.BPCHAR",
+     "TokenType.CACHE",
+     "TokenType.CASE",
+     "TokenType.CHAR",
+     "TokenType.COLLATE",
+     "TokenType.COLUMN",
+     "TokenType.COMMAND",
+     "TokenType.COMMENT",
+     "TokenType.COMMIT",
+     "TokenType.CONSTRAINT",
+     "TokenType.COPY",
+     "TokenType.CUBE",
+     "TokenType.CURRENT_CATALOG",
+     "TokenType.CURRENT_DATE",
+     "TokenType.CURRENT_DATETIME",
+     "TokenType.CURRENT_ROLE",
+     "TokenType.CURRENT_SCHEMA",
+     "TokenType.CURRENT_TIME",
+     "TokenType.CURRENT_TIMESTAMP",
+     "TokenType.CURRENT_USER",
+     "TokenType.DATABASE",
+     "TokenType.DATE",
+     "TokenType.DATE32",
+     "TokenType.DATEMULTIRANGE",
+     "TokenType.DATERANGE",
+     "TokenType.DATETIME",
+     "TokenType.DATETIME2",
+     "TokenType.DATETIME64",
+     "TokenType.DECFLOAT",
+     "TokenType.DECIMAL",
+     "TokenType.DECIMAL128",
+     "TokenType.DECIMAL256",
+     "TokenType.DECIMAL32",
+     "TokenType.DECIMAL64",
+     "TokenType.DECLARE",
+     "TokenType.DEFAULT",
+     "TokenType.DELETE",
+     "TokenType.DESC",
+     "TokenType.DESCRIBE",
+     "TokenType.DETACH",
+     "TokenType.DICTIONARY",
+     "TokenType.DIV",
+     "TokenType.DOUBLE",
+     "TokenType.DYNAMIC",
+     "TokenType.END",
+     "TokenType.ENUM",
+     "TokenType.ENUM16",
+     "TokenType.ENUM8",
+     "TokenType.ESCAPE",
+     "TokenType.EXECUTE",
+     "TokenType.EXISTS",
+     "TokenType.EXPORT",
+     "TokenType.FALSE",
+     "TokenType.FILE",
+     "TokenType.FILE_FORMAT",
+     "TokenType.FILTER",
+     "TokenType.FINAL",
+     "TokenType.FIRST",
+     "TokenType.FIXEDSTRING",
+     "TokenType.FLOAT",
+     "TokenType.FOREIGN_KEY",
+     "TokenType.FORMAT",
+     "TokenType.FUNCTION",
+     "TokenType.GEOGRAPHY",
+     "TokenType.GEOGRAPHYPOINT",
+     "TokenType.GEOMETRY",
+     "TokenType.GET",
+     "TokenType.HLLSKETCH",
+     "TokenType.HSTORE",
+     "TokenType.IDENTIFIER",
+     "TokenType.IMAGE",
+     "TokenType.INDEX",
+     "TokenType.INET",
+     "TokenType.INOUT",
+     "TokenType.INT",
+     "TokenType.INT128",
+     "TokenType.INT256",
+     "TokenType.INT4MULTIRANGE",
+     "TokenType.INT4RANGE",
+     "TokenType.INT8MULTIRANGE",
+     "TokenType.INT8RANGE",
+     "TokenType.INTERVAL",
+     "TokenType.IPADDRESS",
+     "TokenType.IPPREFIX",
+     "TokenType.IPV4",
+     "TokenType.IPV6",
+     "TokenType.IS",
+     "TokenType.ISNULL",
+     "TokenType.JSON",
+     "TokenType.JSONB",
+     "TokenType.KEEP",
+     "TokenType.KILL",
+     "TokenType.LIMIT",
+     "TokenType.LINESTRING",
+     "TokenType.LIST",
+     "TokenType.LOAD",
+     "TokenType.LOCALTIME",
+     "TokenType.LOCALTIMESTAMP",
+     "TokenType.LONGBLOB",
+     "TokenType.LONGTEXT",
+     "TokenType.LOWCARDINALITY",
+     "TokenType.MAP",
+     "TokenType.MATCH",
+     "TokenType.MEDIUMBLOB",
+     "TokenType.MEDIUMINT",
+     "TokenType.MEDIUMTEXT",
+     "TokenType.MERGE",
+     "TokenType.MODEL",
+     "TokenType.MONEY",
+     "TokenType.MULTILINESTRING",
+     "TokenType.MULTIPOLYGON",
+     "TokenType.NAME",
+     "TokenType.NAMESPACE",
+     "TokenType.NCHAR",
+     "TokenType.NESTED",
+     "TokenType.NEXT",
+     "TokenType.NOTHING",
+     "TokenType.NULL",
+     "TokenType.NULLABLE",
+     "TokenType.NUMMULTIRANGE",
+     "TokenType.NUMRANGE",
+     "TokenType.NVARCHAR",
+     "TokenType.OBJECT",
+     "TokenType.OBJECT_IDENTIFIER",
+     "TokenType.OFFSET",
+     "TokenType.OPERATOR",
+     "TokenType.ORDINALITY",
+     "TokenType.OUT",
+     "TokenType.OVER",
+     "TokenType.OVERLAPS",
+     "TokenType.OVERWRITE",
+     "TokenType.PARTITION",
+     "TokenType.PERCENT",
+     "TokenType.PIVOT",
+     "TokenType.POINT",
+     "TokenType.POLYGON",
+     "TokenType.PRAGMA",
+     "TokenType.PROCEDURE",
+     "TokenType.PROJECTION",
+     "TokenType.PSEUDO_TYPE",
+     "TokenType.PUT",
+     "TokenType.RANGE",
+     "TokenType.RECURSIVE",
+     "TokenType.REFERENCES",
+     "TokenType.REFRESH",
+     "TokenType.RENAME",
+     "TokenType.REPLACE",
+     "TokenType.RING",
+     "TokenType.ROLLUP",
+     "TokenType.ROW",
+     "TokenType.ROWS",
+     "TokenType.ROWVERSION",
+     "TokenType.SCHEMA",
+     "TokenType.SEMANTIC_VIEW",
+     "TokenType.SEQUENCE",
+     "TokenType.SERIAL",
+     "TokenType.SESSION",
+     "TokenType.SESSION_USER",
+     "TokenType.SETTINGS",
+     "TokenType.SHOW",
+     "TokenType.SIMPLEAGGREGATEFUNCTION",
+     "TokenType.SINK",
+     "TokenType.SMALLDATETIME",
+     "TokenType.SMALLINT",
+     "TokenType.SMALLMONEY",
+     "TokenType.SMALLSERIAL",
+     "TokenType.SOME",
+     "TokenType.SOURCE",
+     "TokenType.STAGE",
+     "TokenType.STORAGE_INTEGRATION",
+     "TokenType.STRAIGHT_JOIN",
+     "TokenType.STREAM",
+     "TokenType.STREAMLIT",
+     "TokenType.STRUCT",
+     "TokenType.SUPER",
+     "TokenType.TABLE",
+     "TokenType.TAG",
+     "TokenType.TDIGEST",
+     "TokenType.TEMPORARY",
+     "TokenType.TEXT",
+     "TokenType.TIME",
+     "TokenType.TIMESTAMP",
+     "TokenType.TIMESTAMPLTZ",
+     "TokenType.TIMESTAMPNTZ",
+     "TokenType.TIMESTAMPTZ",
+     "TokenType.TIMESTAMP_MS",
+     "TokenType.TIMESTAMP_NS",
+     "TokenType.TIMESTAMP_S",
+     "TokenType.TIMETZ",
+     "TokenType.TIME_NS",
+     "TokenType.TINYBLOB",
+     "TokenType.TINYINT",
+     "TokenType.TINYTEXT",
+     "TokenType.TOP",
+     "TokenType.TRIGGER",
+     "TokenType.TRUE",
+     "TokenType.TRUNCATE",
+     "TokenType.TSMULTIRANGE",
+     "TokenType.TSRANGE",
+     "TokenType.TSTZMULTIRANGE",
+     "TokenType.TSTZRANGE",
+     "TokenType.TYPE",
+     "TokenType.UBIGINT",
+     "TokenType.UDECIMAL",
+     "TokenType.UDOUBLE",
+     "TokenType.UINT",
+     "TokenType.UINT128",
+     "TokenType.UINT256",
+     "TokenType.UMEDIUMINT",
+     "TokenType.UNIQUE",
+     "TokenType.UNKNOWN",
+     "TokenType.UNNEST",
+     "TokenType.UNPIVOT",
+     "TokenType.UPDATE",
+     "TokenType.USE",
+     "TokenType.USERDEFINED",
+     "TokenType.USMALLINT",
+     "TokenType.UTINYINT",
+     "TokenType.UUID",
+     "TokenType.VAR",
+     "TokenType.VARBINARY",
+     "TokenType.VARCHAR",
+     "TokenType.VARIANT",
+     "TokenType.VECTOR",
+     "TokenType.VIEW",
+     "TokenType.VOID",
+     "TokenType.VOLATILE",
+     "TokenType.WAREHOUSE",
+     "TokenType.XML",
+     "TokenType.YEAR"
+    ]
+   }
+  },
+  "USABLES": {
+   "kind": "dict",
+   "size": 5,
+   "entries": {
+    "__dict__": [
+     [
+      "ROLE",
+      []
+     ],
+     [
+      "WAREHOUSE",
+      []
+     ],
+     [
+      "DATABASE",
+      []
+     ],
+     [
+      "SCHEMA",
+      []
+     ],
+     [
+      "CATALOG",
+      []
+     ]
+    ]
+   }
+  },
+  "VERSION_PHRASES": {
+   "kind": "dict",
+   "size": 6,
+   "entries": {
+    "__dict__": [
+     [
+      "[\"FOR\",\"SYSTEM_TIME\"]",
+      "TIMESTAMP"
+     ],
+     [
+      "[\"FOR\",\"SYSTEM\",\"TIME\"]",
+      "TIMESTAMP"
+     ],
+     [
+      "[\"FOR\",\"TIMESTAMP\"]",
+      "TIMESTAMP"
+     ],
+     [
+      "[\"FOR\",\"VERSION\"]",
+      "VERSION"
+     ],
+     [
+      "[\"TIMESTAMP\",\"AS\",\"OF\"]",
+      "TIMESTAMP"
+     ],
+     [
+      "[\"VERSION\",\"AS\",\"OF\"]",
+      "VERSION"
+     ]
+    ]
+   }
+  },
+  "VIEW_ATTRIBUTES": {
+   "kind": "set",
+   "size": 3,
+   "entries": {
+    "__set__": [
+     "ENCRYPTION",
+     "SCHEMABINDING",
+     "VIEW_METADATA"
+    ]
+   }
+  },
+  "WINDOW_ALIAS_TOKENS": {
+   "kind": "set",
+   "size": 256,
+   "entries": {
+    "__set__": [
+     "TokenType.AGGREGATEFUNCTION",
+     "TokenType.ALL",
+     "TokenType.ANALYZE",
+     "TokenType.ANTI",
+     "TokenType.ANY",
+     "TokenType.APPLY",
+     "TokenType.ARRAY",
+     "TokenType.ASC",
+     "TokenType.ASOF",
+     "TokenType.ATTACH",
+     "TokenType.AUTO_INCREMENT",
+     "TokenType.BEGIN",
+     "TokenType.BIGDECIMAL",
+     "TokenType.BIGINT",
+     "TokenType.BIGNUM",
+     "TokenType.BIGSERIAL",
+     "TokenType.BINARY",
+     "TokenType.BIT",
+     "TokenType.BLOB",
+     "TokenType.BOOLEAN",
+     "TokenType.BPCHAR",
+     "TokenType.CACHE",
+     "TokenType.CASE",
+     "TokenType.CHAR",
+     "TokenType.COLLATE",
+     "TokenType.COLUMN",
+     "TokenType.COMMAND",
+     "TokenType.COMMENT",
+     "TokenType.COMMIT",
+     "TokenType.CONSTRAINT",
+     "TokenType.COPY",
+     "TokenType.CUBE",
+     "TokenType.CURRENT_CATALOG",
+     "TokenType.CURRENT_DATE",
+     "TokenType.CURRENT_DATETIME",
+     "TokenType.CURRENT_ROLE",
+     "TokenType.CURRENT_SCHEMA",
+     "TokenType.CURRENT_TIME",
+     "TokenType.CURRENT_TIMESTAMP",
+     "TokenType.CURRENT_USER",
+     "TokenType.DATABASE",
+     "TokenType.DATE",
+     "TokenType.DATE32",
+     "TokenType.DATEMULTIRANGE",
+     "TokenType.DATERANGE",
+     "TokenType.DATETIME",
+     "TokenType.DATETIME2",
+     "TokenType.DATETIME64",
+     "TokenType.DECFLOAT",
+     "TokenType.DECIMAL",
+     "TokenType.DECIMAL128",
+     "TokenType.DECIMAL256",
+     "TokenType.DECIMAL32",
+     "TokenType.DECIMAL64",
+     "TokenType.DECLARE",
+     "TokenType.DEFAULT",
+     "TokenType.DELETE",
+     "TokenType.DESC",
+     "TokenType.DESCRIBE",
+     "TokenType.DETACH",
+     "TokenType.DICTIONARY",
+     "TokenType.DIV",
+     "TokenType.DOUBLE",
+     "TokenType.DYNAMIC",
+     "TokenType.END",
+     "TokenType.ENUM",
+     "TokenType.ENUM16",
+     "TokenType.ENUM8",
+     "TokenType.ESCAPE",
+     "TokenType.EXECUTE",
+     "TokenType.EXISTS",
+     "TokenType.EXPORT",
+     "TokenType.FALSE",
+     "TokenType.FILE",
+     "TokenType.FILE_FORMAT",
+     "TokenType.FILTER",
+     "TokenType.FINAL",
+     "TokenType.FIRST",
+     "TokenType.FIXEDSTRING",
+     "TokenType.FLOAT",
+     "TokenType.FOREIGN_KEY",
+     "TokenType.FORMAT",
+     "TokenType.FULL",
+     "TokenType.FUNCTION",
+     "TokenType.GEOGRAPHY",
+     "TokenType.GEOGRAPHYPOINT",
+     "TokenType.GEOMETRY",
+     "TokenType.GET",
+     "TokenType.HLLSKETCH",
+     "TokenType.HSTORE",
+     "TokenType.IDENTIFIER",
+     "TokenType.IMAGE",
+     "TokenType.INDEX",
+     "TokenType.INET",
+     "TokenType.INOUT",
+     "TokenType.INT",
+     "TokenType.INT128",
+     "TokenType.INT256",
+     "TokenType.INT4MULTIRANGE",
+     "TokenType.INT4RANGE",
+     "TokenType.INT8MULTIRANGE",
+     "TokenType.INT8RANGE",
+     "TokenType.INTERVAL",
+     "TokenType.IPADDRESS",
+     "TokenType.IPPREFIX",
+     "TokenType.IPV4",
+     "TokenType.IPV6",
+     "TokenType.IS",
+     "TokenType.ISNULL",
+     "TokenType.JSON",
+     "TokenType.JSONB",
+     "TokenType.KEEP",
+     "TokenType.KILL",
+     "TokenType.LEFT",
+     "TokenType.LIMIT",
+     "TokenType.LINESTRING",
+     "TokenType.LIST",
+     "TokenType.LOAD",
+     "TokenType.LOCALTIME",
+     "TokenType.LOCALTIMESTAMP",
+     "TokenType.LOCK",
+     "TokenType.LONGBLOB",
+     "TokenType.LONGTEXT",
+     "TokenType.LOWCARDINALITY",
+     "TokenType.MAP",
+     "TokenType.MATCH",
+     "TokenType.MEDIUMBLOB",
+     "TokenType.MEDIUMINT",
+     "TokenType.MEDIUMTEXT",
+     "TokenType.MERGE",
+     "TokenType.MODEL",
+     "TokenType.MONEY",
+     "TokenType.MULTILINESTRING",
+     "TokenType.MULTIPOLYGON",
+     "TokenType.NAME",
+     "TokenType.NAMESPACE",
+     "TokenType.NATURAL",
+     "TokenType.NCHAR",
+     "TokenType.NESTED",
+     "TokenType.NEXT",
+     "TokenType.NOTHING",
+     "TokenType.NULL",
+     "TokenType.NULLABLE",
+     "TokenType.NUMMULTIRANGE",
+     "TokenType.NUMRANGE",
+     "TokenType.NVARCHAR",
+     "TokenType.OBJECT",
+     "TokenType.OBJECT_IDENTIFIER",
+     "TokenType.OFFSET",
+     "TokenType.OPERATOR",
+     "TokenType.ORDINALITY",
+     "TokenType.OUT",
+     "TokenType.OVER",
+     "TokenType.OVERLAPS",
+     "TokenType.OVERWRITE",
+     "TokenType.PARTITION",
+     "TokenType.PERCENT",
+     "TokenType.PIVOT",
+     "TokenType.POINT",
+     "TokenType.POLYGON",
+     "TokenType.PRAGMA",
+     "TokenType.PROCEDURE",
+     "TokenType.PROJECTION",
+     "TokenType.PSEUDO_TYPE",
+     "TokenType.PUT",
+     "TokenType.RECURSIVE",
+     "TokenType.REFERENCES",
+     "TokenType.REFRESH",
+     "TokenType.RENAME",
+     "TokenType.REPLACE",
+     "TokenType.RIGHT",
+     "TokenType.RING",
+     "TokenType.ROLLUP",
+     "TokenType.ROW",
+     "TokenType.ROWVERSION",
+     "TokenType.SCHEMA",
+     "TokenType.SEMANTIC_VIEW",
+     "TokenType.SEMI",
+     "TokenType.SEQUENCE",
+     "TokenType.SERIAL",
+     "TokenType.SESSION",
+     "TokenType.SESSION_USER",
+     "TokenType.SET",
+     "TokenType.SETTINGS",
+     "TokenType.SHOW",
+     "TokenType.SIMPLEAGGREGATEFUNCTION",
+     "TokenType.SINK",
+     "TokenType.SMALLDATETIME",
+     "TokenType.SMALLINT",
+     "TokenType.SMALLMONEY",
+     "TokenType.SMALLSERIAL",
+     "TokenType.SOME",
+     "TokenType.SOURCE",
+     "TokenType.STAGE",
+     "TokenType.STORAGE_INTEGRATION",
+     "TokenType.STRAIGHT_JOIN",
+     "TokenType.STREAM",
+     "TokenType.STREAMLIT",
+     "TokenType.STRUCT",
+     "TokenType.SUPER",
+     "TokenType.TABLE",
+     "TokenType.TAG",
+     "TokenType.TDIGEST",
+     "TokenType.TEMPORARY",
+     "TokenType.TEXT",
+     "TokenType.TIME",
+     "TokenType.TIMESTAMP",
+     "TokenType.TIMESTAMPLTZ",
+     "TokenType.TIMESTAMPNTZ",
+     "TokenType.TIMESTAMPTZ",
+     "TokenType.TIMESTAMP_MS",
+     "TokenType.TIMESTAMP_NS",
+     "TokenType.TIMESTAMP_S",
+     "TokenType.TIMETZ",
+     "TokenType.TIME_NS",
+     "TokenType.TINYBLOB",
+     "TokenType.TINYINT",
+     "TokenType.TINYTEXT",
+     "TokenType.TOP",
+     "TokenType.TRIGGER",
+     "TokenType.TRUE",
+     "TokenType.TRUNCATE",
+     "TokenType.TSMULTIRANGE",
+     "TokenType.TSRANGE",
+     "TokenType.TSTZMULTIRANGE",
+     "TokenType.TSTZRANGE",
+     "TokenType.TYPE",
+     "TokenType.UBIGINT",
+     "TokenType.UDECIMAL",
+     "TokenType.UDOUBLE",
+     "TokenType.UINT",
+     "TokenType.UINT128",
+     "TokenType.UINT256",
+     "TokenType.UMEDIUMINT",
+     "TokenType.UNIQUE",
+     "TokenType.UNKNOWN",
+     "TokenType.UNNEST",
+     "TokenType.UNPIVOT",
+     "TokenType.UPDATE",
+     "TokenType.USE",
+     "TokenType.USERDEFINED",
+     "TokenType.USMALLINT",
+     "TokenType.UTINYINT",
+     "TokenType.UUID",
+     "TokenType.VAR",
+     "TokenType.VARBINARY",
+     "TokenType.VARCHAR",
+     "TokenType.VARIANT",
+     "TokenType.VECTOR",
+     "TokenType.VIEW",
+     "TokenType.VOID",
+     "TokenType.VOLATILE",
+     "TokenType.WAREHOUSE",
+     "TokenType.WINDOW",
+     "TokenType.XML",
+     "TokenType.YEAR"
+    ]
+   }
+  },
+  "WINDOW_BEFORE_PAREN_TOKENS": {
+   "kind": "set",
+   "size": 1,
+   "entries": {
+    "__set__": [
+     "TokenType.OVER"
+    ]
+   }
+  },
+  "WINDOW_EXCLUDE_OPTIONS": {
+   "kind": "dict",
+   "size": 4,
+   "entries": {
+    "__dict__": [
+     [
+      "NO",
+      [
+       "OTHERS"
+      ]
+     ],
+     [
+      "CURRENT",
+      [
+       "ROW"
+      ]
+     ],
+     [
+      "GROUP",
+      []
+     ],
+     [
+      "TIES",
+      []
+     ]
+    ]
+   }
+  },
+  "WINDOW_SIDES": {
+   "kind": "set",
+   "size": 2,
+   "entries": {
+    "__set__": [
+     "FOLLOWING",
+     "PRECEDING"
+    ]
+   }
+  }
+ }
+}

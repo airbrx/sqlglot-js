@@ -4,7 +4,8 @@
 // py: sqlglot/expressions/{array,constraints,datatypes,functions,json,properties,temporal}.py
 import * as C from "./classes.js";
 import { Expr, convert, maybeCopy, maybeParse, registerAstEnums, dotBuild, COLUMN_PARTS } from "./core.js";
-import { PyValueError } from "../_py/errors.js";
+import { PyValueError, PyKeyError } from "../_py/errors.js";
+import { EXPR_META } from "../_gen/expr_meta.js";
 import { literalNumberText } from "../_py/num.js";
 
 function getter(Klass, name, get) {
@@ -50,11 +51,11 @@ export function installFocusedMethods() {
     const literal = new C.Literal({ this: text, is_string: false });
     return neg ? new C.Neg({ this: literal }) : literal;
   };
-  getter(C.Literal, "isNumber", function () { return !this.args.is_string && /^(?:[-+]?\d+(?:\.\d*)?(?:e[-+]?\d+)?|inf|nan|binary_double_nan)$/i.test(String(this.this)); });
-  getter(C.Literal, "is_number", function () { return this.isNumber; });
-  getter(C.Neg, "isNumber", function () { return !!this.this?.isNumber; });
-  getter(C.Neg, "is_number", function () { return this.isNumber; });
-  C.DataType.isDataType = true;
+  // `Literal.is_number` / `Neg.is_number` used to be overridden here — a regex on the
+  // literal TEXT for one and a recursion for the other. Upstream has NEITHER: both are
+  // the single `Expression.is_number` (core.py:926), which asks only "is this a
+  // non-string Literal, or a Neg wrapping a number". `Expr.isNumber` in core.js is now
+  // that whole definition, so these overrides are gone rather than corrected.
   C.DataType.Type = DType;
   const dtypeSet = (...names) => new Set(names.map(name => DType[name]));
   C.DataType.STRUCT_TYPES = dtypeSet("FILE", "NESTED", "OBJECT", "STRUCT", "UNION");
@@ -69,17 +70,35 @@ export function installFocusedMethods() {
   C.DataType.REAL_TYPES = dtypeSet("DOUBLE", "FLOAT", "BIGDECIMAL", "DECIMAL", "DECIMAL32", "DECIMAL64", "DECIMAL128", "DECIMAL256", "DECFLOAT", "MONEY", "SMALLMONEY", "UDECIMAL", "UDOUBLE");
   C.DataType.NUMERIC_TYPES = new Set([...C.DataType.INTEGER_TYPES, ...C.DataType.REAL_TYPES]);
   C.DataType.TEMPORAL_TYPES = dtypeSet("DATE", "DATE32", "DATETIME", "DATETIME2", "DATETIME64", "SMALLDATETIME", "TIME", "TIMESTAMP", "TIMESTAMPNTZ", "TIMESTAMPLTZ", "TIMESTAMPTZ", "TIMESTAMP_MS", "TIMESTAMP_NS", "TIMESTAMP_S", "TIMETZ");
-  C.Cast.isCast = true;
-  // These markers are consumed by Func.from_arg_list / error_messages. They
-  // are class attributes upstream rather than part of arg_types.
-  for (const name of [
-    "Count","CumeDist","DenseRank","Grouping","GroupingId","Max","Min","Minhash","PercentRank","Rank",
-    "Array","ArrayConstructCompact","List","ArrayConcat","ArrayIntersect","ArraysZip","Explode","MapDelete","MapPick","VarMap","Struct",
-    "Coalesce","DecodeCase","Greatest","Least","AIEmbed","AISimilarity","AIGenerate","ReadCSV","ReadParquet",
-    "JSONArray","JSONArrayAppend","JSONArrayInsert","JSONExtract","JSONExtractScalar","JSONKeys","JSONRemove","JSONSet",
-    "Chr","Concat","Elt","Format","CityHash64","FarmFingerprint","MD5Digest","Date",
-  ]) C[name].isVarLenArgs = true;
-  C.VarMap.varLenArgKey = "values";
+  // py: a `t.ClassVar` declared on a base class is INHERITED by every subclass. The
+  // generated constructors all extend `Expr` directly rather than their Python base
+  // (defineExpr, core.js:325), so JS static inheritance does not carry it — the flag
+  // has to be applied to the base AND its descendants explicitly.
+  //
+  // DERIVED, not enumerated. This is the third time the same bug has been found in this
+  // file: a `/Cast$/` regex, then a hand-written var-len list that had drifted to 46 of
+  // 55 classes, then `is_data_type` set on `DataType` alone — missing `IntervalSpan`,
+  // `ObjectIdentifier` and `PseudoType`, whose `.type` returned undefined where CPython
+  // returns `self`. A hand list is wrong the moment upstream adds a subclass and nothing
+  // says so. `EXPR_META[*].bases` is the real Python MRO, extracted by importing the
+  // pinned package, so this cannot drift: add a subclass upstream, regenerate, done.
+  const setInheritedClassVar = (prop, owner) => {
+    for (const meta of Object.values(EXPR_META)) {
+      if (meta.name === owner || meta.bases.includes(owner)) C[meta.name][prop] = true;
+    }
+  };
+  // py: functions.py:35 `is_cast: t.ClassVar[bool] = True` on Cast -> Cast, JSONCast, TryCast.
+  setInheritedClassVar("isCast", "Cast");
+  // py: datatypes.py:190 `is_data_type: t.ClassVar[bool] = True` on DataType
+  //     -> DataType, IntervalSpan, ObjectIdentifier, PseudoType.
+  setInheritedClassVar("isDataType", "DataType");
+  // `isVarLenArgs` / `varLenArgKey` were a hand-written list here. It had drifted to 46
+  // of upstream's 55 var-len Func classes (missing Anonymous, AnonymousAggFunc,
+  // CombinedAggFunc, ConcatWs, HashAgg, Hll, Posexplode, PosexplodeOuter and
+  // _ExplodeOuter) — invisible until P3's `Func.from_arg_list` needed it, and it would
+  // have mis-shaped those nine silently. Both markers are now extracted by
+  // tools/parity/extract.py and applied in `defineExpr`, so the list cannot drift
+  // again (§4.3: generate the mechanical part).
   getter(C.DataTypeParam, "name", function () { return nodeName(this.args.this); });
 
   // py: core.py Dot.build / Dot.parts.  build() is the constructor for the `fields`
@@ -126,10 +145,25 @@ export function installFocusedMethods() {
     });
   };
 
-  getter(C.Cast, "name", function () { return nodeName(this.this); });
-  getter(C.Cast, "to", function () { return this.args.to; });
-  getter(C.Cast, "outputName", function () { return this.name; });
-  C.Cast.prototype.isType = function (...dtypes) { return this.to.isType(...dtypes); };
+  // py: functions.py:34 `class Cast`; JSONCast and TryCast are SUBCLASSES of it and
+  // inherit every member below. `defineExpr` always extends `Expr`, so that inheritance
+  // is not automatic here and each member is installed on all three. Missing this made
+  // `JSONCast.to` undefined while `Cast.to` worked — invisible while `type` reached
+  // around the property to `args.to`.
+  for (const K of [C.Cast, C.JSONCast, C.TryCast]) {
+    getter(K, "name", function () { return nodeName(this.this); });
+    // py: functions.py:51 `return self.args["to"]` — a SUBSCRIPT, so a Cast built
+    // without its required `to` raises KeyError rather than yielding None. Observable:
+    // `.type` falls back to `.to` (core.py:973), so `repr(Cast.from_arg_list([]))`
+    // raises upstream. Found by spike/p3/fuzz_from_arg_list.mjs; `this.args.to`
+    // returned undefined and silently produced a repr Python cannot produce.
+    getter(K, "to", function () {
+      if (!("to" in this.args)) throw new PyKeyError("to");
+      return this.args.to;
+    });
+    getter(K, "outputName", function () { return this.name; });
+    K.prototype.isType = function (...dtypes) { return this.to.isType(...dtypes); };
+  }
 
   C.Case.prototype.when = function (condition, then, options = {}) {
     const copy = options.copy ?? true, instance = maybeCopy(this, copy);

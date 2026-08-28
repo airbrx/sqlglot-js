@@ -1,30 +1,33 @@
 {
  "_comment": "Implicit Expression->str coercions inside sqlglot/. Each renders with the DEFAULT dialect via Expression.__str__ (expressions/core.py:1237 -> self.sql()). JS has no __str__, so a transliterated `${expr}` yields '[object Object]'. Entries with renders='repr' call __repr__/_to_s instead and are a separate (non-dialect) port hazard. PORT_PLAN.md 4.6 / P0 item 8. Regenerate: python3 tools/deny/gen_implicit_str.py",
- "ref": "/tmp/sqlglot-ref-regex",
+ "ref": "/tmp/sqlglot-ref",
  "python": "3.9.25",
  "stats": {
   "files_scanned": 182,
   "fstring_slots": 2784,
   "str_calls": 31,
-  "percent_formats": 0
+  "percent_formats": 0,
+  "measured_sites": 8
  },
  "counts": {
-  "total": 60,
-  "in_scope": 60,
+  "total": 68,
+  "in_scope": 68,
   "executor_only": 0,
-  "sql_default_dialect": 58,
+  "sql_default_dialect": 66,
   "repr_only": 2,
   "by_form": {
-   "f-string {x}": 55,
+   "f-string {x}": 61,
    "str(x)": 2,
-   "logger.warning(..., x)": 1
+   "logger.warning(..., x)": 1,
+   "explicit .sql()": 2
   },
   "by_confidence": {
    "medium": 43,
    "low": 13,
-   "high": 2
+   "high": 2,
+   "measured": 8
   },
-  "files": 23
+  "files": 25
  },
  "sites": [
   {
@@ -793,6 +796,126 @@
    "source": "f\"ARRAY_ANY({alias}, _x -> _x = {parent_predicate.this})\"",
    "statement": "f\"ARRAY_ANY({alias}, _x -> _x = {parent_predicate.this})\",",
    "executor": false
+  },
+  {
+   "form": "f-string {x}",
+   "renders": "sql-default-dialect",
+   "confidence": "measured",
+   "why": "CPython-instrumented parse path: _parse_retention_period coerces `number` (Literal) to SQL mid-parse and bakes the result into the AST",
+   "py": "sqlglot/parser.py:3044",
+   "file": "sqlglot/parser.py",
+   "line": 3044,
+   "col": 21,
+   "source": "f\"{number} \"",
+   "statement": "number_str = f\"{number} \" if number else \"\"",
+   "executor": false,
+   "fn": "_parse_retention_period",
+   "route": "kernelSql"
+  },
+  {
+   "form": "f-string {x}",
+   "renders": "sql-default-dialect",
+   "confidence": "measured",
+   "why": "CPython-instrumented parse path: _parse_retention_period coerces `unit` (Var) to SQL mid-parse and bakes the result into the AST",
+   "py": "sqlglot/parser.py:3046",
+   "file": "sqlglot/parser.py",
+   "line": 3046,
+   "col": 15,
+   "source": "exp.var(f\"{number_str}{unit}\")",
+   "statement": "return exp.var(f\"{number_str}{unit}\")",
+   "executor": false,
+   "fn": "_parse_retention_period",
+   "route": "kernelSql"
+  },
+  {
+   "form": "f-string {x}",
+   "renders": "sql-default-dialect",
+   "confidence": "measured",
+   "why": "CPython-instrumented parse path: _parse_definer coerces `user, host` (Identifier) to SQL mid-parse and bakes the result into the AST",
+   "py": "sqlglot/parser.py:3179",
+   "file": "sqlglot/parser.py",
+   "line": 3179,
+   "col": 40,
+   "source": "f\"{user}@{host}\"",
+   "statement": "return exp.DefinerProperty(this=f\"{user}@{host}\")",
+   "executor": false,
+   "fn": "_parse_definer",
+   "route": "kernelSql"
+  },
+  {
+   "form": "explicit .sql()",
+   "renders": "sql-default-dialect",
+   "confidence": "measured",
+   "why": "CPython-instrumented parse path: _parse_pivot (pivot IN (...) field names) coerces `fld` (Column, Literal, Select) to SQL mid-parse and bakes the result into the AST",
+   "py": "sqlglot/parser.py:5491",
+   "file": "sqlglot/parser.py",
+   "line": 5491,
+   "col": 24,
+   "source": "fld.sql()",
+   "statement": "fld.sql()",
+   "executor": false,
+   "fn": "_parse_pivot (pivot IN (...) field names)",
+   "route": "kernelSql"
+  },
+  {
+   "form": "explicit .sql()",
+   "renders": "sql-default-dialect",
+   "confidence": "measured",
+   "why": "CPython-instrumented parse path: _parse_case (CASE ... ELSE INTERVAL) coerces `default.this` (Column, Literal) to SQL mid-parse and bakes the result into the AST",
+   "py": "sqlglot/parser.py:8069",
+   "file": "sqlglot/parser.py",
+   "line": 8069,
+   "col": 53,
+   "source": "default.this.sql()",
+   "statement": "if isinstance(default, exp.Interval) and default.this.sql().upper() == \"END\":",
+   "executor": false,
+   "fn": "_parse_case (CASE ... ELSE INTERVAL)",
+   "route": "kernelSql"
+  },
+  {
+   "form": "f-string {x}",
+   "renders": "sql-default-dialect",
+   "confidence": "measured",
+   "why": "CPython-instrumented parse path: _parse_analyze coerces `self._parse_number()` (Literal) to SQL mid-parse and bakes the result into the AST",
+   "py": "sqlglot/parser.py:9313",
+   "file": "sqlglot/parser.py",
+   "line": 9313,
+   "col": 31,
+   "source": "f\"BUFFER_USAGE_LIMIT {self._parse_number()}\"",
+   "statement": "options.append(f\"BUFFER_USAGE_LIMIT {self._parse_number()}\")",
+   "executor": false,
+   "fn": "_parse_analyze",
+   "route": "kernelSql"
+  },
+  {
+   "form": "f-string {x}",
+   "renders": "sql-default-dialect",
+   "confidence": "measured",
+   "why": "CPython-instrumented parse path: _parse_analyze_histogram coerces `buckets` (Literal) to SQL mid-parse and bakes the result into the AST",
+   "py": "sqlglot/parser.py:9462",
+   "file": "sqlglot/parser.py",
+   "line": 9462,
+   "col": 48,
+   "source": "f\"{buckets} BUCKETS\"",
+   "statement": "with_expressions.append(f\"{buckets} BUCKETS\")",
+   "executor": false,
+   "fn": "_parse_analyze_histogram",
+   "route": "kernelSql"
+  },
+  {
+   "form": "f-string {x}",
+   "renders": "sql-default-dialect",
+   "confidence": "measured",
+   "why": "CPython-instrumented parse path: _parse_ai_forecast (error path) coerces `arg` (arbitrary (Literal, Column, Add confirmed)) to SQL mid-parse and bakes the result into the AST",
+   "py": "sqlglot/parsers/bigquery.py:712",
+   "file": "sqlglot/parsers/bigquery.py",
+   "line": 712,
+   "col": 33,
+   "source": "f\"Expected key => value syntax for AI.FORECAST, got {arg}\"",
+   "statement": "self.raise_error(f\"Expected key => value syntax for AI.FORECAST, got {arg}\")",
+   "executor": false,
+   "fn": "_parse_ai_forecast (error path)",
+   "route": "kernelSql"
   },
   {
    "form": "f-string {x!r}",

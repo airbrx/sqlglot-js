@@ -187,8 +187,14 @@ function checkMarkers(manifest, kind) {
   }
   const missing = [...expected].filter((py) => !seen.has(py));
   if (missing.length) {
-    // Only a failure once the owning file is ported; before that it is a to-do.
-    const portedMissing = missing.filter((py) => jsSources.has(pyToJsPath(py.split(":")[0])));
+    // Only a failure once the owning METHOD is ported; before that it is a to-do.
+    //
+    // File-level granularity was enough while files were ported all-or-nothing. P3
+    // introduces the first partially-ported file — `src/parser.js` is 405 stubs with a
+    // couple of dozen real bodies — and at file granularity every deny site in
+    // `parser.py` became a failure the moment the seeded skeleton landed, demanding
+    // markers on code that does not exist yet.
+    const portedMissing = missing.filter((py) => isPortedSite(py));
     for (const py of portedMissing) {
       failures.push({
         check: "missing-marker",
@@ -196,8 +202,111 @@ function checkMarkers(manifest, kind) {
         detail: `no "// deny:${kind} ${py}" marker at the ported site`,
       });
     }
-    notes.push(`deny:${kind} — ${missing.length - portedMissing.length} sites in files not ported yet`);
+    const stubbed = missing.filter((py) => !portedMissing.includes(py) && jsSources.has(pyToJsPath(py.split(":")[0])));
+    notes.push(
+      `deny:${kind} — ${missing.length - portedMissing.length} sites not ported yet` +
+      (stubbed.length ? ` (${stubbed.length} of them inside NotPorted stubs)` : ""),
+    );
   }
+}
+
+/**
+ * CHECK 4 — required routing symbol (`route` on a deny site).
+ *
+ * A marker only proves someone looked. For the parse-path generate sites this is not
+ * enough: the whole finding is that five of the seven are INVISIBLE `f"{expr}"`
+ * coercions, so an agent implementing `_parse_pivot` reads `parser.py:5491`, sees
+ * `fld.sql()`, and has no reason to know `kernelSql` exists — `src/parser.js` never
+ * mentions it. That is how a discovery gets silently lost between PRs.
+ *
+ * So a site may name the symbol its port MUST go through. While the owning method is
+ * still a `NotPorted` stub this is a note; the moment the method gets a real body the
+ * ported file has to reference the symbol or this fails. Deliberately a
+ * file-level reference check, not a line-level one — asserting the exact call shape
+ * would be guessing at code that does not exist yet, and the marker plus the human
+ * review gate (§8.5) cover the rest.
+ */
+function checkRouting(manifest, kind) {
+  for (const site of manifest.sites) {
+    if (site.executor || !site.route) continue;
+    const ported = pyToJsPath(site.file);
+    if (!ported) continue;
+    const src = jsSources.get(ported);
+    if (src === undefined || !isPortedSite(site.py)) {
+      notes.push(
+        `deny:${kind} ${site.py} — not ported yet; when it lands it must route through `
+        + `${site.route}() (${site.why ?? ""})`.trimEnd(),
+      );
+      continue;
+    }
+    if (!new RegExp(`\\b${site.route}\\b`).test(src)) {
+      failures.push({
+        check: "missing-route",
+        where: `${ported} (for ${site.py})`,
+        detail:
+          `${site.fn ?? "this method"} generates SQL mid-parse and the result is baked `
+          + `into the AST — it must go through ${site.route}(), not a hand-written `
+          + `renderer or a JS template literal. See corpus/deny/${kind}.json.`,
+      });
+    }
+  }
+}
+
+/**
+ * Is the upstream line `file:line` inside a method the port has actually IMPLEMENTED?
+ *
+ * Derived from the port's own source, so it needs no extra manifest and cannot drift:
+ * `tools/seed_static.py` gives every method a `// py: <file>:<line>` anchor immediately
+ * above it, in upstream order, and an unported one throws `NotPorted`. The method
+ * owning a deny site is the one with the greatest anchor line <= the site's line; the
+ * site counts as ported iff that method's body is not a `NotPorted` stub.
+ */
+function isPortedSite(py) {
+  const [pyFile, lineStr] = py.split(":");
+  const jsPath = pyToJsPath(pyFile);
+  const src = jsSources.get(jsPath);
+  if (src === undefined) return false;
+
+  // An explicit `// @ported-ranges <pyfile> <a-b> <c-d> ...` directive wins: a file that
+  // deliberately ports only part of an upstream module (e.g. optimizer Tier A) says so
+  // once, instead of every deny site in the untouched half becoming a failure the
+  // moment the file is created.
+  const rangeRe = /@ported-ranges\s+(\S+)((?:\s+\d+-\d+)+)/g;
+  let declared = null;
+  for (const m of src.matchAll(rangeRe)) {
+    if (m[1] !== pyFile) continue;
+    declared ??= [];
+    for (const r of m[2].trim().split(/\s+/)) {
+      const [a, b] = r.split("-").map(Number);
+      declared.push([a, b]);
+    }
+  }
+  if (declared) {
+    const line = Number(lineStr);
+    return declared.some(([a, b]) => line >= a && line <= b);
+  }
+
+  const anchors = [];
+  const re = /\/\/\s*py:\s*(\S+?):(\d+)\s*\n([\s\S]{0,400}?)(?=\n\s*\/\*\*|\n\s*\/\/\s*py:|$)/g;
+  for (const m of src.matchAll(re)) {
+    if (m[1] !== pyFile) continue;
+    anchors.push({ line: Number(m[2]), stub: m[3].includes("new NotPorted(") });
+  }
+  if (!anchors.length) {
+    // No anchors at all — a hand-written port with no seeded skeleton. Keep the old
+    // file-level behaviour rather than silently excusing every site in it.
+    return true;
+  }
+  anchors.sort((a, b) => a.line - b.line);
+
+  const line = Number(lineStr);
+  let owner = null;
+  for (const a of anchors) {
+    if (a.line <= line) owner = a;
+    else break;
+  }
+  // Before the first anchor means module level, which is always hand-written.
+  return owner === null ? true : !owner.stub;
 }
 
 /** sqlglot/generators/duckdb.py -> src/generators/duckdb.js (PORT_PLAN.md §4.1) */
@@ -229,6 +338,8 @@ checkBannedConstructs();
 checkShimRouting(pyBuiltins);
 checkMarkers(operators, "operators");
 checkMarkers(implicitStr, "implicit_str");
+checkRouting(operators, "operators");
+checkRouting(implicitStr, "implicit_str");
 
 console.log("deny-list lint (sketch)\n");
 console.log(`  ported JS files scanned      ${jsFiles.length}`);
@@ -236,6 +347,11 @@ console.log(`  operators sites              ${operators.counts.in_scope}`);
 console.log(`  implicit_str sites           ${implicitStr.counts.sql_default_dialect}`);
 console.log(`  py_builtins sites            ${pyBuiltins.counts.in_scope}`);
 console.log(`  banned JS constructs         ${BANNED_CONSTRUCTS.length}`);
+const routed = [...operators.sites, ...implicitStr.sites].filter((s) => s.route && !s.executor);
+console.log(
+  `  routing-enforced sites       ${routed.length}`
+  + (routed.length ? ` (${routed.filter((s) => isPortedSite(s.py)).length} live)` : ""),
+);
 
 if (notes.length) {
   console.log("\nnot yet applicable:");

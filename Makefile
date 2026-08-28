@@ -41,8 +41,9 @@ codegen: ## regenerate src/_gen (CI asserts `git diff --exit-code src/_gen` afte
 	node tools/gen_timezones.mjs $(REF)
 	node tools/gen_expr_meta.mjs
 
-parity: ## run the 6 parity probes
+parity: ## run the 6 parity probes + the parser class-table check
 	node tools/parity/check.mjs
+	node tools/parity/check_parser_tables.mjs
 
 ratchet: ## run the corpus through the library and apply the ratchet
 	node test/runner.mjs
@@ -60,12 +61,15 @@ lint: ## the checkable CI gates that exist today
 	node tools/lint_license.mjs
 	node tools/lint_unicode.mjs
 	node tools/lint_control_bytes.mjs
+	node tools/lint_deny.mjs
+	node tools/lint_identity.mjs
 	node tools/check_corpus.mjs
 
-check: ## every self-test (no corpus regeneration)
+check: ## every self-test + the node:test suite (no corpus regeneration)
 	node tools/closure.mjs --selftest
 	node tools/ratchet.mjs --selftest
 	node test/runner.mjs --selftest
+	node --test $$(find test -name '*.test.mjs' | sort)
 	python3 tools/sync_report.py --selftest
 
 probes: ## full differential suite from a clean tree (regenerates spike corpora)

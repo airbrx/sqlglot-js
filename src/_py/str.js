@@ -19,7 +19,7 @@ import {
   isDigit,
   upperCodePoint,
 } from "../_gen/unicode.js";
-import { PyValueError, PyTypeError } from "./errors.js";
+import { PyValueError, PyTypeError, PyIndexError } from "./errors.js";
 // No cycle: num.js imports from _gen/unicode.js, never from this module.
 import { pyFloatToStr, pyIntToStr } from "./num.js";
 
@@ -152,6 +152,42 @@ export function cpLen(s) {
 /** Code-point array for a string. py: list(s) */
 export function cpArray(s) {
   return [...s];
+}
+
+/**
+ * py: `s[start:end]` — slicing by CODE POINT, with Python's clamping (never raises).
+ *
+ * `s.slice()` / `s[i]` in JS index UTF-16 units, so any astral character is two
+ * positions and a one-unit slice of one is a LONE SURROGATE. Every `_py` classifier
+ * then answers about the surrogate rather than the character: `pyIsDigit("\uD835")`
+ * is false where CPython's `"\U0001D7CE".isdigit()` is true. That failure mode is
+ * silent — the caller gets a plausible boolean, not an error — which is why §4.6
+ * requires code-point access in ported string logic rather than leaving it to
+ * whoever remembers.
+ *
+ * Negative indices count from the end, as in Python. `end === undefined` means
+ * "to the end of the string".
+ */
+export function cpSlice(s, start = 0, end) {
+  const a = [...s];
+  return a.slice(...(end === undefined ? [start] : [start, end])).join("");
+}
+
+/**
+ * py: `s[i]` — a single CODE POINT, negative indices counting from the end.
+ *
+ * Raises `PyIndexError` when out of range, exactly as CPython does, rather than
+ * returning `undefined` the way `s[i]` would. A port that silently yields
+ * `undefined` here turns an upstream IndexError into a downstream TypeError far
+ * from the cause; see `cpSlice` for the surrogate hazard this also avoids.
+ */
+export function cpAt(s, i) {
+  const a = [...s];
+  const idx = i < 0 ? a.length + i : i;
+  if (idx < 0 || idx >= a.length) {
+    throw new PyIndexError("string index out of range");
+  }
+  return a[idx];
 }
 
 /* ------------------------------------------------------------------------- *

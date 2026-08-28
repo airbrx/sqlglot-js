@@ -29,6 +29,27 @@ export class NotPorted extends Error {
   }
 }
 
+/**
+ * py: errors.ErrorLevel(AutoName) — `auto()` under `AutoName` makes each member's
+ * VALUE its own name, so `ErrorLevel.RAISE.value` is the string `"RAISE"`.
+ *
+ * Plain strings, not objects: the value is what upstream compares, what
+ * `Dialect.get_or_raise`'s `"name, error_level=RAISE"` grammar parses, and what any
+ * consumer would serialize. An object wrapper would make `===` comparisons pass while
+ * `JSON.stringify` and string interpolation both diverge.
+ *
+ *   IGNORE     ignore all errors
+ *   WARN       log all errors
+ *   RAISE      collect all errors and raise a single exception
+ *   IMMEDIATE  raise on the first error found
+ */
+export const ErrorLevel = Object.freeze({
+  IGNORE: "IGNORE",
+  WARN: "WARN",
+  RAISE: "RAISE",
+  IMMEDIATE: "IMMEDIATE",
+});
+
 // py: errors.SqlglotError
 export class SqlglotError extends Error {
   constructor(message) {
@@ -45,6 +66,34 @@ export class ParseError extends SqlglotError {
   constructor(message, errors = []) {
     super(message);
     this.errors = errors;
+  }
+
+  /**
+   * py: errors.ParseError.new(message, description=None, line=None, ...)
+   *
+   * All seven detail fields are ALWAYS present, `null` when unset — upstream builds one
+   * dict literal with every key, and `test_errors.py` asserts the whole dict by
+   * equality. Omitting a key because its value is null would fail that comparison, so
+   * the trailing-options object is spread over an explicit default record rather than
+   * assigned onto an empty one.
+   *
+   * @param {string} message
+   * @param {{description?: string|null, line?: number|null, col?: number|null,
+   *          start_context?: string|null, highlight?: string|null,
+   *          end_context?: string|null, into_expression?: unknown}} [detail]
+   */
+  static new(message, detail = {}) {
+    return new ParseError(message, [
+      {
+        description: detail.description ?? null,
+        line: detail.line ?? null,
+        col: detail.col ?? null,
+        start_context: detail.start_context ?? null,
+        highlight: detail.highlight ?? null,
+        end_context: detail.end_context ?? null,
+        into_expression: detail.into_expression ?? null,
+      },
+    ]);
   }
 }
 
