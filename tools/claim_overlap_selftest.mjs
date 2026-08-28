@@ -295,14 +295,20 @@ export function run(api) {
       if (seen.has(u)) throw new Error(`duplicate unit ${u} (lines ${seen.get(u)}, ${s.line})`);
       seen.set(u, s.line);
     }
-    if (realStubs.length < 300) throw new Error(`only found ${realStubs.length} stubs — drift?`);
+    // Sanity floor, not a progress gate: this count legitimately SHRINKS as the stub
+    // queue empties (405 originally seeded -> 0 once P3 is done), so it must not assert
+    // a specific baseline. 50 is generous headroom above "the regex silently broke and
+    // found a handful" while staying well clear of real stub-queue burndown. Found
+    // 2026-08-28 when merging the first parallel stub-queue batch (286 real stubs
+    // remaining) tripped the old `< 300` floor as a false failure.
+    if (realStubs.length < 50) throw new Error(`only found ${realStubs.length} stubs — drift?`);
     console.log(`         ${realStubs.length} stubs -> ${seen.size} distinct units, 0 mis-attributed`);
     const tableUnits = new Set(idx.units.filter((u) => /^Parser\.[A-Z_]+\[/.test(u)));
     if (tableUnits.size < 500) throw new Error(`only ${tableUnits.size} table-entry units`);
     console.log(`         ${tableUnits.size} distinct class-table entry units`);
   });
 
-  t("14 real src/parser.js: ALL 382 stub-replacement pairs are conflict-free", () => {
+  t("14 real src/parser.js: ALL current stub-replacement pairs are conflict-free", () => {
     // The scaled-up version of case 4, on the real file rather than a fixture: build the
     // patch an agent would actually produce for EVERY stub, then check all ~72,000 pairs.
     // A single false positive here would serialise the whole stub queue.
