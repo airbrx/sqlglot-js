@@ -51,7 +51,7 @@ import { logger } from "./logging.js";
 import { formatTime } from "./time.js";
 import { PyTypeError } from "./_py/errors.js";
 import { pyUpper } from "./_py/str.js";
-import { pyFalsy } from "./_py/truthy.js";
+import { pyFalsy, pyTruthy } from "./_py/truthy.js";
 import { kernelSql } from "./generator_kernel.js";
 import * as exp from "./expressions/index.js";
 import { findInScope } from "./optimizer/scope.js";
@@ -4973,7 +4973,12 @@ export class Parser {
   // py: sqlglot/parser.py:8773
   // note: param `this` renamed to `this_` (JS reserved word)
   _parse_alias(this_, explicit = false) {
-    if(this._can_parse_limit_or_offset()||this._can_parse_named_window())return this_;const C=this.constructor;const any=this._match(TokenType.ALIAS),comments=[...this._prev_comments];if(explicit&&!any)return this_;if(this._match(TokenType.L_PAREN)){const aliases=this.expression(new exp.Aliases({this:this_,expressions:this._parse_csv(()=>this._parse_id_var(any))}),null,comments);this._match_r_paren(aliases);return aliases;}const alias=this._parse_id_var(any,C.ALIAS_TOKENS)||(C.STRING_ALIASES&&this._parse_string_as_identifier());if(alias){comments.push(...alias.popComments());this_=this.expression(new exp.Alias({this:this_,alias}),null,comments);const col=this_.this;if(!this_.comments.length&&col&&col.comments.length)this_.comments=col.popComments();}return this_;
+    if(this._can_parse_limit_or_offset()||this._can_parse_named_window())return this_;const C=this.constructor;const any=this._match(TokenType.ALIAS),comments=[...this._prev_comments];if(explicit&&!any)return this_;if(this._match(TokenType.L_PAREN)){const aliases=this.expression(new exp.Aliases({this:this_,expressions:this._parse_csv(()=>this._parse_id_var(any))}),null,comments);this._match_r_paren(aliases);return aliases;}const alias=this._parse_id_var(any,C.ALIAS_TOKENS)||(C.STRING_ALIASES&&this._parse_string_as_identifier());if(alias){comments.push(...alias.popComments());this_=this.expression(new exp.Alias({this:this_,alias}),null,comments);const col=this_.this;
+    // py: `if not this.comments and column and column.comments`. `.comments` is null
+    // (not []) on a node that never had any, so `.length` throws -- and `not None` and
+    // `not []` are BOTH true in Python, so the test has to be Python truthiness, not a
+    // null-guarded `.length`. Same None-vs-[] asymmetry as the astDump `cm` fix.
+    if(pyFalsy(this_.comments)&&col&&pyTruthy(col.comments))this_.comments=col.popComments();}return this_;
   }
 
   /** @returns {*} */
