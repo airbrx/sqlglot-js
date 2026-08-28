@@ -131,6 +131,14 @@ function _textIn(texts, text) {
 export class Parser {
   /** py: sqlglot/parser.py:375 */
   static FUNCTIONS = new Map([
+    // py:376  `**{name: func.from_arg_list for name, func in exp.FUNCTION_BY_NAME.items()}`.
+    // This bulk population was missing entirely -- only the hand-written override
+    // section below (itself still mostly TODO) had been seeded, leaving FUNCTIONS with
+    // 2 entries instead of 629+ and silently routing every ordinary function call
+    // (`RAND()`, `LOG(...)`, `LPAD(...)`, ...) through the `exp.Anonymous` fallback.
+    // `new Map([...])` keeps LAST-write-wins for duplicate keys, matching Python's
+    // `**a, **b` merge order: bulk first, hand overrides second so they still win.
+    ...Object.entries(exp.FUNCTION_BY_NAME).map(([name, func]) => [name, func.from_arg_list]),
     // py:376  SPREAD: DictComp — merge manually (§4.4 MRO)
     // py:377  ["COALESCE", /* TODO build_coalesce */],
     // py:377  ["IFNULL", /* TODO build_coalesce */],
@@ -2163,7 +2171,7 @@ export class Parser {
   expression(instance, token = null, comments = null) {
     // py: `if token:` — Token.__bool__, so a SENTINEL does not set positions.
     if (token && token.bool?.() !== false) instance.updatePositions(token);
-    // py: `instance.add_comments(comments) if comments else self._add_comments(instance)`
+    // py: `instance.addComments(comments) if comments else self._add_comments(instance)`
     // — an EMPTY list is falsy, so `comments=[]` takes the `_add_comments` branch.
     if (comments && comments.length) instance.addComments(comments);
     else this._add_comments(instance);
@@ -3558,14 +3566,14 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:4858
   _parse_table_parts_fast() {
-    const C=this.constructor,index=this._index;let parts=null,comments=[];while(this._match_set(C.IDENTIFIER_TOKENS)){const token=this._prev,cs=this._prev_comments,dot=this._match(TokenType.DOT),tt=this._curr.token_type;if((!dot&&C.TABLE_POSTFIX_TOKENS.has(tt))||(dot&&!C.IDENTIFIER_TOKENS.has(tt))){this._retreat(index);return null;}parts??=[];if(cs.length){comments.push(...cs);this._prev_comments=[];}parts.push(this.expression(new exp.Identifier({this:token.text,quoted:token.token_type===TokenType.IDENTIFIER}),token));if(!dot)break;}if(parts===null)return null;let table;if(parts.length===1)table=new exp.Table({this:parts[0]});else if(parts.length===2)table=new exp.Table({this:parts[1],db:parts[0]});else{let node=parts[2];for(let i=3;i<parts.length;i++)node=new exp.Dot({this:node,expression:parts[i]});table=new exp.Table({this:node,db:parts[1],catalog:parts[0]});}if(comments.length)table.add_comments(comments);return table;
+    const C=this.constructor,index=this._index;let parts=null,comments=[];while(this._match_set(C.IDENTIFIER_TOKENS)){const token=this._prev,cs=this._prev_comments,dot=this._match(TokenType.DOT),tt=this._curr.token_type;if((!dot&&C.TABLE_POSTFIX_TOKENS.has(tt))||(dot&&!C.IDENTIFIER_TOKENS.has(tt))){this._retreat(index);return null;}parts??=[];if(cs.length){comments.push(...cs);this._prev_comments=[];}parts.push(this.expression(new exp.Identifier({this:token.text,quoted:token.token_type===TokenType.IDENTIFIER}),token));if(!dot)break;}if(parts===null)return null;let table;if(parts.length===1)table=new exp.Table({this:parts[0]});else if(parts.length===2)table=new exp.Table({this:parts[1],db:parts[0]});else{let node=parts[2];for(let i=3;i<parts.length;i++)node=new exp.Dot({this:node,expression:parts[i]});table=new exp.Table({this:node,db:parts[1],catalog:parts[0]});}if(comments.length)table.addComments(comments);return table;
   }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4921
   _parse_table_parts(schema = false, is_db_reference = false, wildcard = false, fast = false) {
     // deny:operators sqlglot/parser.py:4954 — both operands are strings
-    if(fast)return this._parse_table_parts_fast();let catalog=null,db=null,table=this._parse_table_part(schema);while(this._match(TokenType.DOT)){if(catalog)table=this.expression(new exp.Dot({this:table,expression:this._parse_table_part(schema)}));else{catalog=db;db=table;table=this._parse_table_part(schema)||"";}}if(wildcard&&this._is_connected()&&(table instanceof exp.Identifier||!table)&&this._match(TokenType.STAR)){if(table instanceof exp.Identifier){ /* deny:operators sqlglot/parser.py:4954 — both operands are strings */ table.args.this+="*"; }else table=new exp.Identifier({this:"*"});}if(is_db_reference){catalog=db;db=table;table=null;}if(!table&&!is_db_reference)this.raise_error("Expected table name");if(!db&&is_db_reference)this.raise_error("Expected database name");table=this.expression(new exp.Table({this:table,db,catalog}));const comments=[];for(const part of table.parts){const cs=part.pop_comments();if(cs.length)comments.push(...cs);}if(comments.length)table.add_comments(comments);const changes=this._parse_changes();if(changes)table.set("changes",changes);const when=this._parse_historical_data();if(when)table.set("when",when);const pivots=this._parse_pivots();if(pivots)table.set("pivots",pivots);return table;
+    if(fast)return this._parse_table_parts_fast();let catalog=null,db=null,table=this._parse_table_part(schema);while(this._match(TokenType.DOT)){if(catalog)table=this.expression(new exp.Dot({this:table,expression:this._parse_table_part(schema)}));else{catalog=db;db=table;table=this._parse_table_part(schema)||"";}}if(wildcard&&this._is_connected()&&(table instanceof exp.Identifier||!table)&&this._match(TokenType.STAR)){if(table instanceof exp.Identifier){ /* deny:operators sqlglot/parser.py:4954 — both operands are strings */ table.args.this+="*"; }else table=new exp.Identifier({this:"*"});}if(is_db_reference){catalog=db;db=table;table=null;}if(!table&&!is_db_reference)this.raise_error("Expected table name");if(!db&&is_db_reference)this.raise_error("Expected database name");table=this.expression(new exp.Table({this:table,db,catalog}));const comments=[];for(const part of table.parts){const cs=part.popComments();if(cs.length)comments.push(...cs);}if(comments.length)table.addComments(comments);const changes=this._parse_changes();if(changes)table.set("changes",changes);const when=this._parse_historical_data();if(when)table.set("when",when);const pivots=this._parse_pivots();if(pivots)table.set("pivots",pivots);return table;
   }
 
   /** @returns {*} */
@@ -3861,15 +3869,15 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:5816
   // note: param `this` renamed to `this_` (JS reserved word)
-  _parse_offset(this_) { throw new NotPorted("_parse_offset", "sqlglot/parser.py:5816"); }
+  _parse_offset(this_ = null) { if (!this._match(TokenType.OFFSET)) return this_; const count = this._parse_term(); this._match_set(new Set([TokenType.ROW, TokenType.ROWS])); return this.expression(new exp.Offset({ this: this_, expression: count, expressions: this._parse_limit_by() })); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5827
-  _can_parse_limit_or_offset() { throw new NotPorted("_can_parse_limit_or_offset", "sqlglot/parser.py:5827"); }
+  _can_parse_limit_or_offset() { if (!this._match_set(this.constructor.AMBIGUOUS_ALIAS_TOKENS, false)) return false; const index = this._index; let result = !!(this._try_parse(() => this._parse_limit(), true) || this._try_parse(() => this._parse_offset(), true)); this._retreat(index); if (this._next.token_type === TokenType.MATCH_CONDITION) result = false; return result; }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5844
-  _can_parse_named_window() { throw new NotPorted("_can_parse_named_window", "sqlglot/parser.py:5844"); }
+  _can_parse_named_window() { if (!this._match(TokenType.WINDOW, false)) return false; const name = this._index + 1 < this._tokens.length ? this._tokens[this._index + 1] : null; if (name === null || !this.constructor.ID_VAR_TOKENS.has(name.token_type)) return false; const alias_tok = this._index + 2 < this._tokens.length ? this._tokens[this._index + 2] : null; if (alias_tok === null || alias_tok.token_type !== TokenType.ALIAS) return false; const body = this._index + 3 < this._tokens.length ? this._tokens[this._index + 3] : null; return body !== null && body.token_type === TokenType.L_PAREN; }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5861
@@ -4203,13 +4211,13 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:6846
   _parse_column_parts_fast() {
-    const C=this.constructor,index=this._index;let parts=null,all=[];while(this._match_set(C.IDENTIFIER_TOKENS)){const token=this._prev,comments=this._prev_comments;if(parts===null&&C.NO_PAREN_FUNCTION_PARSERS.has(pyUpper(token.text))){this._retreat(index);return null;}const dot=this._match(TokenType.DOT),tt=this._curr.token_type;if((!dot&&(C.COLUMN_OPERATORS.has(tt)||C.COLUMN_POSTFIX_TOKENS.has(tt)))||(dot&&!C.IDENTIFIER_TOKENS.has(tt))){this._retreat(index);return null;}parts??=[];if(comments.length){all.push(...comments);this._prev_comments=[];}parts.push(this.expression(new exp.Identifier({this:token.text,quoted:token.token_type===TokenType.IDENTIFIER}),token));if(!dot)break;}if(parts===null)return null;let col;if(parts.length===1)col=new exp.Column({this:parts[0]});else if(parts.length===2)col=new exp.Column({this:parts[1],table:parts[0]});else if(parts.length===3)col=new exp.Column({this:parts[2],table:parts[1],db:parts[0]});else{col=new exp.Column({this:parts[3],table:parts[2],db:parts[1],catalog:parts[0]});for(let i=4;i<parts.length;i++)col=new exp.Dot({this:col,expression:parts[i]});}if(all.length)col.add_comments(all);return col;
+    const C=this.constructor,index=this._index;let parts=null,all=[];while(this._match_set(C.IDENTIFIER_TOKENS)){const token=this._prev,comments=this._prev_comments;if(parts===null&&C.NO_PAREN_FUNCTION_PARSERS.has(pyUpper(token.text))){this._retreat(index);return null;}const dot=this._match(TokenType.DOT),tt=this._curr.token_type;if((!dot&&(C.COLUMN_OPERATORS.has(tt)||C.COLUMN_POSTFIX_TOKENS.has(tt)))||(dot&&!C.IDENTIFIER_TOKENS.has(tt))){this._retreat(index);return null;}parts??=[];if(comments.length){all.push(...comments);this._prev_comments=[];}parts.push(this.expression(new exp.Identifier({this:token.text,quoted:token.token_type===TokenType.IDENTIFIER}),token));if(!dot)break;}if(parts===null)return null;let col;if(parts.length===1)col=new exp.Column({this:parts[0]});else if(parts.length===2)col=new exp.Column({this:parts[1],table:parts[0]});else if(parts.length===3)col=new exp.Column({this:parts[2],table:parts[1],db:parts[0]});else{col=new exp.Column({this:parts[3],table:parts[2],db:parts[1],catalog:parts[0]});for(let i=4;i<parts.length;i++)col=new exp.Dot({this:col,expression:parts[i]});}if(all.length)col.addComments(all);return col;
   }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:6919
   _parse_column_reference() {
-    const C=this.constructor;let node=this._parse_field();if(!node&&this._match(TokenType.VALUES,false)&&C.VALUES_FOLLOWED_BY_PAREN&&this._next.token_type!==TokenType.L_PAREN)node=this._parse_id_var();if(node instanceof exp.Identifier)node=this.expression(new exp.Column({this:node}),null,node.pop_comments());return node;
+    const C=this.constructor;let node=this._parse_field();if(!node&&this._match(TokenType.VALUES,false)&&C.VALUES_FOLLOWED_BY_PAREN&&this._next.token_type!==TokenType.L_PAREN)node=this._parse_id_var();if(node instanceof exp.Identifier)node=this.expression(new exp.Column({this:node}),null,node.popComments());return node;
   }
 
   /** @returns {*} */
@@ -4234,13 +4242,13 @@ export class Parser {
   // py: sqlglot/parser.py:7013
   // note: param `this` renamed to `this_` (JS reserved word)
   _parse_column_ops(this_) {
-    const C=this.constructor;while(C.BRACKETS.has(this._curr.token_type))this_=this._parse_bracket(this_);while(this._curr.bool()){const token=this._curr.token_type;if(!C.COLUMN_OPERATORS.has(token))break;const op=C.COLUMN_OPERATORS.get(token);this._advance();let field;if(C.CAST_COLUMN_OPERATORS.has(token)){field=this._parse_dcolon();if(!field)this.raise_error("Expected type");}else if(op&&this._curr.bool()){field=this._parse_column_reference()||this._parse_bitwise();if(field instanceof exp.Column&&this._match(TokenType.DOT,false))field=this._parse_column_ops(field);}else{const dot=this._is_connected()&&this._prev.token_type===TokenType.DOT;field=this._parse_field(true,null,true);if(dot&&(field instanceof exp.Null||field instanceof exp.Boolean))field=this.expression(new exp.Identifier({this:this._prev.text}),null,field.comments);}if((field instanceof exp.Func||field instanceof exp.Window)&&this_){this_=this_.transform((n)=>{if(!(n instanceof exp.Column))return n;const parts=n.parts.map((part)=>part.copy());let dotted=parts[0];for(let i=1;i<parts.length;i++)dotted=new exp.Dot({this:dotted,expression:parts[i]});return dotted;});}if(op)this_=op(this,this_,field);else if(this_ instanceof exp.Column&&!this_.args.catalog)this_=this.expression(new exp.Column({this:field,table:this_.this,db:this_.args.table,catalog:this_.args.db}),null,this_.comments);else if(field instanceof exp.Window){const fn=this.expression(new exp.Dot({this:this_,expression:field.this}));field.set("this",fn);this_=field;}else this_=this.expression(new exp.Dot({this:this_,expression:field}));if(field&&field.comments.length)this_.add_comments(field.pop_comments());this_=this._parse_bracket(this_);}return this_;
+    const C=this.constructor;while(C.BRACKETS.has(this._curr.token_type))this_=this._parse_bracket(this_);while(this._curr.bool()){const token=this._curr.token_type;if(!C.COLUMN_OPERATORS.has(token))break;const op=C.COLUMN_OPERATORS.get(token);this._advance();let field;if(C.CAST_COLUMN_OPERATORS.has(token)){field=this._parse_dcolon();if(!field)this.raise_error("Expected type");}else if(op&&this._curr.bool()){field=this._parse_column_reference()||this._parse_bitwise();if(field instanceof exp.Column&&this._match(TokenType.DOT,false))field=this._parse_column_ops(field);}else{const dot=this._is_connected()&&this._prev.token_type===TokenType.DOT;field=this._parse_field(true,null,true);if(dot&&(field instanceof exp.Null||field instanceof exp.Boolean))field=this.expression(new exp.Identifier({this:this._prev.text}),null,field.comments);}if((field instanceof exp.Func||field instanceof exp.Window)&&this_){this_=this_.transform((n)=>{if(!(n instanceof exp.Column))return n;const parts=n.parts.map((part)=>part.copy());let dotted=parts[0];for(let i=1;i<parts.length;i++)dotted=new exp.Dot({this:dotted,expression:parts[i]});return dotted;});}if(op)this_=op(this,this_,field);else if(this_ instanceof exp.Column&&!this_.args.catalog)this_=this.expression(new exp.Column({this:field,table:this_.this,db:this_.args.table,catalog:this_.args.db}),null,this_.comments);else if(field instanceof exp.Window){const fn=this.expression(new exp.Dot({this:this_,expression:field.this}));field.set("this",fn);this_=field;}else this_=this.expression(new exp.Dot({this:this_,expression:field}));if(field&&field.comments.length)this_.addComments(field.popComments());this_=this._parse_bracket(this_);}return this_;
   }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7081
   _parse_paren() {
-    if(!this._match(TokenType.L_PAREN))return null;const comments=this._prev_comments,query=this._parse_select(),expressions=query?[query]:this._parse_expressions();let node=expressions[0];if(!node&&this._match(TokenType.R_PAREN,false))node=this.expression(new exp.Tuple());else if(expressions.length>1||this._prev.token_type===TokenType.COMMA)node=this.expression(new exp.Tuple({expressions}));else if(node instanceof exp.Select||node instanceof exp.SetOperation)node=this._parse_subquery(node,false);else if(node instanceof exp.Subquery||node instanceof exp.Values)node=this._parse_subquery(this._parse_query_modifiers(this._parse_set_operations(node)),false);else node=this.expression(new exp.Paren({this:node}));if(node)node.add_comments(comments);this._match_r_paren(node);if(node instanceof exp.Paren&&node.this instanceof exp.AggFunc)return this._parse_window(node);return node;
+    if(!this._match(TokenType.L_PAREN))return null;const comments=this._prev_comments,query=this._parse_select(),expressions=query?[query]:this._parse_expressions();let node=expressions[0];if(!node&&this._match(TokenType.R_PAREN,false))node=this.expression(new exp.Tuple());else if(expressions.length>1||this._prev.token_type===TokenType.COMMA)node=this.expression(new exp.Tuple({expressions}));else if(node instanceof exp.Select||node instanceof exp.SetOperation)node=this._parse_subquery(node,false);else if(node instanceof exp.Subquery||node instanceof exp.Values)node=this._parse_subquery(this._parse_query_modifiers(this._parse_set_operations(node)),false);else node=this.expression(new exp.Paren({this:node}));if(node)node.addComments(comments);this._match_r_paren(node);if(node instanceof exp.Paren&&node.this instanceof exp.AggFunc)return this._parse_window(node);return node;
   }
 
   /** @returns {*} */
@@ -4664,7 +4672,7 @@ export class Parser {
   // py: sqlglot/parser.py:7976
   // note: param `this` renamed to `this_` (JS reserved word)
   _parse_bracket(this_ = null) {
-    const C=this.constructor;if(!this._match_set(C.BRACKETS))return this_;const mapToken=this._tokens[this._index-2],parseMap=!!(C.MAP_KEYS_ARE_ARBITRARY_EXPRESSIONS&&mapToken&&pyUpper(mapToken.text)==="MAP");const kind=this._prev.token_type;if(kind===TokenType.L_BRACE&&this._curr.bool()&&this._curr.token_type===TokenType.VAR&&C.ODBC_DATETIME_LITERALS.has(this._curr.text.toLowerCase()))return this._parse_odbc_datetime_literal();let expressions=this._parse_csv(()=>this._parse_bracket_key_value(kind===TokenType.L_BRACE));if(kind===TokenType.L_BRACKET&&!this._match(TokenType.R_BRACKET))this.raise_error("Expected ]");else if(kind===TokenType.L_BRACE&&!this._match(TokenType.R_BRACE))this.raise_error("Expected }");if(kind===TokenType.L_BRACE)this_=this.expression(new exp.Struct({expressions:this._kv_to_prop_eq(expressions,parseMap)}));else if(!this_){this_=new exp.Array({expressions});if(this.dialect.HAS_DISTINCT_ARRAY_CONSTRUCTORS)this_.set("bracket_notation",kind===TokenType.L_BRACKET);}else{const K=C.ARRAY_CONSTRUCTORS.get(pyUpper(this_.name));if(K){const out=new K({expressions});if(K===exp.Array&&this.dialect.HAS_DISTINCT_ARRAY_CONSTRUCTORS)out.set("bracket_notation",kind===TokenType.L_BRACKET);return out;}this_=this.expression(new exp.Bracket({this:this_,expressions}),null,this_.pop_comments());}this._add_comments(this_);return this._parse_bracket(this_);
+    const C=this.constructor;if(!this._match_set(C.BRACKETS))return this_;const mapToken=this._tokens[this._index-2],parseMap=!!(C.MAP_KEYS_ARE_ARBITRARY_EXPRESSIONS&&mapToken&&pyUpper(mapToken.text)==="MAP");const kind=this._prev.token_type;if(kind===TokenType.L_BRACE&&this._curr.bool()&&this._curr.token_type===TokenType.VAR&&C.ODBC_DATETIME_LITERALS.has(this._curr.text.toLowerCase()))return this._parse_odbc_datetime_literal();let expressions=this._parse_csv(()=>this._parse_bracket_key_value(kind===TokenType.L_BRACE));if(kind===TokenType.L_BRACKET&&!this._match(TokenType.R_BRACKET))this.raise_error("Expected ]");else if(kind===TokenType.L_BRACE&&!this._match(TokenType.R_BRACE))this.raise_error("Expected }");if(kind===TokenType.L_BRACE)this_=this.expression(new exp.Struct({expressions:this._kv_to_prop_eq(expressions,parseMap)}));else if(!this_){this_=new exp.Array({expressions});if(this.dialect.HAS_DISTINCT_ARRAY_CONSTRUCTORS)this_.set("bracket_notation",kind===TokenType.L_BRACKET);}else{const K=C.ARRAY_CONSTRUCTORS.get(pyUpper(this_.name));if(K){const out=new K({expressions});if(K===exp.Array&&this.dialect.HAS_DISTINCT_ARRAY_CONSTRUCTORS)out.set("bracket_notation",kind===TokenType.L_BRACKET);return out;}this_=this.expression(new exp.Bracket({this:this_,expressions}),null,this_.popComments());}this._add_comments(this_);return this._parse_bracket(this_);
   }
 
   /** @returns {*} */
@@ -4902,7 +4910,7 @@ export class Parser {
   // py: sqlglot/parser.py:8773
   // note: param `this` renamed to `this_` (JS reserved word)
   _parse_alias(this_, explicit = false) {
-    if(this._can_parse_limit_or_offset()||this._can_parse_named_window())return this_;const C=this.constructor;const any=this._match(TokenType.ALIAS),comments=[...this._prev_comments];if(explicit&&!any)return this_;if(this._match(TokenType.L_PAREN)){const aliases=this.expression(new exp.Aliases({this:this_,expressions:this._parse_csv(()=>this._parse_id_var(any))}),null,comments);this._match_r_paren(aliases);return aliases;}const alias=this._parse_id_var(any,C.ALIAS_TOKENS)||(C.STRING_ALIASES&&this._parse_string_as_identifier());if(alias){comments.push(...alias.pop_comments());this_=this.expression(new exp.Alias({this:this_,alias}),null,comments);const col=this_.this;if(!this_.comments.length&&col&&col.comments.length)this_.comments=col.pop_comments();}return this_;
+    if(this._can_parse_limit_or_offset()||this._can_parse_named_window())return this_;const C=this.constructor;const any=this._match(TokenType.ALIAS),comments=[...this._prev_comments];if(explicit&&!any)return this_;if(this._match(TokenType.L_PAREN)){const aliases=this.expression(new exp.Aliases({this:this_,expressions:this._parse_csv(()=>this._parse_id_var(any))}),null,comments);this._match_r_paren(aliases);return aliases;}const alias=this._parse_id_var(any,C.ALIAS_TOKENS)||(C.STRING_ALIASES&&this._parse_string_as_identifier());if(alias){comments.push(...alias.popComments());this_=this.expression(new exp.Alias({this:this_,alias}),null,comments);const col=this_.this;if(!this_.comments.length&&col&&col.comments.length)this_.comments=col.popComments();}return this_;
   }
 
   /** @returns {*} */
@@ -4945,7 +4953,7 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8868
-  _advance_any(ignore_reserved) { throw new NotPorted("_advance_any", "sqlglot/parser.py:8868"); }
+  _advance_any(ignore_reserved = false) { if (this._curr.bool() && (ignore_reserved || !this.constructor.RESERVED_TOKENS.has(this._curr.token_type))) { this._advance(); return this._prev; } return null; }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8874
@@ -5516,11 +5524,11 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9761
-  _match_l_paren(expression) { throw new NotPorted("_match_l_paren", "sqlglot/parser.py:9761"); }
+  _match_l_paren(expression = null) { if (!this._match(TokenType.L_PAREN, true, expression)) this.raise_error("Expecting ("); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9765
-  _match_r_paren(expression) { throw new NotPorted("_match_r_paren", "sqlglot/parser.py:9765"); }
+  _match_r_paren(expression = null) { if (!this._match(TokenType.R_PAREN, true, expression)) this.raise_error("Expecting )"); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9769
@@ -5675,7 +5683,7 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10164
-  _identifier_expression(token, quoted) { throw new NotPorted("_identifier_expression", "sqlglot/parser.py:10164"); }
+  _identifier_expression(token = null, quoted = null) { token = token || this._prev; return this.expression(new exp.Identifier({ this: token.text, quoted }), token); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10170
