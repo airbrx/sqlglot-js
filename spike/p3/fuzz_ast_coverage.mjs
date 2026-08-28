@@ -58,7 +58,14 @@ for (const name of readdirSync("corpus/ast")) {
     let got;
     try {
       const { tokens } = tk.core.tokenize(atom.sql);
-      const p = new Parser({ dialect: { tokenizer_class: { COMMANDS: tk.commands } } });
+      // VALID_INTERVAL_UNITS: matches upstream's base Dialect default
+      // (sqlglot/dialects/dialect.py:846, `set[str] = set()`) -- per-dialect unions
+      // from DATE_PART_MAPPING land with the real dialects/dialect.js port (P5). Until
+      // then this synthetic harness dialect must still be Dialect-shaped so
+      // `_parse_interval`/`_parse_types` can call `.has()` on it without crashing.
+      const p = new Parser({
+        dialect: { tokenizer_class: { COMMANDS: tk.commands }, VALID_INTERVAL_UNITS: new Set() },
+      });
       // The Command fallback logs a warning per row; capture it so the probe's own
       // output stays readable. `fuzz_command_warning.mjs` is what asserts those strings.
       const { result } = captureLogs(() => p.parse(tokens, atom.sql));
