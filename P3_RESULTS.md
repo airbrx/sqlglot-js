@@ -445,3 +445,13 @@ Not `_parse_expression` alone. Either:
 
 **(B) is the better use of 6–8 agents**, and either way fix defects (a) and (b) first —
 they are both one-line fixes that will otherwise burn the first agent into `_parse_alias`.
+
+### Stub queue group D — functions and windows (2026-08-28)
+
+Implemented the 20 assigned function-call, lambda, limit/group, heredoc, and window parsing methods from `parser.py` at `91119bc`. Closure remains **41/15,540** as expected for the conjunctive six-group landing; implemented parser methods increased from 29 to 49. Native tests remain 57/57. `spike/run_all.sh` currently stops during corpus generation with the baseline environment error `Unable to set __version__, run pip install -e .`, before running probes.
+
+## Stub queue group A — DDL/DML/transactions (2026-08-28)
+
+Implemented the 54 assigned DDL, DML, transaction, grant/revoke, analyze, alter, and set-operation parser methods. `parse_set_operation` is a real upstream method at `parser.py:5901`, not a trace artifact.
+
+Closure after this branch: 59 / 15,540 rows closed (the conjunctive closure remains dominated by co-requisite methods on sibling branches); parser stubs reduced from 379 to 321.
