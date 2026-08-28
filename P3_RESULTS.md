@@ -256,3 +256,192 @@ rows.
 
 `node spike/p3/fuzz_ast_coverage.mjs --verbose` prints the live burndown, and
 `node tools/parity/check_parser_tables.mjs --todo` prints the per-table entry burndown.
+
+---
+
+# P3 stub queue — round 1: scope correction + Rule 1 enforcement
+
+**Verdict: the headline task was mis-scoped, and the measurement that shows it is the
+main deliverable.** `_parse_expression` is not implemented. The reason is not that the
+chain was too long — it is 50 methods / 955 LOC, entirely tractable — but that
+implementing it would have bought **31 oracle rows**, not the 15,440 the brief
+projected, and shipping it under that headline would have propagated a wrong number
+into every remaining stub-queue brief.
+
+## 1. The number in the last round's "For the stub queue" section does not mean what it reads as
+
+`P3_RESULTS.md` above says, and PR #6 repeated:
+
+> The first task is `_parse_expression` (`parser.py:5996`): it alone blocks 15,440 of
+> 15,478 oracle rows.
+
+That is true as a *blocking* statement and false as a *sizing* statement, because
+**oracle-row closure is conjunctive**: a row is closed only when **every** `_parse_*`
+its parse touches is implemented. The rows a method blocks are therefore almost never
+the rows implementing it opens.
+
+Machine-checked, at the pin (`node tools/closure_parser.mjs --brief _parse_expression`):
+
+```
+  _parse_expression
+    rows that CALL it (the "blocks" number)   13573
+    rows it actually OPENS (the marginal)         0
+    rows still blocked after it lands         13573
+    distinct methods still blocking those       278
+```
+
+**Zero.** Not 15,440. And the full precedence chain the brief asked for — the operator
+ladder plus every leaf down to primary/literal, 50 methods, 955 LOC — closes **72 of
+15,540 rows (0.46%)**, up from the 41 closed today. A marginal of **+31 rows for 955
+LOC**.
+
+The blocking counts do not compose: summed over methods they come to **751,871**
+against 15,540 real rows — each row is counted once per method it touches, so the
+totals over-count by **48.4x**. Ranking stub-queue tasks by "blocks N rows" is not a
+scheduling signal.
+
+### Where the rows actually are
+
+Frequency-ordered closure over the 352 methods the corpus demands:
+
+| methods implemented | rows closed | % of 15,540 |
+|---|---|---|
+| today (29) | 41 | 0.26% |
+| + full precedence chain (50) | 72 | 0.46% |
+| + 45 | 2,196 | 14.1% |
+| + 65 | 6,899 | 44.4% |
+| + 100 | 10,276 | 66.1% |
+| + 305 | 15,440 | 99.4% |
+
+**15,440 rows — the number attributed to one method — is reached at ~305 methods**,
+i.e. essentially all of P3's remaining parser work. There is no small subset that
+unlocks a large fraction; the wall is structural, not a missing keystone.
+
+### Why the chain cannot be cut below `primary`
+
+The brief's premise was "a partial chain won't let anything through", implying a full
+one will. It does not, because the chain does not bottom out in literals — it bottoms
+out in the query layer:
+
+- `_parse_primary` → `_parse_paren` → `_parse_select` / `_parse_subquery` /
+  `_parse_query_modifiers` / `_parse_set_operations`
+- `_parse_field` → `_parse_function` → `_parse_function_call` (116 LOC) → `FUNCTIONS`
+- `_parse_type` → `_parse_types` (254 LOC), `_parse_column_ops` → `_parse_bracket`
+
+The direct-call closure of `_parse_expression` (excluding dispatch-table fan-out) is
+**176 methods / 4,117 LOC**; including it, **383 of 405 methods / 7,877 LOC** — the
+whole parser. So "implement `_parse_expression` and its full precedence chain" is
+either 955 LOC that opens 31 rows, or it is all of P3.
+
+### What this changes for the stub queue
+
+The right unit is **not** "the method that blocks the most rows". Two signals replace it:
+
+1. **Marginal closure** — `--brief <method>` prints rows-opened, not rows-blocked.
+   Today only six methods have a non-zero marginal at all (`_parse_transaction` +30,
+   `_parse_as_command` +8, `_parse_commit_or_rollback` +4, `_parse_show` +2,
+   `_parse_analyze` +1, `_parse_refresh` +1). Everything else is 0 until its
+   co-dependents land.
+2. **Co-requisite groups** — `--curve` emits the achievable ordering (the open row
+   needing the fewest new methods, repeatedly). Rows close in *clusters*, and the
+   clusters are the real task units.
+
+This is good news for parallelisation and bad news for burndown optics: because nearly
+every method has marginal 0 in isolation, agents must be scheduled on **co-requisite
+groups**, and no individual PR in such a group will move the EXACT count. A ratchet
+that requires every PR to increase closed rows would block the entire queue.
+
+## 2. Delivered: Rule 1 claim-overlap check
+
+`tools/claim_overlap.mjs` — dependency-free, `node tools/claim_overlap.mjs --all`
+(also `make claims`; `--pr N`, `--branch`, `--selftest`).
+
+**Built as a script, not (only) as CI, and here is the honest reason.** §8.1 calls
+claim-checking "a required CI check, actually enforced" and §8.5 lists it as gate (6).
+Measured 2026-08-28: `actions/workflows` → `total_count: 0`;
+`branches/main/protection` → **404, not protected**; `gh pr checks 6` → *no checks
+reported*. **All ten of §8.5's gates are currently aspirational** — this repo has never
+run CI. A workflow file alone changes nothing without a branch-protection rule naming
+it, which is a repo-settings change an admin must make. `.github/workflows/claim-overlap.yml`
+is included and says **ADVISORY — THIS DOES NOT BLOCK ANY MERGE** in its own header.
+
+**Semantics.** File-granularity would flag two agents on two different `parser.js`
+stubs — defeating Rule 2 outright — so the check is **unit-granular** for `parser.js` /
+`generator.js`: `Class#method` (with its JSDoc + `// py:` anchor), `Class.TABLE[key]`
+per entry, `Class::header`; file-granular elsewhere. Overlap = unit-set intersection.
+Line numbers are never compared across PRs: each PR's hunks resolve to unit *names*
+against its own merge base (from `compare(base...head).merge_base_commit.sha`, since
+`/pulls/N/files` is a three-dot diff), so a stale base cannot produce a phantom overlap.
+
+**Negative-tested, 24/24**, including the two that matter:
+
+```
+ok  ALL 382 stub-replacement pairs are conflict-free   (378 stubs, 71253 pairs, 0 conflicts)
+ok  two agents on the SAME real stub -> flagged
+```
+
+Verdicts were validated against `git merge-file` ground truth, not just the tool's own
+model. Real API: PR #6 vs #5 → 9 shared files, exit 1. No network → exit **2** with a
+"THIS IS NOT A PASS" banner. With 0 open PRs it prints `OK (vacuous)` rather than a
+bare OK.
+
+## 3. Three defects found, none previously visible to any gate
+
+**(a) `src/parser.js` has duplicate method names — 4 stubs are dead code.** The seeder
+emitted Python `@t.overload` type-only declarations as real JS methods:
+`_parse_query_modifiers` ×3 (L2671/2676/2681) and `_parse_json_object` ×3. In JS the
+last definition silently wins. This also breaks Rule 2's proposed claim key
+`parser.js#_parse_bitwise` — the name is not unique. **Needs a fix in
+`tools/seed_static.py`.** (`claim_overlap.mjs` disambiguates by `// py:` anchor.)
+
+**(b) `AMBIGUOUS_ALIAS_TOKENS` is seeded as an Array but consumed by `_match_set`.**
+Upstream it is a tuple (`parser.py:1828`); Python `in` works on tuples, but the port's
+`_match_set` calls `types.has(...)`, which arrays do not have. The first call —
+`_can_parse_limit_or_offset`, reached from `_parse_alias`, i.e. the very first thing
+`_parse_expression` does — throws `TypeError: types.has is not a function`, not
+`NotPorted`. Audited all class tables: exactly 3 are Array-seeded, and this is the only
+one of the 40 `_match_set` consumers among them, so the blast radius is one table.
+Whoever lands `_parse_alias` hits this immediately.
+
+**(c) Rule 2′'s adjacency assumption is off by one line.** Measured with `git merge-file`
+on the real file: edits to lines 131/132 (zero separating lines) **conflict**; 131/133
+and wider merge clean. The threshold is *zero* separating lines, not the 3 lines of
+diff context one would guess. Two agents replacing consecutive `FUNCTIONS` seed lines
+will hit a rebase conflict. Reported as a warning (exit 0; `--strict` to fail) — failing
+would re-serialise the queue Rule 2′ exists to parallelise. Separately: two *insertions*
+at the same point merge cleanly but in arbitrary order, and §4.6 makes table order
+output-visible — a semantic hazard git will never report.
+
+## 4. Tooling added
+
+- **`tools/harvest/trace_parse_demand.py`** → `corpus/parse_demand.json` (2.4 MB,
+  method names interned). Wraps every `Parser._parse_*` at the pin and records the
+  method set per oracle row. Demand-driven, not static: the static closure
+  over-approximates by ~10x because dispatch tables fan out to everything. Refuses to
+  run without `PYTHONHASHSEED=0`.
+- **`tools/closure_parser.mjs`** — `--brief` (marginal for one method), `--add`,
+  `--curve`, default burndown.
+- `tools/claim_overlap.mjs`, `tools/claim_overlap_selftest.mjs`,
+  `.github/workflows/claim-overlap.yml` (advisory), `Makefile`, `spike/run_all.sh`.
+
+## 5. Regression
+
+- `bash spike/run_all.sh` — **ALL PROBES GREEN** (exit 0)
+- `bash spike/run_regex.sh` — GREEN
+- `node --test $(find test -name '*.test.mjs')` — **57/57**
+- control-byte, unicode, license, deny, identity lints — clean
+- `node tools/claim_overlap.mjs --selftest` — **24/24**
+- `src/parser.js` **unmodified** this round; `grep -c 'throw new NotPorted'` = 379
+
+## 6. Recommended next step
+
+Not `_parse_expression` alone. Either:
+
+- **(A) Ship the chain anyway as infrastructure**, on the honest label "+31 rows, converts
+  1 serialized blocker into 304 parallelizable ones" — it is 955 LOC and it is genuinely
+  the spine; or
+- **(B) Schedule by co-requisite group** using `--curve`, starting with the cluster that
+  reaches 14.1% at ~45 methods.
+
+**(B) is the better use of 6–8 agents**, and either way fix defects (a) and (b) first —
+they are both one-line fixes that will otherwise burn the first agent into `_parse_alias`.

@@ -1,0 +1,86 @@
+# PORT_PLAN.md §8.1 Rule 1 / §8.5 review gate (6) — claim-overlap check.
+#
+# ADVISORY. THIS DOES NOT BLOCK ANY MERGE.
+#
+# §8.5 lists claim overlap as "CI, every PR", and §8.1 calls it "a required CI check,
+# actually enforced". Neither is true of this file on its own, and it would be dishonest to
+# let the presence of a green check imply otherwise. Measured on 2026-08-28:
+#
+#   gh api repos/airbrx/sqlglot-js/actions/workflows        -> {"total_count":0}
+#   gh api repos/airbrx/sqlglot-js/branches/main/protection -> 404 Branch not protected
+#   gh pr checks 6                                          -> no checks reported
+#
+# This is the repo's first workflow. A workflow is not an enforcement mechanism: with no
+# branch-protection rule naming it as a required status check, a red X here is a thing a
+# human may choose to look at and merge anyway — including via the merge button, with no
+# override step and no audit trail.
+#
+# To make it actually enforcing, a repo ADMIN must add a ruleset/branch-protection rule on
+# `main` requiring the status check named `claim-overlap`. That is a repository-settings
+# change, not a code change, and it is deliberately NOT done here. Until then the honest
+# description is: advisory signal, plus `make claims` run by hand before spawning a batch.
+#
+# Nor does it comment on the PR: commenting needs `pull-requests: write`, and a token that
+# can write to PRs is a bigger concession than a red X is worth. The findings go to the
+# job summary and the step log.
+
+name: claim-overlap
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: claim-overlap-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  claim-overlap:
+    name: claim-overlap
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # The offline negative tests. If these fail the live check below is meaningless, so
+      # run them first and let them fail the job on their own. The load-bearing case is
+      # the FALSE positive: two PRs replacing two different one-line stubs in
+      # src/parser.js must NOT be flagged, or Rule 2's stub-seeding is defeated.
+      - name: selftest (offline)
+        run: node tools/claim_overlap.mjs --selftest
+
+      - name: claim overlap vs other open PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # GitHub Actions runs `run:` under `bash -e`, so a failing command aborts the step
+        # immediately. `|| rc=$?` puts it in a condition context, which suppresses that and
+        # lets us distinguish exit 1 (overlap) from exit 2 (indeterminate) below. Written
+        # without a pipe on purpose: `cmd | tee` plus `$PIPESTATUS` is the version of this
+        # that silently reports the wrong code.
+        run: |
+          rc=0
+          node tools/claim_overlap.mjs --pr "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" --verbose > /tmp/claims.txt 2>&1 || rc=$?
+          cat /tmp/claims.txt
+          {
+            echo '## claim-overlap (advisory — does not block merge)'
+            echo
+            case $rc in
+              0) echo 'No overlapping claims with any other open PR.' ;;
+              1) echo '**Overlap found.** Another open PR claims the same method, table entry, or file.' ;;
+              2) echo '**INDETERMINATE — this is not a pass.** The GitHub API could not be reached, so nothing was checked.' ;;
+              *) echo "Exited $rc." ;;
+            esac
+            echo
+            echo '```'
+            cat /tmp/claims.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
