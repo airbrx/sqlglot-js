@@ -445,3 +445,9 @@ Not `_parse_expression` alone. Either:
 
 **(B) is the better use of 6–8 agents**, and either way fix defects (a) and (b) first —
 they are both one-line fixes that will otherwise burn the first agent into `_parse_alias`.
+
+## Stub queue group A — DDL/DML/transactions
+
+Implemented the 54 assigned DDL, DML, transaction, grant/revoke, analyze, alter, and set-operation parser methods. `parse_set_operation` is a real upstream method at `parser.py:5901`, not a trace artifact.
+
+Closure after this branch: 59 / 15,540 rows closed (the conjunctive closure remains dominated by co-requisite methods on sibling branches); parser stubs reduced from 379 to 321.
