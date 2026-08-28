@@ -39,6 +39,7 @@ import {
   ErrorLevel,
   NotPorted,
   ParseError,
+  TokenError,
   concatMessages,
   highlightSql,
   mergeErrors,
@@ -47,6 +48,7 @@ import { Token, TokenType, Tokenizer } from "./tokens.js";
 import { newTrie } from "./trie.js";
 import { ensureList, seqGet } from "./helper.js";
 import { logger } from "./logging.js";
+import { formatTime } from "./time.js";
 import { PyTypeError } from "./_py/errors.js";
 import { pyUpper } from "./_py/str.js";
 import { pyFalsy } from "./_py/truthy.js";
@@ -3301,7 +3303,16 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:6195
   // note: param `this` renamed to `this_` (JS reserved word)
-  _parse_interval_span(this_, parse_function_unit) { throw new NotPorted("_parse_interval_span", "sqlglot/parser.py:6195"); }
+  _parse_interval_span(this_, parse_function_unit = true) {
+    let omitted = null;
+    if (this_?.isString && this.SUPPORTS_OMITTED_INTERVAL_SPAN_UNIT && exp.INTERVAL_DAY_TIME_RE.test(this_.name)) { const i = this._index, a = this._parse_var(true, null, true); let b = null; if (a && this._match_text_seq("TO")) b = this._parse_var(true, null, true); omitted = !(a && b); this._retreat(i); }
+    const unitIndex = this._index; let unit = null;
+    if (!omitted) { const isUnit = this._curr.bool() && (this._curr.token_type === TokenType.VAR || this.dialect.VALID_INTERVAL_UNITS.has(pyUpper(this._curr.text))); unit = parse_function_unit && isUnit ? this._parse_function() : null; if (!unit && isUnit) unit = this._parse_var(true, null, true); }
+    if (this_?.isNumber) this_ = exp.Literal.string(this_.toPy());
+    else if (this_?.isString) { const m = exp.INTERVAL_STRING_RE.exec(this_.name), parts = m ? [[m[1], m[2]]] : []; if (parts.length && unit) { unit = null; this._retreat(unitIndex); } if (parts.length === 1) { this_ = exp.Literal.string(parts[0][0]); unit = this.expression(new exp.Var({ this: pyUpper(parts[0][1]) })); } }
+    if (this.INTERVAL_SPANS && this._match_text_seq("TO")) unit = this.expression(new exp.IntervalSpan({ this: unit, expression: this._parse_function() || this._parse_var(true, null, true) }));
+    return this.expression(new exp.Interval({ this: this_, unit }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:6262
@@ -3337,7 +3348,14 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:6401
-  _parse_type(parse_interval, fallback_to_identifier) { throw new NotPorted("_parse_type", "sqlglot/parser.py:6401"); }
+  _parse_type(parse_interval = true, fallback_to_identifier = false) {
+    if (!fallback_to_identifier) { const atom = this._parse_atom(); if (atom !== null) return atom; }
+    const interval = parse_interval && this._parse_interval(); if (interval) return this._parse_column_ops(interval);
+    const index = this._index; let dataType = this._parse_types(true, false, false);
+    if (dataType instanceof exp.Cast) return this._parse_column_ops(dataType);
+    if (dataType) { const index2 = this._index; let this_ = this._parse_primary(); if (this_ instanceof exp.Literal) { const literal = this_.name; this_ = this._parse_column_ops(this_); const parser = this.TYPE_LITERAL_PARSERS.get(dataType.this); if (parser) return parser(this, this_, dataType); if (this.ZONE_AWARE_TIMESTAMP_CONSTRUCTOR && /:.*?[a-zA-Z+\-]/.test(literal)) { if (dataType.isType(exp.DType.TIMESTAMP)) dataType = exp.DType.TIMESTAMPTZ.intoExpr(); else if (dataType.isType(exp.DType.TIME)) dataType = exp.DType.TIMETZ.intoExpr(); } return this.expression(new exp.Cast({ this: this_, to: dataType })); } if (dataType.expressions.length && index2 - index > 1) { this._retreat(index2); return this._parse_column_ops(dataType); } this._retreat(index); }
+    return fallback_to_identifier ? this._parse_id_var() : this._parse_column();
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:6464
@@ -3349,7 +3367,26 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:6484
-  _parse_types(check_func, schema, allow_identifiers, with_collation) { throw new NotPorted("_parse_types", "sqlglot/parser.py:6484"); }
+  _parse_types(check_func = false, schema = false, allow_identifiers = true, with_collation = false) {
+    let index = this._index, this_ = null, typeToken = null;
+    if (this._match_set(this.TYPE_TOKENS)) typeToken = this._prev.token_type;
+    else { const id = allow_identifiers && this._parse_id_var(false, new Set([TokenType.VAR])); if (!(id instanceof exp.Identifier)) return null; let tokens = null; try { tokens = this.dialect.tokenize(id.name); } catch (e) { if (!(e instanceof TokenError)) throw e; } if (tokens && this.TYPE_TOKENS.has(tokens[0].token_type)) { typeToken = tokens[0].token_type; if (tokens.length > 1) return exp.DataType.fromStr(id.name, { dialect: this.dialect }); } else if (this.dialect.SUPPORTS_USER_DEFINED_TYPES) this_ = this._parse_user_defined_type(id); else { this._retreat(this._index - 1); return null; } }
+    if (typeToken === TokenType.PSEUDO_TYPE) return this.expression(new exp.PseudoType({ this: pyUpper(this._prev.text) }));
+    if (typeToken === TokenType.OBJECT_IDENTIFIER) return this.expression(new exp.ObjectIdentifier({ this: pyUpper(this._prev.text) }));
+    if (typeToken === TokenType.MAP && this._match(TokenType.L_BRACKET)) { const key = this._parse_types(check_func, schema, allow_identifiers); if (!this._match(TokenType.FARROW)) { this._retreat(index); return null; } const value = this._parse_types(check_func, schema, allow_identifiers); if (!this._match(TokenType.R_BRACKET)) { this._retreat(index); return null; } return new exp.DataType({ this: exp.DType.MAP, expressions: [key, value], nested: true }); }
+    const nested = this.NESTED_TYPE_TOKENS.has(typeToken), isStruct = this.STRUCT_TYPE_TOKENS.has(typeToken), aggregate = this.AGGREGATE_TYPE_TOKENS.has(typeToken); let expressions = null, maybeFunc = false;
+    if (this._match(TokenType.L_PAREN)) { if (isStruct) expressions = this._parse_csv(() => this._parse_struct_types(true)); else if (nested) { expressions = this._parse_csv(() => this._parse_types(check_func, schema, allow_identifiers)); if (typeToken === TokenType.NULLABLE && expressions.length === 1) { this_ = expressions[0]; this_.set("nullable", true); this._match_r_paren(); return this_; } } else if (this.ENUM_TYPE_TOKENS.has(typeToken)) expressions = this._parse_csv(this._parse_equality.bind(this)); else if (typeToken === TokenType.JSON) expressions = this._parse_csv(this._parse_json_type_arg.bind(this)); else if (aggregate) { const first = this._parse_function(null, true) || this._parse_id_var(false, new Set([TokenType.VAR, TokenType.ANY])); if (!first) return null; expressions = [first]; if (this._match(TokenType.COMMA)) expressions.push(...this._parse_csv(() => this._parse_types(check_func, schema, allow_identifiers))); } else { expressions = this._parse_csv(this._parse_type_size.bind(this)); if (typeToken === TokenType.VECTOR && expressions.length === 2) expressions = this._parse_vector_expressions(expressions); } if (!this._match(TokenType.R_PAREN)) { this._retreat(index); return null; } maybeFunc = true; }
+    let values = null;
+    if (nested && this._match(TokenType.LT)) { expressions = isStruct ? this._parse_csv(() => this._parse_struct_types(true)) : this._parse_csv(() => this._parse_types(check_func, schema, allow_identifiers, true)); if (!this._match(TokenType.GT)) this.raise_error("Expecting >"); if (this._match_set(new Set([TokenType.L_BRACKET, TokenType.L_PAREN]))) { values = this._parse_csv(this._parse_disjunction.bind(this)); if (!values.length && isStruct) { values = null; this._retreat(this._index - 1); } else this._match_set(new Set([TokenType.R_BRACKET, TokenType.R_PAREN])); } }
+    if (this.TIMESTAMPS.has(typeToken)) { if (this._match_text_seq("WITH", "TIME", "ZONE")) { maybeFunc = false; this_ = new exp.DataType({ this: this.TIMES.has(typeToken) ? exp.DType.TIMETZ : exp.DType.TIMESTAMPTZ, expressions }); } else if (this._match_text_seq("WITH", "LOCAL", "TIME", "ZONE")) { maybeFunc = false; this_ = new exp.DataType({ this: exp.DType.TIMESTAMPLTZ, expressions }); } else if (this._match_text_seq("WITHOUT", "TIME", "ZONE")) maybeFunc = false; }
+    else if (typeToken === TokenType.INTERVAL) { if (this.dialect.VALID_INTERVAL_UNITS.has(pyUpper(this._curr.text))) { let unit = this._parse_var(false, null, true); if (this._match_text_seq("TO")) unit = new exp.IntervalSpan({ this: unit, expression: this._parse_var(false, null, true) }); this_ = this.expression(new exp.DataType({ this: this.expression(new exp.Interval({ unit })) })); } else this_ = this.expression(new exp.DataType({ this: exp.DType.INTERVAL })); } else if (typeToken === TokenType.VOID) this_ = new exp.DataType({ this: exp.DType.NULL });
+    if (maybeFunc && check_func) { const i = this._index, peek = this._parse_string(); if (!peek) { this._retreat(index); return null; } this._retreat(i); }
+    if (!this_) { if (this._match_text_seq("UNSIGNED")) { const u = this.SIGNED_TO_UNSIGNED_TYPE_TOKEN.get(typeToken); if (!u) this.raise_error(`Cannot convert ${typeToken.name} to unsigned.`); typeToken = u || typeToken; } if (typeToken === TokenType.NULLABLE && !expressions) { this._retreat(index); return null; } this_ = new exp.DataType({ this: exp.DType[typeToken.name], expressions, nested }); if (values !== null) this_ = exp.cast(isStruct ? new exp.Struct({ expressions: values }) : new exp.Array({ expressions: values }), this_, false); } else if (expressions) this_.set("expressions", expressions);
+    while (this._match(TokenType.LIST)) this_ = new exp.DataType({ this: exp.DType.LIST, expressions: [this_], nested: true });
+    index = this._index; let array = this._match(TokenType.ARRAY); while (this._curr.bool()) { const previous = this._prev.token_type, bracket = this._match(TokenType.L_BRACKET); if ((!bracket && !array) || (previous === TokenType.ARRAY && this._match(TokenType.R_BRACKET))) break; array = false; values = this._parse_csv(this._parse_disjunction.bind(this)); if (!values.length) values = null; if (values && !schema && (!this.dialect.SUPPORTS_FIXED_SIZE_ARRAYS || previous === TokenType.ARRAY || !this._match(TokenType.R_BRACKET, false))) { this._retreat(index); break; } this_ = new exp.DataType({ this: exp.DType.ARRAY, expressions: [this_], values, nested: true }); this._match(TokenType.R_BRACKET); }
+    if (this.TYPE_CONVERTERS.size && this_.this?.__enum__ === "DType") { const converter = this.TYPE_CONVERTERS.get(this_.this); if (converter) this_ = converter(this_); }
+    if (with_collation && this_ instanceof exp.DataType && this._match(TokenType.COLLATE)) this_.set("collate", this._parse_identifier() || this._parse_column()); return this_;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:6739
@@ -3392,7 +3429,11 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:6953
   // note: param `this` renamed to `this_` (JS reserved word)
-  _parse_colon_as_variant_extract(this_) { throw new NotPorted("_parse_colon_as_variant_extract", "sqlglot/parser.py:6953"); }
+  _parse_colon_as_variant_extract(this_) {
+    let parts = [new exp.JSONPathRoot()];
+    while (this._match(TokenType.COLON)) { if (!this.COLON_CHAIN_IS_SINGLE_EXTRACT) [this_, parts] = this._build_json_extract(this_, parts); const key = this._parse_id_var(true, new Set([TokenType.SELECT])); if (key) parts.push(new exp.JSONPathKey({ this: key.name, quoted: key instanceof exp.Identifier && key.quoted })); while (true) { if (this._match(TokenType.DOT)) { const key2 = this._parse_id_var(true, new Set([TokenType.SELECT])); if (key2) parts.push(new exp.JSONPathKey({ this: key2.name, quoted: key2 instanceof exp.Identifier && key2.quoted })); } else if (this._match(TokenType.L_BRACKET)) { const bracket = this._parse_bracket_key_value(); if (!this._match(TokenType.R_BRACKET)) this.raise_error("Expected ]"); if (bracket) { if (bracket.isString) parts.push(new exp.JSONPathKey({ this: bracket.name, quoted: true })); else if (bracket.isStar) parts.push(new exp.JSONPathSubscript({ this: new exp.JSONPathWildcard() })); else if (bracket.isNumber) parts.push(new exp.JSONPathSubscript({ this: bracket.toPy() })); else { [this_, parts] = this._build_json_extract(this_, parts); this_ = this.expression(new exp.Bracket({ this: this_, expressions: [bracket], json_access: true })); } } } else if (this._match(TokenType.DCOLON)) { [this_, parts] = this._build_json_extract(this_, parts); const type = this._parse_types(); if (type) this_ = this.expression(new exp.Cast({ this: this_, to: type })); else this.raise_error("Expected type after '::'"); } else break; } }
+    [this_] = this._build_json_extract(this_, parts); return this_;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7010
@@ -3732,7 +3773,12 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8155
-  _parse_cast(strict, safe) { throw new NotPorted("_parse_cast", "sqlglot/parser.py:8155"); }
+  _parse_cast(strict, safe = null) {
+    let this_ = this._parse_assignment(); if (!this._match(TokenType.ALIAS)) { if (this._match(TokenType.COMMA)) return this.expression(new exp.CastToStrType({ this: this_, to: this._parse_string() })); this.raise_error("Expected AS after CAST"); }
+    let fmt = null, to = this._parse_types(false, false, true, true), default_ = null; if (this._match(TokenType.DEFAULT)) { default_ = this._parse_bitwise(); this._match_text_seq("ON", "CONVERSION", "ERROR"); }
+    if (this._match_set(new Set([TokenType.FORMAT, TokenType.COMMA]))) { const string = this._parse_wrapped(this._parse_string.bind(this), true); fmt = this._parse_at_time_zone(string); if (!to) to = exp.DType.UNKNOWN.intoExpr(); if (exp.DataType.TEMPORAL_TYPES.has(to.this)) { const C = to.this === exp.DType.DATE ? exp.StrToDate : exp.StrToTime; this_ = this.expression(new C({ this: this_, format: exp.Literal.string(formatTime(string ? string.this : "", this.dialect.FORMAT_MAPPING || this.dialect.TIME_MAPPING, this.dialect.FORMAT_TRIE || this.dialect.TIME_TRIE)), safe })); if (fmt instanceof exp.AtTimeZone && this_ instanceof exp.StrToTime) this_.set("zone", fmt.args.zone); return this_; } } else if (!to) this.raise_error("Expected TYPE after CAST"); else if (to instanceof exp.Identifier) to = exp.DataType.fromStr(to.name, { dialect: this.dialect, udt: true }); else if (to.this === exp.DType.CHAR && (this._match(TokenType.CHARACTER_SET) || this._match_text_seq("CHARACTER", "SET"))) to = exp.DType.CHARACTER_SET.intoExpr({ kind: this._parse_var_or_string() });
+    return this.build_cast(strict, this_, to, fmt, safe, this._parse_var_from_options(this.CAST_ACTIONS, false), default_);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8215
