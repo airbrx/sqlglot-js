@@ -161,11 +161,24 @@ if (todoOnly) {
   process.exit(0);
 }
 
+// State the REACH of this gate, not just its score. The P3 PR quoted "2,985 entries,
+// 0 wrong" and left both caveats to prose, which reads as full coverage; the review
+// caught it. `0 wrong` is only ever a claim about the entries this checker can compare,
+// so the denominator and the fully-empty tables are printed next to it, always.
+const nTotal = nMatch + nTodo;
+const emptyTables = perTable.filter((t) => t.match === 0 && t.todo > 0);
 console.log(`\n  parser class tables — ${Object.keys(SNAP.tables).length} upstream, ` +
   `${perTable.length} present in src/parser.js`);
-console.log(`    entries matched            ${nMatch}`);
-console.log(`    entries awaiting stubs     ${nTodo}  (callable-valued)`);
-console.log(`    entries WRONG              ${wrong.length}`);
+console.log(`    entries matched            ${nMatch}  (${(100 * nMatch / nTotal).toFixed(0)}% of ${nTotal})`);
+console.log(`    entries awaiting stubs     ${nTodo}  (callable-valued — NOT checked, `
+  + `only that the port supplies some callable)`);
+console.log(`    entries WRONG              ${wrong.length}  (of the ${nMatch} comparable)`);
+if (emptyTables.length) {
+  console.log(`    tables still 100% EMPTY   ${emptyTables.length}: `
+    + emptyTables.sort((a, b) => b.todo - a.todo).slice(0, 6)
+      .map((t) => `${t.name} 0/${t.todo}`).join(", ")
+    + (emptyTables.length > 6 ? `, ... (--todo for all)` : ""));
+}
 if (missingTables.length) {
   console.log(`    tables absent from port    ${missingTables.length}: ` +
     `${missingTables.slice(0, 8).join(", ")}${missingTables.length > 8 ? ", ..." : ""}`);

@@ -107,6 +107,22 @@ EXTRA = [
     ("snowflake", "SELECT CASE WHEN a THEN b ELSE INTERVAL END"),
     ("snowflake", "SELECT * FROM t PIVOT(SUM(x) FOR y IN (SELECT DISTINCT q FROM z ORDER BY q NULLS LAST))"),
     ("tsql", "CREATE TABLE t (a INT) WITH (SYSTEM_VERSIONING = ON (HISTORY_RETENTION_PERIOD = 5 DAYS))"),
+    # ASTRAL REGRESSION (PR #6 review finding 1). `identifier_sql` decides quoting with
+    # `text[:1].isdigit()` — a CODE POINT. Indexing the JS string by UTF-16 unit yields a
+    # lone surrogate for U+1D7CE MATHEMATICAL BOLD DIGIT ZERO (category Nd), so the port
+    # emitted `𝟎abc` where CPython emits `"𝟎abc"`: a silently wrong pivot column name and
+    # a silently wrong DefinerProperty, with no error raised. Both AST-visible.
+    # BMP (`٣` U+0663) and ASCII digits already passed — only astral diverged, which is
+    # why nothing else in the corpus caught it. Astral-but-not-first (`ab𝟎`) pins the
+    # negative side, so an over-eager "quote anything containing an astral digit" fix
+    # fails here too.
+    ("snowflake", "SELECT * FROM t PIVOT(SUM(x) FOR y IN (\U0001D7CEabc)) p"),
+    ("snowflake", "SELECT * FROM t PIVOT(SUM(x) FOR y IN (a.\U0001D7CEb)) p"),
+    ("snowflake", "SELECT * FROM t PIVOT(SUM(x) FOR y IN (\U0001D7CEa, b\U0001D7CF, ۵z, ab\U0001D7CE)) p"),
+    ("mysql", "CREATE DEFINER=\U0001D7CEabc@h VIEW v AS SELECT 1"),
+    # Astral inside a comment on a pivot field: exercises sanitize_comment's first/last
+    # code-point tests, which are the other two `text[i]` reads in the kernel.
+    ("snowflake", "SELECT * FROM t PIVOT(SUM(x) FOR y IN (/*\U0001D7CEc\U0001D7CF*/ q)) p"),
 ]
 for read, sql in EXTRA:
     try:

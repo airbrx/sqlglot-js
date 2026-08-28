@@ -55,6 +55,147 @@ from common import (  # noqa: E402
 
 LOGGING_METHODS = {"debug", "info", "warning", "warn", "error", "exception", "critical"}
 
+# ---------------------------------------------------------------------------
+# MEASURED sites: what the AST pass provably cannot see.
+#
+# The analyser above is a static typer. It classifies an f-string slot as an Expr
+# coercion only when it can prove the slot's value is an Expr. Inside sqlglot/parser.py
+# that proof is unavailable: the values come back from `self._parse_number()`,
+# `self._parse_id_var()`, `self._parse_field()` and friends, whose return types are
+# `t.Optional[exp.Expr]` on methods the typer does not resolve through `self`. So the
+# pass reported ZERO parser.py sites — while CPython, instrumented at
+# `Expression.sql` and driven over the whole corpus plus the upstream test suite,
+# reports SEVEN (PR #6). Five of the seven are implicit `f"{expr}"` coercions that
+# `grep '\.sql('` cannot show either.
+#
+# That gap is the point. `parser.py` is where the generator gets called MID-PARSE and
+# the result is baked into the AST, so a missed site is a silently wrong parse, and it
+# is exactly the file whose deny entries were empty. Recording the measurement here is
+# what makes `tools/lint_deny.mjs` able to fire: with these entries present, the moment
+# a stub-queue PR gives one of these methods a real body, `isPortedSite` flips to true
+# and the lint demands both the acknowledgement marker and the `route` symbol.
+#
+# `expect` is verified against the pinned ref on every regeneration — if upstream moves
+# a line, this fails loudly instead of leaving a marker pointing at nothing (§3.3 r5).
+MEASURED_SITES = [
+    {
+        "py": "sqlglot/parser.py:3044",
+        "expect": 'f"{number} "',
+        "form": "f-string {x}",
+        "coerced": "number",
+        "cls": "Literal",
+        "fn": "_parse_retention_period",
+    },
+    {
+        "py": "sqlglot/parser.py:3046",
+        "expect": 'exp.var(f"{number_str}{unit}")',
+        "form": "f-string {x}",
+        "coerced": "unit",
+        "cls": "Var",
+        "fn": "_parse_retention_period",
+    },
+    {
+        "py": "sqlglot/parser.py:3179",
+        "expect": 'f"{user}@{host}"',
+        "form": "f-string {x}",
+        "coerced": "user, host",
+        "cls": "Identifier",
+        "fn": "_parse_definer",
+    },
+    {
+        "py": "sqlglot/parser.py:5491",
+        "expect": "fld.sql()",
+        "form": "explicit .sql()",
+        "coerced": "fld",
+        "cls": "Column, Literal, Select",
+        "fn": "_parse_pivot (pivot IN (...) field names)",
+    },
+    {
+        "py": "sqlglot/parser.py:8069",
+        "expect": "default.this.sql()",
+        "form": "explicit .sql()",
+        "coerced": "default.this",
+        "cls": "Column, Literal",
+        "fn": "_parse_case (CASE ... ELSE INTERVAL)",
+    },
+    {
+        "py": "sqlglot/parser.py:9313",
+        "expect": 'f"BUFFER_USAGE_LIMIT {self._parse_number()}"',
+        "form": "f-string {x}",
+        "coerced": "self._parse_number()",
+        "cls": "Literal",
+        "fn": "_parse_analyze",
+    },
+    {
+        "py": "sqlglot/parser.py:9462",
+        "expect": 'f"{buckets} BUCKETS"',
+        "form": "f-string {x}",
+        "coerced": "buckets",
+        "cls": "Literal",
+        "fn": "_parse_analyze_histogram",
+    },
+    # The EIGHTH site, found by the PR #6 review by reasoning about the surface rather
+    # than replaying the corpus: it is on an ERROR path, so neither the corpus nor
+    # upstream's tests/ reach it and instrumentation cannot see it. Recorded here so it
+    # is not rediscovered from scratch. `sqlglot/parsers/bigquery.py` is far downstream
+    # of P3, so `isPortedSite` returns false and this stays a note until the BigQuery
+    # dialect lands — at which point the lint demands it, which is the whole idea.
+    # It reaches the generator with ARBITRARY expression types (Literal, Column and Add
+    # were confirmed), so it is not satisfiable by the P3 kernel's 13-class subset.
+    {
+        "py": "sqlglot/parsers/bigquery.py:712",
+        "expect": 'f"Expected key => value syntax for AI.FORECAST, got {arg}"',
+        "form": "f-string {x}",
+        "coerced": "arg",
+        "cls": "arbitrary (Literal, Column, Add confirmed)",
+        "fn": "_parse_ai_forecast (error path)",
+    },
+]
+
+
+def measured_findings(ref: str) -> list[dict]:
+    """Build deny entries for the runtime-measured sites, verifying each against `ref`."""
+    out = []
+    for seed in MEASURED_SITES:
+        relpath, lineno = seed["py"].rsplit(":", 1)
+        lineno = int(lineno)
+        path = os.path.join(ref, relpath)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                line = fh.read().splitlines()[lineno - 1]
+        except (OSError, IndexError):
+            raise SystemExit(f"error: measured site {seed['py']} does not exist in {ref}")
+        if seed["expect"] not in line:
+            raise SystemExit(
+                f"error: measured site {seed['py']} drifted.\n"
+                f"  expected to contain: {seed['expect']}\n"
+                f"  actual line:         {line.strip()}\n"
+                "  Re-run the instrumentation (spike/p3/gen_parse_path_sql_ref.py) and "
+                "update MEASURED_SITES in tools/deny/gen_implicit_str.py."
+            )
+        out.append({
+            "form": seed["form"],
+            "renders": "sql-default-dialect",
+            "confidence": "measured",
+            "why": (
+                f"CPython-instrumented parse path: {seed['fn']} coerces "
+                f"`{seed['coerced']}` ({seed['cls']}) to SQL mid-parse and bakes the "
+                "result into the AST"
+            ),
+            "py": seed["py"],
+            "file": relpath,
+            "line": lineno,
+            "col": max(line.find(seed["expect"]), 0),
+            "source": seed["expect"],
+            "statement": line.strip(),
+            "executor": False,
+            "fn": seed["fn"],
+            # Consumed by tools/lint_deny.mjs: once the owning method is ported, the
+            # ported file MUST reference this symbol, not just carry a marker.
+            "route": "kernelSql",
+        })
+    return out
+
 
 def analyse(ref: str) -> tuple[list[dict], dict]:
     knowledge = ExprKnowledge(ref)
@@ -175,6 +316,13 @@ def main() -> int:
         return 2
 
     findings, stats = analyse(args.ref)
+    # Merge the runtime-measured sites the static pass cannot reach, then re-sort so the
+    # file stays in (file, line, col) order regardless of where entries came from.
+    measured = measured_findings(args.ref)
+    static_keys = {f["py"] for f in findings}
+    findings += [m for m in measured if m["py"] not in static_keys]
+    findings.sort(key=lambda e: (e["file"], e["line"], e["col"]))
+    stats["measured_sites"] = len(measured)
     in_scope = [f for f in findings if not f["executor"]]
     sql_rendering = [f for f in in_scope if f["renders"] == "sql-default-dialect"]
 

@@ -37,7 +37,7 @@
 
 import { NotPorted, UnsupportedError } from "./errors.js";
 import * as exp from "./expressions/index.js";
-import { pyIsDigit, pyIsSpace, pyStrip } from "./_py/str.js";
+import { cpAt, cpSlice, pyIsDigit, pyIsSpace, pyStrip } from "./_py/str.js";
 
 // Base-`Dialect` / base-`Generator` settings this subset depends on, read out of
 // CPython rather than assumed (see the probe's header for the extraction command).
@@ -151,8 +151,12 @@ export class GeneratorKernel {
     // py: `if comment[0].strip()` — `str.strip()` of a single character is "" exactly
     // when that character is whitespace, so this reads "pad unless already spaced".
     // `pyStrip`, not `trim`: Python's whitespace set is not JS's `\s`.
-    let out = pyStrip(comment[0]) ? ` ${comment}` : comment;
-    out = pyStrip(out[out.length - 1]) ? `${out} ` : out;
+    // `cpAt`, not `comment[0]`: see identifier_sql below. No Unicode whitespace is
+    // astral, so a lone surrogate happens to answer "not space" like the character it
+    // came from — this pair is correct by accident today. It is still written the
+    // code-point way, because the next reader copies the shape, not the accident.
+    let out = pyStrip(cpAt(comment, 0)) ? ` ${comment}` : comment;
+    out = pyStrip(cpAt(out, -1)) ? `${out} ` : out;
     // Escape block-comment markers: single-line `--` comments become `/* */` on output,
     // so any `*/` in the original would close the comment early.
     return out.split("*/").join("* /").split("/*").join("/ *");
@@ -181,7 +185,9 @@ export class GeneratorKernel {
       const commentsSql = commentsList.join(" ");
       // py: `if not sql or sql[0].isspace()` — leading-space clauses like " FROM x"
       // take the first arm so the comment lands before the space, not inside it.
-      return (!sql || pyIsSpace(sql[0]))
+      // `cpAt(sql, 0)`, not `sql[0]` — same reason as identifier_sql; the `!sql` guard
+      // is what makes the index safe, exactly as upstream's `not sql` does.
+      return (!sql || pyIsSpace(cpAt(sql, 0)))
         ? ` ${commentsSql}${sql}`
         : `${commentsSql} ${sql}`;
     }
@@ -229,7 +235,15 @@ export class GeneratorKernel {
     // and `can_quote` is False without a dialect — so the quoting decision reduces to
     // the explicit `quoted` flag or a leading digit.
     text = text.split(IDENTIFIER_END).join(ESCAPED_IDENTIFIER_END);
-    if (quoted || (text.length > 0 && pyIsDigit(text[0]))) {
+    // py: `text[:1].isdigit()` — a CODE POINT, so `cpSlice`, never `text[0]`.
+    // `text[0]` is a UTF-16 unit: for an astral digit like U+1D7CE MATHEMATICAL BOLD
+    // DIGIT ZERO it is a lone high surrogate, `pyIsDigit` answers false, and the
+    // identifier ships UNQUOTED where CPython quotes it. That is AST-visible at
+    // parser.py:5491 (the pivot column NAME) and parser.py:3179 (DefinerProperty),
+    // with no error and no probe failure — the silent-wrongness class this whole
+    // kernel exists to avoid. `pyIsDigit("")` is already false, so the empty-string
+    // case needs no guard, matching upstream's slice exactly.
+    if (quoted || pyIsDigit(cpSlice(text, 0, 1))) {
       text = `${IDENTIFIER_START}${text}${IDENTIFIER_END}`;
     }
     return text;

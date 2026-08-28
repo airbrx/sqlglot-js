@@ -85,13 +85,36 @@ export class Expr {
   get this() { return this.args.this; }
   get expression() { return this.args.expression; }
   get expressions() { return this.args.expressions || []; }
-  get isString() { return this.constructor.name === "Literal" && !!this.args.is_string; }
-  get isNumber() { return this.constructor.name === "Literal" && !this.args.is_string; }
-  get isInt() {
-    let node = this;
-    while (node?.constructor?.name === "Paren" || node?.constructor?.name === "Neg") node = node.this;
-    return node?.constructor?.name === "Literal" && !node.args.is_string && /^\d+$/.test(String(node.this));
+  // py: core.py:922 `isinstance(self, Literal) and self.args["is_string"]`
+  get isString() { return this instanceof cls("Literal") && !!this.args.is_string; }
+  get is_string() { return this.isString; }
+  /**
+   * py: core.py:926
+   *   (isinstance(self, Literal) and not self.args["is_string"])
+   *   or (isinstance(self, Neg) and self.this.is_number)
+   *
+   * LITERAL-OR-NEG, and nothing else — notably NOT Paren, so `(1)` is not a number.
+   * There is no predicate on the TEXT: upstream never inspects it, so a non-string
+   * `Literal` is a number even when its `this` is "abc" or "". A regex here (the port
+   * used one, matching `\d+`/`inf`/`nan`/`binary_double_nan`) invents a rule upstream
+   * does not have, and `binary_double_nan` appears nowhere in the sqlglot tree at all.
+   */
+  get isNumber() {
+    return (this instanceof cls("Literal") && !this.args.is_string)
+      || (this instanceof cls("Neg") && !!this.this?.isNumber);
   }
+  get is_number() { return this.isNumber; }
+  /**
+   * py: core.py:935 `self.is_number and isinstance(self.to_py(), int)`
+   *
+   * Delegates, rather than re-deciding. Two consequences that a hand-written check got
+   * wrong: `Paren(Literal('1'))` is NOT an int (Paren is not in `is_number`), and
+   * `Literal('abc')` does not return false — `to_py()` RAISES, and upstream lets that
+   * propagate. `int` is `bigint` on this side; `Decimal` is not an int, so `1.5`,
+   * `1e5`, `inf` and `nan` are all false.
+   */
+  get isInt() { return this.isNumber && typeof this.toPy() === "bigint"; }
+  get is_int() { return this.isInt; }
   // py: core.py:939.  Only a Star, or a Column wrapping one.  Select, SetOperation,
   // Subquery and Dot each override this (installed in query_methods.js); nothing else
   // does -- notably not Alias or Paren, and not "any node with a starred expression",
@@ -108,7 +131,11 @@ export class Expr {
   get outputName() { return ""; }
   // py: core.py:969.  `self._type or self.to` reads the `to` PROPERTY, not args["to"] —
   // so a Cast missing its required `to` raises KeyError here, exactly as upstream.
-  get type() { return (this.constructor.isDataType || this.constructor.name === "DataType") ? this : (this.constructor.isCast ? (this._type || this.to) : this._type); }
+  // py: core.py:970 `if self.is_data_type: return self` / `if self.is_cast: ...`.
+  // Both flags are class vars derived from the generated MRO in focused_methods.js, so
+  // the `=== "DataType"` name fallback that used to sit here (and hid the fact that
+  // `is_data_type` was set on DataType alone) is gone.
+  get type() { return this.constructor.isDataType ? this : (this.constructor.isCast ? (this._type || this.to) : this._type); }
   set type(v) {
     const DataType = CLASS_REGISTRY.get("DataType");
     this._type = v && DataType && !(v instanceof DataType) ? DataType.build(v) : v;
@@ -138,9 +165,20 @@ export class Expr {
       if (integer !== null) return integer;
       try { return pyDecimal(s); } catch { throw new PyValueError(`Invalid numeric literal: ${s}`); }
     }
-    if (name === "Paren") return this.this.toPy();
-    if (name === "Neg") { const value = this.this.toPy(); return typeof value === "bigint" ? -value : decNeg(value); }
-    throw new Error(`${name} cannot be converted to a JavaScript value`);
+    // py: core.py:2272 Neg.to_py — `if self.is_number: ... ; return super().to_py()`.
+    // The GUARD matters: `Neg(Literal('1', is_string=True))` is not a number, so upstream
+    // falls through to `Expression.to_py` and RAISES. Negating unconditionally returned
+    // -1 instead. Found by probing one step out from the reported cases.
+    //
+    // There is also NO `Paren.to_py` upstream — Paren inherits the raising base — so the
+    // port's Paren arm, which unwrapped to the inner value, is gone rather than guarded.
+    if (name === "Neg" && this.isNumber) {
+      const value = this.this.toPy();
+      return typeof value === "bigint" ? -value : decNeg(value);
+    }
+    // py: core.py:931 `raise ValueError(f"{self} cannot be converted to a Python object.")`
+    // — a ValueError, not a bare exception, because callers catch it (`Literal.number`).
+    throw new PyValueError(`${name} cannot be converted to a JavaScript value`);
   }
   isLeaf() { return !Object.values(this.args).some(v => (v instanceof Expr || Array.isArray(v)) && (Array.isArray(v) ? v.length : true)); }
   get depth() { let depth = 0, node = this; while (node.parent) { depth++; node = node.parent; } return depth; }
@@ -198,8 +236,16 @@ export class Expr {
   get parentSelect() { let x = this.parent; while (x && x.constructor.name !== "Select") x = x.parent; return x; }
   get sameParent() { return !!this.parent && this.parent.constructor === this.constructor; }
   root() { let x = this; while (x.parent) x = x.parent; return x; }
+  // py: core.py:1218 `while type(expression) is Paren` — EXACT type, not isinstance, so
+  // a name comparison is right here. The asymmetry with `unalias` just below is
+  // upstream's and is preserved deliberately.
   unnest() { let x = this; while (x.constructor.name === "Paren") x = x.this; return x; }
-  unalias() { return this.constructor.name === "Alias" ? this.this : this; }
+  // py: core.py:1224 `if isinstance(self, Alias)` — ISINSTANCE, so `PivotAlias` (the one
+  // Alias subclass, `expressions/query.py`) unwraps too. A `constructor.name === "Alias"`
+  // test missed it, so `PIVOT (... a AS b)` never unwrapped. `instanceof` is the correct
+  // spelling: `defineExpr` installs a `Symbol.hasInstance` that consults the generated
+  // `bases` list (core.js:365), which is Python's real MRO.
+  unalias() { return this instanceof cls("Alias") ? this.this : this; }
   unnestOperands() { return [...this.iterExpressions()].map(x => x.unnest()); }
   *flatten(unnest = true) {
     const stack = [this];
@@ -407,7 +453,8 @@ export function toS(node, verbose = false, level = 0, reprStr = false) {
   let indent = `\n${"  ".repeat(level + 1)}`, delim = `,${indent}`;
   if (node instanceof Expr) {
     const args = Object.entries(node.args).filter(([,v]) => verbose || (v !== null && !(Array.isArray(v) && !v.length)));
-    if ((node.type || verbose) && !(node.constructor.isDataType || node.constructor.name === "DataType")) args.push(["_type", node.type]);
+    // py: core.py:2594 `if (node.type or verbose) and not node.is_data_type`
+    if ((node.type || verbose) && !node.constructor.isDataType) args.push(["_type", node.type]);
     if (node.comments || verbose) args.push(["_comments", node.comments]);
     if (node.isLeaf()) { indent = ""; delim = ", "; }
     const quote = !!node.args.is_string || (node.constructor.name === "Identifier" && !!node.args.quoted);

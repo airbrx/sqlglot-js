@@ -67,6 +67,11 @@ run "LINT: no raw control bytes"          node tools/lint_control_bytes.mjs
 # P1, which is the argument for running it here rather than only in CI: a deny-list
 # nobody runs is a comment.
 run "LINT: deny-lists routed through _py" node tools/lint_deny.mjs
+# §4.1 identity. Added for PR #6 review finding 9: the same hand-written-identity bug
+# had been found three times across two reviews (`/Cast$/`, `is_cast`, `is_data_type`,
+# `unalias`). `bases` already knows which classes have subclasses, so the check is
+# mechanical rather than another list someone has to remember to update.
+run "LINT: isinstance vs name identity"   node tools/lint_identity.mjs
 run "SELFTEST: closure calculator"        node tools/closure.mjs --selftest
 run "SELFTEST: ratchet rules 1-5"         node tools/ratchet.mjs --selftest
 run "SELFTEST: corpus runner"             node test/runner.mjs --selftest
@@ -88,6 +93,13 @@ run "P3: parse-path generate call sites"  node spike/p3/fuzz_parse_path_sql.mjs
 run "P3: raise_error + unicode columns"   node spike/p3/fuzz_raise_error.mjs
 run "P3: check_command_warning strings"   node spike/p3/fuzz_command_warning.mjs
 run "P3: AST oracle coverage (honest)"    node spike/p3/fuzz_ast_coverage.mjs
+# The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
+# script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
+# unrun test is a comment, which is the same argument this repo makes for the deny-list
+# lint. `find` rather than a fixed list of directories, so a new test/<dir>/ cannot be
+# silently skipped. (`node --test test/expressions/` — the form P3_RESULTS.md quoted —
+# does not even work on Node 22: a directory argument is resolved as a module.)
+run "NATIVE: node:test suite"             bash -c 'node --test $(find test -name "*.test.mjs" | sort)'
 run "BRIDGE: 2 end-to-end proofs"         python3 tools/bridge/proof.py
 
 echo

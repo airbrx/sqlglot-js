@@ -5,6 +5,35 @@
 // replaces exactly one line/method and two agents never touch adjacent hunks
 // (PORT_PLAN.md §8.1 Rules 2 and 2'). Table ORDER is CI-asserted against a _gen/
 // snapshot, because §4.6 establishes that insertion order is observable in output SQL.
+//
+// ---------------------------------------------------------------------------------
+// READ THIS BEFORE IMPLEMENTING ANY OF THESE SEVEN METHODS
+//
+// The parser calls the GENERATOR mid-parse and bakes the resulting STRING into the
+// AST. Seven upstream lines do it, and five are INVISIBLE at the call site — they are
+// implicit `f"{expr}"` coercions through `Expression.__str__`
+// (expressions/core.py:1237 -> self.sql()), so `grep '\.sql('` shows only two:
+//
+//   parser.py:3044  f"{number} "                   _parse_retention_period
+//   parser.py:3046  exp.var(f"{number_str}{unit}") _parse_retention_period
+//   parser.py:3179  f"{user}@{host}"               _parse_definer
+//   parser.py:5491  fld.sql()                      _parse_pivot  (IN (...) field names)
+//   parser.py:8069  default.this.sql()             _parse_case   (ELSE INTERVAL)
+//   parser.py:9313  f"BUFFER_USAGE_LIMIT {...}"    _parse_analyze
+//   parser.py:9462  f"{buckets} BUCKETS"           _parse_analyze_histogram
+//
+// In JS there is no `__str__`, so a transliterated `${expr}` yields "[object Object]".
+// Route every one of them through `kernelSql` from ./generator_kernel.js — not a
+// template literal, not a hand-written renderer. `tools/lint_deny.mjs` enforces this:
+// all seven are `route: "kernelSql"` sites in corpus/deny/implicit_str.json, and the
+// check flips from a note to a FAILURE the moment the owning method stops being a
+// `NotPorted` stub.
+//
+// The kernel covers only the 13 node classes measured as reachable and throws
+// `NotPorted` for anything else. That is deliberate, but it means ordinary SQL such as
+// `PIVOT(... IN (NULL))` or `IN (1, -2, 3.5)` will THROW between the day _parse_pivot
+// lands and the day P4's real Generator does. See P3_RESULTS.md "Known limitations".
+// ---------------------------------------------------------------------------------
 
 import {
   ErrorLevel,
@@ -20,6 +49,7 @@ import { ensureList } from "./helper.js";
 import { logger } from "./logging.js";
 import { PyTypeError } from "./_py/errors.js";
 import { pyUpper } from "./_py/str.js";
+import { pyFalsy } from "./_py/truthy.js";
 import * as exp from "./expressions/index.js";
 
 /**
@@ -2033,9 +2063,24 @@ export class Parser {
       }
       self = null;
     }
-    // py: `if not this or retreat` — `not this` is Python falsiness, so an Expr is
-    // truthy but None is not. `_parse_*` methods return None or an Expr, never 0/""/[].
-    if (!self || retreat) this._retreat(index);
+    // py: `if not this or retreat` — `not this` is PYTHON falsiness, which is not JS
+    // falsiness for containers. An earlier version of this line asserted that
+    // `_parse_*` callables "return None or an Expr, never 0/''/[]"; that is false.
+    // `_try_parse` takes an arbitrary callable, and `parser.py:10382` passes
+    // `lambda: self._parse_csv(self._parse_declareitem)` — `_parse_csv`
+    // (`parser.py:8918`) is typed `-> list[T]` and returns `[]` when nothing parses.
+    // `not []` is True in Python; `![]` is `false` in JS, so the port did NOT retreat
+    // and left the cursor advanced. `_parse_declare` then calls `_parse_as_command(start)`,
+    // which quotes the SQL from the (now wrong) cursor — and that string is one of the
+    // byte-exact `check_command_warning` lines this phase gates on.
+    //
+    // Fixed at the semantics, not at the example: `pyTruthy` implements the whole
+    // protocol, so the next callable to return `{}`, `""`, `0` or an ExprSet is right
+    // too. Enumerated the call sites rather than trusting the shape — base parser.py
+    // has 10 (2691, 4629, 4659, 5440, 5772, 5833, 5834, 9343, 10064, 10382), of which
+    // only 10382 is non-Expr today; dialects add 4 more (postgres x2, clickhouse,
+    // oracle), all Expr-or-None.
+    if (pyFalsy(self) || retreat) this._retreat(index);
     this.error_level = errorLevel;
 
     return self;

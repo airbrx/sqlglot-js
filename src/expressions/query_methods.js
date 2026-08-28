@@ -10,6 +10,17 @@ function value(node, camel, snake = camel) { return node?.[camel] ?? node?.[snak
 function has(C, trait) { return C.name === trait || C.traits?.includes(trait) || C.bases?.includes(trait); }
 function query(C) { return has(C, "Query"); }
 
+// py: the TokenType NAMES of Parser.JOIN_METHODS (parser.py:1012), JOIN_SIDES (:1018)
+// and JOIN_KINDS (:1024). Duplicated here only because importing `src/parser.js` from
+// the expression layer would close an import cycle (parser.js -> expressions/index.js
+// -> query_methods.js); test/expressions/query_methods_join.test.mjs asserts these are
+// the same three sets, so the copy is checked rather than trusted.
+export const JOIN_METHODS = Object.freeze(new Set(["ASOF", "NATURAL", "POSITIONAL"]));
+export const JOIN_SIDES = Object.freeze(new Set(["LEFT", "RIGHT", "FULL"]));
+export const JOIN_KINDS = Object.freeze(new Set(
+  ["ANTI", "CROSS", "INNER", "OUTER", "SEMI", "STRAIGHT_JOIN"],
+));
+
 export function installQueryMethods(classes) {
   const all = Object.values(classes);
   const C = (name) => classes[name];
@@ -204,17 +215,45 @@ export function installQueryMethods(classes) {
     if (join.this instanceof C("Select")) join.set("this", join.this.subquery(null, { copy: false }));
 
     if (o.join_type) {
-      // This is the same three-part split produced by parsing
-      // `FROM _ <join_type> JOIN _`; it also keeps the method/side/kind fields
-      // independent, as Join's public properties require.
-      const words = String(o.join_type).trim().toUpperCase().split(/\s+/);
-      const methods = new Set(["GLOBAL", "NATURAL", "POSITIONAL", "ASOF"]);
-      const sides = new Set(["LEFT", "RIGHT", "FULL"]);
-      const kinds = new Set(["INNER", "OUTER", "CROSS", "SEMI", "ANTI"]);
-      for (const word of words) {
-        if (methods.has(word)) join.set("method", word);
-        else if (sides.has(word)) join.set("side", word);
-        else if (kinds.has(word)) join.set("kind", word);
+      // py: query.py:1421 `maybe_parse(f"FROM _ {join_type} JOIN _").find(Join)`, whose
+      // method/side/kind come from `_parse_join_parts` (parser.py:4634): THREE ordered,
+      // optional, single-token matches against Parser.JOIN_METHODS, JOIN_SIDES and
+      // JOIN_KINDS, in that order.
+      //
+      // Reproduced here rather than parsed, because `_parse_join` is still a P3 stub.
+      // The previous stand-in was a hand-written word list scanned in any order, and it
+      // had drifted from the token tables in both directions: it carried GLOBAL (a
+      // ClickHouse token, absent from the base JOIN_METHODS) and was missing
+      // STRAIGHT_JOIN, so `join(..., join_type="straight_join")` set no kind at all and
+      // rendered `SELECT * FROM tbl, tbl2` — a CROSS JOIN — where CPython gives
+      // `STRAIGHT_JOIN`. Reachable from the public builder, silently.
+      //
+      // The word sets are now exactly the TokenType NAMES of those three tables, and
+      // test/expressions/query_methods_join.test.mjs asserts that against `Parser` so
+      // the duplicate cannot drift again. Matching is ordered and single-shot, which is
+      // what makes `"straight_join left"` come out as kind=STRAIGHT_JOIN with NO side,
+      // exactly as upstream.
+      //
+      // KNOWN REMAINING DIVERGENCES, and they need the real parser, not a bigger list.
+      // Both come from upstream parsing the whole `FROM _ <join_type> JOIN _` string:
+      //
+      //   ALIAS SWALLOWING — a leading word that is not a join token becomes the FROM
+      //   table's alias and the rest still parses. `"global left"` and `"bogus left"`
+      //   are LEFT JOIN upstream, no-ops here; `"positional"` is a no-op upstream
+      //   (POSITIONAL is in JOIN_METHODS but the FROM alias eats it) and sets method here.
+      //
+      //   INVALID INPUT — upstream RAISES ParseError on a string that cannot parse:
+      //   "left left", "outer left", "anti semi", "asof natural" (each is two tokens
+      //   competing for one slot). This block accepts them and takes the first match.
+      //
+      // Measured against CPython, not assumed; `test/expressions/identity_checks.test.mjs`
+      // pins the cases that DO agree so the agreement cannot silently shrink. Replace
+      // this whole block with `maybeParse` once `_parse_join` lands — that is the fix,
+      // and it removes the divergences rather than narrowing them.
+      const words = String(o.join_type).trim().toUpperCase().split(/\s+/).filter(Boolean);
+      let i = 0;
+      for (const [arg, set] of [["method", JOIN_METHODS], ["side", JOIN_SIDES], ["kind", JOIN_KINDS]]) {
+        if (i < words.length && set.has(words[i])) join.set(arg, words[i++]);
       }
     }
     // py: query.py:1435 -- and_(), so a single Or operand stays bare and multiple

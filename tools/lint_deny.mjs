@@ -211,6 +211,48 @@ function checkMarkers(manifest, kind) {
 }
 
 /**
+ * CHECK 4 — required routing symbol (`route` on a deny site).
+ *
+ * A marker only proves someone looked. For the parse-path generate sites this is not
+ * enough: the whole finding is that five of the seven are INVISIBLE `f"{expr}"`
+ * coercions, so an agent implementing `_parse_pivot` reads `parser.py:5491`, sees
+ * `fld.sql()`, and has no reason to know `kernelSql` exists — `src/parser.js` never
+ * mentions it. That is how a discovery gets silently lost between PRs.
+ *
+ * So a site may name the symbol its port MUST go through. While the owning method is
+ * still a `NotPorted` stub this is a note; the moment the method gets a real body the
+ * ported file has to reference the symbol or this fails. Deliberately a
+ * file-level reference check, not a line-level one — asserting the exact call shape
+ * would be guessing at code that does not exist yet, and the marker plus the human
+ * review gate (§8.5) cover the rest.
+ */
+function checkRouting(manifest, kind) {
+  for (const site of manifest.sites) {
+    if (site.executor || !site.route) continue;
+    const ported = pyToJsPath(site.file);
+    if (!ported) continue;
+    const src = jsSources.get(ported);
+    if (src === undefined || !isPortedSite(site.py)) {
+      notes.push(
+        `deny:${kind} ${site.py} — not ported yet; when it lands it must route through `
+        + `${site.route}() (${site.why ?? ""})`.trimEnd(),
+      );
+      continue;
+    }
+    if (!new RegExp(`\\b${site.route}\\b`).test(src)) {
+      failures.push({
+        check: "missing-route",
+        where: `${ported} (for ${site.py})`,
+        detail:
+          `${site.fn ?? "this method"} generates SQL mid-parse and the result is baked `
+          + `into the AST — it must go through ${site.route}(), not a hand-written `
+          + `renderer or a JS template literal. See corpus/deny/${kind}.json.`,
+      });
+    }
+  }
+}
+
+/**
  * Is the upstream line `file:line` inside a method the port has actually IMPLEMENTED?
  *
  * Derived from the port's own source, so it needs no extra manifest and cannot drift:
@@ -296,6 +338,8 @@ checkBannedConstructs();
 checkShimRouting(pyBuiltins);
 checkMarkers(operators, "operators");
 checkMarkers(implicitStr, "implicit_str");
+checkRouting(operators, "operators");
+checkRouting(implicitStr, "implicit_str");
 
 console.log("deny-list lint (sketch)\n");
 console.log(`  ported JS files scanned      ${jsFiles.length}`);
@@ -303,6 +347,11 @@ console.log(`  operators sites              ${operators.counts.in_scope}`);
 console.log(`  implicit_str sites           ${implicitStr.counts.sql_default_dialect}`);
 console.log(`  py_builtins sites            ${pyBuiltins.counts.in_scope}`);
 console.log(`  banned JS constructs         ${BANNED_CONSTRUCTS.length}`);
+const routed = [...operators.sites, ...implicitStr.sites].filter((s) => s.route && !s.executor);
+console.log(
+  `  routing-enforced sites       ${routed.length}`
+  + (routed.length ? ` (${routed.filter((s) => isPortedSite(s.py)).length} live)` : ""),
+);
 
 if (notes.length) {
   console.log("\nnot yet applicable:");
