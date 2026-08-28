@@ -455,3 +455,16 @@ Implemented the 20 assigned function-call, lambda, limit/group, heredoc, and win
 Implemented the 54 assigned DDL, DML, transaction, grant/revoke, analyze, alter, and set-operation parser methods. `parse_set_operation` is a real upstream method at `parser.py:5901`, not a trace artifact.
 
 Closure after this branch: 59 / 15,540 rows closed (the conjunctive closure remains dominated by co-requisite methods on sibling branches); parser stubs reduced from 379 to 321.
+
+## Stub queue — query core and DML (2026-08-28)
+
+Ported all 25 assigned query-core and DML parser methods: row format and SerDe
+properties; DELETE, INSERT, UPDATE, VALUES, and RETURNING; projections, wrapped
+SELECTs, aliases and subqueries; hints and INTO/FROM; JOIN parsing; table hints,
+versions, and samples; and the three assigned pipe-syntax methods. Also corrected
+the already-ported `_parse_stream` helper to match its pinned guarded/backtracking
+semantics, which the newly reachable FROM-first DuckDB corpus exposed as recursion.
+
+Parser closure increased from the main-branch baseline of **7,721 / 15,540
+(49.68%)** to **14,606 / 15,540 (93.99%)**. The honest AST probe finished with
+**38 EXACT, 0 MISMATCH, 15,440 STUB, 0 ERROR** across its 15,478 eligible rows.
