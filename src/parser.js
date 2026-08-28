@@ -1647,10 +1647,15 @@ export class Parser {
   ]);
 
   /** py: sqlglot/parser.py:1828 */
-  static AMBIGUOUS_ALIAS_TOKENS = [
+  // note: upstream is a tuple, which the seeder default-maps to a JS Array, but this
+  // one is consumed by `_match_set` (parser.py:5828), which calls `.has()` -- Set
+  // required, not Array. Confirmed the only one of the 3 Array-seeded tables actually
+  // consumed this way (PR #8's claim-overlap audit, 2026-08-28); fixed at the site
+  // rather than generalizing the seeder's tuple-vs-set heuristic from one instance.
+  static AMBIGUOUS_ALIAS_TOKENS = new Set([
     /* py:1828 */ TokenType.LIMIT,
     /* py:1828 */ TokenType.OFFSET,
-  ];
+  ]);
 
   /** py: sqlglot/parser.py:1830 */
   static OPERATION_MODIFIERS = new Set([
@@ -2666,18 +2671,11 @@ export class Parser {
   _implicit_unnests_to_explicit(this_) { throw new NotPorted("_implicit_unnests_to_explicit", "sqlglot/parser.py:4317"); }
 
   /** @returns {*} */
-  // py: sqlglot/parser.py:4345
-  // note: param `this` renamed to `this_` (JS reserved word)
-  _parse_query_modifiers(this_) { throw new NotPorted("_parse_query_modifiers", "sqlglot/parser.py:4345"); }
-
-  /** @returns {*} */
-  // py: sqlglot/parser.py:4348
-  // note: param `this` renamed to `this_` (JS reserved word)
-  _parse_query_modifiers(this_) { throw new NotPorted("_parse_query_modifiers", "sqlglot/parser.py:4348"); }
-
-  /** @returns {*} */
   // py: sqlglot/parser.py:4350
   // note: param `this` renamed to `this_` (JS reserved word)
+  // note: parser.py:4344/4348 are `@t.overload` type-only signatures (body `...`),
+  // not real methods -- only this one (the undecorated definition) has a runtime
+  // body upstream. Duplicate stubs removed 2026-08-28 (PR #8's claim-overlap audit).
   _parse_query_modifiers(this_) { throw new NotPorted("_parse_query_modifiers", "sqlglot/parser.py:4350"); }
 
   /** @returns {*} */
@@ -3335,15 +3333,10 @@ export class Parser {
   _parse_on_handling(on) { throw new NotPorted("_parse_on_handling", "sqlglot/parser.py:8380"); }
 
   /** @returns {*} */
-  // py: sqlglot/parser.py:8397
-  _parse_json_object(agg) { throw new NotPorted("_parse_json_object", "sqlglot/parser.py:8397"); }
-
-  /** @returns {*} */
-  // py: sqlglot/parser.py:8400
-  _parse_json_object(agg) { throw new NotPorted("_parse_json_object", "sqlglot/parser.py:8400"); }
-
-  /** @returns {*} */
   // py: sqlglot/parser.py:8402
+  // note: parser.py:8396/8399 are `@t.overload` type-only signatures (body `...`),
+  // not real methods -- only this one (the undecorated definition) has a runtime
+  // body upstream. Duplicate stubs removed 2026-08-28 (PR #8's claim-overlap audit).
   _parse_json_object(agg) { throw new NotPorted("_parse_json_object", "sqlglot/parser.py:8402"); }
 
   /** @returns {*} */

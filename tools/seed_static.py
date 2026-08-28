@@ -551,6 +551,20 @@ def main():
             continue
 
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            # `@t.overload`/`@overload` decorated defs are type-checking-only signatures
+            # with no runtime body (just `...`) -- typing.overload's own convention is
+            # that only the final, undecorated definition sharing the name is real.
+            # Seeding these as JS stubs produces duplicate method names (JS silently
+            # keeps the last), which also breaks Rule 2's claim key uniqueness
+            # (`parser.js#_parse_query_modifiers` stopped being unique). Found via
+            # PR #8's claim-overlap tooling audit, 2026-08-28.
+            def _is_overload_decorator(d):
+                name = d.attr if isinstance(d, ast.Attribute) else getattr(d, "id", "")
+                return name == "overload"
+
+            if any(_is_overload_decorator(d) for d in node.decorator_list):
+                continue
+
             argnames = [a.arg for a in node.args.args if a.arg != "self"]
             renamed = []
             js_names = []

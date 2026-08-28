@@ -71,6 +71,16 @@ function renderKey(k) {
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const isCallable = (x) => x && typeof x === "object" && "__callable__" in x;
 
+// Tables upstream declares as a tuple/list (so the extractor's oracle records them as a
+// plain sequence) but that the port legitimately seeds as a JS Set, because they're
+// consumed via `_match_set`, which calls `.has()`. Upstream's own inconsistency, not a
+// port defect: `AMBIGUOUS_ALIAS_TOKENS` is a tuple used identically to a `set`-typed
+// table like `ID_VAR_TOKENS` at every other `_match_set` call site (39 of 40 such
+// tables are genuinely `set`-typed upstream and need no exception; this is the sole
+// outlier, audited directly against parser.py, 2026-08-28). Compared as membership-only,
+// same as a real `set`, not by strict sequence order.
+const CONSUMED_AS_SET = new Set(["AMBIGUOUS_ALIAS_TOKENS"]);
+
 let nMatch = 0;
 let nTodo = 0;
 const wrong = [];
@@ -128,11 +138,13 @@ for (const [name, want] of Object.entries(SNAP.tables)) {
       const at = gotOrder.findIndex((k, i) => k !== wantOrder[i]);
       bad.push(`ORDER diverges at index ${at}: got ${gotOrder[at]}, want ${wantOrder[at]}`);
     }
-  } else if (want.kind === "set") {
+  } else if (want.kind === "set" || CONSUMED_AS_SET.has(name)) {
     // Membership only — a Python set has no insertion order to assert (see the
     // extractor's header). Source order is asserted separately from the source text.
     const g = render(got).__set__ ?? [];
-    const w = want.entries.__set__;
+    // Real Python sets are wrapped as {__set__: [...]}; a CONSUMED_AS_SET exception
+    // (want.kind === "seq", upstream is a tuple) records `entries` as a plain array.
+    const w = want.entries.__set__ ?? want.entries;
     const gs = new Set(g);
     const ws = new Set(w);
     for (const x of w) {
