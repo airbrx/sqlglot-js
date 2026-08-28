@@ -1162,7 +1162,18 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:1480
-  _parse_partitioned_by_bucket_or_truncate() { throw new NotPorted("_parse_partitioned_by_bucket_or_truncate", "sqlglot/parser.py:1480"); }
+  _parse_partitioned_by_bucket_or_truncate() {
+    if (!this._match(TokenType.L_PAREN, false)) {
+      this._retreat(this._index - 1);
+      return null;
+    }
+    const Klass = this._prev.text.toUpperCase() === "BUCKET" ? exp.PartitionedByBucket : exp.PartitionByTruncate;
+    const args = this._parse_wrapped_csv(() => this._parse_primary() || this._parse_column());
+    let this_ = seqGet(args, 0);
+    let expression = seqGet(args, 1);
+    if (this_ instanceof exp.Literal) [this_, expression] = [expression, this_];
+    return this.expression(new Klass({ this: this_, expression }));
+  }
 
   /** py: sqlglot/parser.py:1509 */
   static ALTER_PARSERS = new Map([
@@ -2272,7 +2283,9 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:2364
-  _parse_block() { throw new NotPorted("_parse_block", "sqlglot/parser.py:2364"); }
+  _parse_block() {
+    return this.expression(new exp.Block({ expressions: this._parse_batch_statements((parser) => parser._parse_statement()) }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:2373
@@ -2309,15 +2322,174 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:2402
-  _parse_drop(exists) { throw new NotPorted("_parse_drop", "sqlglot/parser.py:2402"); }
+  _parse_drop(exists = false) {
+    const start = this._prev;
+    const temporary = this._match(TokenType.TEMPORARY);
+    const materialized = this._match_text_seq("MATERIALIZED");
+    const iceberg = this._match_text_seq("ICEBERG");
+    const kind = this._match_set(this.constructor.CREATABLES) ? this._prev.text.toUpperCase() : null;
+    if (!kind || (iceberg && kind !== "TABLE")) return this._parse_as_command(start);
+    const concurrently = this._match_text_seq("CONCURRENTLY");
+    const ifExists = exists || this._parse_exists();
+    let tables;
+    if (kind === "COLUMN") tables = this._parse_column();
+    else if (["TABLE", "VIEW"].includes(kind)) tables = this._parse_csv(() => this._parse_table_parts(true));
+    else tables = this._parse_table_parts(true, kind === "SCHEMA");
+    const cluster = this._match(TokenType.ON) ? this._parse_on_property() : null;
+    const expressions = this._match(TokenType.L_PAREN, false) ? this._parse_wrapped_csv(() => this._parse_types()) : null;
+    const cascadeOrRestrict = this._match_texts(["CASCADE", "RESTRICT"]) ? this._prev.text.toUpperCase() : null;
+    return this.expression(new exp.Drop({ exists: ifExists, tables: ensureList(tables), expressions, kind: this.dialect.CREATABLE_KIND_MAPPING.get(kind) || kind, temporary, materialized, cascade: cascadeOrRestrict === "CASCADE", restrict: cascadeOrRestrict === "RESTRICT", constraints: this._match_text_seq("CONSTRAINTS"), purge: this._match_text_seq("PURGE"), cluster, concurrently, sync: this._match_text_seq("SYNC"), iceberg, force: this._match_text_seq("FORCE") }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:2452
-  _parse_exists(not_) { throw new NotPorted("_parse_exists", "sqlglot/parser.py:2452"); }
+  _parse_exists(not_ = false) {
+    return this._match_text_seq("IF") && (!not_ || this._match(TokenType.NOT)) && this._match(TokenType.EXISTS);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:2459
-  _parse_create() { throw new NotPorted("_parse_create", "sqlglot/parser.py:2459"); }
+  _parse_create() {
+    const start = this._prev;
+    const replace = start.token_type === TokenType.REPLACE || this._match_pair(TokenType.OR, TokenType.REPLACE) || this._match_pair(TokenType.OR, TokenType.ALTER);
+    const refresh = this._match_pair(TokenType.OR, TokenType.REFRESH);
+    const unique = this._match(TokenType.UNIQUE);
+    let clustered = null;
+    if (this._match_text_seq("CLUSTERED", "COLUMNSTORE")) clustered = true;
+    else if (this._match_text_seq("NONCLUSTERED", "COLUMNSTORE") || this._match_text_seq("COLUMNSTORE")) clustered = false;
+    if (this._match_pair(TokenType.TABLE, TokenType.FUNCTION, false)) this._advance();
+    let properties = null;
+    let createToken = this._match_set(this.constructor.CREATABLES) ? this._prev : null;
+    if (!createToken) {
+      properties = this._parse_properties();
+      createToken = this._match_set(this.constructor.CREATABLES) ? this._prev : null;
+      if (!properties || !createToken) return this._parse_as_command(start);
+    }
+    const createTokenType = createToken.token_type;
+    const concurrently = this._match_text_seq("CONCURRENTLY");
+    const exists = this._parse_exists(true);
+    let this_ = null, expression = null, indexes = null, noSchemaBinding = null, begin = null, clone = null;
+    const extendProps = (more) => {
+      if (properties && more) properties.expressions.push(...more.expressions);
+      else if (more) properties = more;
+    };
+    if ([TokenType.FUNCTION, TokenType.PROCEDURE].includes(createTokenType)) {
+      this_ = this._parse_user_defined_function(createTokenType);
+      extendProps(this._parse_properties());
+      expression = this._match(TokenType.ALIAS) ? this._parse_heredoc() : null;
+      let isTable = false, overloadMode = false;
+      if (!expression && createTokenType === TokenType.FUNCTION && this_ instanceof exp.UserDefinedFunction && this_.args.wrapped) {
+        const preTableIndex = this._index;
+        isTable = this._match(TokenType.TABLE);
+        expression = this._parse_expression();
+        overloadMode = !!(expression && this._curr.token_type === TokenType.COMMA && this._next.token_type === TokenType.L_PAREN);
+        if (!overloadMode) {
+          this._retreat(preTableIndex);
+          isTable = false;
+          expression = null;
+        }
+      }
+      extendProps(this._parse_function_properties());
+      if (!expression) {
+        if (this._match(TokenType.COMMAND)) expression = this._parse_as_command(this._prev);
+        else {
+          begin = this._match(TokenType.BEGIN);
+          const return_ = this._match_text_seq("RETURN");
+          if (this._match(TokenType.STRING, false)) {
+            expression = this._parse_string();
+            extendProps(this._parse_properties());
+          } else expression = createTokenType === TokenType.FUNCTION ? this._parse_user_defined_function_expression() : this._parse_block();
+          if (return_) expression = this.expression(new exp.Return({ this: expression }));
+        }
+      }
+      if (overloadMode && expression) expression = this._parse_macro_overloads(this_, expression, isTable);
+    } else if (createTokenType === TokenType.INDEX) {
+      let index = null, anonymous = true;
+      if (!this._match(TokenType.ON)) {
+        index = this._parse_id_var();
+        anonymous = false;
+      }
+      this_ = this._parse_index(index, anonymous);
+    } else if ((createTokenType === TokenType.CONSTRAINT && this._match(TokenType.TRIGGER)) || createTokenType === TokenType.TRIGGER) {
+      const isConstraint = createTokenType === TokenType.CONSTRAINT;
+      if (isConstraint) createToken = this._prev;
+      const triggerName = this._parse_id_var();
+      if (!triggerName) return this._parse_as_command(start);
+      const timingVar = this._parse_var_from_options(this.constructor.TRIGGER_TIMING, false);
+      const timing = timingVar ? timingVar.this : null;
+      if (!timing) return this._parse_as_command(start);
+      const events = this._parse_trigger_events();
+      if (!this._match(TokenType.ON)) this.raise_error("Expected ON in trigger definition");
+      const table = this._parse_table_parts();
+      const referencedTable = this._match(TokenType.FROM) ? this._parse_table_parts() : null;
+      const [deferrable, initially] = this._parse_trigger_deferrable();
+      const referencing = this._parse_trigger_referencing();
+      const forEach = this._parse_trigger_for_each();
+      const when = this._match_text_seq("WHEN") && this._parse_wrapped(() => this._parse_disjunction(), true);
+      const execute = this._parse_trigger_execute();
+      if (execute == null) return this._parse_as_command(start);
+      const triggerProps = this.expression(new exp.TriggerProperties({ table, timing, events, execute, constraint: isConstraint, referenced_table: referencedTable, deferrable, initially, referencing, for_each: forEach, when }));
+      this_ = triggerName;
+      extendProps(new exp.Properties({ expressions: triggerProps ? [triggerProps] : [] }));
+    } else if (createTokenType === TokenType.TYPE) {
+      this_ = this._parse_table_parts(true);
+      if (!this_ || !this._match(TokenType.ALIAS)) return this._parse_as_command(start);
+      if (this._match(TokenType.ENUM)) expression = new exp.DataType({ this: exp.DType.ENUM, expressions: this._parse_wrapped_csv(() => this._parse_string()) });
+      else if (this._match(TokenType.L_PAREN, false)) expression = this._parse_schema();
+      else return this._parse_as_command(start);
+    } else if (this.constructor.DB_CREATABLES.has(createTokenType)) {
+      const tableParts = this._parse_table_parts(true, createTokenType === TokenType.SCHEMA);
+      this._match(TokenType.COMMA);
+      extendProps(this._parse_properties(true));
+      this_ = this._parse_schema(tableParts);
+      extendProps(this._parse_properties());
+      const hasAlias = this._match(TokenType.ALIAS);
+      if (!this._match_set(this.constructor.DDL_SELECT_TOKENS, false)) extendProps(this._parse_properties());
+      if (createTokenType === TokenType.SEQUENCE) {
+        expression = this._parse_types();
+        const props = this._parse_properties();
+        if (props) {
+          const sequenceProps = new exp.SequenceProperties();
+          const options = [];
+          for (const prop of [...props.expressions]) {
+            if (prop instanceof exp.SequenceProperties) {
+              for (const [arg, value] of Object.entries(prop.args)) {
+                if (arg === "options") options.push(...value);
+                else sequenceProps.set(arg, value);
+              }
+              prop.pop();
+            }
+          }
+          if (options.length) sequenceProps.set("options", options);
+          props.append("expressions", sequenceProps);
+          extendProps(props);
+        }
+      } else {
+        expression = this._parse_ddl_select();
+        if (!expression && hasAlias) expression = this._try_parse(() => this._parse_table_parts());
+      }
+      if (createTokenType === TokenType.TABLE) {
+        extendProps(this._parse_properties());
+        indexes = [];
+        while (true) {
+          const index = this._parse_index();
+          extendProps(this._parse_properties());
+          if (!index) break;
+          this._match(TokenType.COMMA);
+          indexes.push(index);
+        }
+      } else if (createTokenType === TokenType.VIEW && this._match_text_seq("WITH", "NO", "SCHEMA", "BINDING")) noSchemaBinding = true;
+      else if ([TokenType.SINK, TokenType.SOURCE].includes(createTokenType)) extendProps(this._parse_properties());
+      const shallow = this._match_text_seq("SHALLOW");
+      if (this._match_texts(this.constructor.CLONE_KEYWORDS)) {
+        const copy = this._prev.text.toLowerCase() === "copy";
+        clone = this.expression(new exp.Clone({ this: this._parse_table(true), shallow, copy }));
+      }
+    }
+    if (this._curr.bool() && !this._match_set(new Set([TokenType.R_PAREN, TokenType.COMMA]), false)) return this._parse_as_command(start);
+    const createKindText = createToken.text.toUpperCase();
+    return this.expression(new exp.Create({ this: this_, kind: this.dialect.CREATABLE_KIND_MAPPING.get(createKindText) || createKindText, replace, refresh, unique, expression, exists, properties, indexes, no_schema_binding: noSchemaBinding, begin, clone, concurrently, clustered }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:2745
@@ -2333,7 +2505,12 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:2819
-  _parse_trigger_referencing_clause(keyword) { throw new NotPorted("_parse_trigger_referencing_clause", "sqlglot/parser.py:2819"); }
+  _parse_trigger_referencing_clause(keyword) {
+    if (!this._match_text_seq(keyword)) return null;
+    if (!this._match_text_seq("TABLE")) this.raise_error(`Expected TABLE after ${keyword} in REFERENCING clause`);
+    this._match_text_seq("AS");
+    return this._parse_id_var();
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:2827
@@ -2500,7 +2677,13 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3240
-  _parse_copy_property() { throw new NotPorted("_parse_copy_property", "sqlglot/parser.py:3240"); }
+  _parse_copy_property() {
+    if (!this._match_text_seq("GRANTS")) {
+      this._retreat(this._index - 1);
+      return null;
+    }
+    return this.expression(new exp.CopyGrantsProperty());
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3247
@@ -2522,7 +2705,16 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3301
-  _parse_withisolatedloading() { throw new NotPorted("_parse_withisolatedloading", "sqlglot/parser.py:3301"); }
+  _parse_withisolatedloading() {
+    const index = this._index;
+    const no = this._match_text_seq("NO");
+    const concurrent = this._match_text_seq("CONCURRENT");
+    if (!this._match_text_seq("ISOLATED", "LOADING")) {
+      this._retreat(index);
+      return null;
+    }
+    return this.expression(new exp.IsolatedLoadingProperty({ no, concurrent, target: this._parse_var_from_options(this.constructor.ISOLATED_LOADING_OPTIONS, false) }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3315
@@ -2574,7 +2766,17 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3470
-  _parse_create_like() { throw new NotPorted("_parse_create_like", "sqlglot/parser.py:3470"); }
+  _parse_create_like() {
+    const table = this._parse_table(true);
+    const expressions = [];
+    while (this._match_texts(["INCLUDING", "EXCLUDING"])) {
+      const this_ = this._prev.text.toUpperCase();
+      const id = this._parse_id_var();
+      if (!id) return null;
+      expressions.push(this.expression(new exp.Property({ this: this_, value: exp.var(id.this.toUpperCase()) })));
+    }
+    return this.expression(new exp.LikeProperty({ this: table, expressions }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3487
@@ -2615,7 +2817,18 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3526
-  _parse_describe() { throw new NotPorted("_parse_describe", "sqlglot/parser.py:3526"); }
+  _parse_describe() {
+    const kind = this._match_set(this.constructor.CREATABLES) ? this._prev.text : null;
+    let style = this._match_texts(this.constructor.DESCRIBE_STYLES) ? this._prev.text.toUpperCase() : null;
+    if (this._match(TokenType.DOT)) {
+      style = null;
+      this._retreat(this._index - 2);
+    }
+    const format = this._match(TokenType.FORMAT, false) ? this._parse_property() : null;
+    const this_ = this._match_set(this.constructor.STATEMENT_PARSERS, false) ? this._parse_statement() : this._parse_table(true);
+    const properties = this._parse_properties();
+    return this.expression(new exp.Describe({ this: this_, style, kind, expressions: properties ? properties.expressions : null, partition: this._parse_partition(), format, as_json: this._match_text_seq("AS", "JSON") }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3557
@@ -2655,7 +2868,19 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3809
-  _parse_load() { throw new NotPorted("_parse_load", "sqlglot/parser.py:3809"); }
+  _parse_load() {
+    if (!this._match_text_seq("DATA")) return this._parse_as_command(this._prev);
+    const local = this._match_text_seq("LOCAL");
+    this._match_text_seq("INPATH");
+    const inpath = this._parse_string();
+    const overwrite = this._match(TokenType.OVERWRITE);
+    let temp = null;
+    if (this._match(TokenType.INTO)) {
+      temp = this._match(TokenType.TEMPORARY);
+      this._match(TokenType.TABLE);
+    }
+    return this.expression(new exp.LoadData({ this: this._parse_table(true), local, overwrite, temp, inpath, files: this._match_text_seq("FROM", "FILES") && new exp.Properties({ expressions: this._parse_wrapped_properties() }), partition: this._parse_partition(), input_format: this._match_text_seq("INPUTFORMAT") && this._parse_string(), serde: this._match_text_seq("SERDE") && this._parse_string() }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3836
@@ -2667,7 +2892,9 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3891
-  _parse_use() { throw new NotPorted("_parse_use", "sqlglot/parser.py:3891"); }
+  _parse_use() {
+    return this.expression(new exp.Use({ kind: this._parse_var_from_options(this.constructor.USABLES, false), this: this._parse_table(false) }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3899
@@ -3180,12 +3407,62 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:5901
   // note: param `this` renamed to `this_` (JS reserved word)
-  parse_set_operation(this_, consume_pipe) { throw new NotPorted("parse_set_operation", "sqlglot/parser.py:5901"); }
+  parse_set_operation(this_, consume_pipe = false) {
+    const start = this._index;
+    const [, sideToken, kindToken] = this._parse_join_parts();
+    const side = sideToken ? sideToken.text : null;
+    let kind = kindToken ? kindToken.text : null;
+    if (!this._match_set(this.constructor.SET_OPERATIONS)) {
+      this._retreat(start);
+      return null;
+    }
+    const Operation = this._prev.token_type === TokenType.UNION ? exp.Union : this._prev.token_type === TokenType.EXCEPT ? exp.Except : exp.Intersect;
+    const comments = this._prev.comments;
+    let distinct;
+    if (this._match(TokenType.DISTINCT)) distinct = true;
+    else if (this._match(TokenType.ALL)) distinct = false;
+    else {
+      distinct = this.dialect.SET_OP_DISTINCT_BY_DEFAULT.get(Operation);
+      if (distinct == null) this.raise_error(`Expected DISTINCT or ALL for ${Operation.name}`);
+    }
+    let byName = this._match_text_seq("BY", "NAME") || this._match_text_seq("STRICT", "CORRESPONDING") || null;
+    if (this._match_text_seq("CORRESPONDING")) {
+      byName = true;
+      if (!side && !kind) kind = "INNER";
+    }
+    const on = byName && this._match_texts(["ON", "BY"]) ? this._parse_wrapped_csv(() => this._parse_column()) : null;
+    let expression = this._parse_select(true, undefined, undefined, false, consume_pipe);
+    if (this_ instanceof exp.Values) this_ = this._values_to_select(this_);
+    if (expression instanceof exp.Values) expression = this._values_to_select(expression);
+    if (this_ instanceof exp.Alias && this_.this instanceof exp.Subquery) {
+      const subquery = this_.this;
+      subquery.set("alias", new exp.TableAlias({ this: this_.args.alias }));
+      subquery.addComments(this_.popComments());
+      this_ = subquery;
+    }
+    return this.expression(new Operation({ this: this_, distinct, by_name: byName, expression, side, kind, on }), null, comments);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5978
   // note: param `this` renamed to `this_` (JS reserved word)
-  _parse_set_operations(this_) { throw new NotPorted("_parse_set_operations", "sqlglot/parser.py:5978"); }
+  _parse_set_operations(this_) {
+    while (this_) {
+      const setop = this.parse_set_operation(this_);
+      if (!setop) break;
+      this_ = setop;
+    }
+    if (this_ instanceof exp.SetOperation && this.constructor.MODIFIERS_ATTACHED_TO_SET_OP) {
+      const expression = this_.expression;
+      if (expression) {
+        for (const arg of this.constructor.SET_OP_MODIFIERS) {
+          const expr = expression.args[arg];
+          if (expr) this_.set(arg, expr.pop());
+        }
+      }
+    }
+    return this_;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5996
@@ -3345,7 +3622,11 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:6476
-  _parse_user_defined_type(identifier) { throw new NotPorted("_parse_user_defined_type", "sqlglot/parser.py:6476"); }
+  _parse_user_defined_type(identifier) {
+    let typeName = identifier.name;
+    while (this._match(TokenType.DOT)) typeName = `${typeName}.${this._advance_any() && this._prev.text}`;
+    return exp.DataType.fromStr(typeName, { dialect: this.dialect, udt: true });
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:6484
@@ -3514,7 +3795,7 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7388
-  _parse_user_defined_function_expression() { throw new NotPorted("_parse_user_defined_function_expression", "sqlglot/parser.py:7388"); }
+  _parse_user_defined_function_expression() { return this._parse_statement(); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7391
@@ -3522,12 +3803,31 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7394
-  _parse_user_defined_function(kind) { throw new NotPorted("_parse_user_defined_function", "sqlglot/parser.py:7394"); }
+  _parse_user_defined_function(kind = null) {
+    const this_ = this._parse_table_parts(true);
+    if (!this._match(TokenType.L_PAREN)) return this_;
+    const expressions = this._parse_csv(() => this._parse_function_parameter());
+    this._match_r_paren();
+    return this.expression(new exp.UserDefinedFunction({ this: this_, expressions, wrapped: true }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7406
   // note: param `this` renamed to `this_` (JS reserved word)
-  _parse_macro_overloads(this_, first_body, first_is_table) { throw new NotPorted("_parse_macro_overloads", "sqlglot/parser.py:7406"); }
+  _parse_macro_overloads(this_, first_body, first_is_table = false) {
+    const overloads = [this.expression(new exp.MacroOverload({ this: first_body, expressions: this_.expressions || null, is_table: first_is_table }))];
+    this_.set("expressions", null);
+    this_.set("wrapped", false);
+    while (this._match(TokenType.COMMA)) {
+      if (!this._match(TokenType.L_PAREN)) break;
+      const params = this._parse_csv(() => this._parse_function_parameter());
+      this._match_r_paren();
+      if (!this._match(TokenType.ALIAS)) break;
+      const isTable = this._match(TokenType.TABLE);
+      overloads.push(this.expression(new exp.MacroOverload({ this: this._parse_expression(), expressions: params, is_table: isTable })));
+    }
+    return this.expression(new exp.MacroOverloads({ expressions: overloads }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7441
@@ -4030,19 +4330,65 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8973
-  _parse_transaction() { throw new NotPorted("_parse_transaction", "sqlglot/parser.py:8973"); }
+  _parse_transaction() {
+    let this_ = null;
+    if (this._match_texts(this.constructor.TRANSACTION_KIND)) this_ = this._prev.text;
+    this._match_texts(["TRANSACTION", "WORK"]);
+    const modes = [];
+    while (true) {
+      const mode = [];
+      while (this._match(TokenType.VAR) || this._match(TokenType.NOT)) mode.push(this._prev.text);
+      if (mode.length) modes.push(mode.join(" "));
+      if (!this._match(TokenType.COMMA)) break;
+    }
+    return this.expression(new exp.Transaction({ this: this_, modes }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8993
-  _parse_commit_or_rollback() { throw new NotPorted("_parse_commit_or_rollback", "sqlglot/parser.py:8993"); }
+  _parse_commit_or_rollback() {
+    let chain = null;
+    let savepoint = null;
+    const isRollback = this._prev.token_type === TokenType.ROLLBACK;
+    this._match_texts(["TRANSACTION", "WORK"]);
+    if (this._match_text_seq("TO")) {
+      this._match_text_seq("SAVEPOINT");
+      savepoint = this._parse_id_var();
+    }
+    if (this._match(TokenType.AND)) {
+      chain = !this._match_text_seq("NO");
+      this._match_text_seq("CHAIN");
+    }
+    return this.expression(isRollback ? new exp.Rollback({ savepoint }) : new exp.Commit({ chain }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9013
-  _parse_refresh() { throw new NotPorted("_parse_refresh", "sqlglot/parser.py:9013"); }
+  _parse_refresh() {
+    let kind;
+    if (this._match_text_seq("EXTERNAL", "TABLE")) kind = "EXTERNAL TABLE";
+    else if (this._match(TokenType.TABLE)) kind = "TABLE";
+    else if (this._match_text_seq("MATERIALIZED", "VIEW")) kind = "MATERIALIZED VIEW";
+    else kind = "";
+    const this_ = this._parse_string() || this._parse_table();
+    if (!kind && !(this_ instanceof exp.Literal)) return this._parse_as_command(this._prev);
+    return this.expression(new exp.Refresh({ this: this_, kind }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9029
-  _parse_column_def_with_exists() { throw new NotPorted("_parse_column_def_with_exists", "sqlglot/parser.py:9029"); }
+  _parse_column_def_with_exists() {
+    const start = this._index;
+    this._match(TokenType.COLUMN);
+    const exists = this._parse_exists(true);
+    const expression = this._parse_field_def();
+    if (!(expression instanceof exp.ColumnDef)) {
+      this._retreat(start);
+      return null;
+    }
+    expression.set("exists", exists);
+    return expression;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9044
@@ -4050,79 +4396,289 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9050
-  _parse_drop_column() { throw new NotPorted("_parse_drop_column", "sqlglot/parser.py:9050"); }
+  _parse_drop_column() {
+    const drop = this._match(TokenType.DROP) ? this._parse_drop() : null;
+    if (drop && !(drop instanceof exp.Command)) drop.set("kind", drop.args.kind || "COLUMN");
+    return drop;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9056
-  _parse_alter_drop_action() { throw new NotPorted("_parse_alter_drop_action", "sqlglot/parser.py:9056"); }
+  _parse_alter_drop_action() { return this._parse_drop_column(); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9060
-  _parse_drop_partition(exists) { throw new NotPorted("_parse_drop_partition", "sqlglot/parser.py:9060"); }
+  _parse_drop_partition(exists = null) {
+    return this.expression(new exp.DropPartition({ expressions: this._parse_csv(() => this._parse_partition()), exists }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9065
-  _parse_alter_table_add() { throw new NotPorted("_parse_alter_table_add", "sqlglot/parser.py:9065"); }
+  _parse_alter_table_add() {
+    const parseAlteration = () => {
+      this._match_text_seq("ADD");
+      if (this._match_set(this.constructor.ADD_CONSTRAINT_TOKENS, false)) return this.expression(new exp.AddConstraint({ expressions: this._parse_csv(() => this._parse_constraint()) }));
+      const columnDef = this._parse_add_column();
+      if (columnDef instanceof exp.ColumnDef) return columnDef;
+      const exists = this._parse_exists(true);
+      if (this._match_pair(TokenType.PARTITION, TokenType.L_PAREN, false)) {
+        return this.expression(new exp.AddPartition({ exists, this: this._parse_field(true), location: this._match_text_seq("LOCATION", false) && this._parse_property() }));
+      }
+      return null;
+    };
+    if (!this._match_set(this.constructor.ADD_CONSTRAINT_TOKENS, false) && (!this.dialect.ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN || this._match_text_seq("COLUMNS"))) {
+      const schema = this._parse_schema();
+      return schema ? ensureList(schema) : this._parse_csv(() => this._parse_column_def_with_exists());
+    }
+    return this._parse_csv(parseAlteration);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9104
-  _parse_alter_table_alter() { throw new NotPorted("_parse_alter_table_alter", "sqlglot/parser.py:9104"); }
+  _parse_alter_table_alter() {
+    if (this._match_texts(this.constructor.ALTER_ALTER_PARSERS)) return this.constructor.ALTER_ALTER_PARSERS.get(this._prev.text.toUpperCase())(this);
+    this._match(TokenType.COLUMN);
+    const exists = this._parse_exists();
+    const column = this._parse_field(true);
+    const opts = { this: column, exists: exists || null };
+    if (this._match_pair(TokenType.DROP, TokenType.DEFAULT)) return this.expression(new exp.AlterColumn({ ...opts, drop: true }));
+    if (this._match_pair(TokenType.SET, TokenType.DEFAULT)) return this.expression(new exp.AlterColumn({ ...opts, default: this._parse_disjunction() }));
+    if (this._match(TokenType.COMMENT)) return this.expression(new exp.AlterColumn({ ...opts, comment: this._parse_string() }));
+    if (this._match_text_seq("DROP", "NOT", "NULL")) return this.expression(new exp.AlterColumn({ ...opts, drop: true, allow_null: true }));
+    if (this._match_text_seq("SET", "NOT", "NULL")) return this.expression(new exp.AlterColumn({ ...opts, allow_null: false }));
+    if (this._match_text_seq("SET", "VISIBLE")) return this.expression(new exp.AlterColumn({ ...opts, visible: "VISIBLE" }));
+    if (this._match_text_seq("SET", "INVISIBLE")) return this.expression(new exp.AlterColumn({ ...opts, visible: "INVISIBLE" }));
+    this._match_text_seq("SET", "DATA");
+    this._match_text_seq("TYPE");
+    return this.expression(new exp.AlterColumn({ ...opts, dtype: this._parse_types(), collate: this._match(TokenType.COLLATE) && this._parse_term(), using: this._match(TokenType.USING) && this._parse_disjunction() }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9156
-  _parse_alter_diststyle() { throw new NotPorted("_parse_alter_diststyle", "sqlglot/parser.py:9156"); }
+  _parse_alter_diststyle() {
+    if (this._match_texts(["ALL", "EVEN", "AUTO"])) return this.expression(new exp.AlterDistStyle({ this: exp.var(this._prev.text.toUpperCase()) }));
+    this._match_text_seq("KEY", "DISTKEY");
+    return this.expression(new exp.AlterDistStyle({ this: this._parse_column() }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9163
-  _parse_alter_sortkey(compound) { throw new NotPorted("_parse_alter_sortkey", "sqlglot/parser.py:9163"); }
+  _parse_alter_sortkey(compound = null) {
+    if (compound) this._match_text_seq("SORTKEY");
+    if (this._match(TokenType.L_PAREN, false)) return this.expression(new exp.AlterSortKey({ expressions: this._parse_wrapped_id_vars(), compound }));
+    this._match_texts(["AUTO", "NONE"]);
+    return this.expression(new exp.AlterSortKey({ this: exp.var(this._prev.text.toUpperCase()), compound }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9177
-  _parse_alter_table_drop() { throw new NotPorted("_parse_alter_table_drop", "sqlglot/parser.py:9177"); }
+  _parse_alter_table_drop() {
+    const index = this._index - 1;
+    const exists = this._parse_exists();
+    if (this._match(TokenType.PARTITION, false)) return this._parse_csv(() => this._parse_drop_partition(exists));
+    this._retreat(index);
+    return this._parse_csv(() => this._parse_alter_drop_action());
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9187
-  _parse_alter_table_rename() { throw new NotPorted("_parse_alter_table_rename", "sqlglot/parser.py:9187"); }
+  _parse_alter_table_rename() {
+    if (this._match(TokenType.COLUMN) || (!this.constructor.ALTER_RENAME_REQUIRES_COLUMN && !this._match_text_seq("TO", false))) {
+      const exists = this._parse_exists();
+      const oldColumn = this._parse_column();
+      const to = this._match_text_seq("TO");
+      const newColumn = this._parse_column();
+      if (!oldColumn || !to || !newColumn) return null;
+      return this.expression(new exp.RenameColumn({ this: oldColumn, to: newColumn, exists }));
+    }
+    this._match_text_seq("TO");
+    return this.expression(new exp.AlterRename({ this: this._parse_table(true) }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9204
-  _parse_alter_table_set() { throw new NotPorted("_parse_alter_table_set", "sqlglot/parser.py:9204"); }
+  _parse_alter_table_set() {
+    const alterSet = this.expression(new exp.AlterSet());
+    if (this._match(TokenType.L_PAREN, false) || this._match_text_seq("TABLE", "PROPERTIES")) alterSet.set("expressions", this._parse_wrapped_csv(() => this._parse_assignment()));
+    else if (this._match_text_seq("FILESTREAM_ON", false)) alterSet.set("expressions", [this._parse_assignment()]);
+    else if (this._match_texts(["LOGGED", "UNLOGGED"])) alterSet.set("option", exp.var(this._prev.text.toUpperCase()));
+    else if (this._match_text_seq("WITHOUT") && this._match_texts(["CLUSTER", "OIDS"])) alterSet.set("option", exp.var(`WITHOUT ${this._prev.text.toUpperCase()}`));
+    else if (this._match_text_seq("LOCATION")) alterSet.set("location", this._parse_field());
+    else if (this._match_text_seq("ACCESS", "METHOD")) alterSet.set("access_method", this._parse_field());
+    else if (this._match_text_seq("TABLESPACE")) alterSet.set("tablespace", this._parse_field());
+    else if (this._match_text_seq("FILE", "FORMAT") || this._match_text_seq("FILEFORMAT")) alterSet.set("file_format", [this._parse_field()]);
+    else if (this._match_text_seq("STAGE_FILE_FORMAT")) alterSet.set("file_format", this._parse_wrapped_options());
+    else if (this._match_text_seq("STAGE_COPY_OPTIONS")) alterSet.set("copy_options", this._parse_wrapped_options());
+    else if (this._match_text_seq("TAG") || this._match_text_seq("TAGS")) alterSet.set("tag", this._parse_csv(() => this._parse_assignment()));
+    else {
+      if (this._match_text_seq("SERDE")) alterSet.set("serde", this._parse_field());
+      alterSet.set("expressions", [this._parse_wrapped(() => this._parse_properties(), true)]);
+    }
+    return alterSet;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9240
-  _parse_alter_session() { throw new NotPorted("_parse_alter_session", "sqlglot/parser.py:9240"); }
+  _parse_alter_session() {
+    if (this._match(TokenType.SET)) return this.expression(new exp.AlterSession({ expressions: this._parse_csv(() => this._parse_set_item_assignment()), unset: false }));
+    this._match_text_seq("UNSET");
+    const expressions = this._parse_csv(() => this.expression(new exp.SetItem({ this: this._parse_id_var(true) })));
+    return this.expression(new exp.AlterSession({ expressions, unset: true }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9252
-  _parse_alter() { throw new NotPorted("_parse_alter", "sqlglot/parser.py:9252"); }
+  _parse_alter() {
+    const start = this._prev;
+    const iceberg = this._match_text_seq("ICEBERG");
+    const alterToken = this._match_set(this.constructor.ALTERABLES) ? this._prev : null;
+    if (!alterToken || (iceberg && alterToken.token_type !== TokenType.TABLE)) return this._parse_as_command(start);
+    const exists = this._parse_exists();
+    const only = this._match_text_seq("ONLY");
+    let this_, check, cluster;
+    if (alterToken.token_type === TokenType.SESSION) {
+      this_ = check = cluster = null;
+    } else {
+      this_ = this._parse_table(true, undefined, undefined, undefined, undefined, this.constructor.ALTER_TABLE_PARTITIONS);
+      check = this._match_text_seq("WITH", "CHECK");
+      cluster = this._match(TokenType.ON) ? this._parse_on_property() : null;
+      if (this._next.bool()) this._advance();
+    }
+    const parser = this.constructor.ALTER_PARSERS.get(this._prev.text.toUpperCase());
+    if (parser) {
+      const actions = ensureList(parser(this));
+      const notValid = this._match_text_seq("NOT", "VALID");
+      const options = this._parse_csv(() => this._parse_property());
+      const cascade = this.dialect.ALTER_TABLE_SUPPORTS_CASCADE && this._match_text_seq("CASCADE");
+      if (!this._curr.bool() && actions.length) return this.expression(new exp.Alter({ this: this_, kind: alterToken.text.toUpperCase(), exists, actions, only, options, cluster, not_valid: notValid, check, cascade, iceberg }));
+    }
+    return this._parse_as_command(start);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9304
-  _parse_analyze() { throw new NotPorted("_parse_analyze", "sqlglot/parser.py:9304"); }
+  _parse_analyze() {
+    const start = this._prev;
+    if (!this._curr.bool()) return this.expression(new exp.Analyze());
+    const options = [];
+    // deny:implicit_str sqlglot/parser.py:9313
+    while (this._match_texts(this.constructor.ANALYZE_STYLES)) options.push(this._prev.text.toUpperCase() === "BUFFER_USAGE_LIMIT" ? `BUFFER_USAGE_LIMIT ${kernelSql(this._parse_number())}` : this._prev.text.toUpperCase());
+    let tables = null;
+    let innerExpression = null;
+    let kind = this._curr.bool() ? this._curr.text.toUpperCase() : null;
+    if (this._match(TokenType.TABLE)) tables = this._parse_csv(() => this._parse_table_parts());
+    else if (this._match(TokenType.INDEX)) tables = this._parse_table_parts();
+    else if (this._match_text_seq("TABLES")) {
+      if (this._match_set(new Set([TokenType.FROM, TokenType.IN]))) {
+        kind = `${kind} ${this._prev.text.toUpperCase()}`;
+        tables = this._parse_table(true, undefined, undefined, undefined, true);
+      }
+    } else if (this._match_text_seq("DATABASE")) tables = this._parse_table(true, undefined, undefined, undefined, true);
+    else if (this._match_text_seq("CLUSTER")) tables = this._parse_table();
+    else if (this._match_texts(this.constructor.ANALYZE_EXPRESSION_PARSERS)) {
+      kind = null;
+      innerExpression = this.constructor.ANALYZE_EXPRESSION_PARSERS.get(this._prev.text.toUpperCase())(this);
+    } else {
+      kind = null;
+      tables = this._parse_csv(() => this._parse_table_parts());
+    }
+    const partition = this._try_parse(() => this._parse_partition());
+    if (!partition && this._match_texts(this.constructor.PARTITION_KEYWORDS)) return this._parse_as_command(start);
+    const mode = this._match_text_seq("WITH", "SYNC", "MODE") || this._match_text_seq("WITH", "ASYNC", "MODE") ? `WITH ${this._tokens[this._index - 2].text.toUpperCase()} MODE` : null;
+    if (this._match_texts(this.constructor.ANALYZE_EXPRESSION_PARSERS)) innerExpression = this.constructor.ANALYZE_EXPRESSION_PARSERS.get(this._prev.text.toUpperCase())(this);
+    return this.expression(new exp.Analyze({ kind, tables: ensureList(tables), mode, partition, properties: this._parse_properties(), expression: innerExpression, options }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9372
-  _parse_analyze_statistics() { throw new NotPorted("_parse_analyze_statistics", "sqlglot/parser.py:9372"); }
+  _parse_analyze_statistics() {
+    let this_ = null;
+    const kind = this._prev.text.toUpperCase();
+    const option = this._match_text_seq("DELTA") ? this._prev.text.toUpperCase() : null;
+    let expressions = [];
+    if (!this._match_text_seq("STATISTICS")) this.raise_error("Expecting token STATISTICS");
+    if (this._match_text_seq("NOSCAN")) this_ = "NOSCAN";
+    else if (this._match(TokenType.FOR)) {
+      if (this._match_text_seq("ALL", "COLUMNS")) this_ = "FOR ALL COLUMNS";
+      if (this._match_text_seq("COLUMNS")) {
+        this_ = "FOR COLUMNS";
+        expressions = this._parse_csv(() => this._parse_column_reference());
+      }
+    } else if (this._match_text_seq("SAMPLE")) {
+      const sample = this._parse_number();
+      expressions = [this.expression(new exp.AnalyzeSample({ sample, kind: this._match(TokenType.PERCENT) ? this._prev.text.toUpperCase() : null }))];
+    }
+    return this.expression(new exp.AnalyzeStatistics({ kind, option, this: this_, expressions }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9405
-  _parse_analyze_validate() { throw new NotPorted("_parse_analyze_validate", "sqlglot/parser.py:9405"); }
+  _parse_analyze_validate() {
+    let kind = null, this_ = null, expression = null;
+    if (this._match_text_seq("REF", "UPDATE")) {
+      kind = "REF"; this_ = "UPDATE";
+      if (this._match_text_seq("SET", "DANGLING", "TO", "NULL")) this_ = "UPDATE SET DANGLING TO NULL";
+    } else if (this._match_text_seq("STRUCTURE")) {
+      kind = "STRUCTURE";
+      if (this._match_text_seq("CASCADE", "FAST")) this_ = "CASCADE FAST";
+      else if (this._match_text_seq("CASCADE", "COMPLETE") && this._match_texts(["ONLINE", "OFFLINE"])) {
+        this_ = `CASCADE COMPLETE ${this._prev.text.toUpperCase()}`;
+        expression = this._parse_into();
+      }
+    }
+    return this.expression(new exp.AnalyzeValidate({ kind, this: this_, expression }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9426
-  _parse_analyze_columns() { throw new NotPorted("_parse_analyze_columns", "sqlglot/parser.py:9426"); }
+  _parse_analyze_columns() {
+    const this_ = this._prev.text.toUpperCase();
+    return this._match_text_seq("COLUMNS") ? this.expression(new exp.AnalyzeColumns({ this: `${this_} ${this._prev.text.toUpperCase()}` })) : null;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9432
-  _parse_analyze_delete() { throw new NotPorted("_parse_analyze_delete", "sqlglot/parser.py:9432"); }
+  _parse_analyze_delete() {
+    const kind = this._match_text_seq("SYSTEM") ? this._prev.text.toUpperCase() : null;
+    return this._match_text_seq("STATISTICS") ? this.expression(new exp.AnalyzeDelete({ kind })) : null;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9438
-  _parse_analyze_list() { throw new NotPorted("_parse_analyze_list", "sqlglot/parser.py:9438"); }
+  _parse_analyze_list() {
+    return this._match_text_seq("CHAINED", "ROWS") ? this.expression(new exp.AnalyzeListChainedRows({ expression: this._parse_into() })) : null;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9444
-  _parse_analyze_histogram() { throw new NotPorted("_parse_analyze_histogram", "sqlglot/parser.py:9444"); }
+  _parse_analyze_histogram() {
+    const this_ = this._prev.text.toUpperCase();
+    let expression = null;
+    let expressions = [];
+    let updateOptions = null;
+    if (this._match_text_seq("HISTOGRAM", "ON")) {
+      expressions = this._parse_csv(() => this._parse_column_reference());
+      const withExpressions = [];
+      while (this._match(TokenType.WITH)) {
+        if (this._match_texts(["SYNC", "ASYNC"])) {
+          if (this._match_text_seq("MODE", false)) {
+            withExpressions.push(`${this._prev.text.toUpperCase()} MODE`);
+            this._advance();
+          }
+        } else {
+          const buckets = this._parse_number();
+          // deny:implicit_str sqlglot/parser.py:9462
+          if (this._match_text_seq("BUCKETS")) withExpressions.push(`${kernelSql(buckets)} BUCKETS`);
+        }
+      }
+      if (withExpressions.length) expression = this.expression(new exp.AnalyzeWith({ expressions: withExpressions }));
+      if (this._match_texts(["MANUAL", "AUTO"]) && this._match(TokenType.UPDATE, false)) {
+        updateOptions = this._prev.text.toUpperCase();
+        this._advance();
+      } else if (this._match_text_seq("USING", "DATA")) expression = this.expression(new exp.UsingData({ this: this._parse_string() }));
+    }
+    return this.expression(new exp.AnalyzeHistogram({ this: this_, expressions, expression, update_options: updateOptions }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9483
@@ -4134,19 +4690,41 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9557
-  _parse_show() { throw new NotPorted("_parse_show", "sqlglot/parser.py:9557"); }
+  _parse_show() {
+    const parser = this._find_parser(this.constructor.SHOW_PARSERS, this.constructor.SHOW_TRIE);
+    return parser ? parser(this) : this._parse_as_command(this._prev);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9563
-  _parse_set_item_assignment(kind) { throw new NotPorted("_parse_set_item_assignment", "sqlglot/parser.py:9563"); }
+  _parse_set_item_assignment(kind = null) {
+    const index = this._index;
+    if (["GLOBAL", "SESSION"].includes(kind) && this._match_text_seq("TRANSACTION")) return this._parse_set_transaction(kind === "GLOBAL");
+    const left = this._parse_primary() || this._parse_column();
+    const delimiter = this._match_texts(this.constructor.SET_ASSIGNMENT_DELIMITERS);
+    if (!left || (this.constructor.SET_REQUIRES_ASSIGNMENT_DELIMITER && !delimiter)) {
+      this._retreat(index);
+      return null;
+    }
+    let right = this._parse_statement() || this._parse_id_var();
+    if (right instanceof exp.Column || right instanceof exp.Identifier) right = exp.var(right.name);
+    return this.expression(new exp.SetItem({ this: this.expression(new exp.EQ({ this: left, expression: right })), kind }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9583
-  _parse_set_transaction(global_) { throw new NotPorted("_parse_set_transaction", "sqlglot/parser.py:9583"); }
+  _parse_set_transaction(global_ = false) {
+    this._match_text_seq("TRANSACTION");
+    const expressions = this._parse_csv(() => this._parse_var_from_options(this.constructor.TRANSACTION_CHARACTERISTICS));
+    return this.expression(new exp.SetItem({ expressions, kind: "TRANSACTION", global_: global_ }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9592
-  _parse_set_item() { throw new NotPorted("_parse_set_item", "sqlglot/parser.py:9592"); }
+  _parse_set_item() {
+    const parser = this._find_parser(this.constructor.SET_PARSERS, this.constructor.SET_TRIE);
+    return parser ? parser(this) : this._parse_set_item_assignment();
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9596
@@ -4174,7 +4752,13 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9639
-  _parse_as_command(start) { throw new NotPorted("_parse_as_command", "sqlglot/parser.py:9639"); }
+  _parse_as_command(start) {
+    while (this._curr.bool()) this._advance();
+    const value = this._find_sql(start, this._prev);
+    const size = [...start.text].length;
+    this._warn_unsupported();
+    return new exp.Command({ this: [...value].slice(0, size).join(""), expression: [...value].slice(size).join("") });
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9647
@@ -4235,7 +4819,25 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9799
-  _parse_truncate_table() { throw new NotPorted("_parse_truncate_table", "sqlglot/parser.py:9799"); }
+  _parse_truncate_table() {
+    const start = this._prev;
+    if (this._match(TokenType.L_PAREN)) {
+      this._retreat(this._index - 2);
+      return this._parse_function();
+    }
+    const isDatabase = this._match(TokenType.DATABASE);
+    this._match(TokenType.TABLE);
+    const exists = this._parse_exists();
+    const expressions = this._parse_csv(() => this._parse_table(true, undefined, undefined, undefined, isDatabase));
+    const cluster = this._match(TokenType.ON) ? this._parse_on_property() : null;
+    let identity = null;
+    if (this._match_text_seq("RESTART", "IDENTITY")) identity = "RESTART";
+    else if (this._match_text_seq("CONTINUE", "IDENTITY")) identity = "CONTINUE";
+    const option = this._match_text_seq("CASCADE") || this._match_text_seq("RESTRICT") ? this._prev.text : null;
+    const partition = this._parse_partition();
+    if (this._curr.bool()) return this._parse_as_command(start);
+    return this.expression(new exp.TruncateTable({ expressions, is_database: isDatabase, exists, cluster, identity, option, partition }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9850
@@ -4287,23 +4889,57 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10027
-  _parse_grant_privilege() { throw new NotPorted("_parse_grant_privilege", "sqlglot/parser.py:10027"); }
+  _parse_grant_privilege() {
+    const parts = [];
+    while (this._curr.bool() && !this._match_set(this.constructor.PRIVILEGE_FOLLOW_TOKENS, false)) {
+      parts.push(this._curr.text.toUpperCase());
+      this._advance();
+    }
+    const expressions = this._match(TokenType.L_PAREN, false) ? this._parse_wrapped_csv(() => this._parse_column()) : null;
+    return this.expression(new exp.GrantPrivilege({ this: exp.var(parts.join(" ")), expressions }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10045
-  _parse_grant_principal() { throw new NotPorted("_parse_grant_principal", "sqlglot/parser.py:10045"); }
+  _parse_grant_principal() {
+    const kind = this._match_texts(["ROLE", "GROUP"]) ? this._prev.text.toUpperCase() : null;
+    const principal = this._parse_id_var();
+    return principal ? this.expression(new exp.GrantPrincipal({ this: principal, kind })) : null;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10054
-  _parse_grant_revoke_common() { throw new NotPorted("_parse_grant_revoke_common", "sqlglot/parser.py:10054"); }
+  _parse_grant_revoke_common() {
+    const privileges = this._parse_csv(() => this._parse_grant_privilege());
+    this._match(TokenType.ON);
+    const kind = this._match_set(this.constructor.CREATABLES) ? this._prev.text.toUpperCase() : null;
+    return [privileges, kind, this._try_parse(() => this._parse_table_parts())];
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10068
-  _parse_grant() { throw new NotPorted("_parse_grant", "sqlglot/parser.py:10068"); }
+  _parse_grant() {
+    const start = this._prev;
+    const [privileges, kind, securable] = this._parse_grant_revoke_common();
+    if (!securable || !this._match_text_seq("TO")) return this._parse_as_command(start);
+    const principals = this._parse_csv(() => this._parse_grant_principal());
+    const grantOption = this._match_text_seq("WITH", "GRANT", "OPTION");
+    if (this._curr.bool()) return this._parse_as_command(start);
+    return this.expression(new exp.Grant({ privileges, kind, securable, principals, grant_option: grantOption }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10093
-  _parse_revoke() { throw new NotPorted("_parse_revoke", "sqlglot/parser.py:10093"); }
+  _parse_revoke() {
+    const start = this._prev;
+    const grantOption = this._match_text_seq("GRANT", "OPTION", "FOR");
+    const [privileges, kind, securable] = this._parse_grant_revoke_common();
+    if (!securable || !this._match_text_seq("FROM")) return this._parse_as_command(start);
+    const principals = this._parse_csv(() => this._parse_grant_principal());
+    const cascade = this._match_texts(["CASCADE", "RESTRICT"]) ? this._prev.text.toUpperCase() : null;
+    if (this._curr.bool()) return this._parse_as_command(start);
+    return this.expression(new exp.Revoke({ privileges, kind, securable, principals, grant_option: grantOption, cascade }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10123
@@ -4382,11 +5018,25 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10364
-  _parse_declareitem() { throw new NotPorted("_parse_declareitem", "sqlglot/parser.py:10364"); }
+  _parse_declareitem() {
+    this._match_texts(["VAR", "VARIABLE"]);
+    const vars = this._parse_csv(() => this._parse_id_var());
+    if (!vars.length) return null;
+    this._match(TokenType.ALIAS);
+    const kind = this._match(TokenType.TABLE) ? this._parse_schema() : this._parse_types();
+    const default_ = (this._match(TokenType.DEFAULT) || this._match(TokenType.EQ)) && this._parse_bitwise();
+    return this.expression(new exp.DeclareItem({ this: vars, kind, default: default_ }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10379
-  _parse_declare() { throw new NotPorted("_parse_declare", "sqlglot/parser.py:10379"); }
+  _parse_declare() {
+    const start = this._prev;
+    const replace = this._match_text_seq("OR", "REPLACE");
+    const expressions = this._try_parse(() => this._parse_csv(() => this._parse_declareitem()));
+    if (!expressions || this._curr.bool()) return this._parse_as_command(start);
+    return this.expression(new exp.Declare({ expressions, replace }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10389
