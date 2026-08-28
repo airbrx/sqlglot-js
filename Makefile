@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 REF ?= /tmp/sqlglot-ref
 
-.PHONY: help corpus accept-corpus codegen parity check probes lint ratchet resync sync snapshot clean
+.PHONY: help corpus accept-corpus codegen parity check probes lint ratchet resync sync snapshot claims clean
 
 help:
 	@grep -E '^[a-z_-]+:.*?## ' $(MAKEFILE_LIST) | sed 's/:.*## /\t/' | expand -t24
@@ -57,6 +57,14 @@ sync: ## upstream method manifest diff -> the work-item generator (§3.7)
 snapshot: ## accept the current upstream manifest as the baseline
 	python3 tools/sync_report.py --ref $(REF) --snapshot
 
+# PORT_PLAN.md §8.1 Rule 1 / §8.5 gate (6). NOT in `lint`, and NOT in `check`: it needs
+# the network and an authenticated `gh`, and a gate that goes red on a GitHub outage is a
+# gate people learn to ignore. The offline half (`--selftest`) IS in `check`.
+# This is advisory -- see the header of tools/claim_overlap.mjs. Run it before spawning a
+# parallel batch, and after any PR is opened or rebased.
+claims: ## §8.1 Rule 1 -- unit-level claim overlap across all open PRs (needs gh + network)
+	node tools/claim_overlap.mjs --all
+
 lint: ## the checkable CI gates that exist today
 	node tools/lint_license.mjs
 	node tools/lint_unicode.mjs
@@ -68,6 +76,7 @@ lint: ## the checkable CI gates that exist today
 check: ## every self-test + the node:test suite (no corpus regeneration)
 	node tools/closure.mjs --selftest
 	node tools/ratchet.mjs --selftest
+	node tools/claim_overlap.mjs --selftest
 	node test/runner.mjs --selftest
 	node --test $$(find test -name '*.test.mjs' | sort)
 	python3 tools/sync_report.py --selftest
