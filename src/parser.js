@@ -44,7 +44,7 @@ import {
   highlightSql,
   mergeErrors,
 } from "./errors.js";
-import { Token, TokenType, Tokenizer } from "./tokens.js";
+import { Token, TokenType, Tokenizer, TOKEN_TYPE_NAMES } from "./tokens.js";
 import { newTrie } from "./trie.js";
 import { ensureList, seqGet } from "./helper.js";
 import { logger } from "./logging.js";
@@ -126,6 +126,22 @@ function _textIn(texts, text) {
     `TEXTS_TYPE must be a Set, Map or Array, got ${typeof texts} — bare strings are `
     + "excluded upstream so a single keyword cannot match with substring semantics",
   );
+}
+
+/**
+ * py: sqlglot/parser.py:68
+ *
+ * Factory returning the `RANGE_PARSERS` lambda for a plain binary range operator.
+ * `RANGE_PARSERS` values are invoked as `parser(this, this_)` (see `_parse_range`),
+ * so the returned function takes `(self, this_)` and mirrors upstream's
+ * `_parse_binary_range(self, this)`.
+ */
+function binary_range_parser(expr_type, reverse_args = false) {
+  return function _parse_binary_range(self, this_) {
+    let expression = self._parse_bitwise();
+    if (reverse_args) [this_, expression] = [expression, this_];
+    return self._parse_escape(self.expression(new expr_type({ this: this_, expression })));
+  };
 }
 
 export class Parser {
@@ -999,27 +1015,27 @@ export class Parser {
 
   /** py: sqlglot/parser.py:1261 */
   static RANGE_PARSERS = new Map([
-    // py:1262  [TokenType.AT_GT, /* TODO binary_range_parser(...) */],
-    // py:1263  [TokenType.BETWEEN, /* TODO lambda */],
-    // py:1264  [TokenType.GLOB, /* TODO binary_range_parser(...) */],
-    // py:1265  [TokenType.ILIKE, /* TODO binary_range_parser(...) */],
-    // py:1266  [TokenType.IN, /* TODO lambda */],
-    // py:1267  [TokenType.IRLIKE, /* TODO binary_range_parser(...) */],
-    // py:1268  [TokenType.IS, /* TODO lambda */],
-    // py:1269  [TokenType.LIKE, /* TODO binary_range_parser(...) */],
-    // py:1270  [TokenType.LT_AT, /* TODO binary_range_parser(...) */],
-    // py:1271  [TokenType.OVERLAPS, /* TODO binary_range_parser(...) */],
-    // py:1272  [TokenType.RLIKE, /* TODO binary_range_parser(...) */],
-    // py:1273  [TokenType.SIMILAR_TO, /* TODO binary_range_parser(...) */],
-    // py:1274  [TokenType.FOR, /* TODO lambda */],
-    // py:1275  [TokenType.QMARK_AMP, /* TODO binary_range_parser(...) */],
-    // py:1276  [TokenType.QMARK_PIPE, /* TODO binary_range_parser(...) */],
-    // py:1277  [TokenType.HASH_DASH, /* TODO binary_range_parser(...) */],
-    // py:1278  [TokenType.AT_QMARK, /* TODO binary_range_parser(...) */],
-    // py:1279  [TokenType.ADJACENT, /* TODO binary_range_parser(...) */],
-    // py:1280  [TokenType.OPERATOR, /* TODO lambda */],
-    // py:1281  [TokenType.AMP_LT, /* TODO binary_range_parser(...) */],
-    // py:1282  [TokenType.AMP_GT, /* TODO binary_range_parser(...) */],
+    /* py:1262 */ [TokenType.AT_GT, binary_range_parser(exp.ArrayContainsAll)],
+    /* py:1263 */ [TokenType.BETWEEN, (self, this_) => self._parse_between(this_)],
+    /* py:1264 */ [TokenType.GLOB, binary_range_parser(exp.Glob)],
+    /* py:1265 */ [TokenType.ILIKE, binary_range_parser(exp.ILike)],
+    /* py:1266 */ [TokenType.IN, (self, this_) => self._parse_in(this_)],
+    /* py:1267 */ [TokenType.IRLIKE, binary_range_parser(exp.RegexpILike)],
+    /* py:1268 */ [TokenType.IS, (self, this_) => self._parse_is(this_)],
+    /* py:1269 */ [TokenType.LIKE, binary_range_parser(exp.Like)],
+    /* py:1270 */ [TokenType.LT_AT, binary_range_parser(exp.ArrayContainedBy)],
+    /* py:1271 */ [TokenType.OVERLAPS, binary_range_parser(exp.Overlaps)],
+    /* py:1272 */ [TokenType.RLIKE, binary_range_parser(exp.RegexpLike)],
+    /* py:1273 */ [TokenType.SIMILAR_TO, binary_range_parser(exp.SimilarTo)],
+    /* py:1274 */ [TokenType.FOR, (self, this_) => self._parse_comprehension(this_)],
+    /* py:1275 */ [TokenType.QMARK_AMP, binary_range_parser(exp.JSONBContainsAllTopKeys)],
+    /* py:1276 */ [TokenType.QMARK_PIPE, binary_range_parser(exp.JSONBContainsAnyTopKeys)],
+    /* py:1277 */ [TokenType.HASH_DASH, binary_range_parser(exp.JSONBDeleteAtPath)],
+    /* py:1278 */ [TokenType.AT_QMARK, binary_range_parser(exp.JSONBPathExists)],
+    /* py:1279 */ [TokenType.ADJACENT, binary_range_parser(exp.Adjacent)],
+    /* py:1280 */ [TokenType.OPERATOR, (self, this_) => self._parse_operator(this_)],
+    /* py:1281 */ [TokenType.AMP_LT, binary_range_parser(exp.ExtendsLeft)],
+    /* py:1282 */ [TokenType.AMP_GT, binary_range_parser(exp.ExtendsRight)],
   ]);
 
   /** py: sqlglot/parser.py:1285 */
@@ -1248,34 +1264,41 @@ export class Parser {
 
   /** py: sqlglot/parser.py:1560 */
   static FUNCTION_PARSERS = new Map([
-    // py:1561  SPREAD: DictComp — merge manually (§4.4 MRO)
-    // py:1565  SPREAD: DictComp — merge manually (§4.4 MRO)
-    // py:1569  ["CAST", /* TODO lambda */],
-    // py:1570  ["CEIL", /* TODO lambda */],
-    // py:1571  ["CONVERT", /* TODO lambda */],
-    // py:1572  ["CHAR", /* TODO lambda */],
-    // py:1573  ["CHR", /* TODO lambda */],
-    // py:1574  ["DECODE", /* TODO lambda */],
-    // py:1575  ["EXTRACT", /* TODO lambda */],
-    // py:1576  ["FLOOR", /* TODO lambda */],
-    // py:1577  ["GAP_FILL", /* TODO lambda */],
-    // py:1578  ["INITCAP", /* TODO lambda */],
-    // py:1579  ["JSON_OBJECT", /* TODO lambda */],
-    // py:1580  ["JSON_OBJECTAGG", /* TODO lambda */],
-    // py:1581  ["JSON_TABLE", /* TODO lambda */],
-    // py:1582  ["MATCH", /* TODO lambda */],
-    // py:1583  ["NORMALIZE", /* TODO lambda */],
-    // py:1584  ["OPENJSON", /* TODO lambda */],
-    // py:1585  ["OVERLAY", /* TODO lambda */],
-    // py:1586  ["POSITION", /* TODO lambda */],
-    // py:1587  ["SAFE_CAST", /* TODO lambda */],
-    // py:1588  ["STRING_AGG", /* TODO lambda */],
-    // py:1589  ["SUBSTRING", /* TODO lambda */],
-    // py:1590  ["TRIM", /* TODO lambda */],
-    // py:1591  ["TRY_CAST", /* TODO lambda */],
-    // py:1592  ["TRY_CONVERT", /* TODO lambda */],
-    // py:1593  ["XMLELEMENT", /* TODO lambda */],
-    // py:1594  ["XMLTABLE", /* TODO lambda */],
+    // py:1561-1568  The two leading DictComps expand `exp.ArgMax`/`exp.ArgMin`'s
+    // `sql_names()` (ARG_MAX/ARGMAX/MAX_BY and ARG_MIN/ARGMIN/MIN_BY) onto the same
+    // `_parse_distinct_arg_function` lambda. Spread first so the hand-written entries
+    // below keep last-write-wins precedence, matching Python's dict-literal ordering.
+    /* py:1561 */ ...exp.ArgMax.sqlNames().map((name) => [name, (self) => self._parse_distinct_arg_function(exp.ArgMax)]),
+    /* py:1565 */ ...exp.ArgMin.sqlNames().map((name) => [name, (self) => self._parse_distinct_arg_function(exp.ArgMin)]),
+    // `self.STRICT_CAST` is a CLASS-level field: it must be read via
+    // `self.constructor.STRICT_CAST`, never bare `self.STRICT_CAST` (which is
+    // `undefined` on the instance and would silently make every CAST non-strict).
+    /* py:1569 */ ["CAST", (self) => self._parse_cast(self.constructor.STRICT_CAST)],
+    /* py:1570 */ ["CEIL", (self) => self._parse_ceil_floor(exp.Ceil)],
+    /* py:1571 */ ["CONVERT", (self) => self._parse_convert(self.constructor.STRICT_CAST)],
+    /* py:1572 */ ["CHAR", (self) => self._parse_char()],
+    /* py:1573 */ ["CHR", (self) => self._parse_char()],
+    /* py:1574 */ ["DECODE", (self) => self._parse_decode()],
+    /* py:1575 */ ["EXTRACT", (self) => self._parse_extract()],
+    /* py:1576 */ ["FLOOR", (self) => self._parse_ceil_floor(exp.Floor)],
+    // py:1577  ["GAP_FILL", ...]  — `_parse_gap_fill` is still a NotPorted stub
+    /* py:1578 */ ["INITCAP", (self) => self._parse_initcap()],
+    // py:1579  ["JSON_OBJECT", ...]     — `_parse_json_object` is still a NotPorted stub
+    // py:1580  ["JSON_OBJECTAGG", ...]  — `_parse_json_object` is still a NotPorted stub
+    // py:1581  ["JSON_TABLE", ...]      — `_parse_json_table` is still a NotPorted stub
+    /* py:1582 */ ["MATCH", (self) => self._parse_match_against()],
+    // py:1583  ["NORMALIZE", ...]  — `_parse_normalize` is still a NotPorted stub
+    // py:1584  ["OPENJSON", ...]   — `_parse_open_json` is still a NotPorted stub
+    // py:1585  ["OVERLAY", ...]    — `_parse_overlay` is still a NotPorted stub
+    /* py:1586 */ ["POSITION", (self) => self._parse_position()],
+    /* py:1587 */ ["SAFE_CAST", (self) => self._parse_cast(false, true)],
+    /* py:1588 */ ["STRING_AGG", (self) => self._parse_string_agg()],
+    /* py:1589 */ ["SUBSTRING", (self) => self._parse_substring()],
+    /* py:1590 */ ["TRIM", (self) => self._parse_trim()],
+    /* py:1591 */ ["TRY_CAST", (self) => self._parse_cast(false, true)],
+    /* py:1592 */ ["TRY_CONVERT", (self) => self._parse_convert(false, true)],
+    /* py:1593 */ ["XMLELEMENT", (self) => self._parse_xml_element()],
+    /* py:1594 */ ["XMLTABLE", (self) => self._parse_xml_table()],
   ]);
 
   /** py: sqlglot/parser.py:1597 */
@@ -4033,7 +4056,17 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:6103
   // note: param `this` renamed to `this_` (JS reserved word)
-  _negate_range(this_) { throw new NotPorted("_negate_range", "sqlglot/parser.py:6103"); }
+  _negate_range(this_ = null) {
+    if (pyFalsy(this_)) return this_;
+    const expression = this_ instanceof exp.Escape ? this_.this : this_;
+    // Upstream mutates the Like/ILike in place and returns the ORIGINAL `this` (which
+    // may be the enclosing Escape), rather than the unwrapped `expression`.
+    if (expression instanceof exp.Like || expression instanceof exp.ILike) {
+      expression.set("negate", true);
+      return this_;
+    }
+    return this.expression(new exp.Not({ this: this_ }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:6114
@@ -4162,7 +4195,7 @@ export class Parser {
     if (this.constructor.TIMESTAMPS.has(typeToken)) { if (this._match_text_seq("WITH", "TIME", "ZONE")) { maybeFunc = false; this_ = new exp.DataType({ this: this.constructor.TIMES.has(typeToken) ? exp.DType.TIMETZ : exp.DType.TIMESTAMPTZ, expressions }); } else if (this._match_text_seq("WITH", "LOCAL", "TIME", "ZONE")) { maybeFunc = false; this_ = new exp.DataType({ this: exp.DType.TIMESTAMPLTZ, expressions }); } else if (this._match_text_seq("WITHOUT", "TIME", "ZONE")) maybeFunc = false; }
     else if (typeToken === TokenType.INTERVAL) { if (this.dialect.VALID_INTERVAL_UNITS.has(pyUpper(this._curr.text))) { let unit = this._parse_var(false, null, true); if (this._match_text_seq("TO")) unit = new exp.IntervalSpan({ this: unit, expression: this._parse_var(false, null, true) }); this_ = this.expression(new exp.DataType({ this: this.expression(new exp.Interval({ unit })) })); } else this_ = this.expression(new exp.DataType({ this: exp.DType.INTERVAL })); } else if (typeToken === TokenType.VOID) this_ = new exp.DataType({ this: exp.DType.NULL });
     if (maybeFunc && check_func) { const i = this._index, peek = this._parse_string(); if (!peek) { this._retreat(index); return null; } this._retreat(i); }
-    if (!this_) { if (this._match_text_seq("UNSIGNED")) { const u = this.constructor.SIGNED_TO_UNSIGNED_TYPE_TOKEN.get(typeToken); if (!u) this.raise_error(`Cannot convert ${typeToken.name} to unsigned.`); typeToken = u || typeToken; } if (typeToken === TokenType.NULLABLE && !expressions) { this._retreat(index); return null; } this_ = new exp.DataType({ this: exp.DType[typeToken.name], expressions, nested }); if (values !== null) this_ = exp.cast(isStruct ? new exp.Struct({ expressions: values }) : new exp.Array({ expressions: values }), this_, false); } else if (expressions) this_.set("expressions", expressions);
+    if (!this_) { if (this._match_text_seq("UNSIGNED")) { const u = this.constructor.SIGNED_TO_UNSIGNED_TYPE_TOKEN.get(typeToken); if (!u) this.raise_error(`Cannot convert ${TOKEN_TYPE_NAMES[typeToken]} to unsigned.`); typeToken = u || typeToken; } if (typeToken === TokenType.NULLABLE && !expressions) { this._retreat(index); return null; } this_ = new exp.DataType({ this: exp.DType[TOKEN_TYPE_NAMES[typeToken]], expressions, nested }); if (values !== null) this_ = exp.cast(isStruct ? new exp.Struct({ expressions: values }) : new exp.Array({ expressions: values }), this_, false); } else if (expressions) this_.set("expressions", expressions);
     while (this._match(TokenType.LIST)) this_ = new exp.DataType({ this: exp.DType.LIST, expressions: [this_], nested: true });
     index = this._index; let array = this._match(TokenType.ARRAY); while (this._curr.bool()) { const previous = this._prev.token_type, bracket = this._match(TokenType.L_BRACKET); if ((!bracket && !array) || (previous === TokenType.ARRAY && this._match(TokenType.R_BRACKET))) break; array = false; values = this._parse_csv(this._parse_disjunction.bind(this)); if (!values.length) values = null; if (values && !schema && (!this.dialect.SUPPORTS_FIXED_SIZE_ARRAYS || previous === TokenType.ARRAY || !this._match(TokenType.R_BRACKET, false))) { this._retreat(index); break; } this_ = new exp.DataType({ this: exp.DType.ARRAY, expressions: [this_], values, nested: true }); this._match(TokenType.R_BRACKET); }
     if (this.constructor.TYPE_CONVERTERS.size && this_.this?.__enum__ === "DType") { const converter = this.constructor.TYPE_CONVERTERS.get(this_.this); if (converter) this_ = converter(this_); }
@@ -5780,7 +5813,25 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10389
-  build_cast(strict) { throw new NotPorted("build_cast", "sqlglot/parser.py:10389"); }
+  /**
+   * Upstream takes `**kwargs` and forwards them verbatim to the expression class, so
+   * ARG ORDER IS OBSERVABLE: tools/astdump.py:71 dumps `node.args.items()` ordered and
+   * "keeps None". The positional params below are exactly the kwargs `_parse_cast`
+   * passes (py:8205), in order; callers that omit a kwarg upstream must pass
+   * `undefined` here, which the Expr constructor prunes (whereas `null` is retained,
+   * matching an explicit `=None`).
+   */
+  build_cast(strict, this_, to, format, safe, action, default_) {
+    const exp_class = strict ? exp.Cast : exp.TryCast;
+    const kwargs = { this: this_, to, format, safe, action, default: default_ };
+    // py:10393 — assigned after the caller's kwargs, so `requires_string` sorts last.
+    // `dialect.TRY_CAST_REQUIRES_STRING` defaults to None on the base Dialect
+    // (dialects/dialect.py:761); the flag itself is P5, so the stand-in dialect has no
+    // such property and `?? null` reproduces the base-dialect value. Snowflake
+    // overrides it to True (dialects/snowflake.py:31) — that needs the P5 dialect port.
+    if (exp_class === exp.TryCast) kwargs.requires_string = this.dialect.TRY_CAST_REQUIRES_STRING ?? null;
+    return this.expression(new exp_class(kwargs));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10397
