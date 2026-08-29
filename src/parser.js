@@ -880,13 +880,19 @@ export class Parser {
   /** py: sqlglot/parser.py:1079 */
   static COLUMN_OPERATORS = new Map([
     /* py:1080 */ [TokenType.DOT, null],
-    // py:1081  [TokenType.DOTCOLON, /* TODO lambda */],
-    // py:1082  [TokenType.DCOLON, /* TODO lambda */],
-    // py:1085  [TokenType.ARROW, /* TODO lambda */],
-    // py:1092  [TokenType.DARROW, /* TODO lambda */],
-    // py:1100  [TokenType.HASH_ARROW, /* TODO lambda */],
-    // py:1103  [TokenType.DHASH_ARROW, /* TODO lambda */],
-    // py:1106  [TokenType.PLACEHOLDER, /* TODO lambda */],
+    /* py:1081 */ [TokenType.DOTCOLON, (self, this_, to) => self.expression(new exp.JSONCast({ this: this_, to }))],
+    // `self.STRICT_CAST` is a CLASS-level field — `self.constructor.STRICT_CAST`, never
+    // bare `self.STRICT_CAST` (§ the same trap FUNCTION_PARSERS["CAST"] documents above).
+    /* py:1082 */ [TokenType.DCOLON, (self, this_, to) => self.build_cast(self.constructor.STRICT_CAST, this_, to)],
+    // py:1085  [TokenType.ARROW, /* TODO lambda */],   \ both need `dialect.to_json_path`,
+    // py:1092  [TokenType.DARROW, /* TODO lambda */],  / which needs the unported jsonpath
+    //          module (P4). Leaving them unwired keeps `->`/`->>` at today's behaviour
+    //          rather than silently building a JSONExtract whose `expression` is a raw
+    //          Literal where upstream has a parsed JSONPath — already a known MISMATCH
+    //          class, and wiring them here would convert it into a wrong-AST class.
+    /* py:1100 */ [TokenType.HASH_ARROW, (self, this_, path) => self.expression(new exp.JSONBExtract({ this: this_, expression: path }))],
+    /* py:1103 */ [TokenType.DHASH_ARROW, (self, this_, path) => self.expression(new exp.JSONBExtractScalar({ this: this_, expression: path }))],
+    /* py:1106 */ [TokenType.PLACEHOLDER, (self, this_, key) => self.expression(new exp.JSONBContainsTopKey({ this: this_, expression: key }))],
   ]);
 
   /** py: sqlglot/parser.py:1113 */
@@ -5853,12 +5859,21 @@ export class Parser {
    * ARG ORDER IS OBSERVABLE: tools/astdump.py:71 dumps `node.args.items()` ordered and
    * "keeps None". The positional params below are exactly the kwargs `_parse_cast`
    * passes (py:8205), in order; callers that omit a kwarg upstream must pass
-   * `undefined` here, which the Expr constructor prunes (whereas `null` is retained,
-   * matching an explicit `=None`).
+   * `undefined` here, which is pruned below (whereas `null` is retained, matching an
+   * explicit `=None`).
+   *
+   * The pruning has to happen HERE, not in the Expr constructor, which keeps a key
+   * whose value is `undefined`. Upstream has two callers with different kwarg shapes --
+   * `_parse_cast` passes all seven (py:8205) while `_parse_convert` passes four
+   * (py:8279), and `COLUMN_OPERATORS[DCOLON]` passes three (py:1082) -- and
+   * `tools/astdump.py:71` dumps `node.args.items()` ordered and keeps None, so an
+   * unpassed kwarg surfacing as `format=None` is an AST difference, not a formatting
+   * one. Deleting keys preserves the relative order of the rest.
    */
   build_cast(strict, this_, to, format, safe, action, default_) {
     const exp_class = strict ? exp.Cast : exp.TryCast;
     const kwargs = { this: this_, to, format, safe, action, default: default_ };
+    for (const k of Object.keys(kwargs)) if (kwargs[k] === undefined) delete kwargs[k];
     // py:10393 — assigned after the caller's kwargs, so `requires_string` sorts last.
     // `dialect.TRY_CAST_REQUIRES_STRING` defaults to None on the base Dialect
     // (dialects/dialect.py:761); the flag itself is P5, so the stand-in dialect has no
