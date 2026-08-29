@@ -4868,8 +4868,15 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:8339
   _parse_decode() {
-    const expressions = this._parse_csv(this._parse_bitwise.bind(this)); this._match_r_paren();
-    return this.expression(new exp.Decode({ expressions }));
+    // py:8340 — `_parse_disjunction`, not `_parse_bitwise`, and the 3+-arg form is a
+    // DecodeCase (the CASE-like `DECODE(x, a, b, c, d, e)`), not a Decode. Binding every
+    // arity to `exp.Decode({expressions})` left `charset` -- which Decode marks required
+    // -- unset, so `DECODE(tbl.col, 'some_string', 'foo')` raised instead of parsing.
+    // The stray `_match_r_paren()` goes too: `_parse_function_call` consumes the closing
+    // paren centrally after calling a FUNCTION_PARSERS entry (py:7345).
+    const args = this._parse_csv(this._parse_disjunction.bind(this));
+    if (args.length < 3) return this.expression(new exp.Decode({ this: seqGet(args, 0), charset: seqGet(args, 1) }));
+    return this.expression(new exp.DecodeCase({ expressions: args }));
   }
 
   /** @returns {*} */
