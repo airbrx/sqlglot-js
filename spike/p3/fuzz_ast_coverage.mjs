@@ -19,7 +19,7 @@
 // blocking step, and the numbers say so out loud instead of being rounded to "green".
 
 import { readFileSync, readdirSync } from "node:fs";
-import { astDump, astLoad, toS } from "../../src/expressions/index.js";
+import { astDump, astLoad, toS, Union, Except, Intersect } from "../../src/expressions/index.js";
 import { Parser } from "../../src/parser.js";
 import { tokenizerFor, METHOD_OVERRIDING } from "./dialect_tokenizer.mjs";
 import { captureLogs } from "../../src/logging.js";
@@ -69,11 +69,25 @@ for (const name of readdirSync("corpus/ast")) {
       // `self.dialect.CREATABLE_KIND_MAPPING.get(kind) or kind` (py:2437) -- without it
       // 740 CREATE rows died on `.get` of undefined, which is a hole in this stand-in
       // rather than in the parser.
+      //
+      // SET_OP_DISTINCT_BY_DEFAULT: same deal again, base default
+      // `{Except: True, Intersect: True, Union: True}` (dialect.py:733).
+      // `parse_set_operation` reads it (py:5930) for any UNION/EXCEPT/INTERSECT that
+      // doesn't spell out DISTINCT/ALL -- i.e. the common form, so plain
+      // `SELECT ... UNION SELECT ...` died on `.get` of undefined.
+      //
+      // tokenize: base Dialect method (`self.tokenizer.tokenize(sql)`). `_parse_types`
+      // calls it (py:6503) to re-lex a bare identifier and decide whether it names a
+      // type; that is the path `CAST(x AS some_udt)` takes to the user-defined-type
+      // branch. Delegating to the same per-dialect tokenizer this row already used
+      // keeps the stand-in honest rather than hard-coding an answer.
       const p = new Parser({
         dialect: {
           tokenizer_class: { COMMANDS: tk.commands },
           VALID_INTERVAL_UNITS: new Set(),
           CREATABLE_KIND_MAPPING: new Map(),
+          SET_OP_DISTINCT_BY_DEFAULT: new Map([[Except, true], [Intersect, true], [Union, true]]),
+          tokenize: (s) => tk.core.tokenize(s).tokens,
         },
       });
       // The Command fallback logs a warning per row; capture it so the probe's own
