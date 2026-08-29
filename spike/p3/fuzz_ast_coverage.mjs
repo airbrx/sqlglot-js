@@ -19,9 +19,9 @@
 // blocking step, and the numbers say so out loud instead of being rounded to "green".
 
 import { readFileSync, readdirSync } from "node:fs";
-import { astDump, astLoad, toS, Union, Except, Intersect } from "../../src/expressions/index.js";
+import { astDump, astLoad, toS } from "../../src/expressions/index.js";
 import { Parser } from "../../src/parser.js";
-import { tokenizerFor, METHOD_OVERRIDING } from "./dialect_tokenizer.mjs";
+import { tokenizerFor, METHOD_OVERRIDING, standInDialect } from "./dialect_tokenizer.mjs";
 import { captureLogs } from "../../src/logging.js";
 
 const argv = process.argv.slice(2);
@@ -58,38 +58,12 @@ for (const name of readdirSync("corpus/ast")) {
     let got;
     try {
       const { tokens } = tk.core.tokenize(atom.sql);
-      // VALID_INTERVAL_UNITS: matches upstream's base Dialect default
-      // (sqlglot/dialects/dialect.py:846, `set[str] = set()`) -- per-dialect unions
-      // from DATE_PART_MAPPING land with the real dialects/dialect.js port (P5). Until
-      // then this synthetic harness dialect must still be Dialect-shaped so
-      // `_parse_interval`/`_parse_types` can call `.has()` on it without crashing.
-      //
-      // CREATABLE_KIND_MAPPING: same deal, base default `{}` (dialect.py:743). Needed
-      // once STATEMENT_PARSERS routes CREATE to `_parse_create`, which does
-      // `self.dialect.CREATABLE_KIND_MAPPING.get(kind) or kind` (py:2437) -- without it
-      // 740 CREATE rows died on `.get` of undefined, which is a hole in this stand-in
-      // rather than in the parser.
-      //
-      // SET_OP_DISTINCT_BY_DEFAULT: same deal again, base default
-      // `{Except: True, Intersect: True, Union: True}` (dialect.py:733).
-      // `parse_set_operation` reads it (py:5930) for any UNION/EXCEPT/INTERSECT that
-      // doesn't spell out DISTINCT/ALL -- i.e. the common form, so plain
-      // `SELECT ... UNION SELECT ...` died on `.get` of undefined.
-      //
-      // tokenize: base Dialect method (`self.tokenizer.tokenize(sql)`). `_parse_types`
-      // calls it (py:6503) to re-lex a bare identifier and decide whether it names a
-      // type; that is the path `CAST(x AS some_udt)` takes to the user-defined-type
-      // branch. Delegating to the same per-dialect tokenizer this row already used
-      // keeps the stand-in honest rather than hard-coding an answer.
-      const p = new Parser({
-        dialect: {
-          tokenizer_class: { COMMANDS: tk.commands },
-          VALID_INTERVAL_UNITS: new Set(),
-          CREATABLE_KIND_MAPPING: new Map(),
-          SET_OP_DISTINCT_BY_DEFAULT: new Map([[Except, true], [Intersect, true], [Union, true]]),
-          tokenize: (s) => tk.core.tokenize(s).tokens,
-        },
-      });
+      // The parser reads 36 attributes off `self.dialect`; `standInDialect` supplies
+      // this dialect's real harvested values. See dialect_tokenizer.mjs for why that
+      // beats growing a stand-in one crash at a time -- eight base defaults are truthy,
+      // so omitting them flipped parser branches silently, and the oracle rows were
+      // generated with each dialect's OVERRIDES, not with the base class.
+      const p = new Parser({ dialect: standInDialect(tk, dialect) });
       // The Command fallback logs a warning per row; capture it so the probe's own
       // output stays readable. `fuzz_command_warning.mjs` is what asserts those strings.
       const { result } = captureLogs(() => p.parse(tokens, atom.sql));
