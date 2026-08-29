@@ -144,6 +144,54 @@ function binary_range_parser(expr_type, reverse_args = false) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// FUNCTIONS builders (module-level upstream, so dialect ports can reuse them)
+// ---------------------------------------------------------------------------
+// `_parse_function_call` invokes these as `builder(args)` and, if that raises
+// TypeError, retries as `builder(args, dialect)` -- the port's stand-in for Python's
+// arity dispatch. A builder that reads `dialect.X` therefore MUST dereference it
+// unconditionally, so the first (dialect-less) call throws and the retry happens.
+//
+// Kwargs that upstream passes explicitly as `None` are passed here as `null`, NOT
+// omitted: `tools/astdump.py:71` dumps `args.items()` and keeps None, so a missing key
+// is an AST difference. (Same rule `build_cast` follows.)
+
+/** py: sqlglot/parser.py:179 */
+function build_coalesce(args, is_nvl = null, is_null = null) {
+  return new exp.Coalesce({ this: seqGet(args, 0), expressions: args.slice(1), is_nvl, is_null });
+}
+
+/** py: sqlglot/parser.py:158 */
+function build_convert_timezone(args, default_source_tz = null) {
+  if (args.length === 2) {
+    const source_tz = default_source_tz ? exp.Literal.string(default_source_tz) : null;
+    return new exp.ConvertTimezone({ source_tz, target_tz: seqGet(args, 0), timestamp: seqGet(args, 1) });
+  }
+  return exp.ConvertTimezone.from_arg_list(args);
+}
+
+/** py: sqlglot/parser.py:127 */
+function build_mod(args) {
+  let this_ = seqGet(args, 0);
+  let expression = seqGet(args, 1);
+  // Wrap the operands if they are binary nodes, e.g. MOD(a + 1, 7) -> (a + 1) % 7
+  if (this_ instanceof exp.Binary) this_ = new exp.Paren({ this: this_ });
+  if (expression instanceof exp.Binary) expression = new exp.Paren({ this: expression });
+  return new exp.Mod({ this: this_, expression });
+}
+
+/** py: sqlglot/parser.py:98 -- LOWER(HEX(..)) collapses to LowerHex */
+function build_lower(args) {
+  const arg = seqGet(args, 0);
+  return arg instanceof exp.Hex ? new exp.LowerHex({ this: arg.this }) : new exp.Lower({ this: arg });
+}
+
+/** py: sqlglot/parser.py:104 -- UPPER(HEX(..)) collapses to Hex */
+function build_upper(args) {
+  const arg = seqGet(args, 0);
+  return arg instanceof exp.Hex ? new exp.Hex({ this: arg.this }) : new exp.Upper({ this: arg });
+}
+
 export class Parser {
   /** py: sqlglot/parser.py:375 */
   static FUNCTIONS = new Map([
@@ -156,9 +204,9 @@ export class Parser {
     // `**a, **b` merge order: bulk first, hand overrides second so they still win.
     ...Object.entries(exp.FUNCTION_BY_NAME).map(([name, func]) => [name, func.from_arg_list]),
     // py:376  SPREAD: DictComp — merge manually (§4.4 MRO)
-    // py:377  ["COALESCE", /* TODO build_coalesce */],
-    // py:377  ["IFNULL", /* TODO build_coalesce */],
-    // py:377  ["NVL", /* TODO build_coalesce */],
+    /* py:377 */ ["COALESCE", build_coalesce],
+    /* py:377 */ ["IFNULL", build_coalesce],
+    /* py:377 */ ["NVL", build_coalesce],
     // py:378  ["ARRAY", /* TODO lambda */],
     // py:379  ["ARRAYAGG", /* TODO lambda */],
     // py:382  ["ARRAY_AGG", /* TODO lambda */],
@@ -172,13 +220,13 @@ export class Parser {
     // py:392  ["COUNT", /* TODO lambda */],
     // py:393  ["CONCAT", /* TODO lambda */],
     // py:398  ["CONCAT_WS", /* TODO lambda */],
-    // py:403  ["CONVERT_TIMEZONE", /* TODO build_convert_timezone */],
+    /* py:403 */ ["CONVERT_TIMEZONE", build_convert_timezone],
     // py:404  ["DATE_TO_DATE_STR", /* TODO lambda */],
     // py:408  ["GENERATE_DATE_ARRAY", /* TODO lambda */],
     // py:413  ["GENERATE_UUID", /* TODO lambda */],
     // py:416  ["GLOB", /* TODO lambda */],
-    // py:417  ["GREATEST", /* TODO lambda */],
-    // py:422  ["LEAST", /* TODO lambda */],
+    /* py:417 */ ["GREATEST", (args, dialect) => new exp.Greatest({ this: seqGet(args, 0), expressions: args.slice(1), ignore_nulls: dialect.LEAST_GREATEST_IGNORES_NULLS })],
+    /* py:422 */ ["LEAST", (args, dialect) => new exp.Least({ this: seqGet(args, 0), expressions: args.slice(1), ignore_nulls: dialect.LEAST_GREATEST_IGNORES_NULLS })],
     // py:427  ["HEX", /* TODO build_hex */],
     // py:428  ["JSON_EXTRACT", /* TODO build_extract_json_with_path(...) */],
     // py:429  ["JSON_EXTRACT_SCALAR", /* TODO build_extract_json_with_path(...) */],
@@ -188,11 +236,11 @@ export class Parser {
     // py:435  ["LOG", /* TODO build_logarithm */],
     // py:436  ["LOG2", /* TODO lambda */],
     // py:437  ["LOG10", /* TODO lambda */],
-    // py:438  ["LOWER", /* TODO build_lower */],
+    /* py:438 */ ["LOWER", build_lower],
     // py:439  ["LPAD", /* TODO lambda */],
     // py:440  ["LEFTPAD", /* TODO lambda */],
     // py:441  ["LTRIM", /* TODO lambda */],
-    // py:442  ["MOD", /* TODO build_mod */],
+    /* py:442 */ ["MOD", build_mod],
     // py:443  ["RIGHTPAD", /* TODO lambda */],
     // py:444  ["RPAD", /* TODO lambda */],
     // py:445  ["RTRIM", /* TODO lambda */],
@@ -205,9 +253,10 @@ export class Parser {
     // py:459  ["TO_HEX", /* TODO build_hex */],
     // py:460  ["TS_OR_DS_TO_DATE_STR", /* TODO lambda */],
     // py:468  ["UNNEST", /* TODO lambda */],
-    // py:469  ["UPPER", /* TODO build_upper */],
-    // py:470  ["UUID", /* TODO lambda */],
-    // py:471  ["UUID_STRING", /* TODO lambda */],
+    /* py:469 */ ["UPPER", build_upper],
+    // `or None`: a falsy flag must become None, not False -- the arg is dumped either way.
+    /* py:470 */ ["UUID", (args, dialect) => new exp.Uuid({ is_string: dialect.UUID_IS_STRING_TYPE || null })],
+    /* py:471 */ ["UUID_STRING", (args, dialect) => new exp.Uuid({ this: seqGet(args, 0), name: seqGet(args, 1), is_string: dialect.UUID_IS_STRING_TYPE || null })],
     // py:476  ["VAR_MAP", /* TODO build_var_map */],
   ]);
 

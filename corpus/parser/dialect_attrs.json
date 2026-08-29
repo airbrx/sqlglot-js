@@ -33,6 +33,7 @@
   "TYPED_DIVISION",
   "UNESCAPED_SEQUENCES",
   "UNNEST_COLUMN_ONLY",
+  "UUID_IS_STRING_TYPE",
   "VALID_INTERVAL_UNITS",
   "TIME_TRIE",
   "FORMAT_TRIE"
@@ -103,6 +104,7 @@
     "$d": []
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -322,6 +324,7 @@
     ]
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -813,6 +816,7 @@
     ]
    },
    "UNNEST_COLUMN_ONLY": true,
+   "UUID_IS_STRING_TYPE": true,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -1041,6 +1045,7 @@
     ]
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -1591,6 +1596,7 @@
     ]
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -1777,6 +1783,7 @@
     "$d": []
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -2133,6 +2140,7 @@
     ]
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -2905,6 +2913,7 @@
     "$d": []
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -3461,6 +3470,7 @@
     ]
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -3647,6 +3657,7 @@
     "$d": []
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -3866,6 +3877,7 @@
     ]
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -4190,6 +4202,7 @@
     "$d": []
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -4721,6 +4734,7 @@
     "$d": []
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -5526,6 +5540,7 @@
     "$d": []
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -6086,6 +6101,7 @@
     ]
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -6812,6 +6828,7 @@
     ]
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -7168,6 +7185,7 @@
     ]
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -7604,6 +7622,7 @@
     "$d": []
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -8330,6 +8349,7 @@
     ]
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -8653,6 +8673,7 @@
     "$d": []
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -8839,6 +8860,7 @@
     "$d": []
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -9593,6 +9615,7 @@
     ]
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -10319,6 +10342,7 @@
     ]
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -10739,6 +10763,7 @@
     ]
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -11698,6 +11723,7 @@
     ]
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": true,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -11885,6 +11911,7 @@
     "$d": []
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -12435,6 +12462,7 @@
     ]
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -12985,6 +13013,7 @@
     ]
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -13171,6 +13200,7 @@
     "$d": []
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -13527,6 +13557,7 @@
     ]
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -13724,6 +13755,7 @@
     "$d": []
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -14197,6 +14229,7 @@
     "$d": []
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -14520,6 +14553,7 @@
     "$d": []
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
@@ -15325,6 +15359,7 @@
     "$d": []
    },
    "UNNEST_COLUMN_ONLY": false,
+   "UUID_IS_STRING_TYPE": false,
    "VALID_INTERVAL_UNITS": {
     "$s": [
      "C",
