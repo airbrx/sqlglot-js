@@ -17,6 +17,16 @@
 // (`def map_date_part(part, dialect: DialectType = Dialect)`) — that is not a fallback
 // for a missing dialect, it is the documented default, and it is reproduced by
 // consulting the base `DATE_PART_MAPPING` literal below rather than by any lookup.
+//
+// @ported-ranges sqlglot/dialects/dialect.py 858-953 1610-1637 1700-1706 1916-1920 1925-1963 2167-2176 2384-2394 2462-2474 2604-2617 2620-2625
+//
+// One range per member ported, so `tools/lint_deny.mjs` measures this file against
+// what it actually claims rather than against all 2,600 lines of `dialects/dialect.py`
+// (the directive exists for exactly this: a file that deliberately ports part of an
+// upstream module). Every deny-listed site in that file -- py_builtins:1179,
+// operators:1375/1782, implicit_str:1815/2547 -- falls outside these ranges today; when
+// P5 ports the surrounding code the range list grows and the lint starts demanding
+// their markers.
 
 import { seqGet } from "../helper.js";
 import { NotPorted } from "../errors.js";
