@@ -5879,8 +5879,17 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:10140
   _parse_format_name() {
-    const this_ = this._parse_id_var(); const options = this._match(TokenType.L_PAREN) ? this._parse_csv(this._parse_property_assignment.bind(this, exp.Property)) : null;
-    if (options) this._match_r_paren(); return this.expression(new exp.FormatNameProperty({ this: this_, expressions: options }));
+    // The seeded body built an `exp.FormatNameProperty` with a wrapped option list.
+    // No such class and no such shape exist at py:10140 -- `grep FormatNameProperty
+    // sqlglot/parser.py` returns nothing. Upstream returns a plain Property whose value
+    // is a string OR a table reference, which is what the FILE_FORMAT=<name> oracle
+    // rows carry (`Property(this=Var(FORMAT_NAME), value=Table(...))`).
+    //
+    // Note: Although not specified in the docs, Snowflake does accept a string/identifier
+    // for FILE_FORMAT = <format_name>
+    return this.expression(new exp.Property({
+      this: exp.var("FORMAT_NAME"), value: this._parse_string() || this._parse_table_parts(),
+    }));
   }
 
   /** @returns {*} */

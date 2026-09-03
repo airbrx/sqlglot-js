@@ -1248,7 +1248,7 @@ export class SnowflakeParser extends Parser {
     );
     if (table instanceof exp.Table && table.this instanceof exp.TableFromRows) {
       const table_from_rows = table.this;
-      for (const [arg] of exp.EXPR_META.tablefromrows.argTypes) {
+      for (const arg of exp.TableFromRows.argTypes.keys()) {
         if (arg !== "this") table_from_rows.set(arg, table.args[arg]);
       }
 
