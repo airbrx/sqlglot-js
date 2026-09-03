@@ -5,6 +5,7 @@
 import * as C from "./classes.js";
 import { Expr, convert, maybeCopy, maybeParse, registerAstEnums, dotBuild, COLUMN_PARTS } from "./core.js";
 import { PyValueError, PyKeyError } from "../_py/errors.js";
+import { NotPorted } from "../errors.js";
 import { EXPR_META } from "../_gen/expr_meta.js";
 import { literalNumberText } from "../_py/num.js";
 
@@ -133,7 +134,12 @@ export function installFocusedMethods() {
     if (upper === "UNKNOWN") return new C.DataType({ this: DType.UNKNOWN, ...kwargs });
     if (DType[upper]) return new C.DataType({ this: DType[upper], nested: false }).setKwargs(kwargs);
     if (udt) return new C.DataType({ this: DType.USERDEFINED, kind: dtype, ...kwargs });
-    throw new TypeError(`Unknown data type: ${dtype}`);
+    // Upstream reaches here for anything the bare-name lookup above misses -- e.g. the
+    // parameterised `DECIMAL(38, 0)` that Snowflake's TYPE_CONVERTERS builds -- and
+    // resolves it with `parse_one(dtype, into=cls)`. That needs `registerParser`, which
+    // nothing calls yet, so this is an unported dependency and says so: a TypeError
+    // here reads as a crash in the caller when the caller is in fact correct.
+    throw new NotPorted(`DataType.from_str(${JSON.stringify(String(dtype))})`, "sqlglot/expressions/datatypes.py:386");
   };
   C.DataType.prototype.isType = function (...dtypes) {
     let options = {};

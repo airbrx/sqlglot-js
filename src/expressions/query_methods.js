@@ -157,6 +157,12 @@ export function installQueryMethods(classes) {
 
     return parts.length > 1 ? C("Dot").build(parts.map(p => p.copy())) : parts[0];
   });
+  // py: core.py:1816 `Identifier.quoted` is a PROPERTY returning `bool(args.get())`,
+  // not the raw arg. Without it `identifier.quoted` reads back `undefined`, and
+  // upstream's `isinstance(k, exp.Identifier) and k.quoted` -- which `and`s to Python
+  // `False` -- became JS `undefined`, dumping `quoted: null` where the oracle has
+  // `false`. Surfaced by _parse_colon_as_variant_extract over 155 Snowflake rows.
+  get("Identifier", "quoted", function () { return !!this.args.quoted; });
   for (const name of ["Identifier", "Literal", "Star"]) get(name, "outputName", function () { return this.name; }, "output_name");
   get("Alias", "outputName", function () { return this.alias; }, "output_name");
   get("Star", "name", function () { return "*"; });

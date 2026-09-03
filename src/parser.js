@@ -4850,8 +4850,21 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:8117
   _parse_extract() {
-    const this_ = this._parse_function_parameter(); this._match(TokenType.FROM); const expression = this._parse_bitwise();
-    this._match_r_paren(); return this.expression(new exp.Extract({ this: this_, expression }));
+    // py:8118 is `_parse_function() or _parse_var_or_string(upper=True)` -- the second
+    // arm yields a `Var`, and it is the arm a bare part name like `EXTRACT(MINUTE FROM
+    // x)` takes. Reading a `_parse_function_parameter()` instead produced an
+    // `Identifier` there, differing from the oracle on 70 Snowflake rows alone. Nothing
+    // matches the closing paren here either; `_parse_function_call` does that (py:8126
+    // returns straight from the Extract).
+    const this_ = this._parse_function() || this._parse_var_or_string(true);
+
+    if (this._match(TokenType.FROM)) {
+      return this.expression(new exp.Extract({ this: this_, expression: this._parse_bitwise() }));
+    }
+
+    if (!this._match(TokenType.COMMA)) this.raise_error("Expected FROM or comma after EXTRACT", this._prev);
+
+    return this.expression(new exp.Extract({ this: this_, expression: this._parse_bitwise() }));
   }
 
   /** @returns {*} */
@@ -5136,7 +5149,17 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8880
-  _parse_null() { return this.expression(exp.null()); }
+  _parse_null() {
+    // Was `return this.expression(exp.null())` -- a placeholder that returns a Null
+    // WITHOUT consuming a token, so `IS NULL` left the cursor on NULL and every
+    // following comma-separated argument was silently dropped (`IFF(c IS NULL, 0, c)`
+    // reached `If.from_arg_list` with one argument), and `IS UNKNOWN` never matched at
+    // all. Reads as ported; is not. Found while porting parsers/snowflake.py.
+    if (this._match_set(new Set([TokenType.NULL, TokenType.UNKNOWN]))) {
+      return this.constructor.PRIMARY_PARSERS.get(TokenType.NULL)(this, this._prev);
+    }
+    return this._parse_placeholder();
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8885
