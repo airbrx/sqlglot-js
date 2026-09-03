@@ -141,6 +141,22 @@ export function installQueryMethods(classes) {
   for (const part of ["table", "db", "catalog"]) get("Column", part, function () { return this.text(part); });
   get("Column", "outputName", function () { return this.name; }, "output_name");
   get("Column", "parts", function () { return ["catalog", "db", "table", "this"].map(k => this.args[k]).filter(Boolean); });
+  // py: core.py:1736 Column.to_dot. `deepcopy(parts)` is `p.copy()` per element:
+  // `Dot.build` re-parents what it is handed, so handing it the live children would
+  // detach them from the Column the caller may still be holding.
+  method(C("Column"), "to_dot", function (include_dots = true) {
+    const parts = this.parts;
+    let parent = this.parent;
+
+    if (include_dots) {
+      while (parent instanceof C("Dot")) {
+        parts.push(parent.expression);
+        parent = parent.parent;
+      }
+    }
+
+    return parts.length > 1 ? C("Dot").build(parts.map(p => p.copy())) : parts[0];
+  });
   for (const name of ["Identifier", "Literal", "Star"]) get(name, "outputName", function () { return this.name; }, "output_name");
   get("Alias", "outputName", function () { return this.alias; }, "output_name");
   get("Star", "name", function () { return "*"; });

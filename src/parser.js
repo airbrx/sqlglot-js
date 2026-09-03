@@ -45,7 +45,7 @@ import {
   mergeErrors,
 } from "./errors.js";
 import { Token, TokenType, Tokenizer, TOKEN_TYPE_NAMES } from "./tokens.js";
-import { newTrie } from "./trie.js";
+import { newTrie, inTrie, TrieResult } from "./trie.js";
 import { ensureList, seqGet } from "./helper.js";
 import { logger } from "./logging.js";
 import { formatTime } from "./time.js";
@@ -76,13 +76,16 @@ export const SENTINEL_NONE = new Token(TokenType.SENTINEL, "SENTINEL");
 // class-definition time (`TABLE_ALIAS_TOKENS = ID_VAR_TOKENS - {...}`). These reproduce
 // that, preserving insertion order: a Python set literal is unordered, but the derived
 // JS Set's iteration order still has to be deterministic, so it follows the base's.
-function setDiff(base, remove) {
+// Exported so that dialect Parser subclasses (`src/parsers/*.js`) reproduce upstream's
+// `PARENT.X - {...}` / `PARENT.X | {...}` class-table algebra with the same helper, and
+// therefore the same iteration order, rather than each re-deriving it.
+export function setDiff(base, remove) {
   const out = new Set();
   for (const x of base) if (!remove.has(x)) out.add(x);
   return out;
 }
 
-function setUnion(a, b) {
+export function setUnion(a, b) {
   const out = new Set(a);
   for (const x of b) out.add(x);
   return out;
@@ -192,6 +195,28 @@ function build_upper(args) {
   return arg instanceof exp.Hex ? new exp.Hex({ this: arg.this }) : new exp.Upper({ this: arg });
 }
 
+/**
+ * py: sqlglot/parser.py:50
+ *
+ * Exported because `parsers/snowflake.py` imports it by name (`parser.build_var_map`)
+ * to implement OBJECT_CONSTRUCT.
+ */
+export function build_var_map(args) {
+  if (args.length === 1 && args[0].isStar) return new exp.StarMap({ this: args[0] });
+
+  const keys = [];
+  const values = [];
+  for (let i = 0; i < args.length; i += 2) {
+    keys.push(args[i]);
+    values.push(args[i + 1]);
+  }
+
+  return new exp.VarMap({
+    keys: exp.array(...keys, { copy: false }),
+    values: exp.array(...values, { copy: false }),
+  });
+}
+
 export class Parser {
   /** py: sqlglot/parser.py:375 */
   static FUNCTIONS = new Map([
@@ -257,7 +282,7 @@ export class Parser {
     // `or None`: a falsy flag must become None, not False -- the arg is dumped either way.
     /* py:470 */ ["UUID", (args, dialect) => new exp.Uuid({ is_string: dialect.UUID_IS_STRING_TYPE || null })],
     /* py:471 */ ["UUID_STRING", (args, dialect) => new exp.Uuid({ this: seqGet(args, 0), name: seqGet(args, 1), is_string: dialect.UUID_IS_STRING_TYPE || null })],
-    // py:476  ["VAR_MAP", /* TODO build_var_map */],
+    /* py:476 */ ["VAR_MAP", build_var_map],
   ]);
 
   /** py: sqlglot/parser.py:479 */
@@ -4341,7 +4366,19 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:6935
   // note: param `this` renamed to `this_` (JS reserved word)
-  _build_json_extract(this_, path_parts) { throw new NotPorted("_build_json_extract", "sqlglot/parser.py:6935"); }
+  _build_json_extract(this_, path_parts) {
+    if (path_parts.length > 1) {
+      this_ = this.expression(new exp.JSONExtract({
+        this: this_,
+        expression: new exp.JSONPath({ expressions: path_parts }),
+        variant_extract: true,
+        requires_json: this.constructor.JSON_EXTRACT_REQUIRES_JSON_EXPRESSION,
+      }));
+      path_parts = [new exp.JSONPathRoot()];
+    }
+
+    return [this_, path_parts];
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:6953
@@ -5650,7 +5687,31 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9737
-  _find_parser(parsers, trie) { throw new NotPorted("_find_parser", "sqlglot/parser.py:9737"); }
+  _find_parser(parsers, trie) {
+    if (!this._curr.bool()) return null;
+
+    const index = this._index;
+    const this_ = [];
+    while (true) {
+      // The current token might be multiple words
+      const curr = pyUpper(this._curr.text);
+      const key = curr.split(" ");
+      this_.push(curr);
+
+      this._advance();
+      let result;
+      [result, trie] = inTrie(trie, key);
+      if (result === TrieResult.FAILED) break;
+
+      if (result === TrieResult.EXISTS) {
+        const subparser = parsers.get(this_.join(" "));
+        return subparser;
+      }
+    }
+
+    this._retreat(index);
+    return null;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9761

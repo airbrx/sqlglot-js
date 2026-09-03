@@ -479,6 +479,13 @@ export function astDump(node) {
   }
   if (Array.isArray(node)) return node.map(astDump);
   if (node && node.__tuple__) return { __tuple__: node.__tuple__.map(astDump) };
+  // py: tools/astdump.py:99 `isinstance(node, (str, int, float))` -> written straight
+  // into JSON. A Python int is a BigInt here (see `Literal.isInt`), and an arg CAN hold
+  // one raw: `_parse_colon_as_variant_extract` stores `bracket_expr.to_py()` as
+  // `JSONPathSubscript.this`. `JSON.stringify` throws on a BigInt rather than emitting
+  // a number, so the conversion has to happen here. Number() is the matching precision:
+  // the oracle side has already been through `JSON.parse`, which produced a double.
+  if (typeof node === "bigint") return Number(node);
   return node;
 }
 export function astLoad(obj) {
