@@ -44,14 +44,14 @@ import {
   highlightSql,
   mergeErrors,
 } from "./errors.js";
-import { Token, TokenType, Tokenizer } from "./tokens.js";
+import { Token, TokenType, Tokenizer, TOKEN_TYPE_NAMES } from "./tokens.js";
 import { newTrie } from "./trie.js";
 import { ensureList, seqGet } from "./helper.js";
 import { logger } from "./logging.js";
 import { formatTime } from "./time.js";
 import { PyTypeError } from "./_py/errors.js";
 import { pyUpper } from "./_py/str.js";
-import { pyFalsy } from "./_py/truthy.js";
+import { pyFalsy, pyTruthy } from "./_py/truthy.js";
 import { kernelSql } from "./generator_kernel.js";
 import * as exp from "./expressions/index.js";
 import { findInScope } from "./optimizer/scope.js";
@@ -128,13 +128,85 @@ function _textIn(texts, text) {
   );
 }
 
+/**
+ * py: sqlglot/parser.py:68
+ *
+ * Factory returning the `RANGE_PARSERS` lambda for a plain binary range operator.
+ * `RANGE_PARSERS` values are invoked as `parser(this, this_)` (see `_parse_range`),
+ * so the returned function takes `(self, this_)` and mirrors upstream's
+ * `_parse_binary_range(self, this)`.
+ */
+function binary_range_parser(expr_type, reverse_args = false) {
+  return function _parse_binary_range(self, this_) {
+    let expression = self._parse_bitwise();
+    if (reverse_args) [this_, expression] = [expression, this_];
+    return self._parse_escape(self.expression(new expr_type({ this: this_, expression })));
+  };
+}
+
+// ---------------------------------------------------------------------------
+// FUNCTIONS builders (module-level upstream, so dialect ports can reuse them)
+// ---------------------------------------------------------------------------
+// `_parse_function_call` invokes these as `builder(args)` and, if that raises
+// TypeError, retries as `builder(args, dialect)` -- the port's stand-in for Python's
+// arity dispatch. A builder that reads `dialect.X` therefore MUST dereference it
+// unconditionally, so the first (dialect-less) call throws and the retry happens.
+//
+// Kwargs that upstream passes explicitly as `None` are passed here as `null`, NOT
+// omitted: `tools/astdump.py:71` dumps `args.items()` and keeps None, so a missing key
+// is an AST difference. (Same rule `build_cast` follows.)
+
+/** py: sqlglot/parser.py:179 */
+function build_coalesce(args, is_nvl = null, is_null = null) {
+  return new exp.Coalesce({ this: seqGet(args, 0), expressions: args.slice(1), is_nvl, is_null });
+}
+
+/** py: sqlglot/parser.py:158 */
+function build_convert_timezone(args, default_source_tz = null) {
+  if (args.length === 2) {
+    const source_tz = default_source_tz ? exp.Literal.string(default_source_tz) : null;
+    return new exp.ConvertTimezone({ source_tz, target_tz: seqGet(args, 0), timestamp: seqGet(args, 1) });
+  }
+  return exp.ConvertTimezone.from_arg_list(args);
+}
+
+/** py: sqlglot/parser.py:127 */
+function build_mod(args) {
+  let this_ = seqGet(args, 0);
+  let expression = seqGet(args, 1);
+  // Wrap the operands if they are binary nodes, e.g. MOD(a + 1, 7) -> (a + 1) % 7
+  if (this_ instanceof exp.Binary) this_ = new exp.Paren({ this: this_ });
+  if (expression instanceof exp.Binary) expression = new exp.Paren({ this: expression });
+  return new exp.Mod({ this: this_, expression });
+}
+
+/** py: sqlglot/parser.py:98 -- LOWER(HEX(..)) collapses to LowerHex */
+function build_lower(args) {
+  const arg = seqGet(args, 0);
+  return arg instanceof exp.Hex ? new exp.LowerHex({ this: arg.this }) : new exp.Lower({ this: arg });
+}
+
+/** py: sqlglot/parser.py:104 -- UPPER(HEX(..)) collapses to Hex */
+function build_upper(args) {
+  const arg = seqGet(args, 0);
+  return arg instanceof exp.Hex ? new exp.Hex({ this: arg.this }) : new exp.Upper({ this: arg });
+}
+
 export class Parser {
   /** py: sqlglot/parser.py:375 */
   static FUNCTIONS = new Map([
+    // py:376  `**{name: func.from_arg_list for name, func in exp.FUNCTION_BY_NAME.items()}`.
+    // This bulk population was missing entirely -- only the hand-written override
+    // section below (itself still mostly TODO) had been seeded, leaving FUNCTIONS with
+    // 2 entries instead of 629+ and silently routing every ordinary function call
+    // (`RAND()`, `LOG(...)`, `LPAD(...)`, ...) through the `exp.Anonymous` fallback.
+    // `new Map([...])` keeps LAST-write-wins for duplicate keys, matching Python's
+    // `**a, **b` merge order: bulk first, hand overrides second so they still win.
+    ...Object.entries(exp.FUNCTION_BY_NAME).map(([name, func]) => [name, func.from_arg_list]),
     // py:376  SPREAD: DictComp — merge manually (§4.4 MRO)
-    // py:377  ["COALESCE", /* TODO build_coalesce */],
-    // py:377  ["IFNULL", /* TODO build_coalesce */],
-    // py:377  ["NVL", /* TODO build_coalesce */],
+    /* py:377 */ ["COALESCE", build_coalesce],
+    /* py:377 */ ["IFNULL", build_coalesce],
+    /* py:377 */ ["NVL", build_coalesce],
     // py:378  ["ARRAY", /* TODO lambda */],
     // py:379  ["ARRAYAGG", /* TODO lambda */],
     // py:382  ["ARRAY_AGG", /* TODO lambda */],
@@ -148,13 +220,13 @@ export class Parser {
     // py:392  ["COUNT", /* TODO lambda */],
     // py:393  ["CONCAT", /* TODO lambda */],
     // py:398  ["CONCAT_WS", /* TODO lambda */],
-    // py:403  ["CONVERT_TIMEZONE", /* TODO build_convert_timezone */],
+    /* py:403 */ ["CONVERT_TIMEZONE", build_convert_timezone],
     // py:404  ["DATE_TO_DATE_STR", /* TODO lambda */],
     // py:408  ["GENERATE_DATE_ARRAY", /* TODO lambda */],
     // py:413  ["GENERATE_UUID", /* TODO lambda */],
     // py:416  ["GLOB", /* TODO lambda */],
-    // py:417  ["GREATEST", /* TODO lambda */],
-    // py:422  ["LEAST", /* TODO lambda */],
+    /* py:417 */ ["GREATEST", (args, dialect) => new exp.Greatest({ this: seqGet(args, 0), expressions: args.slice(1), ignore_nulls: dialect.LEAST_GREATEST_IGNORES_NULLS })],
+    /* py:422 */ ["LEAST", (args, dialect) => new exp.Least({ this: seqGet(args, 0), expressions: args.slice(1), ignore_nulls: dialect.LEAST_GREATEST_IGNORES_NULLS })],
     // py:427  ["HEX", /* TODO build_hex */],
     // py:428  ["JSON_EXTRACT", /* TODO build_extract_json_with_path(...) */],
     // py:429  ["JSON_EXTRACT_SCALAR", /* TODO build_extract_json_with_path(...) */],
@@ -164,11 +236,11 @@ export class Parser {
     // py:435  ["LOG", /* TODO build_logarithm */],
     // py:436  ["LOG2", /* TODO lambda */],
     // py:437  ["LOG10", /* TODO lambda */],
-    // py:438  ["LOWER", /* TODO build_lower */],
+    /* py:438 */ ["LOWER", build_lower],
     // py:439  ["LPAD", /* TODO lambda */],
     // py:440  ["LEFTPAD", /* TODO lambda */],
     // py:441  ["LTRIM", /* TODO lambda */],
-    // py:442  ["MOD", /* TODO build_mod */],
+    /* py:442 */ ["MOD", build_mod],
     // py:443  ["RIGHTPAD", /* TODO lambda */],
     // py:444  ["RPAD", /* TODO lambda */],
     // py:445  ["RTRIM", /* TODO lambda */],
@@ -181,9 +253,10 @@ export class Parser {
     // py:459  ["TO_HEX", /* TODO build_hex */],
     // py:460  ["TS_OR_DS_TO_DATE_STR", /* TODO lambda */],
     // py:468  ["UNNEST", /* TODO lambda */],
-    // py:469  ["UPPER", /* TODO build_upper */],
-    // py:470  ["UUID", /* TODO lambda */],
-    // py:471  ["UUID_STRING", /* TODO lambda */],
+    /* py:469 */ ["UPPER", build_upper],
+    // `or None`: a falsy flag must become None, not False -- the arg is dumped either way.
+    /* py:470 */ ["UUID", (args, dialect) => new exp.Uuid({ is_string: dialect.UUID_IS_STRING_TYPE || null })],
+    /* py:471 */ ["UUID_STRING", (args, dialect) => new exp.Uuid({ this: seqGet(args, 0), name: seqGet(args, 1), is_string: dialect.UUID_IS_STRING_TYPE || null })],
     // py:476  ["VAR_MAP", /* TODO build_var_map */],
   ]);
 
@@ -758,6 +831,8 @@ export class Parser {
   ]);
 
   /** py: sqlglot/parser.py:991 */
+  // EMPTY ON THE BASE PARSER UPSTREAM (parser.py:991, `dict[TokenType, type[exp.Expr]] = {}`) -- populated only by
+  // dialect subclasses, so zero entries here is CORRECT, not an unwired seed.
   static EXPONENT = new Map([
   ]);
 
@@ -808,6 +883,8 @@ export class Parser {
   ]);
 
   /** py: sqlglot/parser.py:1033 */
+  // EMPTY ON THE BASE PARSER UPSTREAM (parser.py:1033, `set[str] = set()`) -- populated only by
+  // dialect subclasses, so zero entries here is CORRECT, not an unwired seed.
   static JOIN_HINTS = new Set([
   ]);
 
@@ -832,8 +909,12 @@ export class Parser {
 
   /** py: sqlglot/parser.py:1056 */
   static LAMBDAS = new Map([
-    // py:1057  [TokenType.ARROW, /* TODO lambda */],
-    // py:1066  [TokenType.FARROW, /* TODO lambda */],
+    // Invoked as `LAMBDAS.get(tt)(this, expressions)`.
+    // py:1057  [TokenType.ARROW, ...]  — `_replace_lambda` is still a NotPorted stub
+    /* py:1066 */ [TokenType.FARROW, (self, expressions) => self.expression(new exp.Kwarg({
+      this: exp.var(expressions[0].name),
+      expression: self._parse_disjunction() || self._parse_select(),
+    }))],
   ]);
 
   /** py: sqlglot/parser.py:1075 */
@@ -848,16 +929,24 @@ export class Parser {
   /** py: sqlglot/parser.py:1079 */
   static COLUMN_OPERATORS = new Map([
     /* py:1080 */ [TokenType.DOT, null],
-    // py:1081  [TokenType.DOTCOLON, /* TODO lambda */],
-    // py:1082  [TokenType.DCOLON, /* TODO lambda */],
-    // py:1085  [TokenType.ARROW, /* TODO lambda */],
-    // py:1092  [TokenType.DARROW, /* TODO lambda */],
-    // py:1100  [TokenType.HASH_ARROW, /* TODO lambda */],
-    // py:1103  [TokenType.DHASH_ARROW, /* TODO lambda */],
-    // py:1106  [TokenType.PLACEHOLDER, /* TODO lambda */],
+    /* py:1081 */ [TokenType.DOTCOLON, (self, this_, to) => self.expression(new exp.JSONCast({ this: this_, to }))],
+    // `self.STRICT_CAST` is a CLASS-level field — `self.constructor.STRICT_CAST`, never
+    // bare `self.STRICT_CAST` (§ the same trap FUNCTION_PARSERS["CAST"] documents above).
+    /* py:1082 */ [TokenType.DCOLON, (self, this_, to) => self.build_cast(self.constructor.STRICT_CAST, this_, to)],
+    // py:1085  [TokenType.ARROW, /* TODO lambda */],   \ both need `dialect.to_json_path`,
+    // py:1092  [TokenType.DARROW, /* TODO lambda */],  / which needs the unported jsonpath
+    //          module (P4). Leaving them unwired keeps `->`/`->>` at today's behaviour
+    //          rather than silently building a JSONExtract whose `expression` is a raw
+    //          Literal where upstream has a parsed JSONPath — already a known MISMATCH
+    //          class, and wiring them here would convert it into a wrong-AST class.
+    /* py:1100 */ [TokenType.HASH_ARROW, (self, this_, path) => self.expression(new exp.JSONBExtract({ this: this_, expression: path }))],
+    /* py:1103 */ [TokenType.DHASH_ARROW, (self, this_, path) => self.expression(new exp.JSONBExtractScalar({ this: this_, expression: path }))],
+    /* py:1106 */ [TokenType.PLACEHOLDER, (self, this_, key) => self.expression(new exp.JSONBContainsTopKey({ this: this_, expression: key }))],
   ]);
 
   /** py: sqlglot/parser.py:1113 */
+  // EMPTY ON THE BASE PARSER UPSTREAM (parser.py:1113, `dict[TokenType, t.Callable] = {}`) -- populated only by
+  // dialect subclasses, so zero entries here is CORRECT, not an unwired seed.
   static JSON_OPERATORS = new Map([
   ]);
 
@@ -869,73 +958,75 @@ export class Parser {
 
   /** py: sqlglot/parser.py:1120 */
   static EXPRESSION_PARSERS = new Map([
-    // py:1121  [exp.Cluster, /* TODO lambda */],
-    // py:1122  [exp.Column, /* TODO lambda */],
-    // py:1123  [exp.ColumnDef, /* TODO lambda */],
-    // py:1124  [exp.Condition, /* TODO lambda */],
-    // py:1125  [exp.DataType, /* TODO lambda */],
-    // py:1126  [exp.Expr, /* TODO lambda */],
-    // py:1127  [exp.From, /* TODO lambda */],
-    // py:1128  [exp.GrantPrincipal, /* TODO lambda */],
-    // py:1129  [exp.GrantPrivilege, /* TODO lambda */],
-    // py:1130  [exp.Group, /* TODO lambda */],
-    // py:1131  [exp.Having, /* TODO lambda */],
-    // py:1132  [exp.Hint, /* TODO lambda */],
-    // py:1133  [exp.Identifier, /* TODO lambda */],
-    // py:1134  [exp.Join, /* TODO lambda */],
-    // py:1135  [exp.Lambda, /* TODO lambda */],
-    // py:1136  [exp.Lateral, /* TODO lambda */],
-    // py:1137  [exp.Limit, /* TODO lambda */],
-    // py:1138  [exp.Offset, /* TODO lambda */],
-    // py:1139  [exp.Order, /* TODO lambda */],
-    // py:1140  [exp.Ordered, /* TODO lambda */],
-    // py:1141  [exp.Properties, /* TODO lambda */],
-    // py:1142  [exp.PartitionedByProperty, /* TODO lambda */],
-    // py:1143  [exp.Qualify, /* TODO lambda */],
-    // py:1144  [exp.Returning, /* TODO lambda */],
-    // py:1145  [exp.Select, /* TODO lambda */],
-    // py:1146  [exp.Sort, /* TODO lambda */],
-    // py:1147  [exp.Table, /* TODO lambda */],
-    // py:1148  [exp.TableAlias, /* TODO lambda */],
-    // py:1149  [exp.Tuple, /* TODO lambda */],
-    // py:1150  [exp.Whens, /* TODO lambda */],
-    // py:1151  [exp.Where, /* TODO lambda */],
-    // py:1152  [exp.Window, /* TODO lambda */],
-    // py:1153  [exp.With, /* TODO lambda */],
+    // py:1121  [exp.Cluster, ...]  — `_parse_sort` is still a NotPorted stub
+    /* py:1122 */ [exp.Column, (self) => self._parse_column()],
+    /* py:1123 */ [exp.ColumnDef, (self) => self._parse_column_def(self._parse_column())],
+    /* py:1124 */ [exp.Condition, (self) => self._parse_disjunction()],
+    /* py:1125 */ [exp.DataType, (self) => self._parse_types(false, true, false)],
+    /* py:1126 */ [exp.Expr, (self) => self._parse_expression()],
+    /* py:1127 */ [exp.From, (self) => self._parse_from(true)],
+    /* py:1128 */ [exp.GrantPrincipal, (self) => self._parse_grant_principal()],
+    /* py:1129 */ [exp.GrantPrivilege, (self) => self._parse_grant_privilege()],
+    /* py:1130 */ [exp.Group, (self) => self._parse_group()],
+    // py:1131  [exp.Having, ...]  — `_parse_having` is still a NotPorted stub
+    /* py:1132 */ [exp.Hint, (self) => self._parse_hint_body()],
+    /* py:1133 */ [exp.Identifier, (self) => self._parse_id_var()],
+    /* py:1134 */ [exp.Join, (self) => self._parse_join()],
+    /* py:1135 */ [exp.Lambda, (self) => self._parse_lambda()],
+    /* py:1136 */ [exp.Lateral, (self) => self._parse_lateral()],
+    /* py:1137 */ [exp.Limit, (self) => self._parse_limit()],
+    /* py:1138 */ [exp.Offset, (self) => self._parse_offset()],
+    /* py:1139 */ [exp.Order, (self) => self._parse_order()],
+    /* py:1140 */ [exp.Ordered, (self) => self._parse_ordered()],
+    /* py:1141 */ [exp.Properties, (self) => self._parse_properties()],
+    /* py:1142 */ [exp.PartitionedByProperty, (self) => self._parse_partitioned_by()],
+    // py:1143  [exp.Qualify, ...]  — `_parse_qualify` is still a NotPorted stub
+    /* py:1144 */ [exp.Returning, (self) => self._parse_returning()],
+    /* py:1145 */ [exp.Select, (self) => self._parse_select()],
+    // py:1146  [exp.Sort, ...]  — `_parse_sort` is still a NotPorted stub
+    /* py:1147 */ [exp.Table, (self) => self._parse_table_parts()],
+    /* py:1148 */ [exp.TableAlias, (self) => self._parse_table_alias()],
+    /* py:1149 */ [exp.Tuple, (self) => self._parse_value(false)],
+    // py:1150  [exp.Whens, ...]  — `_parse_when_matched` is still a NotPorted stub
+    /* py:1151 */ [exp.Where, (self) => self._parse_where()],
+    // py:1152  [exp.Window, ...]  — `_parse_named_window` is still a NotPorted stub
+    /* py:1153 */ [exp.With, (self) => self._parse_with()],
   ]);
 
   /** py: sqlglot/parser.py:1156 */
   static STATEMENT_PARSERS = new Map([
-    // py:1157  [TokenType.ALTER, /* TODO lambda */],
-    // py:1158  [TokenType.ANALYZE, /* TODO lambda */],
-    // py:1159  [TokenType.BEGIN, /* TODO lambda */],
-    // py:1160  [TokenType.CACHE, /* TODO lambda */],
-    // py:1161  [TokenType.COMMENT, /* TODO lambda */],
-    // py:1162  [TokenType.COMMIT, /* TODO lambda */],
-    // py:1163  [TokenType.COPY, /* TODO lambda */],
-    // py:1164  [TokenType.CREATE, /* TODO lambda */],
-    // py:1165  [TokenType.DECLARE, /* TODO lambda */],
-    // py:1166  [TokenType.DELETE, /* TODO lambda */],
-    // py:1167  [TokenType.DESC, /* TODO lambda */],
-    // py:1168  [TokenType.DESCRIBE, /* TODO lambda */],
-    // py:1169  [TokenType.DROP, /* TODO lambda */],
-    // py:1170  [TokenType.GRANT, /* TODO lambda */],
-    // py:1171  [TokenType.REVOKE, /* TODO lambda */],
-    // py:1172  [TokenType.INSERT, /* TODO lambda */],
-    // py:1173  [TokenType.KILL, /* TODO lambda */],
-    // py:1174  [TokenType.LOAD, /* TODO lambda */],
-    // py:1175  [TokenType.MERGE, /* TODO lambda */],
-    // py:1176  [TokenType.PIVOT, /* TODO lambda */],
-    // py:1177  [TokenType.PRAGMA, /* TODO lambda */],
-    // py:1178  [TokenType.REFRESH, /* TODO lambda */],
-    // py:1179  [TokenType.ROLLBACK, /* TODO lambda */],
-    // py:1180  [TokenType.SET, /* TODO lambda */],
-    // py:1181  [TokenType.TRUNCATE, /* TODO lambda */],
-    // py:1182  [TokenType.UNCACHE, /* TODO lambda */],
-    // py:1183  [TokenType.UNPIVOT, /* TODO lambda */],
-    // py:1184  [TokenType.UPDATE, /* TODO lambda */],
-    // py:1185  [TokenType.USE, /* TODO lambda */],
-    // py:1186  [TokenType.SEMICOLON, /* TODO lambda */],
+    /* py:1157 */ [TokenType.ALTER, (self) => self._parse_alter()],
+    /* py:1158 */ [TokenType.ANALYZE, (self) => self._parse_analyze()],
+    /* py:1159 */ [TokenType.BEGIN, (self) => self._parse_transaction()],
+    // py:1160  [TokenType.CACHE, ...]  — `_parse_cache` is still a NotPorted stub
+    /* py:1161 */ [TokenType.COMMENT, (self) => self._parse_comment()],
+    /* py:1162 */ [TokenType.COMMIT, (self) => self._parse_commit_or_rollback()],
+    // py:1163  [TokenType.COPY, ...]  — `_parse_copy` is still a NotPorted stub
+    /* py:1164 */ [TokenType.CREATE, (self) => self._parse_create()],
+    /* py:1165 */ [TokenType.DECLARE, (self) => self._parse_declare()],
+    /* py:1166 */ [TokenType.DELETE, (self) => self._parse_delete()],
+    /* py:1167 */ [TokenType.DESC, (self) => self._parse_describe()],
+    /* py:1168 */ [TokenType.DESCRIBE, (self) => self._parse_describe()],
+    /* py:1169 */ [TokenType.DROP, (self) => self._parse_drop()],
+    /* py:1170 */ [TokenType.GRANT, (self) => self._parse_grant()],
+    /* py:1171 */ [TokenType.REVOKE, (self) => self._parse_revoke()],
+    /* py:1172 */ [TokenType.INSERT, (self) => self._parse_insert()],
+    // py:1173  [TokenType.KILL, ...]  — `_parse_kill` is still a NotPorted stub
+    /* py:1174 */ [TokenType.LOAD, (self) => self._parse_load()],
+    // py:1175  [TokenType.MERGE, ...]  — `_parse_merge` is still a NotPorted stub
+    /* py:1176 */ [TokenType.PIVOT, (self) => self._parse_simplified_pivot()],
+    /* py:1177 */ [TokenType.PRAGMA, (self) => self.expression(new exp.Pragma({ this: self._parse_expression() }))],
+    /* py:1178 */ [TokenType.REFRESH, (self) => self._parse_refresh()],
+    /* py:1179 */ [TokenType.ROLLBACK, (self) => self._parse_commit_or_rollback()],
+    /* py:1180 */ [TokenType.SET, (self) => self._parse_set()],
+    /* py:1181 */ [TokenType.TRUNCATE, (self) => self._parse_truncate_table()],
+    // py:1182  [TokenType.UNCACHE, ...]  — `_parse_uncache` is still a NotPorted stub
+    /* py:1183 */ [TokenType.UNPIVOT, (self) => self._parse_simplified_pivot(true)],
+    /* py:1184 */ [TokenType.UPDATE, (self) => self._parse_update()],
+    /* py:1185 */ [TokenType.USE, (self) => self._parse_use()],
+    // py:1186  Upstream returns a BARE `exp.Semicolon()` here, NOT `self.expression(...)`
+    // — so it deliberately gets no comments and no token position attached.
+    /* py:1186 */ [TokenType.SEMICOLON, () => new exp.Semicolon()],
   ]);
 
   /** py: sqlglot/parser.py:1189 */
@@ -984,34 +1075,38 @@ export class Parser {
 
   /** py: sqlglot/parser.py:1251 */
   static PLACEHOLDER_PARSERS = new Map([
-    // py:1252  [TokenType.PLACEHOLDER, /* TODO lambda */],
-    // py:1253  [TokenType.PARAMETER, /* TODO lambda */],
-    // py:1254  [TokenType.COLON, /* TODO lambda */],
+    /* py:1252 */ [TokenType.PLACEHOLDER, (self) => self.expression(new exp.Placeholder())],
+    /* py:1253 */ [TokenType.PARAMETER, (self) => self._parse_parameter()],
+    // Returns null to DECLINE (see `_parse_placeholder`, which then rewinds).
+    // `COLON_PLACEHOLDER_TOKENS` is class-level: `self.constructor.` is required.
+    /* py:1254 */ [TokenType.COLON, (self) => (self._match_set(self.constructor.COLON_PLACEHOLDER_TOKENS)
+      ? self.expression(new exp.Placeholder({ this: self._prev.text }))
+      : null)],
   ]);
 
   /** py: sqlglot/parser.py:1261 */
   static RANGE_PARSERS = new Map([
-    // py:1262  [TokenType.AT_GT, /* TODO binary_range_parser(...) */],
-    // py:1263  [TokenType.BETWEEN, /* TODO lambda */],
-    // py:1264  [TokenType.GLOB, /* TODO binary_range_parser(...) */],
-    // py:1265  [TokenType.ILIKE, /* TODO binary_range_parser(...) */],
-    // py:1266  [TokenType.IN, /* TODO lambda */],
-    // py:1267  [TokenType.IRLIKE, /* TODO binary_range_parser(...) */],
-    // py:1268  [TokenType.IS, /* TODO lambda */],
-    // py:1269  [TokenType.LIKE, /* TODO binary_range_parser(...) */],
-    // py:1270  [TokenType.LT_AT, /* TODO binary_range_parser(...) */],
-    // py:1271  [TokenType.OVERLAPS, /* TODO binary_range_parser(...) */],
-    // py:1272  [TokenType.RLIKE, /* TODO binary_range_parser(...) */],
-    // py:1273  [TokenType.SIMILAR_TO, /* TODO binary_range_parser(...) */],
-    // py:1274  [TokenType.FOR, /* TODO lambda */],
-    // py:1275  [TokenType.QMARK_AMP, /* TODO binary_range_parser(...) */],
-    // py:1276  [TokenType.QMARK_PIPE, /* TODO binary_range_parser(...) */],
-    // py:1277  [TokenType.HASH_DASH, /* TODO binary_range_parser(...) */],
-    // py:1278  [TokenType.AT_QMARK, /* TODO binary_range_parser(...) */],
-    // py:1279  [TokenType.ADJACENT, /* TODO binary_range_parser(...) */],
-    // py:1280  [TokenType.OPERATOR, /* TODO lambda */],
-    // py:1281  [TokenType.AMP_LT, /* TODO binary_range_parser(...) */],
-    // py:1282  [TokenType.AMP_GT, /* TODO binary_range_parser(...) */],
+    /* py:1262 */ [TokenType.AT_GT, binary_range_parser(exp.ArrayContainsAll)],
+    /* py:1263 */ [TokenType.BETWEEN, (self, this_) => self._parse_between(this_)],
+    /* py:1264 */ [TokenType.GLOB, binary_range_parser(exp.Glob)],
+    /* py:1265 */ [TokenType.ILIKE, binary_range_parser(exp.ILike)],
+    /* py:1266 */ [TokenType.IN, (self, this_) => self._parse_in(this_)],
+    /* py:1267 */ [TokenType.IRLIKE, binary_range_parser(exp.RegexpILike)],
+    /* py:1268 */ [TokenType.IS, (self, this_) => self._parse_is(this_)],
+    /* py:1269 */ [TokenType.LIKE, binary_range_parser(exp.Like)],
+    /* py:1270 */ [TokenType.LT_AT, binary_range_parser(exp.ArrayContainedBy)],
+    /* py:1271 */ [TokenType.OVERLAPS, binary_range_parser(exp.Overlaps)],
+    /* py:1272 */ [TokenType.RLIKE, binary_range_parser(exp.RegexpLike)],
+    /* py:1273 */ [TokenType.SIMILAR_TO, binary_range_parser(exp.SimilarTo)],
+    /* py:1274 */ [TokenType.FOR, (self, this_) => self._parse_comprehension(this_)],
+    /* py:1275 */ [TokenType.QMARK_AMP, binary_range_parser(exp.JSONBContainsAllTopKeys)],
+    /* py:1276 */ [TokenType.QMARK_PIPE, binary_range_parser(exp.JSONBContainsAnyTopKeys)],
+    /* py:1277 */ [TokenType.HASH_DASH, binary_range_parser(exp.JSONBDeleteAtPath)],
+    /* py:1278 */ [TokenType.AT_QMARK, binary_range_parser(exp.JSONBPathExists)],
+    /* py:1279 */ [TokenType.ADJACENT, binary_range_parser(exp.Adjacent)],
+    /* py:1280 */ [TokenType.OPERATOR, (self, this_) => self._parse_operator(this_)],
+    /* py:1281 */ [TokenType.AMP_LT, binary_range_parser(exp.ExtendsLeft)],
+    /* py:1282 */ [TokenType.AMP_GT, binary_range_parser(exp.ExtendsRight)],
   ]);
 
   /** py: sqlglot/parser.py:1285 */
@@ -1179,23 +1274,23 @@ export class Parser {
 
   /** py: sqlglot/parser.py:1509 */
   static ALTER_PARSERS = new Map([
-    // py:1510  ["ADD", /* TODO lambda */],
-    // py:1511  ["AS", /* TODO lambda */],
-    // py:1512  ["ALTER", /* TODO lambda */],
-    // py:1513  ["CLUSTER BY", /* TODO lambda */],
-    // py:1514  ["DELETE", /* TODO lambda */],
-    // py:1515  ["DROP", /* TODO lambda */],
-    // py:1516  ["RENAME", /* TODO lambda */],
-    // py:1517  ["SET", /* TODO lambda */],
-    // py:1518  ["SWAP", /* TODO lambda */],
+    /* py:1510 */ ["ADD", (self) => self._parse_alter_table_add()],
+    /* py:1511 */ ["AS", (self) => self._parse_select()],
+    /* py:1512 */ ["ALTER", (self) => self._parse_alter_table_alter()],
+    /* py:1513 */ ["CLUSTER BY", (self) => self._parse_cluster_property()],
+    /* py:1514 */ ["DELETE", (self) => self.expression(new exp.Delete({ where: self._parse_where() }))],
+    /* py:1515 */ ["DROP", (self) => self._parse_alter_table_drop()],
+    /* py:1516 */ ["RENAME", (self) => self._parse_alter_table_rename()],
+    /* py:1517 */ ["SET", (self) => self._parse_alter_table_set()],
+    /* py:1518 */ ["SWAP", (self) => self.expression(new exp.SwapTable({ this: self._match(TokenType.WITH) && self._parse_table(true) }))],
   ]);
 
   /** py: sqlglot/parser.py:1523 */
   static ALTER_ALTER_PARSERS = new Map([
-    // py:1524  ["DISTKEY", /* TODO lambda */],
-    // py:1525  ["DISTSTYLE", /* TODO lambda */],
-    // py:1526  ["SORTKEY", /* TODO lambda */],
-    // py:1527  ["COMPOUND", /* TODO lambda */],
+    /* py:1524 */ ["DISTKEY", (self) => self._parse_alter_diststyle()],
+    /* py:1525 */ ["DISTSTYLE", (self) => self._parse_alter_diststyle()],
+    /* py:1526 */ ["SORTKEY", (self) => self._parse_alter_sortkey()],
+    /* py:1527 */ ["COMPOUND", (self) => self._parse_alter_sortkey(true)],
   ]);
 
   /** py: sqlglot/parser.py:1530 */
@@ -1213,10 +1308,10 @@ export class Parser {
 
   /** py: sqlglot/parser.py:1542 */
   static NO_PAREN_FUNCTION_PARSERS = new Map([
-    // py:1543  ["ANY", /* TODO lambda */],
-    // py:1544  ["CASE", /* TODO lambda */],
-    // py:1545  ["CONNECT_BY_ROOT", /* TODO lambda */],
-    // py:1548  ["IF", /* TODO lambda */],
+    /* py:1543 */ ["ANY", (self) => self.expression(new exp.Any({ this: self._parse_bitwise() }))],
+    /* py:1544 */ ["CASE", (self) => self._parse_case()],
+    /* py:1545 */ ["CONNECT_BY_ROOT", (self) => self.expression(new exp.ConnectByRoot({ this: self._parse_column() }))],
+    /* py:1548 */ ["IF", (self) => self._parse_if()],
   ]);
 
   /** py: sqlglot/parser.py:1551 */
@@ -1240,57 +1335,67 @@ export class Parser {
 
   /** py: sqlglot/parser.py:1560 */
   static FUNCTION_PARSERS = new Map([
-    // py:1561  SPREAD: DictComp — merge manually (§4.4 MRO)
-    // py:1565  SPREAD: DictComp — merge manually (§4.4 MRO)
-    // py:1569  ["CAST", /* TODO lambda */],
-    // py:1570  ["CEIL", /* TODO lambda */],
-    // py:1571  ["CONVERT", /* TODO lambda */],
-    // py:1572  ["CHAR", /* TODO lambda */],
-    // py:1573  ["CHR", /* TODO lambda */],
-    // py:1574  ["DECODE", /* TODO lambda */],
-    // py:1575  ["EXTRACT", /* TODO lambda */],
-    // py:1576  ["FLOOR", /* TODO lambda */],
-    // py:1577  ["GAP_FILL", /* TODO lambda */],
-    // py:1578  ["INITCAP", /* TODO lambda */],
-    // py:1579  ["JSON_OBJECT", /* TODO lambda */],
-    // py:1580  ["JSON_OBJECTAGG", /* TODO lambda */],
-    // py:1581  ["JSON_TABLE", /* TODO lambda */],
-    // py:1582  ["MATCH", /* TODO lambda */],
-    // py:1583  ["NORMALIZE", /* TODO lambda */],
-    // py:1584  ["OPENJSON", /* TODO lambda */],
-    // py:1585  ["OVERLAY", /* TODO lambda */],
-    // py:1586  ["POSITION", /* TODO lambda */],
-    // py:1587  ["SAFE_CAST", /* TODO lambda */],
-    // py:1588  ["STRING_AGG", /* TODO lambda */],
-    // py:1589  ["SUBSTRING", /* TODO lambda */],
-    // py:1590  ["TRIM", /* TODO lambda */],
-    // py:1591  ["TRY_CAST", /* TODO lambda */],
-    // py:1592  ["TRY_CONVERT", /* TODO lambda */],
-    // py:1593  ["XMLELEMENT", /* TODO lambda */],
-    // py:1594  ["XMLTABLE", /* TODO lambda */],
+    // py:1561-1568  The two leading DictComps expand `exp.ArgMax`/`exp.ArgMin`'s
+    // `sql_names()` (ARG_MAX/ARGMAX/MAX_BY and ARG_MIN/ARGMIN/MIN_BY) onto the same
+    // `_parse_distinct_arg_function` lambda. Spread first so the hand-written entries
+    // below keep last-write-wins precedence, matching Python's dict-literal ordering.
+    /* py:1561 */ ...exp.ArgMax.sqlNames().map((name) => [name, (self) => self._parse_distinct_arg_function(exp.ArgMax)]),
+    /* py:1565 */ ...exp.ArgMin.sqlNames().map((name) => [name, (self) => self._parse_distinct_arg_function(exp.ArgMin)]),
+    // `self.STRICT_CAST` is a CLASS-level field: it must be read via
+    // `self.constructor.STRICT_CAST`, never bare `self.STRICT_CAST` (which is
+    // `undefined` on the instance and would silently make every CAST non-strict).
+    /* py:1569 */ ["CAST", (self) => self._parse_cast(self.constructor.STRICT_CAST)],
+    /* py:1570 */ ["CEIL", (self) => self._parse_ceil_floor(exp.Ceil)],
+    /* py:1571 */ ["CONVERT", (self) => self._parse_convert(self.constructor.STRICT_CAST)],
+    /* py:1572 */ ["CHAR", (self) => self._parse_char()],
+    /* py:1573 */ ["CHR", (self) => self._parse_char()],
+    /* py:1574 */ ["DECODE", (self) => self._parse_decode()],
+    /* py:1575 */ ["EXTRACT", (self) => self._parse_extract()],
+    /* py:1576 */ ["FLOOR", (self) => self._parse_ceil_floor(exp.Floor)],
+    // py:1577  ["GAP_FILL", ...]  — `_parse_gap_fill` is still a NotPorted stub
+    /* py:1578 */ ["INITCAP", (self) => self._parse_initcap()],
+    // py:1579  ["JSON_OBJECT", ...]     — `_parse_json_object` is still a NotPorted stub
+    // py:1580  ["JSON_OBJECTAGG", ...]  — `_parse_json_object` is still a NotPorted stub
+    // py:1581  ["JSON_TABLE", ...]      — `_parse_json_table` is still a NotPorted stub
+    /* py:1582 */ ["MATCH", (self) => self._parse_match_against()],
+    // py:1583  ["NORMALIZE", ...]  — `_parse_normalize` is still a NotPorted stub
+    // py:1584  ["OPENJSON", ...]   — `_parse_open_json` is still a NotPorted stub
+    // py:1585  ["OVERLAY", ...]    — `_parse_overlay` is still a NotPorted stub
+    /* py:1586 */ ["POSITION", (self) => self._parse_position()],
+    /* py:1587 */ ["SAFE_CAST", (self) => self._parse_cast(false, true)],
+    /* py:1588 */ ["STRING_AGG", (self) => self._parse_string_agg()],
+    /* py:1589 */ ["SUBSTRING", (self) => self._parse_substring()],
+    /* py:1590 */ ["TRIM", (self) => self._parse_trim()],
+    /* py:1591 */ ["TRY_CAST", (self) => self._parse_cast(false, true)],
+    /* py:1592 */ ["TRY_CONVERT", (self) => self._parse_convert(false, true)],
+    /* py:1593 */ ["XMLELEMENT", (self) => self._parse_xml_element()],
+    /* py:1594 */ ["XMLTABLE", (self) => self._parse_xml_table()],
   ]);
 
   /** py: sqlglot/parser.py:1597 */
   static QUERY_MODIFIER_PARSERS = new Map([
-    // py:1598  [TokenType.MATCH_RECOGNIZE, /* TODO lambda */],
-    // py:1599  [TokenType.PREWHERE, /* TODO lambda */],
-    // py:1600  [TokenType.WHERE, /* TODO lambda */],
-    // py:1601  [TokenType.GROUP_BY, /* TODO lambda */],
-    // py:1602  [TokenType.HAVING, /* TODO lambda */],
-    // py:1603  [TokenType.QUALIFY, /* TODO lambda */],
-    // py:1604  [TokenType.WINDOW, /* TODO lambda */],
-    // py:1605  [TokenType.ORDER_BY, /* TODO lambda */],
-    // py:1606  [TokenType.LIMIT, /* TODO lambda */],
-    // py:1607  [TokenType.FETCH, /* TODO lambda */],
-    // py:1608  [TokenType.OFFSET, /* TODO lambda */],
-    // py:1609  [TokenType.FOR, /* TODO lambda */],
-    // py:1610  [TokenType.LOCK, /* TODO lambda */],
-    // py:1611  [TokenType.TABLE_SAMPLE, /* TODO lambda */],
-    // py:1612  [TokenType.USING, /* TODO lambda */],
-    // py:1613  [TokenType.CLUSTER_BY, /* TODO lambda */],
-    // py:1617  [TokenType.DISTRIBUTE_BY, /* TODO lambda */],
-    // py:1621  [TokenType.SORT_BY, /* TODO lambda */],
-    // py:1622  [TokenType.CONNECT_BY, /* TODO lambda */],
+    // Values are `(key, expression)` tuples upstream; `_parse_query_modifiers`
+    // destructures them as `const [key, expression] = parser(this)`, so they are
+    // 2-element ARRAYS here.
+    // py:1598  [TokenType.MATCH_RECOGNIZE, ...]  — `_parse_match_recognize` is a stub
+    // py:1599  [TokenType.PREWHERE, ...]         — `_parse_prewhere` is a stub
+    /* py:1600 */ [TokenType.WHERE, (self) => ["where", self._parse_where()]],
+    /* py:1601 */ [TokenType.GROUP_BY, (self) => ["group", self._parse_group()]],
+    // py:1602  [TokenType.HAVING, ...]   — `_parse_having` is a stub
+    // py:1603  [TokenType.QUALIFY, ...]  — `_parse_qualify` is a stub
+    // py:1604  [TokenType.WINDOW, ...]   — `_parse_window_clause` is a stub
+    /* py:1605 */ [TokenType.ORDER_BY, (self) => ["order", self._parse_order()]],
+    /* py:1606 */ [TokenType.LIMIT, (self) => ["limit", self._parse_limit()]],
+    /* py:1607 */ [TokenType.FETCH, (self) => ["limit", self._parse_limit()]],
+    /* py:1608 */ [TokenType.OFFSET, (self) => ["offset", self._parse_offset()]],
+    // py:1609  [TokenType.FOR, ...]   — `_parse_locks` is a stub
+    // py:1610  [TokenType.LOCK, ...]  — `_parse_locks` is a stub
+    /* py:1611 */ [TokenType.TABLE_SAMPLE, (self) => ["sample", self._parse_table_sample(true)]],
+    /* py:1612 */ [TokenType.USING, (self) => ["sample", self._parse_table_sample(true)]],
+    // py:1613  [TokenType.CLUSTER_BY, ...]     — `_parse_cluster` is a stub
+    // py:1617  [TokenType.DISTRIBUTE_BY, ...]  — `_parse_sort` is a stub
+    // py:1621  [TokenType.SORT_BY, ...]        — `_parse_sort` is a stub
+    // py:1622  [TokenType.CONNECT_BY, ...]     — `_parse_connect` is a stub
   ]);
 
   /** py: sqlglot/parser.py:1624 */
@@ -1298,22 +1403,27 @@ export class Parser {
 
   /** py: sqlglot/parser.py:1626 */
   static SET_PARSERS = new Map([
-    // py:1627  ["GLOBAL", /* TODO lambda */],
-    // py:1628  ["LOCAL", /* TODO lambda */],
-    // py:1629  ["SESSION", /* TODO lambda */],
-    // py:1630  ["TRANSACTION", /* TODO lambda */],
+    /* py:1627 */ ["GLOBAL", (self) => self._parse_set_item_assignment("GLOBAL")],
+    /* py:1628 */ ["LOCAL", (self) => self._parse_set_item_assignment("LOCAL")],
+    /* py:1629 */ ["SESSION", (self) => self._parse_set_item_assignment("SESSION")],
+    /* py:1630 */ ["TRANSACTION", (self) => self._parse_set_transaction()],
   ]);
 
   /** py: sqlglot/parser.py:1633 */
+  // EMPTY ON THE BASE PARSER UPSTREAM (parser.py:1633, `dict[str, t.Callable] = {}`) -- populated only by
+  // dialect subclasses, so zero entries here is CORRECT, not an unwired seed.
   static SHOW_PARSERS = new Map([
   ]);
 
   /** py: sqlglot/parser.py:1635 */
   static TYPE_LITERAL_PARSERS = new Map([
-    // py:1636  [exp.DType.JSON, /* TODO lambda */],
+    // Invoked as `parser(this, this_, dataType)`; upstream ignores the third arg (`_`).
+    /* py:1636 */ [exp.DType.JSON, (self, this_) => self.expression(new exp.ParseJSON({ this: this_ }))],
   ]);
 
   /** py: sqlglot/parser.py:1639 */
+  // EMPTY ON THE BASE PARSER UPSTREAM (parser.py:1639, `dict[exp.DType, ...] = {}`) -- populated only by
+  // dialect subclasses, so zero entries here is CORRECT, not an unwired seed.
   static TYPE_CONVERTERS = new Map([
   ]);
 
@@ -1417,6 +1527,8 @@ export class Parser {
   ]);
 
   /** py: sqlglot/parser.py:1709 */
+  // EMPTY ON THE BASE PARSER UPSTREAM (parser.py:1709, `OPTIONS_TYPE = {}`) -- populated only by
+  // dialect subclasses, so zero entries here is CORRECT, not an unwired seed.
   static PROCEDURE_OPTIONS = new Map([
   ]);
 
@@ -1597,6 +1709,8 @@ export class Parser {
   ]);
 
   /** py: sqlglot/parser.py:1792 */
+  // EMPTY ON THE BASE PARSER UPSTREAM (parser.py:1792, `dict[str, type[exp.Expr]] = {}`) -- populated only by
+  // dialect subclasses, so zero entries here is CORRECT, not an unwired seed.
   static ODBC_DATETIME_LITERALS = new Map([
   ]);
 
@@ -1644,15 +1758,15 @@ export class Parser {
 
   /** py: sqlglot/parser.py:1814 */
   static ANALYZE_EXPRESSION_PARSERS = new Map([
-    // py:1815  ["ALL", /* TODO lambda */],
-    // py:1816  ["COMPUTE", /* TODO lambda */],
-    // py:1817  ["DELETE", /* TODO lambda */],
-    // py:1818  ["DROP", /* TODO lambda */],
-    // py:1819  ["ESTIMATE", /* TODO lambda */],
-    // py:1820  ["LIST", /* TODO lambda */],
-    // py:1821  ["PREDICATE", /* TODO lambda */],
-    // py:1822  ["UPDATE", /* TODO lambda */],
-    // py:1823  ["VALIDATE", /* TODO lambda */],
+    /* py:1815 */ ["ALL", (self) => self._parse_analyze_columns()],
+    /* py:1816 */ ["COMPUTE", (self) => self._parse_analyze_statistics()],
+    /* py:1817 */ ["DELETE", (self) => self._parse_analyze_delete()],
+    /* py:1818 */ ["DROP", (self) => self._parse_analyze_histogram()],
+    /* py:1819 */ ["ESTIMATE", (self) => self._parse_analyze_statistics()],
+    /* py:1820 */ ["LIST", (self) => self._parse_analyze_list()],
+    /* py:1821 */ ["PREDICATE", (self) => self._parse_analyze_columns()],
+    /* py:1822 */ ["UPDATE", (self) => self._parse_analyze_histogram()],
+    /* py:1823 */ ["VALIDATE", (self) => self._parse_analyze_validate()],
   ]);
 
   /** py: sqlglot/parser.py:1826 */
@@ -1673,6 +1787,8 @@ export class Parser {
   ]);
 
   /** py: sqlglot/parser.py:1830 */
+  // EMPTY ON THE BASE PARSER UPSTREAM (parser.py:1830, `set[str] = set()`) -- populated only by
+  // dialect subclasses, so zero entries here is CORRECT, not an unwired seed.
   static OPERATION_MODIFIERS = new Set([
   ]);
 
@@ -2163,7 +2279,7 @@ export class Parser {
   expression(instance, token = null, comments = null) {
     // py: `if token:` — Token.__bool__, so a SENTINEL does not set positions.
     if (token && token.bool?.() !== false) instance.updatePositions(token);
-    // py: `instance.add_comments(comments) if comments else self._add_comments(instance)`
+    // py: `instance.addComments(comments) if comments else self._add_comments(instance)`
     // — an EMPTY list is falsy, so `comments=[]` takes the `_add_comments` branch.
     if (comments && comments.length) instance.addComments(comments);
     else this._add_comments(instance);
@@ -3558,14 +3674,14 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:4858
   _parse_table_parts_fast() {
-    const C=this.constructor,index=this._index;let parts=null,comments=[];while(this._match_set(C.IDENTIFIER_TOKENS)){const token=this._prev,cs=this._prev_comments,dot=this._match(TokenType.DOT),tt=this._curr.token_type;if((!dot&&C.TABLE_POSTFIX_TOKENS.has(tt))||(dot&&!C.IDENTIFIER_TOKENS.has(tt))){this._retreat(index);return null;}parts??=[];if(cs.length){comments.push(...cs);this._prev_comments=[];}parts.push(this.expression(new exp.Identifier({this:token.text,quoted:token.token_type===TokenType.IDENTIFIER}),token));if(!dot)break;}if(parts===null)return null;let table;if(parts.length===1)table=new exp.Table({this:parts[0]});else if(parts.length===2)table=new exp.Table({this:parts[1],db:parts[0]});else{let node=parts[2];for(let i=3;i<parts.length;i++)node=new exp.Dot({this:node,expression:parts[i]});table=new exp.Table({this:node,db:parts[1],catalog:parts[0]});}if(comments.length)table.add_comments(comments);return table;
+    const C=this.constructor,index=this._index;let parts=null,comments=[];while(this._match_set(C.IDENTIFIER_TOKENS)){const token=this._prev,cs=this._prev_comments,dot=this._match(TokenType.DOT),tt=this._curr.token_type;if((!dot&&C.TABLE_POSTFIX_TOKENS.has(tt))||(dot&&!C.IDENTIFIER_TOKENS.has(tt))){this._retreat(index);return null;}parts??=[];if(cs.length){comments.push(...cs);this._prev_comments=[];}parts.push(this.expression(new exp.Identifier({this:token.text,quoted:token.token_type===TokenType.IDENTIFIER}),token));if(!dot)break;}if(parts===null)return null;let table;if(parts.length===1)table=new exp.Table({this:parts[0]});else if(parts.length===2)table=new exp.Table({this:parts[1],db:parts[0]});else{let node=parts[2];for(let i=3;i<parts.length;i++)node=new exp.Dot({this:node,expression:parts[i]});table=new exp.Table({this:node,db:parts[1],catalog:parts[0]});}if(comments.length)table.addComments(comments);return table;
   }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4921
   _parse_table_parts(schema = false, is_db_reference = false, wildcard = false, fast = false) {
     // deny:operators sqlglot/parser.py:4954 — both operands are strings
-    if(fast)return this._parse_table_parts_fast();let catalog=null,db=null,table=this._parse_table_part(schema);while(this._match(TokenType.DOT)){if(catalog)table=this.expression(new exp.Dot({this:table,expression:this._parse_table_part(schema)}));else{catalog=db;db=table;table=this._parse_table_part(schema)||"";}}if(wildcard&&this._is_connected()&&(table instanceof exp.Identifier||!table)&&this._match(TokenType.STAR)){if(table instanceof exp.Identifier){ /* deny:operators sqlglot/parser.py:4954 — both operands are strings */ table.args.this+="*"; }else table=new exp.Identifier({this:"*"});}if(is_db_reference){catalog=db;db=table;table=null;}if(!table&&!is_db_reference)this.raise_error("Expected table name");if(!db&&is_db_reference)this.raise_error("Expected database name");table=this.expression(new exp.Table({this:table,db,catalog}));const comments=[];for(const part of table.parts){const cs=part.pop_comments();if(cs.length)comments.push(...cs);}if(comments.length)table.add_comments(comments);const changes=this._parse_changes();if(changes)table.set("changes",changes);const when=this._parse_historical_data();if(when)table.set("when",when);const pivots=this._parse_pivots();if(pivots)table.set("pivots",pivots);return table;
+    if(fast)return this._parse_table_parts_fast();let catalog=null,db=null,table=this._parse_table_part(schema);while(this._match(TokenType.DOT)){if(catalog)table=this.expression(new exp.Dot({this:table,expression:this._parse_table_part(schema)}));else{catalog=db;db=table;table=this._parse_table_part(schema)||"";}}if(wildcard&&this._is_connected()&&(table instanceof exp.Identifier||!table)&&this._match(TokenType.STAR)){if(table instanceof exp.Identifier){ /* deny:operators sqlglot/parser.py:4954 — both operands are strings */ table.args.this+="*"; }else table=new exp.Identifier({this:"*"});}if(is_db_reference){catalog=db;db=table;table=null;}if(!table&&!is_db_reference)this.raise_error("Expected table name");if(!db&&is_db_reference)this.raise_error("Expected database name");table=this.expression(new exp.Table({this:table,db,catalog}));const comments=[];for(const part of table.parts){const cs=part.popComments();if(cs.length)comments.push(...cs);}if(comments.length)table.addComments(comments);const changes=this._parse_changes();if(changes)table.set("changes",changes);const when=this._parse_historical_data();if(when)table.set("when",when);const pivots=this._parse_pivots();if(pivots)table.set("pivots",pivots);return table;
   }
 
   /** @returns {*} */
@@ -3815,7 +3931,7 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5689
-  _parse_ordered(parse_method = null) { let this_ = parse_method ? parse_method() : this._parse_disjunction(); if (!this_) return null; if (pyUpper(this_.name) === "ALL" && this.dialect.SUPPORTS_ORDER_BY_ALL) this_ = exp.var("ALL"); const asc = this._match(TokenType.ASC); const desc = this._match(TokenType.DESC) ? true : asc ? false : null; const first = this._match_text_seq("NULLS", "FIRST"), last = this._match_text_seq("NULLS", "LAST"); let nulls_first = first || false; if (!(first || last) && ((!desc && this.dialect.NULL_ORDERING === "nulls_are_small") || (desc && this.dialect.NULL_ORDERING !== "nulls_are_small")) && this.dialect.NULL_ORDERING !== "nulls_are_last") nulls_first = true; let with_fill = null; if (this._match_text_seq("WITH", "FILL")) with_fill = this.expression(new exp.WithFill({ from: this._match(TokenType.FROM) && this._parse_bitwise(), to: this._match_text_seq("TO") && this._parse_bitwise(), step: this._match_text_seq("STEP") && this._parse_bitwise(), interpolate: this._parse_interpolate() })); return this.expression(new exp.Ordered({ this: this_, desc, nulls_first, with_fill })); }
+  _parse_ordered(parse_method = null) { let this_ = parse_method ? parse_method() : this._parse_disjunction(); if (!this_) return null; if (pyUpper(this_.name) === "ALL" && this.dialect.SUPPORTS_ORDER_BY_ALL) this_ = exp.var("ALL"); const asc = this._match(TokenType.ASC); const desc = this._match(TokenType.DESC) ? true : asc ? false : null; const first = this._match_text_seq("NULLS", "FIRST"), last = this._match_text_seq("NULLS", "LAST"); let nulls_first = first || false; if (!(first || last) && ((!desc && this.dialect.NULL_ORDERING === "nulls_are_small") || (desc && this.dialect.NULL_ORDERING !== "nulls_are_small")) && this.dialect.NULL_ORDERING !== "nulls_are_last") nulls_first = true; let with_fill = null; if (this._match_text_seq("WITH", "FILL")) with_fill = this.expression(new exp.WithFill({ from_: this._match(TokenType.FROM) && this._parse_bitwise(), to: this._match_text_seq("TO") && this._parse_bitwise(), step: this._match_text_seq("STEP") && this._parse_bitwise(), interpolate: this._parse_interpolate() })); return this.expression(new exp.Ordered({ this: this_, desc, nulls_first, with_fill })); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5734
@@ -3861,15 +3977,15 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:5816
   // note: param `this` renamed to `this_` (JS reserved word)
-  _parse_offset(this_) { throw new NotPorted("_parse_offset", "sqlglot/parser.py:5816"); }
+  _parse_offset(this_ = null) { if (!this._match(TokenType.OFFSET)) return this_; const count = this._parse_term(); this._match_set(new Set([TokenType.ROW, TokenType.ROWS])); return this.expression(new exp.Offset({ this: this_, expression: count, expressions: this._parse_limit_by() })); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5827
-  _can_parse_limit_or_offset() { throw new NotPorted("_can_parse_limit_or_offset", "sqlglot/parser.py:5827"); }
+  _can_parse_limit_or_offset() { if (!this._match_set(this.constructor.AMBIGUOUS_ALIAS_TOKENS, false)) return false; const index = this._index; let result = !!(this._try_parse(() => this._parse_limit(), true) || this._try_parse(() => this._parse_offset(), true)); this._retreat(index); if (this._next.token_type === TokenType.MATCH_CONDITION) result = false; return result; }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5844
-  _can_parse_named_window() { throw new NotPorted("_can_parse_named_window", "sqlglot/parser.py:5844"); }
+  _can_parse_named_window() { if (!this._match(TokenType.WINDOW, false)) return false; const name = this._index + 1 < this._tokens.length ? this._tokens[this._index + 1] : null; if (name === null || !this.constructor.ID_VAR_TOKENS.has(name.token_type)) return false; const alias_tok = this._index + 2 < this._tokens.length ? this._tokens[this._index + 2] : null; if (alias_tok === null || alias_tok.token_type !== TokenType.ALIAS) return false; const body = this._index + 3 < this._tokens.length ? this._tokens[this._index + 3] : null; return body !== null && body.token_type === TokenType.L_PAREN; }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5861
@@ -4025,7 +4141,17 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:6103
   // note: param `this` renamed to `this_` (JS reserved word)
-  _negate_range(this_) { throw new NotPorted("_negate_range", "sqlglot/parser.py:6103"); }
+  _negate_range(this_ = null) {
+    if (pyFalsy(this_)) return this_;
+    const expression = this_ instanceof exp.Escape ? this_.this : this_;
+    // Upstream mutates the Like/ILike in place and returns the ORIGINAL `this` (which
+    // may be the enclosing Escape), rather than the unwrapped `expression`.
+    if (expression instanceof exp.Like || expression instanceof exp.ILike) {
+      expression.set("negate", true);
+      return this_;
+    }
+    return this.expression(new exp.Not({ this: this_ }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:6114
@@ -4154,7 +4280,7 @@ export class Parser {
     if (this.constructor.TIMESTAMPS.has(typeToken)) { if (this._match_text_seq("WITH", "TIME", "ZONE")) { maybeFunc = false; this_ = new exp.DataType({ this: this.constructor.TIMES.has(typeToken) ? exp.DType.TIMETZ : exp.DType.TIMESTAMPTZ, expressions }); } else if (this._match_text_seq("WITH", "LOCAL", "TIME", "ZONE")) { maybeFunc = false; this_ = new exp.DataType({ this: exp.DType.TIMESTAMPLTZ, expressions }); } else if (this._match_text_seq("WITHOUT", "TIME", "ZONE")) maybeFunc = false; }
     else if (typeToken === TokenType.INTERVAL) { if (this.dialect.VALID_INTERVAL_UNITS.has(pyUpper(this._curr.text))) { let unit = this._parse_var(false, null, true); if (this._match_text_seq("TO")) unit = new exp.IntervalSpan({ this: unit, expression: this._parse_var(false, null, true) }); this_ = this.expression(new exp.DataType({ this: this.expression(new exp.Interval({ unit })) })); } else this_ = this.expression(new exp.DataType({ this: exp.DType.INTERVAL })); } else if (typeToken === TokenType.VOID) this_ = new exp.DataType({ this: exp.DType.NULL });
     if (maybeFunc && check_func) { const i = this._index, peek = this._parse_string(); if (!peek) { this._retreat(index); return null; } this._retreat(i); }
-    if (!this_) { if (this._match_text_seq("UNSIGNED")) { const u = this.constructor.SIGNED_TO_UNSIGNED_TYPE_TOKEN.get(typeToken); if (!u) this.raise_error(`Cannot convert ${typeToken.name} to unsigned.`); typeToken = u || typeToken; } if (typeToken === TokenType.NULLABLE && !expressions) { this._retreat(index); return null; } this_ = new exp.DataType({ this: exp.DType[typeToken.name], expressions, nested }); if (values !== null) this_ = exp.cast(isStruct ? new exp.Struct({ expressions: values }) : new exp.Array({ expressions: values }), this_, false); } else if (expressions) this_.set("expressions", expressions);
+    if (!this_) { if (this._match_text_seq("UNSIGNED")) { const u = this.constructor.SIGNED_TO_UNSIGNED_TYPE_TOKEN.get(typeToken); if (!u) this.raise_error(`Cannot convert ${TOKEN_TYPE_NAMES[typeToken]} to unsigned.`); typeToken = u || typeToken; } if (typeToken === TokenType.NULLABLE && !expressions) { this._retreat(index); return null; } this_ = new exp.DataType({ this: exp.DType[TOKEN_TYPE_NAMES[typeToken]], expressions, nested }); if (values !== null) this_ = exp.cast(isStruct ? new exp.Struct({ expressions: values }) : new exp.Array({ expressions: values }), this_, false); } else if (expressions) this_.set("expressions", expressions);
     while (this._match(TokenType.LIST)) this_ = new exp.DataType({ this: exp.DType.LIST, expressions: [this_], nested: true });
     index = this._index; let array = this._match(TokenType.ARRAY); while (this._curr.bool()) { const previous = this._prev.token_type, bracket = this._match(TokenType.L_BRACKET); if ((!bracket && !array) || (previous === TokenType.ARRAY && this._match(TokenType.R_BRACKET))) break; array = false; values = this._parse_csv(this._parse_disjunction.bind(this)); if (!values.length) values = null; if (values && !schema && (!this.dialect.SUPPORTS_FIXED_SIZE_ARRAYS || previous === TokenType.ARRAY || !this._match(TokenType.R_BRACKET, false))) { this._retreat(index); break; } this_ = new exp.DataType({ this: exp.DType.ARRAY, expressions: [this_], values, nested: true }); this._match(TokenType.R_BRACKET); }
     if (this.constructor.TYPE_CONVERTERS.size && this_.this?.__enum__ === "DType") { const converter = this.constructor.TYPE_CONVERTERS.get(this_.this); if (converter) this_ = converter(this_); }
@@ -4203,13 +4329,13 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:6846
   _parse_column_parts_fast() {
-    const C=this.constructor,index=this._index;let parts=null,all=[];while(this._match_set(C.IDENTIFIER_TOKENS)){const token=this._prev,comments=this._prev_comments;if(parts===null&&C.NO_PAREN_FUNCTION_PARSERS.has(pyUpper(token.text))){this._retreat(index);return null;}const dot=this._match(TokenType.DOT),tt=this._curr.token_type;if((!dot&&(C.COLUMN_OPERATORS.has(tt)||C.COLUMN_POSTFIX_TOKENS.has(tt)))||(dot&&!C.IDENTIFIER_TOKENS.has(tt))){this._retreat(index);return null;}parts??=[];if(comments.length){all.push(...comments);this._prev_comments=[];}parts.push(this.expression(new exp.Identifier({this:token.text,quoted:token.token_type===TokenType.IDENTIFIER}),token));if(!dot)break;}if(parts===null)return null;let col;if(parts.length===1)col=new exp.Column({this:parts[0]});else if(parts.length===2)col=new exp.Column({this:parts[1],table:parts[0]});else if(parts.length===3)col=new exp.Column({this:parts[2],table:parts[1],db:parts[0]});else{col=new exp.Column({this:parts[3],table:parts[2],db:parts[1],catalog:parts[0]});for(let i=4;i<parts.length;i++)col=new exp.Dot({this:col,expression:parts[i]});}if(all.length)col.add_comments(all);return col;
+    const C=this.constructor,index=this._index;let parts=null,all=[];while(this._match_set(C.IDENTIFIER_TOKENS)){const token=this._prev,comments=this._prev_comments;if(parts===null&&C.NO_PAREN_FUNCTION_PARSERS.has(pyUpper(token.text))){this._retreat(index);return null;}const dot=this._match(TokenType.DOT),tt=this._curr.token_type;if((!dot&&(C.COLUMN_OPERATORS.has(tt)||C.COLUMN_POSTFIX_TOKENS.has(tt)))||(dot&&!C.IDENTIFIER_TOKENS.has(tt))){this._retreat(index);return null;}parts??=[];if(comments.length){all.push(...comments);this._prev_comments=[];}parts.push(this.expression(new exp.Identifier({this:token.text,quoted:token.token_type===TokenType.IDENTIFIER}),token));if(!dot)break;}if(parts===null)return null;let col;if(parts.length===1)col=new exp.Column({this:parts[0]});else if(parts.length===2)col=new exp.Column({this:parts[1],table:parts[0]});else if(parts.length===3)col=new exp.Column({this:parts[2],table:parts[1],db:parts[0]});else{col=new exp.Column({this:parts[3],table:parts[2],db:parts[1],catalog:parts[0]});for(let i=4;i<parts.length;i++)col=new exp.Dot({this:col,expression:parts[i]});}if(all.length)col.addComments(all);return col;
   }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:6919
   _parse_column_reference() {
-    const C=this.constructor;let node=this._parse_field();if(!node&&this._match(TokenType.VALUES,false)&&C.VALUES_FOLLOWED_BY_PAREN&&this._next.token_type!==TokenType.L_PAREN)node=this._parse_id_var();if(node instanceof exp.Identifier)node=this.expression(new exp.Column({this:node}),null,node.pop_comments());return node;
+    const C=this.constructor;let node=this._parse_field();if(!node&&this._match(TokenType.VALUES,false)&&C.VALUES_FOLLOWED_BY_PAREN&&this._next.token_type!==TokenType.L_PAREN)node=this._parse_id_var();if(node instanceof exp.Identifier)node=this.expression(new exp.Column({this:node}),null,node.popComments());return node;
   }
 
   /** @returns {*} */
@@ -4234,13 +4360,13 @@ export class Parser {
   // py: sqlglot/parser.py:7013
   // note: param `this` renamed to `this_` (JS reserved word)
   _parse_column_ops(this_) {
-    const C=this.constructor;while(C.BRACKETS.has(this._curr.token_type))this_=this._parse_bracket(this_);while(this._curr.bool()){const token=this._curr.token_type;if(!C.COLUMN_OPERATORS.has(token))break;const op=C.COLUMN_OPERATORS.get(token);this._advance();let field;if(C.CAST_COLUMN_OPERATORS.has(token)){field=this._parse_dcolon();if(!field)this.raise_error("Expected type");}else if(op&&this._curr.bool()){field=this._parse_column_reference()||this._parse_bitwise();if(field instanceof exp.Column&&this._match(TokenType.DOT,false))field=this._parse_column_ops(field);}else{const dot=this._is_connected()&&this._prev.token_type===TokenType.DOT;field=this._parse_field(true,null,true);if(dot&&(field instanceof exp.Null||field instanceof exp.Boolean))field=this.expression(new exp.Identifier({this:this._prev.text}),null,field.comments);}if((field instanceof exp.Func||field instanceof exp.Window)&&this_){this_=this_.transform((n)=>{if(!(n instanceof exp.Column))return n;const parts=n.parts.map((part)=>part.copy());let dotted=parts[0];for(let i=1;i<parts.length;i++)dotted=new exp.Dot({this:dotted,expression:parts[i]});return dotted;});}if(op)this_=op(this,this_,field);else if(this_ instanceof exp.Column&&!this_.args.catalog)this_=this.expression(new exp.Column({this:field,table:this_.this,db:this_.args.table,catalog:this_.args.db}),null,this_.comments);else if(field instanceof exp.Window){const fn=this.expression(new exp.Dot({this:this_,expression:field.this}));field.set("this",fn);this_=field;}else this_=this.expression(new exp.Dot({this:this_,expression:field}));if(field&&field.comments.length)this_.add_comments(field.pop_comments());this_=this._parse_bracket(this_);}return this_;
+    const C=this.constructor;while(C.BRACKETS.has(this._curr.token_type))this_=this._parse_bracket(this_);while(this._curr.bool()){const token=this._curr.token_type;if(!C.COLUMN_OPERATORS.has(token))break;const op=C.COLUMN_OPERATORS.get(token);this._advance();let field;if(C.CAST_COLUMN_OPERATORS.has(token)){field=this._parse_dcolon();if(!field)this.raise_error("Expected type");}else if(op&&this._curr.bool()){field=this._parse_column_reference()||this._parse_bitwise();if(field instanceof exp.Column&&this._match(TokenType.DOT,false))field=this._parse_column_ops(field);}else{const dot=this._is_connected()&&this._prev.token_type===TokenType.DOT;field=this._parse_field(true,null,true);if(dot&&(field instanceof exp.Null||field instanceof exp.Boolean))field=this.expression(new exp.Identifier({this:this._prev.text}),null,field.comments);}if((field instanceof exp.Func||field instanceof exp.Window)&&this_){this_=this_.transform((n)=>{if(!(n instanceof exp.Column))return n;const parts=n.parts.map((part)=>part.copy());let dotted=parts[0];for(let i=1;i<parts.length;i++)dotted=new exp.Dot({this:dotted,expression:parts[i]});return dotted;});}if(op)this_=op(this,this_,field);else if(this_ instanceof exp.Column&&!this_.args.catalog)this_=this.expression(new exp.Column({this:field,table:this_.this,db:this_.args.table,catalog:this_.args.db}),null,this_.comments);else if(field instanceof exp.Window){const fn=this.expression(new exp.Dot({this:this_,expression:field.this}));field.set("this",fn);this_=field;}else this_=this.expression(new exp.Dot({this:this_,expression:field}));if(field&&pyTruthy(field.comments))this_.addComments(field.popComments());this_=this._parse_bracket(this_);}return this_;
   }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7081
   _parse_paren() {
-    if(!this._match(TokenType.L_PAREN))return null;const comments=this._prev_comments,query=this._parse_select(),expressions=query?[query]:this._parse_expressions();let node=expressions[0];if(!node&&this._match(TokenType.R_PAREN,false))node=this.expression(new exp.Tuple());else if(expressions.length>1||this._prev.token_type===TokenType.COMMA)node=this.expression(new exp.Tuple({expressions}));else if(node instanceof exp.Select||node instanceof exp.SetOperation)node=this._parse_subquery(node,false);else if(node instanceof exp.Subquery||node instanceof exp.Values)node=this._parse_subquery(this._parse_query_modifiers(this._parse_set_operations(node)),false);else node=this.expression(new exp.Paren({this:node}));if(node)node.add_comments(comments);this._match_r_paren(node);if(node instanceof exp.Paren&&node.this instanceof exp.AggFunc)return this._parse_window(node);return node;
+    if(!this._match(TokenType.L_PAREN))return null;const comments=this._prev_comments,query=this._parse_select(),expressions=query?[query]:this._parse_expressions();let node=expressions[0];if(!node&&this._match(TokenType.R_PAREN,false))node=this.expression(new exp.Tuple());else if(expressions.length>1||this._prev.token_type===TokenType.COMMA)node=this.expression(new exp.Tuple({expressions}));else if(node instanceof exp.Select||node instanceof exp.SetOperation)node=this._parse_subquery(node,false);else if(node instanceof exp.Subquery||node instanceof exp.Values)node=this._parse_subquery(this._parse_query_modifiers(this._parse_set_operations(node)),false);else node=this.expression(new exp.Paren({this:node}));if(node)node.addComments(comments);this._match_r_paren(node);if(node instanceof exp.Paren&&node.this instanceof exp.AggFunc)return this._parse_window(node);return node;
   }
 
   /** @returns {*} */
@@ -4664,7 +4790,7 @@ export class Parser {
   // py: sqlglot/parser.py:7976
   // note: param `this` renamed to `this_` (JS reserved word)
   _parse_bracket(this_ = null) {
-    const C=this.constructor;if(!this._match_set(C.BRACKETS))return this_;const mapToken=this._tokens[this._index-2],parseMap=!!(C.MAP_KEYS_ARE_ARBITRARY_EXPRESSIONS&&mapToken&&pyUpper(mapToken.text)==="MAP");const kind=this._prev.token_type;if(kind===TokenType.L_BRACE&&this._curr.bool()&&this._curr.token_type===TokenType.VAR&&C.ODBC_DATETIME_LITERALS.has(this._curr.text.toLowerCase()))return this._parse_odbc_datetime_literal();let expressions=this._parse_csv(()=>this._parse_bracket_key_value(kind===TokenType.L_BRACE));if(kind===TokenType.L_BRACKET&&!this._match(TokenType.R_BRACKET))this.raise_error("Expected ]");else if(kind===TokenType.L_BRACE&&!this._match(TokenType.R_BRACE))this.raise_error("Expected }");if(kind===TokenType.L_BRACE)this_=this.expression(new exp.Struct({expressions:this._kv_to_prop_eq(expressions,parseMap)}));else if(!this_){this_=new exp.Array({expressions});if(this.dialect.HAS_DISTINCT_ARRAY_CONSTRUCTORS)this_.set("bracket_notation",kind===TokenType.L_BRACKET);}else{const K=C.ARRAY_CONSTRUCTORS.get(pyUpper(this_.name));if(K){const out=new K({expressions});if(K===exp.Array&&this.dialect.HAS_DISTINCT_ARRAY_CONSTRUCTORS)out.set("bracket_notation",kind===TokenType.L_BRACKET);return out;}this_=this.expression(new exp.Bracket({this:this_,expressions}),null,this_.pop_comments());}this._add_comments(this_);return this._parse_bracket(this_);
+    const C=this.constructor;if(!this._match_set(C.BRACKETS))return this_;const mapToken=this._tokens[this._index-2],parseMap=!!(C.MAP_KEYS_ARE_ARBITRARY_EXPRESSIONS&&mapToken&&pyUpper(mapToken.text)==="MAP");const kind=this._prev.token_type;if(kind===TokenType.L_BRACE&&this._curr.bool()&&this._curr.token_type===TokenType.VAR&&C.ODBC_DATETIME_LITERALS.has(this._curr.text.toLowerCase()))return this._parse_odbc_datetime_literal();let expressions=this._parse_csv(()=>this._parse_bracket_key_value(kind===TokenType.L_BRACE));if(kind===TokenType.L_BRACKET&&!this._match(TokenType.R_BRACKET))this.raise_error("Expected ]");else if(kind===TokenType.L_BRACE&&!this._match(TokenType.R_BRACE))this.raise_error("Expected }");if(kind===TokenType.L_BRACE)this_=this.expression(new exp.Struct({expressions:this._kv_to_prop_eq(expressions,parseMap)}));else if(!this_){this_=new exp.Array({expressions});if(this.dialect.HAS_DISTINCT_ARRAY_CONSTRUCTORS)this_.set("bracket_notation",kind===TokenType.L_BRACKET);}else{const K=C.ARRAY_CONSTRUCTORS.get(pyUpper(this_.name));if(K){const out=new K({expressions});if(K===exp.Array&&this.dialect.HAS_DISTINCT_ARRAY_CONSTRUCTORS)out.set("bracket_notation",kind===TokenType.L_BRACKET);return out;}this_=this.expression(new exp.Bracket({this:this_,expressions}),null,this_.popComments());}this._add_comments(this_);return this._parse_bracket(this_);
   }
 
   /** @returns {*} */
@@ -4742,8 +4868,15 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:8339
   _parse_decode() {
-    const expressions = this._parse_csv(this._parse_bitwise.bind(this)); this._match_r_paren();
-    return this.expression(new exp.Decode({ expressions }));
+    // py:8340 — `_parse_disjunction`, not `_parse_bitwise`, and the 3+-arg form is a
+    // DecodeCase (the CASE-like `DECODE(x, a, b, c, d, e)`), not a Decode. Binding every
+    // arity to `exp.Decode({expressions})` left `charset` -- which Decode marks required
+    // -- unset, so `DECODE(tbl.col, 'some_string', 'foo')` raised instead of parsing.
+    // The stray `_match_r_paren()` goes too: `_parse_function_call` consumes the closing
+    // paren centrally after calling a FUNCTION_PARSERS entry (py:7345).
+    const args = this._parse_csv(this._parse_disjunction.bind(this));
+    if (args.length < 3) return this.expression(new exp.Decode({ this: seqGet(args, 0), charset: seqGet(args, 1) }));
+    return this.expression(new exp.DecodeCase({ expressions: args }));
   }
 
   /** @returns {*} */
@@ -4902,7 +5035,12 @@ export class Parser {
   // py: sqlglot/parser.py:8773
   // note: param `this` renamed to `this_` (JS reserved word)
   _parse_alias(this_, explicit = false) {
-    if(this._can_parse_limit_or_offset()||this._can_parse_named_window())return this_;const C=this.constructor;const any=this._match(TokenType.ALIAS),comments=[...this._prev_comments];if(explicit&&!any)return this_;if(this._match(TokenType.L_PAREN)){const aliases=this.expression(new exp.Aliases({this:this_,expressions:this._parse_csv(()=>this._parse_id_var(any))}),null,comments);this._match_r_paren(aliases);return aliases;}const alias=this._parse_id_var(any,C.ALIAS_TOKENS)||(C.STRING_ALIASES&&this._parse_string_as_identifier());if(alias){comments.push(...alias.pop_comments());this_=this.expression(new exp.Alias({this:this_,alias}),null,comments);const col=this_.this;if(!this_.comments.length&&col&&col.comments.length)this_.comments=col.pop_comments();}return this_;
+    if(this._can_parse_limit_or_offset()||this._can_parse_named_window())return this_;const C=this.constructor;const any=this._match(TokenType.ALIAS),comments=[...this._prev_comments];if(explicit&&!any)return this_;if(this._match(TokenType.L_PAREN)){const aliases=this.expression(new exp.Aliases({this:this_,expressions:this._parse_csv(()=>this._parse_id_var(any))}),null,comments);this._match_r_paren(aliases);return aliases;}const alias=this._parse_id_var(any,C.ALIAS_TOKENS)||(C.STRING_ALIASES&&this._parse_string_as_identifier());if(alias){comments.push(...alias.popComments());this_=this.expression(new exp.Alias({this:this_,alias}),null,comments);const col=this_.this;
+    // py: `if not this.comments and column and column.comments`. `.comments` is null
+    // (not []) on a node that never had any, so `.length` throws -- and `not None` and
+    // `not []` are BOTH true in Python, so the test has to be Python truthiness, not a
+    // null-guarded `.length`. Same None-vs-[] asymmetry as the astDump `cm` fix.
+    if(pyFalsy(this_.comments)&&col&&pyTruthy(col.comments))this_.comments=col.popComments();}return this_;
   }
 
   /** @returns {*} */
@@ -4945,7 +5083,7 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8868
-  _advance_any(ignore_reserved) { throw new NotPorted("_advance_any", "sqlglot/parser.py:8868"); }
+  _advance_any(ignore_reserved = false) { if (this._curr.bool() && (ignore_reserved || !this.constructor.RESERVED_TOKENS.has(this._curr.token_type))) { this._advance(); return this._prev; } return null; }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8874
@@ -5516,11 +5654,11 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9761
-  _match_l_paren(expression) { throw new NotPorted("_match_l_paren", "sqlglot/parser.py:9761"); }
+  _match_l_paren(expression = null) { if (!this._match(TokenType.L_PAREN, true, expression)) this.raise_error("Expecting ("); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9765
-  _match_r_paren(expression) { throw new NotPorted("_match_r_paren", "sqlglot/parser.py:9765"); }
+  _match_r_paren(expression = null) { if (!this._match(TokenType.R_PAREN, true, expression)) this.raise_error("Expecting )"); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9769
@@ -5594,7 +5732,7 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10003
-  _parse_star_ops() { const starToken = this._prev; if (this._match_text_seq("COLUMNS", "(", false)) { const this_ = this._parse_function(); if (this_ instanceof exp.Columns) this_.set("unpack", true); return this_; } const index = this._index; const ilike = this._match(TokenType.ILIKE) ? this._parse_string() : null; if (!ilike) this._retreat(index); return this.expression(new exp.Star({ ilike, except: this._parse_star_op("EXCEPT", "EXCLUDE"), replace: this._parse_star_op("REPLACE"), rename: this._parse_star_op("RENAME") })).updatePositions(starToken); }
+  _parse_star_ops() { const starToken = this._prev; if (this._match_text_seq("COLUMNS", "(", false)) { const this_ = this._parse_function(); if (this_ instanceof exp.Columns) this_.set("unpack", true); return this_; } const index = this._index; const ilike = this._match(TokenType.ILIKE) ? this._parse_string() : null; if (!ilike) this._retreat(index); return this.expression(new exp.Star({ ilike, except_: this._parse_star_op("EXCEPT", "EXCLUDE"), replace: this._parse_star_op("REPLACE"), rename: this._parse_star_op("RENAME") })).updatePositions(starToken); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10027
@@ -5675,7 +5813,7 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10164
-  _identifier_expression(token, quoted) { throw new NotPorted("_identifier_expression", "sqlglot/parser.py:10164"); }
+  _identifier_expression(token = null, quoted = null) { token = token || this._prev; return this.expression(new exp.Identifier({ this: token.text, quoted }), token); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10170
@@ -5772,7 +5910,34 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10389
-  build_cast(strict) { throw new NotPorted("build_cast", "sqlglot/parser.py:10389"); }
+  /**
+   * Upstream takes `**kwargs` and forwards them verbatim to the expression class, so
+   * ARG ORDER IS OBSERVABLE: tools/astdump.py:71 dumps `node.args.items()` ordered and
+   * "keeps None". The positional params below are exactly the kwargs `_parse_cast`
+   * passes (py:8205), in order; callers that omit a kwarg upstream must pass
+   * `undefined` here, which is pruned below (whereas `null` is retained, matching an
+   * explicit `=None`).
+   *
+   * The pruning has to happen HERE, not in the Expr constructor, which keeps a key
+   * whose value is `undefined`. Upstream has two callers with different kwarg shapes --
+   * `_parse_cast` passes all seven (py:8205) while `_parse_convert` passes four
+   * (py:8279), and `COLUMN_OPERATORS[DCOLON]` passes three (py:1082) -- and
+   * `tools/astdump.py:71` dumps `node.args.items()` ordered and keeps None, so an
+   * unpassed kwarg surfacing as `format=None` is an AST difference, not a formatting
+   * one. Deleting keys preserves the relative order of the rest.
+   */
+  build_cast(strict, this_, to, format, safe, action, default_) {
+    const exp_class = strict ? exp.Cast : exp.TryCast;
+    const kwargs = { this: this_, to, format, safe, action, default: default_ };
+    for (const k of Object.keys(kwargs)) if (kwargs[k] === undefined) delete kwargs[k];
+    // py:10393 — assigned after the caller's kwargs, so `requires_string` sorts last.
+    // `dialect.TRY_CAST_REQUIRES_STRING` defaults to None on the base Dialect
+    // (dialects/dialect.py:761); the flag itself is P5, so the stand-in dialect has no
+    // such property and `?? null` reproduces the base-dialect value. Snowflake
+    // overrides it to True (dialects/snowflake.py:31) — that needs the P5 dialect port.
+    if (exp_class === exp.TryCast) kwargs.requires_string = this.dialect.TRY_CAST_REQUIRES_STRING ?? null;
+    return this.expression(new exp_class(kwargs));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10397

@@ -59,6 +59,18 @@ function render(v) {
   if (v instanceof Map) {
     return { __dict__: [...v].map(([k, x]) => [renderKey(k), render(x)]) };
   }
+  // A Python Enum MEMBER (as opposed to TokenType, handled above as a plain number).
+  // `extract_parser_tables.py` has no case for these either, so they land in its
+  // `{"__repr__": repr(v)}` fallback (extract_parser_tables.py:79) and the snapshot
+  // stores Python's member repr verbatim: `<DType.JSON: 'JSON'>`. This side must
+  // reproduce that byte-for-byte, because `String(v)` on the port's enum member object
+  // is just "[object Object]" — which silently compares unequal to EVERY key rather
+  // than to the wrong one. `TYPE_LITERAL_PARSERS` (keyed by `exp.DType.JSON`) is
+  // currently the only table keyed this way, which is why nothing needed it until that
+  // table was wired.
+  if (v && typeof v === "object" && typeof v.__enum__ === "string") {
+    return { __repr__: `<${v.__enum__}.${v.name}: '${v.value}'>` };
+  }
   return { __repr__: String(v) };
 }
 

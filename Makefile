@@ -30,6 +30,7 @@ corpus: ## re-harvest atoms + both oracles + parity snapshots (needs python3 + $
 	PYTHONHASHSEED=0 SQLGLOT_REF=$(REF) python3 tools/parity/extract.py
 	PYTHONHASHSEED=0 SQLGLOT_REF=$(REF) python3 tools/tokens/extract_settings.py
 	PYTHONHASHSEED=0 SQLGLOT_REF=$(REF) python3 tools/tokens/harvest_streams.py
+	PYTHONHASHSEED=0 SQLGLOT_REF=$(REF) python3 tools/parser/extract_dialect_attrs.py
 	PYTHONHASHSEED=0 python3 tools/sync_report.py --ref $(REF) --snapshot
 
 accept-corpus: ## explicit acceptance step -- run AFTER reviewing `make resync` output

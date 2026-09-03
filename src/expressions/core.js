@@ -470,7 +470,12 @@ export function astDump(node) {
   if (node && node.__enum__) return { __enum__: node.__enum__, name: node.name, value: node.value };
   if (node instanceof Expr) {
     const type = node.type;
-    return { c: node.constructor.name, a: Object.entries(node.args).map(([k,v]) => [k, astDump(v)]), m: node._meta ? {...node._meta} : null, cm: node.comments ? [...node.comments] : null, t: type && type !== node ? astDump(type) : null };
+    // py: tools/astdump.py:74 `list(node.comments) if node.comments else None` — an
+    // EMPTY list is falsy in Python but truthy in JS, so `node.comments ? ... : null`
+    // dumped a spurious `cm: []` for any node that had ever passed through
+    // `addComments`/`_add_comments` with zero comments (i.e. nearly every node),
+    // instead of upstream's `None`.
+    return { c: node.constructor.name, a: Object.entries(node.args).map(([k,v]) => [k, astDump(v)]), m: node._meta ? {...node._meta} : null, cm: node.comments && node.comments.length ? [...node.comments] : null, t: type && type !== node ? astDump(type) : null };
   }
   if (Array.isArray(node)) return node.map(astDump);
   if (node && node.__tuple__) return { __tuple__: node.__tuple__.map(astDump) };

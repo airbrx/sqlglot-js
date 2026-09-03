@@ -21,7 +21,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { astDump, astLoad, toS } from "../../src/expressions/index.js";
 import { Parser } from "../../src/parser.js";
-import { tokenizerFor, METHOD_OVERRIDING } from "./dialect_tokenizer.mjs";
+import { tokenizerFor, METHOD_OVERRIDING, standInDialect } from "./dialect_tokenizer.mjs";
 import { captureLogs } from "../../src/logging.js";
 
 const argv = process.argv.slice(2);
@@ -58,14 +58,12 @@ for (const name of readdirSync("corpus/ast")) {
     let got;
     try {
       const { tokens } = tk.core.tokenize(atom.sql);
-      // VALID_INTERVAL_UNITS: matches upstream's base Dialect default
-      // (sqlglot/dialects/dialect.py:846, `set[str] = set()`) -- per-dialect unions
-      // from DATE_PART_MAPPING land with the real dialects/dialect.js port (P5). Until
-      // then this synthetic harness dialect must still be Dialect-shaped so
-      // `_parse_interval`/`_parse_types` can call `.has()` on it without crashing.
-      const p = new Parser({
-        dialect: { tokenizer_class: { COMMANDS: tk.commands }, VALID_INTERVAL_UNITS: new Set() },
-      });
+      // The parser reads 36 attributes off `self.dialect`; `standInDialect` supplies
+      // this dialect's real harvested values. See dialect_tokenizer.mjs for why that
+      // beats growing a stand-in one crash at a time -- eight base defaults are truthy,
+      // so omitting them flipped parser branches silently, and the oracle rows were
+      // generated with each dialect's OVERRIDES, not with the base class.
+      const p = new Parser({ dialect: standInDialect(tk, dialect) });
       // The Command fallback logs a warning per row; capture it so the probe's own
       // output stays readable. `fuzz_command_warning.mjs` is what asserts those strings.
       const { result } = captureLogs(() => p.parse(tokens, atom.sql));
