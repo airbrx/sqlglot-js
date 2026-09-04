@@ -45,9 +45,16 @@ sys.path.insert(0, REF)
 
 OUT = "corpus/parser/dialect_attrs.json"
 
-# Every `self.dialect.<X>` the parser reads, derived mechanically from src/parser.js:
+# Every `self.dialect.<X>` the parser reads, derived mechanically from the port's
+# parser sources:
 #
-#   grep -oE "this\.dialect\.[A-Za-z_][A-Za-z0-9_]*" src/parser.js | sort -u
+#   grep -ohE "(this|self|dialect|target_dialect)\.[A-Z][A-Z0-9_]*" \
+#     src/parser.js src/parsers/*.js src/dialects/dialect.js | sort -u
+#
+# `src/parsers/snowflake.js` (the SnowflakeParser subclass) and the dialect.py builders
+# it imports add three names the base parser never reads: DATE_PART_MAPPING (every
+# DATEADD/DATEDIFF/DATE_PART builder), REGEXP_EXTRACT_POSITION_OVERFLOW_RETURNS_NULL
+# (REGEXP_SUBSTR) and TIME_FORMAT (build_formatted_time's `default=True`).
 #
 # Declared explicitly, in sorted order, for the same reason CORE_SLOTS is: an attribute
 # that upstream adds (or that the JS port starts reading) shows up as a diff here
@@ -61,6 +68,7 @@ PARSER_ATTRS = [
     "BYTE_STRING_IS_BYTES_TYPE",
     "CONCAT_COALESCE",
     "CREATABLE_KIND_MAPPING",
+    "DATE_PART_MAPPING",
     "DPIPE_IS_STRING_CONCAT",
     "FORMAT_MAPPING",
     "HAS_DISTINCT_ARRAY_CONSTRUCTORS",
@@ -72,6 +80,7 @@ PARSER_ATTRS = [
     "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED",
     "ON_CONDITION_EMPTY_BEFORE_ERROR",
     "PRESERVE_ORIGINAL_NAMES",
+    "REGEXP_EXTRACT_POSITION_OVERFLOW_RETURNS_NULL",
     "SAFE_DIVISION",
     "SET_OP_DISTINCT_BY_DEFAULT",
     "STRICT_STRING_CONCAT",
@@ -82,6 +91,7 @@ PARSER_ATTRS = [
     "SUPPORTS_USER_DEFINED_TYPES",
     "SUPPORTS_VALUES_DEFAULT",
     "TABLESAMPLE_SIZE_IS_PERCENT",
+    "TIME_FORMAT",
     "TIME_MAPPING",
     "TRY_CAST_REQUIRES_STRING",
     "TYPED_DIVISION",

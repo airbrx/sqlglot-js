@@ -20,8 +20,7 @@
 
 import { readFileSync, readdirSync } from "node:fs";
 import { astDump, astLoad, toS } from "../../src/expressions/index.js";
-import { Parser } from "../../src/parser.js";
-import { tokenizerFor, METHOD_OVERRIDING, standInDialect } from "./dialect_tokenizer.mjs";
+import { tokenizerFor, METHOD_OVERRIDING, standInDialect, parserClassFor } from "./dialect_tokenizer.mjs";
 import { captureLogs } from "../../src/logging.js";
 
 const argv = process.argv.slice(2);
@@ -48,6 +47,11 @@ for (const name of readdirSync("corpus/ast")) {
   const tk = tokenizerFor(dialect);
   if (!tk) continue;
 
+  // The row's dialect is METADATA (this filename), not something being resolved by
+  // name at runtime, so the harness picks the owning `Parser` subclass directly --
+  // see `parserClassFor`'s comment for why that does not weaken CONTRACTS.md §8.
+  const ParserClass = parserClassFor(dialect);
+
   const b = { exact: 0, mismatch: 0, stub: 0, error: 0 };
   for (const line of readFileSync(`corpus/ast/${name}`, "utf8").split("\n")) {
     if (!line) continue;
@@ -63,7 +67,7 @@ for (const name of readdirSync("corpus/ast")) {
       // beats growing a stand-in one crash at a time -- eight base defaults are truthy,
       // so omitting them flipped parser branches silently, and the oracle rows were
       // generated with each dialect's OVERRIDES, not with the base class.
-      const p = new Parser({ dialect: standInDialect(tk, dialect) });
+      const p = new ParserClass({ dialect: standInDialect(tk, dialect) });
       // The Command fallback logs a warning per row; capture it so the probe's own
       // output stays readable. `fuzz_command_warning.mjs` is what asserts those strings.
       const { result } = captureLogs(() => p.parse(tokens, atom.sql));

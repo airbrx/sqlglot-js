@@ -45,7 +45,7 @@ import {
   mergeErrors,
 } from "./errors.js";
 import { Token, TokenType, Tokenizer, TOKEN_TYPE_NAMES } from "./tokens.js";
-import { newTrie } from "./trie.js";
+import { newTrie, inTrie, TrieResult } from "./trie.js";
 import { ensureList, seqGet } from "./helper.js";
 import { logger } from "./logging.js";
 import { formatTime } from "./time.js";
@@ -76,13 +76,16 @@ export const SENTINEL_NONE = new Token(TokenType.SENTINEL, "SENTINEL");
 // class-definition time (`TABLE_ALIAS_TOKENS = ID_VAR_TOKENS - {...}`). These reproduce
 // that, preserving insertion order: a Python set literal is unordered, but the derived
 // JS Set's iteration order still has to be deterministic, so it follows the base's.
-function setDiff(base, remove) {
+// Exported so that dialect Parser subclasses (`src/parsers/*.js`) reproduce upstream's
+// `PARENT.X - {...}` / `PARENT.X | {...}` class-table algebra with the same helper, and
+// therefore the same iteration order, rather than each re-deriving it.
+export function setDiff(base, remove) {
   const out = new Set();
   for (const x of base) if (!remove.has(x)) out.add(x);
   return out;
 }
 
-function setUnion(a, b) {
+export function setUnion(a, b) {
   const out = new Set(a);
   for (const x of b) out.add(x);
   return out;
@@ -192,6 +195,28 @@ function build_upper(args) {
   return arg instanceof exp.Hex ? new exp.Hex({ this: arg.this }) : new exp.Upper({ this: arg });
 }
 
+/**
+ * py: sqlglot/parser.py:50
+ *
+ * Exported because `parsers/snowflake.py` imports it by name (`parser.build_var_map`)
+ * to implement OBJECT_CONSTRUCT.
+ */
+export function build_var_map(args) {
+  if (args.length === 1 && args[0].isStar) return new exp.StarMap({ this: args[0] });
+
+  const keys = [];
+  const values = [];
+  for (let i = 0; i < args.length; i += 2) {
+    keys.push(args[i]);
+    values.push(args[i + 1]);
+  }
+
+  return new exp.VarMap({
+    keys: exp.array(...keys, { copy: false }),
+    values: exp.array(...values, { copy: false }),
+  });
+}
+
 export class Parser {
   /** py: sqlglot/parser.py:375 */
   static FUNCTIONS = new Map([
@@ -257,7 +282,7 @@ export class Parser {
     // `or None`: a falsy flag must become None, not False -- the arg is dumped either way.
     /* py:470 */ ["UUID", (args, dialect) => new exp.Uuid({ is_string: dialect.UUID_IS_STRING_TYPE || null })],
     /* py:471 */ ["UUID_STRING", (args, dialect) => new exp.Uuid({ this: seqGet(args, 0), name: seqGet(args, 1), is_string: dialect.UUID_IS_STRING_TYPE || null })],
-    // py:476  ["VAR_MAP", /* TODO build_var_map */],
+    /* py:476 */ ["VAR_MAP", build_var_map],
   ]);
 
   /** py: sqlglot/parser.py:479 */
@@ -4341,7 +4366,19 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:6935
   // note: param `this` renamed to `this_` (JS reserved word)
-  _build_json_extract(this_, path_parts) { throw new NotPorted("_build_json_extract", "sqlglot/parser.py:6935"); }
+  _build_json_extract(this_, path_parts) {
+    if (path_parts.length > 1) {
+      this_ = this.expression(new exp.JSONExtract({
+        this: this_,
+        expression: new exp.JSONPath({ expressions: path_parts }),
+        variant_extract: true,
+        requires_json: this.constructor.JSON_EXTRACT_REQUIRES_JSON_EXPRESSION,
+      }));
+      path_parts = [new exp.JSONPathRoot()];
+    }
+
+    return [this_, path_parts];
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:6953
@@ -4813,8 +4850,21 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:8117
   _parse_extract() {
-    const this_ = this._parse_function_parameter(); this._match(TokenType.FROM); const expression = this._parse_bitwise();
-    this._match_r_paren(); return this.expression(new exp.Extract({ this: this_, expression }));
+    // py:8118 is `_parse_function() or _parse_var_or_string(upper=True)` -- the second
+    // arm yields a `Var`, and it is the arm a bare part name like `EXTRACT(MINUTE FROM
+    // x)` takes. Reading a `_parse_function_parameter()` instead produced an
+    // `Identifier` there, differing from the oracle on 70 Snowflake rows alone. Nothing
+    // matches the closing paren here either; `_parse_function_call` does that (py:8126
+    // returns straight from the Extract).
+    const this_ = this._parse_function() || this._parse_var_or_string(true);
+
+    if (this._match(TokenType.FROM)) {
+      return this.expression(new exp.Extract({ this: this_, expression: this._parse_bitwise() }));
+    }
+
+    if (!this._match(TokenType.COMMA)) this.raise_error("Expected FROM or comma after EXTRACT", this._prev);
+
+    return this.expression(new exp.Extract({ this: this_, expression: this._parse_bitwise() }));
   }
 
   /** @returns {*} */
@@ -5099,7 +5149,17 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8880
-  _parse_null() { return this.expression(exp.null()); }
+  _parse_null() {
+    // Was `return this.expression(exp.null())` -- a placeholder that returns a Null
+    // WITHOUT consuming a token, so `IS NULL` left the cursor on NULL and every
+    // following comma-separated argument was silently dropped (`IFF(c IS NULL, 0, c)`
+    // reached `If.from_arg_list` with one argument), and `IS UNKNOWN` never matched at
+    // all. Reads as ported; is not. Found while porting parsers/snowflake.py.
+    if (this._match_set(new Set([TokenType.NULL, TokenType.UNKNOWN]))) {
+      return this.constructor.PRIMARY_PARSERS.get(TokenType.NULL)(this, this._prev);
+    }
+    return this._parse_placeholder();
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8885
@@ -5650,7 +5710,31 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9737
-  _find_parser(parsers, trie) { throw new NotPorted("_find_parser", "sqlglot/parser.py:9737"); }
+  _find_parser(parsers, trie) {
+    if (!this._curr.bool()) return null;
+
+    const index = this._index;
+    const this_ = [];
+    while (true) {
+      // The current token might be multiple words
+      const curr = pyUpper(this._curr.text);
+      const key = curr.split(" ");
+      this_.push(curr);
+
+      this._advance();
+      let result;
+      [result, trie] = inTrie(trie, key);
+      if (result === TrieResult.FAILED) break;
+
+      if (result === TrieResult.EXISTS) {
+        const subparser = parsers.get(this_.join(" "));
+        return subparser;
+      }
+    }
+
+    this._retreat(index);
+    return null;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9761
@@ -5795,8 +5879,17 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:10140
   _parse_format_name() {
-    const this_ = this._parse_id_var(); const options = this._match(TokenType.L_PAREN) ? this._parse_csv(this._parse_property_assignment.bind(this, exp.Property)) : null;
-    if (options) this._match_r_paren(); return this.expression(new exp.FormatNameProperty({ this: this_, expressions: options }));
+    // The seeded body built an `exp.FormatNameProperty` with a wrapped option list.
+    // No such class and no such shape exist at py:10140 -- `grep FormatNameProperty
+    // sqlglot/parser.py` returns nothing. Upstream returns a plain Property whose value
+    // is a string OR a table reference, which is what the FILE_FORMAT=<name> oracle
+    // rows carry (`Property(this=Var(FORMAT_NAME), value=Table(...))`).
+    //
+    // Note: Although not specified in the docs, Snowflake does accept a string/identifier
+    // for FILE_FORMAT = <format_name>
+    return this.expression(new exp.Property({
+      this: exp.var("FORMAT_NAME"), value: this._parse_string() || this._parse_table_parts(),
+    }));
   }
 
   /** @returns {*} */

@@ -138,6 +138,14 @@ function checkShimRouting(manifest) {
     if (site.executor) continue;
     const ported = pyToJsPath(site.file);
     if (!ported) continue;
+    // Same partial-port allowance CHECK 3 already makes: a file carrying an explicit
+    // `@ported-ranges` directive is measured against the lines it claims, not against
+    // its whole upstream module. Without this, `src/dialects/dialect.js` -- which ports
+    // ten builder functions out of ~2,600 lines -- is asked to import a shim for a
+    // `startswith` in code it has not touched. A site with no line number, or in a file
+    // that declares no ranges, is unaffected and still demands its shim.
+    if (site.py && jsSources.has(ported) && !isPortedSite(site.py)
+        && /@ported-ranges/.test(jsSources.get(ported))) continue;
     if (!needed.has(ported)) needed.set(ported, new Set());
     needed.get(ported).add(site.shim);
   }

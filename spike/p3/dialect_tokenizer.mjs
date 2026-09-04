@@ -15,6 +15,10 @@ import { TokenizerCore, TokenType } from "../../src/tokenizer_core.js";
 import { newTrie, TRIE_END } from "../../src/trie.js";
 import * as exp from "../../src/expressions/index.js";
 import { pyUpper } from "../../src/_py/str.js";
+import { formatTime } from "../../src/time.js";
+import { NotPorted } from "../../src/errors.js";
+import { Parser } from "../../src/parser.js";
+import { SnowflakeParser } from "../../src/parsers/snowflake.js";
 
 const snapshot = JSON.parse(readFileSync("corpus/tokens/settings.json", "utf8"));
 
@@ -133,19 +137,82 @@ function attrsFor(dialect) {
 /**
  * A `Dialect`-shaped object carrying `dialect`'s real, harvested attribute values.
  *
+ * The three function-valued members are `Dialect` METHODS rather than settings, so no
+ * snapshot can carry them; each is reproduced from data this file already has.
+ *
  * `tokenize` is the base Dialect method (`self.tokenizer.tokenize(sql)`);
  * `_parse_types` calls it at py:6503 to re-lex a bare identifier and decide whether it
  * names a type, which is the path `CAST(x AS some_udt)` takes into the
  * user-defined-type branch. It delegates to the same tokenizer this dialect already
  * uses rather than hard-coding an answer.
  *
+ * `format_time` (dialect.py:1552) is what `build_formatted_time` calls, so every
+ * `TO_DATE`/`TO_TIMESTAMP(str, fmt)` in the Snowflake corpus goes through it. It is a
+ * pure function of `TIME_MAPPING` + `TIME_TRIE`, both harvested, plus `src/time.js`.
+ *
+ * `to_json_path` (dialect.py:1487) is NOT reproducible: its Literal branch calls
+ * `sqlglot.jsonpath.parse_json_path`, an unported module (P4). The non-Literal branch
+ * is upstream's own identity path and is reproduced; the Literal branch announces
+ * itself as a `NotPorted` stub rather than handing back the raw Literal, which would
+ * differ from the oracle silently instead of loudly.
+ *
  * @param {{core: TokenizerCore, commands: Set<number>}} tk from `tokenizerFor(dialect)`
  * @param {string} dialect the dialect name ("" for the base dialect)
  */
 export function standInDialect(tk, dialect = "") {
+  const attrs = attrsFor(dialect);
   return {
-    ...attrsFor(dialect),
+    ...attrs,
     tokenizer_class: { COMMANDS: tk.commands },
     tokenize: (sql) => tk.core.tokenize(sql).tokens,
+    // py: dialects/dialect.py:1552 Dialect.format_time
+    format_time: (expression) => {
+      if (typeof expression === "string") {
+        // py: `expression[1:-1]` — the time formats are quoted. Sliced by CODE POINT.
+        const cps = [...expression];
+        return exp.Literal.string(
+          formatTime(cps.slice(1, -1).join(""), attrs.TIME_MAPPING, attrs.TIME_TRIE),
+        );
+      }
+      if (expression && expression.isString) {
+        return exp.Literal.string(formatTime(expression.this, attrs.TIME_MAPPING, attrs.TIME_TRIE));
+      }
+      return expression;
+    },
+    // py: dialects/dialect.py:1487 Dialect.to_json_path
+    to_json_path: (path) => {
+      if (path instanceof exp.Literal) {
+        throw new NotPorted("Dialect.to_json_path", "sqlglot/jsonpath.py:parse_json_path");
+      }
+      return path;
+    },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Per-dialect Parser subclass
+// ---------------------------------------------------------------------------
+// Same argument as `tokenizerFor`, one layer up again. `sqlglot/parsers/snowflake.py`'s
+// `SnowflakeParser(parser.Parser)` overrides 17 class tables and 38 methods, so parsing
+// a Snowflake row with the base `Parser` is not "Snowflake minus some features" — it is
+// a different grammar. But CONTRACTS.md §8 forbids resolving a dialect by NAME before
+// P5, and `Parser._resolveDialect` enforces it by throwing.
+//
+// That rule is about RUNTIME resolution: the parser must not be handed the string
+// "snowflake" and go looking for a dialect. It does not apply here, because the probe
+// is not resolving anything — each corpus row already CARRIES its dialect as metadata
+// (it is the `corpus/ast/<dialect>.jsonl` filename), so the harness can name the class
+// it wants directly, as an ordinary ESM import, with no registry in between. The
+// dialect object handed to the constructor is still the harvested `standInDialect`.
+//
+// New entries here are the only thing a future `src/parsers/<d>.js` needs in order to
+// start being measured; a dialect with no entry keeps using the base `Parser`, which is
+// what every non-Snowflake row does today.
+const PARSER_CLASSES = new Map([
+  ["snowflake", SnowflakeParser],
+]);
+
+/** The `Parser` subclass that owns `dialect`'s grammar, or the base `Parser`. */
+export function parserClassFor(dialect) {
+  return PARSER_CLASSES.get(dialect) || Parser;
 }

@@ -351,7 +351,11 @@ export class Expr {
   errorMessages(args = null) {
     const errors = [];
     for (const key of this.constructor.requiredArgs || []) if (this.args[key] === null || this.args[key] === undefined || (Array.isArray(this.args[key]) && !this.args[key].length)) errors.push(`Required keyword: '${key}' missing for ${this.constructor.name}`);
-    if (args && !this.constructor.isVarLenArgs && args.length > this.constructor.argTypes.size) errors.push(`The number of provided arguments (${args.length}) is greater than the maximum number of supported arguments (${this.constructor.argTypes.size})`);
+    // py: core.py:1322 guards the arity check with `isinstance(self, Func)`. Without
+    // it, any builder that WRAPS its function node in a non-Func -- `build_like`
+    // returning `Escape(Like(...))` for `LIKE(col, pat, esc)` -- is measured against the
+    // wrapper's two arg_types and rejected, where upstream accepts it.
+    if (args && this.constructor.bases?.includes("Func") && !this.constructor.isVarLenArgs && args.length > this.constructor.argTypes.size) errors.push(`The number of provided arguments (${args.length}) is greater than the maximum number of supported arguments (${this.constructor.argTypes.size})`);
     return errors;
   }
   addComments(comments = null, prepend = false) { this.comments ||= []; for (const c of comments || []) { const parts = c.split(SQLGLOT_META); if (parts.length > 1) for (const kv of parts.slice(1).join("").split(",")) { const [k, ...v] = kv.split("="); this.meta[k.trim()] = boolValue(v.length ? v[0].trim() : true); } if (!prepend) this.comments.push(c); } if (prepend && comments) this.comments = [...comments, ...this.comments]; return this; }
@@ -479,6 +483,13 @@ export function astDump(node) {
   }
   if (Array.isArray(node)) return node.map(astDump);
   if (node && node.__tuple__) return { __tuple__: node.__tuple__.map(astDump) };
+  // py: tools/astdump.py:99 `isinstance(node, (str, int, float))` -> written straight
+  // into JSON. A Python int is a BigInt here (see `Literal.isInt`), and an arg CAN hold
+  // one raw: `_parse_colon_as_variant_extract` stores `bracket_expr.to_py()` as
+  // `JSONPathSubscript.this`. `JSON.stringify` throws on a BigInt rather than emitting
+  // a number, so the conversion has to happen here. Number() is the matching precision:
+  // the oracle side has already been through `JSON.parse`, which produced a double.
+  if (typeof node === "bigint") return Number(node);
   return node;
 }
 export function astLoad(obj) {
