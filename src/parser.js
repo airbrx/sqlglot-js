@@ -5158,14 +5158,34 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:7802
   _parse_unique_key() {
-    const this_ = this._parse_wrapped_id_vars(); return this.expression(new exp.UniqueColumnConstraint({ this: this_, is_key: true }));
+    // A constraint keyword here (`UNIQUE NOT NULL`, `UNIQUE PRIMARY KEY`, ...) belongs to
+    // the NEXT constraint, not to this one, so it is not consumed as the key's name.
+    if (
+      this._curr.bool()
+      && this._curr.token_type !== TokenType.IDENTIFIER
+      && this.constructor.CONSTRAINT_PARSERS.has(pyUpper(this._curr.text))
+    ) {
+      return null;
+    }
+    return this._parse_id_var(false);
   }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7811
   _parse_unique() {
-    const nulls = this._match_text_seq("NULLS", "NOT", "DISTINCT") ? false : (this._match_text_seq("NULLS", "DISTINCT") ? true : null);
-    return this.expression(new exp.UniqueColumnConstraint({ this: this._parse_wrapped_id_vars(), nulls }));
+    this._match_texts(["KEY", "INDEX"]);
+    // All five values are SIDE-EFFECTING parses, and Python evaluates keyword arguments
+    // in written order, so the property order below is load-bearing, not cosmetic.
+    // `index_type`'s `and` chain yields the FALSE OPERAND when `USING` is absent, so an
+    // ordinary UNIQUE dumps `index_type: false` (not null) -- same shape as
+    // `_parse_grant_principal`'s `kind`.
+    return this.expression(new exp.UniqueColumnConstraint({
+      nulls: this._match_text_seq("NULLS", "NOT", "DISTINCT"),
+      this: this._parse_schema(this._parse_unique_key()),
+      index_type: this._match(TokenType.USING) && this._advance_any() && this._prev.text,
+      on_conflict: this._parse_on_conflict(),
+      options: this._parse_key_constraint_options(),
+    }));
   }
 
   /** @returns {*} */
