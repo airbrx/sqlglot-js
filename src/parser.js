@@ -935,7 +935,10 @@ export class Parser {
   /** py: sqlglot/parser.py:1056 */
   static LAMBDAS = new Map([
     // Invoked as `LAMBDAS.get(tt)(this, expressions)`.
-    // py:1057  [TokenType.ARROW, ...]  — `_replace_lambda` is still a NotPorted stub
+    /* py:1057 */ [TokenType.ARROW, (self, expressions) => self.expression(new exp.Lambda({
+      this: self._replace_lambda(self._parse_disjunction(), expressions),
+      expressions,
+    }))],
     /* py:1066 */ [TokenType.FARROW, (self, expressions) => self.expression(new exp.Kwarg({
       this: exp.var(expressions[0].name),
       expression: self._parse_disjunction() || self._parse_select(),
@@ -5746,7 +5749,39 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9769
-  _replace_lambda(node, expressions) { throw new NotPorted("_replace_lambda", "sqlglot/parser.py:9769"); }
+  _replace_lambda(node, expressions) {
+    if (!node) return node;
+
+    // py:9775 `{e.name: e.args.get("to") or False for e in expressions}`. The value is
+    // `False` (not absent) for an UNTYPED arg, so the lookup below must distinguish
+    // "not a lambda parameter" (absent) from "a parameter with no type annotation".
+    const lambda_types = new Map(expressions.map((e) => [e.name, e.args.to || false]));
+
+    for (const column of node.findAll(exp.Column)) {
+      const typ = lambda_types.get(column.parts[0].name);
+      // py: `if typ is not None` — `false` is a hit, `undefined` is a miss.
+      if (typ !== undefined) {
+        let dot_or_id = column.args.table ? column.to_dot() : column.this;
+
+        if (typ) dot_or_id = this.expression(new exp.Cast({ this: dot_or_id, to: typ }));
+
+        let parent = column.parent;
+
+        // py:9787 `while ... else` — the `else` runs only when the loop exits by
+        // exhausting its condition, NOT via `break`.
+        let broke = false;
+        while (parent instanceof exp.Dot) {
+          if (!(parent.parent instanceof exp.Dot)) { parent.replace(dot_or_id); broke = true; break; }
+          parent = parent.parent;
+        }
+        if (!broke) {
+          if (column === node) node = dot_or_id;
+          else column.replace(dot_or_id);
+        }
+      }
+    }
+    return node;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9799
