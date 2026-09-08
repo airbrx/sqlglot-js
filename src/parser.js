@@ -139,7 +139,7 @@ function _textIn(texts, text) {
  * so the returned function takes `(self, this_)` and mirrors upstream's
  * `_parse_binary_range(self, this)`.
  */
-function binary_range_parser(expr_type, reverse_args = false) {
+export function binary_range_parser(expr_type, reverse_args = false) {
   return function _parse_binary_range(self, this_) {
     let expression = self._parse_bitwise();
     if (reverse_args) [this_, expression] = [expression, this_];
@@ -314,6 +314,31 @@ export function build_var_map(args) {
     keys: exp.array(...keys, { copy: false }),
     values: exp.array(...values, { copy: false }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// JSONB operator builders (module-level upstream, py:318-331)
+// ---------------------------------------------------------------------------
+// Upstream defines these as named module-level functions AND separately inlines the
+// same three bodies as lambdas inside `Parser.COLUMN_OPERATORS` (py:1100/1103/1106);
+// this file mirrors both, because `parsers/postgres.py` references the named forms by
+// module path (`parser.build_jsonb_extract`) in its own `JSON_OPERATORS` while the base
+// `COLUMN_OPERATORS` keeps its lambdas. Their signature is the `COLUMN_OPERATORS` /
+// `JSON_OPERATORS` value signature — `(self, this, rhs)` — not a `FUNCTIONS` builder's.
+
+/** py: sqlglot/parser.py:318 */
+export function build_jsonb_extract(self, this_, path) {
+  return self.expression(new exp.JSONBExtract({ this: this_, expression: path }));
+}
+
+/** py: sqlglot/parser.py:322 */
+export function build_jsonb_extract_scalar(self, this_, path) {
+  return self.expression(new exp.JSONBExtractScalar({ this: this_, expression: path }));
+}
+
+/** py: sqlglot/parser.py:328 */
+export function build_jsonb_contains_top_key(self, this_, key) {
+  return self.expression(new exp.JSONBContainsTopKey({ this: this_, expression: key }));
 }
 
 export class Parser {
@@ -4570,7 +4595,13 @@ export class Parser {
           else if(this.dialect.DPIPE_IS_STRING_CONCAT&&this._match(TokenType.DPIPE)) node=this.expression(new exp.DPipe({this:node,expression:this._parse_term(),safe:!this.dialect.STRICT_STRING_CONCAT}));
           else if(this._match(TokenType.DQMARK)) node=this.expression(new exp.Coalesce({this:node,expressions:ensureList(this._parse_term())}));
           else if(this._match_pair(TokenType.LT,TokenType.LT)) node=this.expression(new exp.BitwiseLeftShift({this:node,expression:this._parse_term()}));
-          else if(this._match_pair(TokenType.GT,TokenType.GT)) node=this.expression(new exp.BitwiseRightShift({this:node,expression:this._parse_term()})); else break; } return node;
+          else if(this._match_pair(TokenType.GT,TokenType.GT)) node=this.expression(new exp.BitwiseRightShift({this:node,expression:this._parse_term()}));
+          // py:6330 — the ONLY read of `JSON_OPERATORS`. Empty on the base parser, so this
+          // branch is inert until a dialect populates it (`PostgresParser` is the first).
+          // The table's values wrap in `self.expression(...)` themselves, so unlike every
+          // other branch here this one does NOT re-wrap the result.
+          else if(C.JSON_OPERATORS.size&&this._match_set(C.JSON_OPERATORS)) node=C.JSON_OPERATORS.get(this._prev.token_type)(this,node,this._parse_term());
+          else break; } return node;
   }
 
   /** @returns {*} */
