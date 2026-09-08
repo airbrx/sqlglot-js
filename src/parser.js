@@ -1147,7 +1147,7 @@ export class Parser {
     /* py:1147 */ [exp.Table, (self) => self._parse_table_parts()],
     /* py:1148 */ [exp.TableAlias, (self) => self._parse_table_alias()],
     /* py:1149 */ [exp.Tuple, (self) => self._parse_value(false)],
-    // py:1150  [exp.Whens, ...]  — `_parse_when_matched` is still a NotPorted stub
+    /* py:1150 */ [exp.Whens, (self) => self._parse_when_matched()],
     /* py:1151 */ [exp.Where, (self) => self._parse_where()],
     // py:1152  [exp.Window, ...]  — `_parse_named_window` is still a NotPorted stub
     /* py:1153 */ [exp.With, (self) => self._parse_with()],
@@ -1173,7 +1173,7 @@ export class Parser {
     /* py:1172 */ [TokenType.INSERT, (self) => self._parse_insert()],
     // py:1173  [TokenType.KILL, ...]  — `_parse_kill` is still a NotPorted stub
     /* py:1174 */ [TokenType.LOAD, (self) => self._parse_load()],
-    // py:1175  [TokenType.MERGE, ...]  — `_parse_merge` is still a NotPorted stub
+    /* py:1175 */ [TokenType.MERGE, (self) => self._parse_merge()],
     /* py:1176 */ [TokenType.PIVOT, (self) => self._parse_simplified_pivot()],
     /* py:1177 */ [TokenType.PRAGMA, (self) => self.expression(new exp.Pragma({ this: self._parse_expression() }))],
     /* py:1178 */ [TokenType.REFRESH, (self) => self._parse_refresh()],
@@ -3742,7 +3742,14 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4643
-  _parse_using_identifiers() { throw new NotPorted("_parse_using_identifiers", "sqlglot/parser.py:4643"); }
+  _parse_using_identifiers() {
+    const _parse_column_as_identifier = () => {
+      const this_ = this._parse_column();
+      if (this_ instanceof exp.Column) return this_.this;
+      return this_;
+    };
+    return this._parse_wrapped_csv(_parse_column_as_identifier, TokenType.COMMA, true);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4652
@@ -5340,7 +5347,10 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8892
-  _parse_star() { throw new NotPorted("_parse_star", "sqlglot/parser.py:8892"); }
+  _parse_star() {
+    if (this._match(TokenType.STAR)) return this.constructor.PRIMARY_PARSERS.get(TokenType.STAR)(this, this._prev);
+    return this._parse_placeholder();
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8897
@@ -5756,11 +5766,75 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9483
-  _parse_merge() { throw new NotPorted("_parse_merge", "sqlglot/parser.py:9483"); }
+  _parse_merge() {
+    this._match(TokenType.INTO);
+    const target = this._parse_table();
+
+    // py: `self._match(TokenType.ALIAS, advance=False)` — peek, do not consume.
+    if (target && this._match(TokenType.ALIAS, false)) target.set("alias", this._parse_table_alias());
+
+    this._match(TokenType.USING);
+    const using = this._parse_table();
+
+    // py: `self._match(X) and self._parse_Y()` — Python `and` yields the LEFT operand
+    // (False) when it short-circuits, so an unmatched clause stores False, not None.
+    return this.expression(new exp.Merge({
+      this: target,
+      using,
+      on: this._match(TokenType.ON) && this._parse_disjunction(),
+      using_cond: this._match(TokenType.USING) && this._parse_using_identifiers(),
+      whens: this._parse_when_matched(),
+      returning: this._parse_returning(),
+    }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9504
-  _parse_when_matched() { throw new NotPorted("_parse_when_matched", "sqlglot/parser.py:9504"); }
+  _parse_when_matched() {
+    const whens = [];
+
+    while (this._match(TokenType.WHEN)) {
+      const matched = !this._match(TokenType.NOT);
+      this._match_text_seq("MATCHED");
+      // py:9512 `False if BY TARGET else (BY SOURCE)` — three-valued: False for BY
+      // TARGET, True for BY SOURCE, False again when neither matched.
+      const source = this._match_text_seq("BY", "TARGET") ? false : this._match_text_seq("BY", "SOURCE");
+      const condition = this._match(TokenType.AND) ? this._parse_disjunction() : null;
+
+      this._match(TokenType.THEN);
+
+      let then;
+      if (this._match(TokenType.INSERT)) {
+        const this_ = this._parse_star();
+        if (this_) {
+          then = this.expression(new exp.Insert({ this: this_ }));
+        } else {
+          then = this.expression(new exp.Insert({
+            this: this._match_text_seq("ROW") ? exp.var("ROW") : this._parse_value(false),
+            expression: this._match_text_seq("VALUES") && this._parse_value(),
+            where: this._parse_where(),
+          }));
+        }
+      } else if (this._match(TokenType.UPDATE)) {
+        const expressions = this._parse_star();
+        if (expressions) {
+          then = this.expression(new exp.Update({ expressions }));
+        } else {
+          then = this.expression(new exp.Update({
+            expressions: this._match(TokenType.SET) && this._parse_csv(() => this._parse_equality()),
+            where: this._parse_where(),
+          }));
+        }
+      } else if (this._match(TokenType.DELETE)) {
+        then = this.expression(new exp.Var({ this: this._prev.text }));
+      } else {
+        then = this._parse_var_from_options(this.constructor.CONFLICT_ACTIONS);
+      }
+
+      whens.push(this.expression(new exp.When({ matched, source, condition, then })));
+    }
+    return this.expression(new exp.Whens({ expressions: whens }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9557
