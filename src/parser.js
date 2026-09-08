@@ -3645,7 +3645,22 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4161
-  _parse_recursive_with_search() { throw new NotPorted("_parse_recursive_with_search", "sqlglot/parser.py:4161"); }
+  _parse_recursive_with_search() {
+    this._match_text_seq("SEARCH");
+
+    const kind = this._match_texts(this.constructor.RECURSIVE_CTE_SEARCH_KIND) && pyUpper(this._prev.text);
+
+    if (!kind) return null;
+
+    this._match_text_seq("FIRST", "BY");
+
+    return this.expression(new exp.RecursiveWithSearch({
+      kind,
+      this: this._parse_id_var(),
+      expression: this._match_text_seq("SET") && this._parse_id_var(),
+      using: this._match_text_seq("USING") && this._parse_id_var(),
+    }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4180
