@@ -64,6 +64,7 @@ import { nameSequence } from "./helper.js";
 import { logger } from "./logging.js";
 import { cpAt, cpLen, pyIsSpace, pyStrip, pyRstrip } from "./_py/str.js";
 import * as exp from "./expressions/index.js";
+import { registerGenerator } from "./expressions/core.js";
 
 /**
  * py: sqlglot/generator.py:65 `AFTER_HAVING_MODIFIER_TRANSFORMS`
@@ -170,11 +171,18 @@ function _resolveDialect(dialect) {
  */
 export const BASE_DIALECT_GENERATOR_SETTINGS = Object.freeze({
   NORMALIZE_FUNCTIONS: "upper",
+  QUOTE_START: "'",
   QUOTE_END: "'",
   BYTE_END: null,
   IDENTIFIER_START: '"',
   IDENTIFIER_END: '"',
   PRESERVE_ORIGINAL_NAMES: false,
+  STRINGS_SUPPORT_ESCAPED_SEQUENCES: false,
+  BYTE_STRINGS_SUPPORT_ESCAPED_SEQUENCES: false,
+  // A `Map`, never a plain object: `ESCAPED_SEQUENCES.get(ch)` is keyed by an arbitrary
+  // character, and on a plain object `["constructor"]` would return a function.
+  // CONTRACTS.md §8 records the same rule for every tokenizer dict.
+  ESCAPED_SEQUENCES: new Map(),
   tokenizer_class: Object.freeze({ STRING_ESCAPES: Object.freeze(["'"]) }),
 });
 
@@ -598,7 +606,32 @@ export class Generator {
   /** py: sqlglot/generator.py:515 */
   static JSON_PATH_KEY_QUOTED_FORCES_BRACKETS = false;
 
-  // py:518  static SUPPORTED_JSON_PATH_PARTS = /* TODO copy(...) */;
+  /**
+   * py: sqlglot/generator.py:518 `SUPPORTED_JSON_PATH_PARTS = ALL_JSON_PATH_PARTS.copy()`
+   *
+   * The ONLY one of the 126 settings the seeder could not fill, because its value is a
+   * call rather than a literal: `ALL_JSON_PATH_PARTS = set(JSON_PATH_PART_TRANSFORMS)`
+   * (jsonpath.py:238), i.e. the 10 keys of a table in `sqlglot/jsonpath.py` — a module
+   * this phase deliberately defers.
+   *
+   * A THROWING GETTER, not an empty `Set`, and not simply absent. All three were
+   * considered and the other two are worse:
+   *   * absent -> a reader gets `undefined` and, per R18's `REGEXP_EXTRACT_DEFAULT_GROUP`
+   *     precedent, that surfaces as an ordinary output MISMATCH far from the cause;
+   *   * `new Set()` -> every membership test SILENTLY returns false, so unsupported
+   *     JSON paths would be emitted as if checked. That is the worst of the three.
+   * Throwing keeps the name present (so §4.2's "exported field set equals upstream's"
+   * holds), fails at the first read rather than in the output, and stays greppable.
+   * A dialect subclass may still shadow it with a plain `static` field.
+   *
+   * Populate when `src/jsonpath.js` lands, DERIVED from that module's
+   * `JSON_PATH_PART_TRANSFORMS` keys — never as a hand-written list of 10 classes,
+   * which would not notice upstream gaining an 11th.
+   */
+  // py: sqlglot/generator.py:518
+  static get SUPPORTED_JSON_PATH_PARTS() {
+    throw new NotPorted("SUPPORTED_JSON_PATH_PARTS", "sqlglot/jsonpath.py:238");
+  }
 
   /** py: sqlglot/generator.py:521 */
   static CAN_IMPLEMENT_ARRAY_ANY = false;
@@ -1849,11 +1882,56 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3010
-  literal_sql(expression) { throw new NotPorted("literal_sql", "sqlglot/generator.py:3010"); }
+  literal_sql(expression) {
+    // PROOF-OF-CONCEPT (see the file header): one of 6 `*_sql` methods wired at the
+    // blocking step to prove the dispatch mechanism end-to-end. Verified line-by-line
+    // against the pinned ref and byte-compared against CPython's own output.
+    let text = expression.this || "";
+    if (expression.isString) {
+      text = `${this.dialect.QUOTE_START}${this.escape_str(text)}${this.dialect.QUOTE_END}`;
+    }
+    return text;
+  }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:3016 `escape_str(text, escape_backslash=True, delimiter=None,
+   * escaped_delimiter=None, is_byte_string=False)`
+   *
+   * Options object (rule 2). Iteration is over CODE POINTS (`[...text]`), not UTF-16
+   * units: `ESCAPED_SEQUENCES` is keyed by character, and splitting an astral character
+   * into surrogates would both miss the lookup and corrupt the output.
+   * @param {string} text
+   * @param {{escape_backslash?: boolean, delimiter?: string|null, escaped_delimiter?: string|null, is_byte_string?: boolean}} [options]
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:3016
-  escape_str(text, escape_backslash, delimiter, escaped_delimiter, is_byte_string) { throw new NotPorted("escape_str", "sqlglot/generator.py:3016"); }
+  escape_str(text, options = {}) {
+    const {
+      escape_backslash = true,
+      delimiter: delimiterArg = null,
+      escaped_delimiter: escapedDelimiterArg = null,
+      is_byte_string = false,
+    } = options;
+
+    const supports_escape_sequences = is_byte_string
+      ? this.dialect.BYTE_STRINGS_SUPPORT_ESCAPED_SEQUENCES
+      : this.dialect.STRINGS_SUPPORT_ESCAPED_SEQUENCES;
+
+    if (supports_escape_sequences) {
+      text = [...text]
+        .map((ch) =>
+          escape_backslash || ch !== "\\" ? this.dialect.ESCAPED_SEQUENCES.get(ch) ?? ch : ch,
+        )
+        .join("");
+    }
+
+    // py: `delimiter or self.dialect.QUOTE_END` — Python `or`, so an empty-string
+    // delimiter falls through to the dialect's, which is the intended behaviour.
+    const delimiter = delimiterArg || this.dialect.QUOTE_END;
+    const escaped_delimiter = escapedDelimiterArg || this._escaped_quote_end;
+
+    return this._replace_line_breaks(text).replaceAll(delimiter, escaped_delimiter);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3040
@@ -1861,11 +1939,15 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3068
-  null_sql() { throw new NotPorted("null_sql", "sqlglot/generator.py:3068"); }
+  // PROOF-OF-CONCEPT. py: `def null_sql(self, *_)` — the var-args are named `_` and
+  // never read, so the JS signature takes none. `sql()` still calls it with the
+  // expression; JS discards extra arguments exactly as Python's `*_` does.
+  null_sql() { return "NULL"; }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3071
-  boolean_sql(expression) { throw new NotPorted("boolean_sql", "sqlglot/generator.py:3071"); }
+  // PROOF-OF-CONCEPT. py: `"TRUE" if expression.this else "FALSE"`.
+  boolean_sql(expression) { return expression.this ? "TRUE" : "FALSE"; }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3074
@@ -1953,7 +2035,21 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3433
-  star_sql(expression) { throw new NotPorted("star_sql", "sqlglot/generator.py:3433"); }
+  star_sql(expression) {
+    // PROOF-OF-CONCEPT, and the most load-bearing of the six: it is the only wired
+    // method that exercises rule 1 (`this.constructor.STAR_EXCEPT`, not `this.STAR_EXCEPT`),
+    // rule 4 (the `except_` arg key — `args.except` would read `undefined`), and
+    // `expressions()`'s options object all at once.
+    let except_ = this.expressions(expression, "except_", { flat: true });
+    except_ = except_ ? `${this.seg(this.constructor.STAR_EXCEPT)} (${except_})` : "";
+    let replace = this.expressions(expression, "replace", { flat: true });
+    replace = replace ? `${this.seg("REPLACE")} (${replace})` : "";
+    let rename = this.expressions(expression, "rename", { flat: true });
+    rename = rename ? `${this.seg("RENAME")} (${rename})` : "";
+    let ilike = this.sql(expression, "ilike");
+    ilike = ilike ? `${this.seg("ILIKE")} ${ilike}` : "";
+    return `*${ilike}${except_}${replace}${rename}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3444
@@ -3355,3 +3451,31 @@ export class Generator {
   renameindex_sql(expression) { throw new NotPorted("renameindex_sql", "sqlglot/generator.py:6367"); }
 
 }
+
+/**
+ * py: `Expression.sql()` -> `Dialect.get_or_raise(dialect).generate(self, **opts)`
+ * -> `self.generator(**opts).generate(expression, copy=copy)`.
+ *
+ * `expressions/core.js:515` has exported `registerGenerator` since P2 and, until now,
+ * NOTHING CALLED IT — so `Expr.sql()` was permanently the "No SQL generator registered
+ * (available in P4)" throw. That is R19's shape exactly (a hook with a reader and no
+ * caller), and R17 records the twin `registerParser` still sitting in that state. This
+ * is P4, so the hook gets its caller here.
+ *
+ * Wiring it is safe to do now rather than at the end of the stub queue, verified rather
+ * than assumed: nothing asserts the old message (`grep "No SQL generator"` finds only
+ * the throw itself), and the parse path reaches the generator through `kernelSql`
+ * directly, not through `Expr.sql()`. So the only behaviour change is that
+ * `expr.sql()` now returns real SQL where the node's `*_sql` is ported, and throws
+ * `NotPorted` naming the exact upstream line where it is not — strictly more
+ * informative than the blanket message it replaces.
+ *
+ * A module-level side effect, deliberately: it mirrors upstream, where importing
+ * `sqlglot` is what makes `.sql()` work, and it avoids a circular import
+ * (`expressions/index.js` cannot import this file, but this file already imports it).
+ */
+registerGenerator((expression, options = {}) => {
+  // py: `copy` belongs to `Dialect.generate`, everything else to the Generator ctor.
+  const { copy = true, ...generatorOptions } = options;
+  return new Generator(generatorOptions).generate(expression, copy);
+});
