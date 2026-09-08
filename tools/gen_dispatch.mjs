@@ -1,0 +1,115 @@
+#!/usr/bin/env node
+// py: sqlglot/generator.py `_build_dispatch` @ 91119bc
+//
+// Emits src/_gen/dispatch/index.js — the RESOLVED expression-class -> handler table for
+// every generator class, as CPython computes it.  PORT_PLAN.md §4.3 item 2 is explicit
+// that this snapshot exists to *assert* the runtime builder, never to replace it: the
+// JS `_buildDispatch` walks the prototype chain at runtime exactly as upstream walks
+// `dir(cls)`, and test/generator/dispatch.test.mjs compares the two.  A snapshot that
+// replaced the builder would make the builder's own bugs unobservable.
+//
+// The input (corpus/parity/dispatch.json) is produced by tools/parity/extract.py, which
+// calls upstream's own `_build_dispatch` rather than reimplementing it — so the snapshot
+// cannot drift from the algorithm it pins.  Two-stage by design, mirroring
+// gen_expr_meta.mjs: Python harvests under `make corpus`, this runs under `make codegen`.
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+
+const SRC = "corpus/parity/dispatch.json";
+const OUT = "src/_gen/dispatch/index.js";
+
+const snap = JSON.parse(readFileSync(SRC, "utf8"));
+
+// ---- structural guards -----------------------------------------------------------
+// Each one names a property the consumer relies on.  They fire BEFORE any write, so a
+// malformed harvest can never land as a plausible-looking committed snapshot
+// (gen_unicode_tables.mjs sets the precedent: throw on the assumption, not on the value).
+if (!snap.classes || typeof snap.classes !== "object") throw new Error(`${SRC}: no "classes" object`);
+
+const classNames = Object.keys(snap.classes);
+if (classNames.length !== snap.count) {
+  throw new Error(`${SRC}: count ${snap.count} != ${classNames.length} classes present`);
+}
+if (!classNames.includes("Generator")) throw new Error(`${SRC}: base "Generator" class missing`);
+
+// Cross-check against the port's OWN generated expression surface.  This is the only
+// guard here that is not self-referential: dispatch.json and expr_meta.js are harvested
+// by different code paths, so a name in one but not the other means the two _gen inputs
+// were taken at different pins.
+const exprMeta = readFileSync("src/_gen/expr_meta.js", "utf8");
+const knownExprNames = new Set([...exprMeta.matchAll(/name:"([A-Za-z0-9_]+)"/g)].map((m) => m[1]));
+if (knownExprNames.size === 0) throw new Error("src/_gen/expr_meta.js: parsed 0 class names");
+
+let totalEntries = 0;
+for (const [clsName, spec] of Object.entries(snap.classes)) {
+  const { entries, resolved_count, transform_count, from_transforms, from_method } = spec;
+  if (!Array.isArray(entries)) throw new Error(`${clsName}: entries is not an array`);
+  if (entries.length !== resolved_count) {
+    throw new Error(`${clsName}: ${entries.length} entries but resolved_count ${resolved_count}`);
+  }
+  // Redundant counts computed independently by extract.py — a real cross-check.
+  if (from_transforms + from_method !== resolved_count) {
+    throw new Error(
+      `${clsName}: from_transforms ${from_transforms} + from_method ${from_method} != ${resolved_count}`,
+    );
+  }
+  // `dict(cls.TRANSFORMS)` seeds the table, so every TRANSFORMS key must survive into it.
+  // A shortfall means a TRANSFORMS entry was somehow dropped — the R14 failure mode.
+  if (from_transforms !== transform_count) {
+    throw new Error(
+      `${clsName}: ${from_transforms} entries came from TRANSFORMS but TRANSFORMS has ${transform_count}`,
+    );
+  }
+  const seen = new Set();
+  let prev = "";
+  for (const entry of entries) {
+    if (!Array.isArray(entry) || entry.length !== 2) {
+      throw new Error(`${clsName}: malformed entry ${JSON.stringify(entry)}`);
+    }
+    const [exprName, handler] = entry;
+    if (seen.has(exprName)) throw new Error(`${clsName}: duplicate expression class ${exprName}`);
+    seen.add(exprName);
+    // Sorted order is what makes the emitted object diff-stable across re-harvests.
+    if (exprName < prev) throw new Error(`${clsName}: entries not sorted at ${exprName}`);
+    prev = exprName;
+    if (!knownExprNames.has(exprName)) {
+      throw new Error(`${clsName}: ${exprName} is not a class in src/_gen/expr_meta.js`);
+    }
+    // Upstream resolves a handler to either a TRANSFORMS callable or a `*_sql` method.
+    // Anything else means `_build_dispatch`'s contract changed under us.
+    if (handler !== "transform" && !handler.endsWith("_sql")) {
+      throw new Error(`${clsName}: ${exprName} -> ${handler} is neither "transform" nor *_sql`);
+    }
+  }
+  totalEntries += entries.length;
+}
+
+// ---- emit ------------------------------------------------------------------------
+const q = JSON.stringify;
+const classBlocks = Object.entries(snap.classes).map(([clsName, spec]) => {
+  const pairs = spec.entries.map(([exprName, handler]) => `${q(exprName)}:${q(handler)}`).join(",");
+  return `  ${q(clsName)}: Object.freeze({${pairs}})`;
+});
+
+const base = snap.classes.Generator;
+const body = `// @generated by tools/gen_dispatch.mjs — DO NOT EDIT
+// py: sqlglot/generator.py \`_build_dispatch\` @ 91119bc
+//
+// The resolved dispatch table for each of the ${classNames.length} generator classes, as computed by
+// CPython's own \`_build_dispatch\`.  Base \`Generator\` resolves ${base.resolved_count} expression classes:
+// ${base.from_transforms} from TRANSFORMS (which seeds the dict, so it wins) and ${base.from_method} from \`*_sql\` methods.
+//
+// A value of "transform" means the handler is a TRANSFORMS callable rather than a named
+// method — the snapshot pins WHICH SOURCE won the lookup, not the callable's identity,
+// because that is the precedence rule \`_buildDispatch\` has to reproduce.
+export const DISPATCH = Object.freeze({
+${classBlocks.join(",\n")}
+});
+`;
+
+mkdirSync("src/_gen/dispatch", { recursive: true });
+writeFileSync(OUT, body);
+
+console.log(
+  `  wrote ${OUT} — ${classNames.length} generator classes, ${totalEntries} resolved entries ` +
+    `(Generator: ${base.resolved_count} = ${base.from_transforms} TRANSFORMS + ${base.from_method} methods)`,
+);

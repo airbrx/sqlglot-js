@@ -41,6 +41,7 @@ codegen: ## regenerate src/_gen (CI asserts `git diff --exit-code src/_gen` afte
 	node tools/gen_unicode_tables.mjs
 	node tools/gen_timezones.mjs $(REF)
 	node tools/gen_expr_meta.mjs
+	node tools/gen_dispatch.mjs
 
 parity: ## run the 6 parity probes + the parser class-table check
 	node tools/parity/check.mjs
