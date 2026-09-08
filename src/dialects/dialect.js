@@ -36,16 +36,17 @@
 // P5 ports the surrounding code the range list grows and the lint starts demanding
 // their markers.
 
-import { isInt, seqGet, suggestClosestMatchAndFail, toBool } from "../helper.js";
+import { flatten, isInt, seqGet, suggestClosestMatchAndFail, toBool } from "../helper.js";
 import { NotPorted, ParseError } from "../errors.js";
 import { cpSlice, pyIsLower, pyIsPrintable, pyIsUpper, pyStr, pyUpper } from "../_py/str.js";
 import { pyIntFromStr } from "../_py/num.js";
 import { PyTypeError, PyValueError } from "../_py/errors.js";
 import { pyTruthy } from "../_py/truthy.js";
-import { formatTime } from "../time.js";
+import { formatTime, subsecondPrecision, TIMEZONES } from "../time.js";
 import { newTrie } from "../trie.js";
 import { TokenType, Tokenizer, initTokenizerSubclass, setDialectResolver } from "../tokens.js";
 import { BaseParser } from "../parsers/base.js";
+import { ALL_JSON_PATH_PARTS, Generator } from "../generator.js";
 import * as exp from "../expressions/index.js";
 import { SAFE_IDENTIFIER_RE, registerAstDialects, registerGenerator, registerParser } from "../expressions/core.js";
 
@@ -452,6 +453,417 @@ export function map_date_part(part, dialect = null) {
 }
 
 // ===========================================================================
+// Shared cross-dialect GENERATOR helpers                              — P4
+// ===========================================================================
+//
+// `sqlglot/dialects/dialect.py` also carries the generator-side glue shared by
+// several dialects' `TRANSFORMS` tables (as opposed to the `build_*` PARSER-side
+// helpers above). None of these existed before `generators/snowflake.js` needed them;
+// they are dialect-agnostic (every one is already reused by 2+ dialects upstream) so
+// they are ported here, in upstream source order, rather than duplicated per-dialect.
+//
+// Every one takes the GENERATOR instance as an explicit `self` first parameter, never
+// `this` — the same convention `_buildDispatch`'s TRANSFORMS callables already use
+// (generator.js: `handler(this, expression)`), because upstream calls these the same
+// way: as plain functions, not bound methods.
+
+/** py: sqlglot/dialects/dialect.py:1232 */
+export function rename_func(name) {
+  return function _rename_sql(self, expression) {
+    return self.func(name, ...flatten(Object.values(expression.args), (v) => v instanceof exp.Expr));
+  };
+}
+
+/** py: sqlglot/dialects/dialect.py:1254 `if_sql(name="IF", false_value=None)` */
+export function if_sql(name = "IF", false_value = null) {
+  return function _if_sql(self, expression) {
+    return self.func(name, expression.this, expression.args.true, expression.args.false || false_value);
+  };
+}
+
+/** py: sqlglot/dialects/dialect.py:1276 */
+export function inline_array_sql(self, expression) {
+  return `[${self.expressions(expression, null, {
+    dynamic: true,
+    new_line: true,
+    skip_first: true,
+    skip_last: true,
+  })}]`;
+}
+
+/**
+ * py: sqlglot/dialects/dialect.py:1339
+ * `strposition_sql(self, expression, func_name="STRPOS", supports_position=False, supports_occurrence=False, use_ansi_position=True)`
+ */
+export function strposition_sql(self, expression, options = {}) {
+  const {
+    func_name = "STRPOS",
+    supports_position = false,
+    supports_occurrence = false,
+    use_ansi_position = true,
+  } = options;
+
+  let string = expression.this;
+  const substr = expression.args.substr;
+  let position = expression.args.position;
+  const occurrence = expression.args.occurrence;
+  const zero = exp.Literal.number(0);
+  const one = exp.Literal.number(1);
+
+  if (supports_occurrence && occurrence && supports_position && !position) {
+    position = one;
+  }
+
+  const transpile_position = position && !supports_position;
+  if (transpile_position) {
+    string = new exp.Substring({ this: string, start: position });
+  }
+
+  let func;
+  if (func_name === "POSITION" && use_ansi_position) {
+    func = new exp.Anonymous({ this: func_name, expressions: [new exp.In({ this: substr, field: string })] });
+  } else {
+    const args = ["LOCATE", "CHARINDEX"].includes(func_name) ? [substr, string] : [string, substr];
+    if (supports_position) args.push(position);
+    if (occurrence) {
+      if (supports_occurrence) {
+        args.push(occurrence);
+      } else {
+        self.unsupported(`${func_name} does not support the occurrence parameter.`);
+      }
+    }
+    func = new exp.Anonymous({ this: func_name, expressions: args });
+  }
+
+  if (transpile_position) {
+    const func_with_offset = new exp.Sub({ this: func.add(position), expression: one });
+    const func_wrapped = new exp.If({ this: func.eq(zero), true: zero, false: func_with_offset });
+    return self.sql(func_wrapped);
+  }
+
+  return self.sql(func);
+}
+
+/**
+ * py: sqlglot/dialects/dialect.py:1388 `array_append_sql(name, swap_params=False)`
+ * @param {string} name
+ * @param {boolean} [swap_params]
+ */
+export function array_append_sql(name, swap_params = false) {
+  return function _array_append_sql(self, expression) {
+    const this_ = expression.this;
+    const element = expression.expression;
+    const args = swap_params ? [element, this_] : [this_, element];
+    const func_sql = self.func(name, ...args);
+
+    const source_null_propagation = Boolean(expression.args.null_propagation);
+    const target_null_propagation = self.dialect.ARRAY_FUNCS_PROPAGATES_NULLS;
+
+    if (source_null_propagation === target_null_propagation) {
+      return func_sql;
+    }
+
+    if (source_null_propagation) {
+      return self.sql(
+        new exp.If({
+          this: new exp.Is({ this: this_, expression: new exp.Null() }),
+          true: new exp.Null(),
+          false: func_sql,
+        }),
+      );
+    }
+
+    const coalesced = new exp.Coalesce({ expressions: [this_, new exp.Array({ expressions: [] })] });
+    const coalesced_args = swap_params ? [element, coalesced] : [coalesced, element];
+    return self.func(name, ...coalesced_args);
+  };
+}
+
+/** py: sqlglot/dialects/dialect.py:1457 `array_concat_sql(name)` */
+export function array_concat_sql(name) {
+  function _build_func_call(self, func_name, args) {
+    if (self.constructor.ARRAY_CONCAT_IS_VAR_LEN) {
+      return self.func(func_name, ...args);
+    }
+    if (args.length === 1) {
+      return self.func(func_name, args[0], new exp.Array({ expressions: [] }));
+    }
+    let result = self.func(func_name, args[args.length - 2], args[args.length - 1]);
+    for (let i = args.length - 3; i >= 0; i--) {
+      result = `${func_name}(${self.sql(args[i])}, ${result})`;
+    }
+    return result;
+  }
+
+  return function _array_concat_sql(self, expression) {
+    const this_ = expression.this;
+    const exprs = expression.expressions;
+    const all_args = [this_, ...exprs];
+
+    const source_null_propagation = Boolean(expression.args.null_propagation);
+    const target_null_propagation = self.dialect.ARRAY_FUNCS_PROPAGATES_NULLS;
+
+    if (
+      source_null_propagation === target_null_propagation ||
+      this_ instanceof exp.Array ||
+      exprs.length === 0
+    ) {
+      return _build_func_call(self, name, all_args);
+    }
+
+    if (source_null_propagation) {
+      const null_checks = all_args.map(
+        (arg) => new exp.Is({ this: arg.copy(), expression: new exp.Null() }),
+      );
+      const combined_check = null_checks.reduce((a, b) => new exp.Or({ this: a, expression: b }));
+
+      const func_sql = _build_func_call(self, name, all_args);
+
+      return self.sql(new exp.If({ this: combined_check, true: new exp.Null(), false: func_sql }));
+    }
+
+    const wrapped_args = all_args.map(
+      (arg) => new exp.Coalesce({ expressions: [arg.copy(), new exp.Array({ expressions: [] })] }),
+    );
+
+    return _build_func_call(self, name, wrapped_args);
+  };
+}
+
+/** py: sqlglot/dialects/dialect.py:1539 `var_map_sql(self, expression, map_func_name="MAP")` */
+export function var_map_sql(self, expression, map_func_name = "MAP") {
+  const keys = expression.args.keys;
+  const values = expression.args.values;
+
+  if (!(keys instanceof exp.Array) || !(values instanceof exp.Array)) {
+    self.unsupported("Cannot convert array columns into map.");
+    return self.func(map_func_name, keys, values);
+  }
+
+  const args = [];
+  const n = Math.min(keys.expressions.length, values.expressions.length);
+  for (let i = 0; i < n; i++) {
+    args.push(self.sql(keys.expressions[i]));
+    args.push(self.sql(values.expressions[i]));
+  }
+
+  return self.func(map_func_name, ...args);
+}
+
+/** py: sqlglot/dialects/dialect.py:2077 `unit_to_str(expression, default="DAY")` */
+export function unit_to_str(expression, default_ = "DAY") {
+  const unit = expression.args.unit;
+  if (!unit) {
+    return default_ ? exp.Literal.string(default_) : null;
+  }
+
+  if (unit instanceof exp.WeekStart) {
+    // WEEK(<day>) is BigQuery-only syntax, so it degrades to the plain WEEK unit. Unlike
+    // `weekstart_name`, this can't warn about a changed week start (no generator access
+    // here) — callers that need the warning should use `weekstart_unit_to_str`.
+    return exp.Literal.string("WEEK");
+  }
+
+  if (unit instanceof exp.Placeholder || (unit.constructor !== exp.Var && unit.constructor !== exp.Literal)) {
+    return unit;
+  }
+
+  return exp.Literal.string(unit.name);
+}
+
+/** py: sqlglot/dialects/dialect.py:2094 `weekstart_unit_to_str(self, expression, default="DAY")` */
+export function weekstart_unit_to_str(self, expression, default_ = "DAY") {
+  const unit = expression.args.unit;
+  if (unit instanceof exp.WeekStart) {
+    return exp.Literal.string(self.weekstart_name(unit));
+  }
+  return unit_to_str(expression, default_);
+}
+
+/** py: sqlglot/dialects/dialect.py:2104 `unit_to_var(expression, default="DAY")` */
+export function unit_to_var(expression, default_ = "DAY") {
+  const unit = expression.args.unit;
+
+  if (
+    unit instanceof exp.Var ||
+    unit instanceof exp.Placeholder ||
+    unit instanceof exp.WeekStart ||
+    unit instanceof exp.Column
+  ) {
+    return unit;
+  }
+
+  const value = unit ? unit.name : default_;
+  return value ? exp.var(value) : null;
+}
+
+/**
+ * py: sqlglot/dialects/dialect.py:1718 `timestamptrunc_sql(func="DATE_TRUNC", zone=False)`
+ * Placed after its `unit_to_var`/`weekstart_unit_to_str` dependencies rather than at
+ * upstream's earlier line number, since JS function declarations below don't hoist
+ * ahead of the `const`/arrow-returning factories they call.
+ */
+export function timestamptrunc_sql(func = "DATE_TRUNC", zone = false) {
+  return function _timestamptrunc_sql(self, expression) {
+    const args = [weekstart_unit_to_str(self, expression), expression.this];
+    if (zone) args.push(expression.args.zone);
+    return self.func(func, ...args);
+  };
+}
+
+/** py: sqlglot/dialects/dialect.py:1730 */
+export function no_timestamp_sql(self, expression) {
+  const zone = expression.args.zone;
+  if (!zone) {
+    const target_type = annotate_types(expression, self.dialect).type || exp.DType.TIMESTAMP;
+    return self.sql(exp.cast(expression.this, target_type));
+  }
+  if (TIMEZONES.has(zone.name.toLowerCase())) {
+    return self.sql(
+      new exp.AtTimeZone({ this: exp.cast(expression.this, exp.DType.TIMESTAMP), zone }),
+    );
+  }
+  return self.func("TIMESTAMP", expression.this, zone);
+}
+
+/**
+ * py: sqlglot/dialects/dialect.py:1787
+ * `timestrtotime_sql(self, expression, include_precision=False)`
+ */
+export function timestrtotime_sql(self, expression, include_precision = false) {
+  const builder = expression.args.zone ? exp.DType.TIMESTAMPTZ : exp.DType.TIMESTAMP;
+  let datatype = builder.intoExpr();
+
+  if (expression.this instanceof exp.Literal && include_precision) {
+    const precision = subsecondPrecision(expression.this.name);
+    if (precision > 0) {
+      datatype = exp.DataType.build(datatype.this, {
+        expressions: [new exp.DataTypeParam({ this: exp.Literal.number(precision) })],
+      });
+    }
+  }
+
+  return self.sql(exp.cast(expression.this, datatype, { dialect: self.dialect }));
+}
+
+/** py: sqlglot/dialects/dialect.py:1805 */
+export function datestrtodate_sql(self, expression) {
+  return self.sql(exp.cast(expression.this, exp.DType.DATE));
+}
+
+/** py: sqlglot/dialects/dialect.py:1820 */
+export function min_or_least(self, expression) {
+  const name = expression.expressions.length ? "LEAST" : "MIN";
+  return rename_func(name)(self, expression);
+}
+
+/** py: sqlglot/dialects/dialect.py:1825 */
+export function max_or_greatest(self, expression) {
+  const name = expression.expressions.length ? "GREATEST" : "MAX";
+  return rename_func(name)(self, expression);
+}
+
+/** py: sqlglot/dialects/dialect.py:2002 */
+export function ts_or_ds_add_cast(expression) {
+  let this_ = expression.this.copy();
+
+  const return_type = expression.returnType;
+  if (return_type.isType(exp.DType.DATE)) {
+    // Cast to TIMESTAMP first so a timestamp STRING truncates correctly, because some
+    // dialects can't cast a timestamp string directly to DATE.
+    this_ = exp.cast(this_, exp.DType.TIMESTAMP);
+  }
+
+  expression.this.replace(exp.cast(this_, return_type));
+  return expression;
+}
+
+/** py: sqlglot/dialects/dialect.py:2032 `date_delta_sql(name, cast=False)` */
+export function date_delta_sql(name, cast = false) {
+  return function _delta_sql(self, expression) {
+    if (cast && expression instanceof exp.TsOrDsAdd) {
+      expression = ts_or_ds_add_cast(expression);
+    }
+
+    return self.func(name, unit_to_var(expression), expression.expression, expression.this);
+  };
+}
+
+/** py: sqlglot/dialects/dialect.py:2537 */
+export function timestampdiff_sql(self, expression) {
+  return self.func("TIMESTAMPDIFF", expression.unit, expression.expression, expression.this);
+}
+
+/** py: sqlglot/dialects/dialect.py:2541 `no_make_interval_sql(self, expression, sep=", ")` */
+export function no_make_interval_sql(self, expression, sep = ", ") {
+  const args = [];
+  for (const [unit, val] of Object.entries(expression.args)) {
+    const value = val instanceof exp.Kwarg ? val.expression : val;
+    args.push(`${value.sql()} ${unit}`);
+  }
+
+  return `INTERVAL '${self.format_args(...args, { sep })}'`;
+}
+
+/**
+ * py: sqlglot/dialects/dialect.py:2557
+ * `groupconcat_sql(self, expression, func_name="LISTAGG", sep=",", within_group=True, on_overflow=False)`
+ */
+export function groupconcat_sql(self, expression, options = {}) {
+  const { func_name = "LISTAGG", sep = ",", within_group = true, on_overflow = false } = options;
+
+  let this_ = expression.this;
+  const separator = self.sql(expression.args.separator || (sep ? exp.Literal.string(sep) : null));
+
+  let on_overflow_sql = self.sql(expression, "on_overflow");
+  on_overflow_sql = on_overflow && on_overflow_sql ? ` ON OVERFLOW ${on_overflow_sql}` : "";
+
+  let limit = null;
+  if (this_ instanceof exp.Limit && this_.this) {
+    limit = this_;
+    this_ = limit.this.pop();
+  }
+
+  const order = this_.find(exp.Order);
+
+  if (order && order.this) {
+    this_ = order.this.pop();
+  }
+
+  const args = self.format_args(
+    this_,
+    separator || on_overflow_sql ? `${separator}${on_overflow_sql}` : null,
+  );
+
+  let listagg = new exp.Anonymous({ this: func_name, expressions: [args] });
+
+  const limit_sql = self.sql(limit);
+  let modifiers = limit_sql;
+
+  if (order) {
+    if (within_group) {
+      listagg = new exp.WithinGroup({ this: listagg, expression: order });
+    } else {
+      modifiers = `${self.sql(order)}${limit_sql}`;
+    }
+  }
+
+  if (modifiers) {
+    listagg.set("expressions", [`${args}${modifiers}`]);
+  }
+
+  return self.sql(listagg);
+}
+
+/** py: sqlglot/dialects/dialect.py:2644 */
+export function nth_value_from_sql(self, expression) {
+  const this_ = self.func("NTH_VALUE", expression.this, expression.args.offset);
+  const from_first = expression.args.from_first;
+  if (from_first === null || from_first === undefined) return this_;
+  return `${this_} FROM ${from_first ? "FIRST" : "LAST"}`;
+}
+
+// ===========================================================================
 // The `Dialect` class, the registry, and `registerDialect`            — P5
 // ===========================================================================
 //
@@ -754,8 +1166,17 @@ export class Dialect {
    * picked precisely so this cannot be got wrong by reading the name.
    */
   static parser_class = BaseParser;
-  /** py:825 `generator_class = Generator`. P4; see `generate()`. */
-  static generator_class = null;
+  /**
+   * py:825 `generator_class = Generator`.
+   *
+   * Wired now that `src/generator.js`'s base `Generator` is real (P4 blocking step,
+   * PORT_PLAN.md R21). Until this line, `Expr.prototype.sql()` with no dialect argument
+   * — Python's implicit `str(expr)` path, and `registerGenerator`'s hook — threw "No
+   * SQL generator registered" even for the DEFAULT dialect, which several dialect-
+   * agnostic generator helpers (`no_make_interval_sql`, `strposition_sql`) rely on for
+   * dialect-less sub-expression rendering, matching upstream's own such calls.
+   */
+  static generator_class = Generator;
 
   // A trie of the time_mapping keys
   static TIME_TRIE = new Map();
@@ -1281,15 +1702,24 @@ export function registerDialect(name, klass) {
       : base_generator;
 
   // py:304-309 — remove transforms that correspond to unsupported JSONPathPart
-  // expressions. DEFERRED, and announced instead of skipped: `Generator` is P4 and
-  // `ALL_JSON_PATH_PARTS` lives in the unported `sqlglot/jsonpath.py`. The guard fires
-  // the moment a real generator class is registered, so this is a gap with a READER
-  // rather than a comment nobody re-reads (PORT_PLAN.md R19).
-  if (klass.generator_class) {
-    throw new NotPorted(
-      "registerDialect: SUPPORTED_JSON_PATH_PARTS pruning",
-      "sqlglot/dialects/dialect.py:304",
-    );
+  // expressions. `ALL_JSON_PATH_PARTS` (generator.js) is trait-derived rather than
+  // read from `sqlglot/jsonpath.py` (still unported), so this needs no NotPorted
+  // guard: `getattr(gen_cls, "SUPPORTED_JSON_PATH_PARTS", None)` is read defensively,
+  // because the BASE `Generator`'s own getter is real now but a THROWING one is still
+  // a legal shadow a dialect subclass could in principle install, and `isinstance(supported,
+  // set)` in Python is simply False for anything a plain `getattr` default or an
+  // exception can't produce.
+  const gen_cls = klass.generator_class;
+  let supported;
+  try {
+    supported = gen_cls ? gen_cls.SUPPORTED_JSON_PATH_PARTS : undefined;
+  } catch {
+    supported = undefined;
+  }
+  if (supported instanceof Set) {
+    for (const part of ALL_JSON_PATH_PARTS) {
+      if (!supported.has(part)) gen_cls.TRANSFORMS.delete(part);
+    }
   }
 
   // py:311 `list(klass.tokenizer_class._QUOTES.items())[0]` — FIRST entry, so this

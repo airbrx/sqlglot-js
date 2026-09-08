@@ -95,8 +95,10 @@ function _build_date_from_parts(args) {
   });
 }
 
-// py: sqlglot/parsers/snowflake.py:74 — Timestamp types used in _build_datetime
-const TIMESTAMP_TYPES = new Map([
+// py: sqlglot/parsers/snowflake.py:74 — Timestamp types used in _build_datetime. Exported
+// because `sqlglot/generators/snowflake.py:958` (`strtotime_sql`) imports it from this
+// same upstream module, same as RANKING_WINDOW_FUNCTIONS_WITH_FRAME/build_object_construct.
+export const TIMESTAMP_TYPES = new Map([
   [exp.DType.TIMESTAMP, "TO_TIMESTAMP"],
   [exp.DType.TIMESTAMPLTZ, "TO_TIMESTAMP_LTZ"],
   [exp.DType.TIMESTAMPNTZ, "TO_TIMESTAMP_NTZ"],

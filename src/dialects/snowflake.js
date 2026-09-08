@@ -18,14 +18,13 @@
 // is final. Declaring the class without registering it would therefore produce a class
 // that looks complete and whose settings are invisible to every consumer.
 //
-// TWO DELIBERATE GAPS, both announced rather than faked:
+// ONE GAP REMAINS, announced rather than faked; the other closed in this round:
 //
-//   `Generator = SnowflakeGenerator` (py:189) is NOT declared. `generators/snowflake.js`
-//   does not exist — P4 landed the base `Generator` and explicitly deferred the
-//   per-dialect ones (PORT_PLAN.md R21). `registerDialect` itself throws `NotPorted` the
-//   moment any dialect sets `generator_class`, because py:304's
-//   `SUPPORTED_JSON_PATH_PARTS` pruning needs the unported `sqlglot/jsonpath.py`; so
-//   this is not a silent omission, it is a hole with a live guard on it.
+//   `Generator = SnowflakeGenerator` (py:189) IS now declared — `generators/snowflake.js`
+//   exists (P4, PORT_PLAN.md R21 follow-up). `registerDialect`'s py:304
+//   `SUPPORTED_JSON_PATH_PARTS` pruning no longer needs `sqlglot/jsonpath.py`: the
+//   `ALL_JSON_PATH_PARTS` half of that logic is trait-derived from `_gen/expr_meta.js`
+//   (generator.js), which is exactly as real as reading it from the unported module.
 //
 //   `class JSONPathTokenizer(jsonpath.JSONPathTokenizer)` (py:130) is NOT declared, for
 //   the same reason `Dialect.jsonpath_tokenizer_class` is null: `sqlglot/jsonpath.py` is
@@ -42,6 +41,7 @@
 
 import { Tokenizer, TokenType, initTokenizerSubclass } from "../tokens.js";
 import { SnowflakeParser } from "../parsers/snowflake.js";
+import { SnowflakeGenerator } from "../generators/snowflake.js";
 import * as exp from "../expressions/index.js";
 import {
   DATE_PART_MAPPING,
@@ -268,6 +268,9 @@ export class Snowflake extends Dialect {
 
   /** py:186 `Parser = SnowflakeParser` — what `registerDialect` turns into `parser_class`. */
   static Parser = SnowflakeParser;
+
+  /** py:189 `Generator = SnowflakeGenerator` — what `registerDialect` turns into `generator_class`. */
+  static Generator = SnowflakeGenerator;
 
   /** py:188 `class Tokenizer(tokens.Tokenizer)`; see `SnowflakeTokenizer` above. */
   static Tokenizer = SnowflakeTokenizer;
