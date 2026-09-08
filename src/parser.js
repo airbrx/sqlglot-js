@@ -1276,12 +1276,15 @@ export class Parser {
     // py:1290  ["DISTINCT", /* TODO lambda */],
     // py:1291  ["EXTEND", /* TODO lambda */],
     // py:1292  ["LIMIT", /* TODO lambda */],
-    /* py:1293 */ ["ORDER BY", (self) => self._parse_order(undefined, true)],
+    // py:1293 Every entry is invoked as `parser(this, query)` (py:10361) and must RETURN
+    // the rebuilt query. This one took only `self` and returned a bare `_parse_order(...)`,
+    // so `FROM x |> ORDER BY y` died on "Required keyword: 'expressions' missing for Order".
+    /* py:1293 */ ["ORDER BY", (self, query) => query.order_by(self._parse_order(), { append: false, copy: false })],
     // py:1296  ["PIVOT", /* TODO lambda */],
     // py:1297  ["SELECT", /* TODO lambda */],
-    // py:1298  ["TABLESAMPLE", /* TODO lambda */],
+    /* py:1298 */ ["TABLESAMPLE", (self, query) => self._parse_pipe_syntax_tablesample(query)],
     // py:1299  ["UNPIVOT", /* TODO lambda */],
-    // py:1300  ["WHERE", /* TODO lambda */],
+    /* py:1300 */ ["WHERE", (self, query) => query.where(self._parse_where(), { copy: false })],
   ]);
 
   /** py: sqlglot/parser.py:1303 */
