@@ -1008,10 +1008,10 @@ export class Parser {
     /* py:1140 */ [exp.Ordered, (self) => self._parse_ordered()],
     /* py:1141 */ [exp.Properties, (self) => self._parse_properties()],
     /* py:1142 */ [exp.PartitionedByProperty, (self) => self._parse_partitioned_by()],
-    // py:1143  [exp.Qualify, ...]  — `_parse_qualify` is still a NotPorted stub
+    /* py:1143 */ [exp.Qualify, (self) => self._parse_qualify()],
     /* py:1144 */ [exp.Returning, (self) => self._parse_returning()],
     /* py:1145 */ [exp.Select, (self) => self._parse_select()],
-    // py:1146  [exp.Sort, ...]  — `_parse_sort` is still a NotPorted stub
+    /* py:1146 */ [exp.Sort, (self) => self._parse_sort(exp.Sort, TokenType.SORT_BY)],
     /* py:1147 */ [exp.Table, (self) => self._parse_table_parts()],
     /* py:1148 */ [exp.TableAlias, (self) => self._parse_table_alias()],
     /* py:1149 */ [exp.Tuple, (self) => self._parse_value(false)],
@@ -1406,23 +1406,23 @@ export class Parser {
     // destructures them as `const [key, expression] = parser(this)`, so they are
     // 2-element ARRAYS here.
     // py:1598  [TokenType.MATCH_RECOGNIZE, ...]  — `_parse_match_recognize` is a stub
-    // py:1599  [TokenType.PREWHERE, ...]         — `_parse_prewhere` is a stub
+    /* py:1599 */ [TokenType.PREWHERE, (self) => ["prewhere", self._parse_prewhere()]],
     /* py:1600 */ [TokenType.WHERE, (self) => ["where", self._parse_where()]],
     /* py:1601 */ [TokenType.GROUP_BY, (self) => ["group", self._parse_group()]],
-    // py:1602  [TokenType.HAVING, ...]   — `_parse_having` is a stub
-    // py:1603  [TokenType.QUALIFY, ...]  — `_parse_qualify` is a stub
+    /* py:1602 */ [TokenType.HAVING, (self) => ["having", self._parse_having()]],
+    /* py:1603 */ [TokenType.QUALIFY, (self) => ["qualify", self._parse_qualify()]],
     // py:1604  [TokenType.WINDOW, ...]   — `_parse_window_clause` is a stub
     /* py:1605 */ [TokenType.ORDER_BY, (self) => ["order", self._parse_order()]],
     /* py:1606 */ [TokenType.LIMIT, (self) => ["limit", self._parse_limit()]],
     /* py:1607 */ [TokenType.FETCH, (self) => ["limit", self._parse_limit()]],
     /* py:1608 */ [TokenType.OFFSET, (self) => ["offset", self._parse_offset()]],
-    // py:1609  [TokenType.FOR, ...]   — `_parse_locks` is a stub
-    // py:1610  [TokenType.LOCK, ...]  — `_parse_locks` is a stub
+    /* py:1609 */ [TokenType.FOR, (self) => ["locks", self._parse_locks()]],
+    /* py:1610 */ [TokenType.LOCK, (self) => ["locks", self._parse_locks()]],
     /* py:1611 */ [TokenType.TABLE_SAMPLE, (self) => ["sample", self._parse_table_sample(true)]],
     /* py:1612 */ [TokenType.USING, (self) => ["sample", self._parse_table_sample(true)]],
-    // py:1613  [TokenType.CLUSTER_BY, ...]     — `_parse_cluster` is a stub
-    // py:1617  [TokenType.DISTRIBUTE_BY, ...]  — `_parse_sort` is a stub
-    // py:1621  [TokenType.SORT_BY, ...]        — `_parse_sort` is a stub
+    /* py:1613 */ [TokenType.CLUSTER_BY, (self) => ["cluster", self._parse_cluster()]],
+    /* py:1617 */ [TokenType.DISTRIBUTE_BY, (self) => ["distribute", self._parse_sort(exp.Distribute, TokenType.DISTRIBUTE_BY)]],
+    /* py:1621 */ [TokenType.SORT_BY, (self) => ["sort", self._parse_sort(exp.Sort, TokenType.SORT_BY)]],
     // py:1622  [TokenType.CONNECT_BY, ...]     — `_parse_connect` is a stub
   ]);
 
@@ -2925,7 +2925,10 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3203
-  _parse_cluster() { throw new NotPorted("_parse_cluster", "sqlglot/parser.py:3203"); }
+  _parse_cluster() {
+    this._match(TokenType.CLUSTER_BY);
+    return this.expression(new exp.Cluster({ expressions: this._parse_csv(() => this._parse_column()) }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3211
@@ -3863,7 +3866,11 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5524
-  _parse_prewhere(skip_where_token) { throw new NotPorted("_parse_prewhere", "sqlglot/parser.py:5524"); }
+  _parse_prewhere(skip_where_token = false) {
+    if (!skip_where_token && !this._match(TokenType.PREWHERE)) return null;
+    const comments = this._prev_comments;
+    return this.expression(new exp.PreWhere({ this: this._parse_disjunction() }), null, comments);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5534
@@ -3926,11 +3933,18 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5614
-  _parse_having(skip_having_token) { throw new NotPorted("_parse_having", "sqlglot/parser.py:5614"); }
+  _parse_having(skip_having_token = false) {
+    if (!skip_having_token && !this._match(TokenType.HAVING)) return null;
+    const comments = this._prev_comments;
+    return this.expression(new exp.Having({ this: this._parse_disjunction() }), null, comments);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5623
-  _parse_qualify() { throw new NotPorted("_parse_qualify", "sqlglot/parser.py:5623"); }
+  _parse_qualify() {
+    if (!this._match(TokenType.QUALIFY)) return null;
+    return this.expression(new exp.Qualify({ this: this._parse_disjunction() }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5628
@@ -3955,7 +3969,10 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5684
-  _parse_sort(exp_class, token) { throw new NotPorted("_parse_sort", "sqlglot/parser.py:5684"); }
+  _parse_sort(exp_class, token) {
+    if (!this._match(token)) return null;
+    return this.expression(new exp_class({ expressions: this._parse_csv(() => this._parse_ordered()) }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5689
@@ -4021,7 +4038,28 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5864
-  _parse_locks() { throw new NotPorted("_parse_locks", "sqlglot/parser.py:5864"); }
+  _parse_locks() {
+    const locks = [];
+    for (;;) {
+      let update = null, key = null;
+      if (this._match_text_seq("FOR", "UPDATE")) update = true;
+      else if (this._match_text_seq("FOR", "SHARE") || this._match_text_seq("LOCK", "IN", "SHARE", "MODE")) update = false;
+      else if (this._match_text_seq("FOR", "KEY", "SHARE")) { update = false; key = true; }
+      else if (this._match_text_seq("FOR", "NO", "KEY", "UPDATE")) { update = true; key = true; }
+      else break;
+
+      let expressions = null;
+      if (this._match_text_seq("OF")) expressions = this._parse_csv(() => this._parse_table(true));
+
+      let wait = null;
+      if (this._match_text_seq("NOWAIT")) wait = true;
+      else if (this._match_text_seq("WAIT")) wait = this._parse_primary();
+      else if (this._match_text_seq("SKIP", "LOCKED")) wait = false;
+
+      locks.push(this.expression(new exp.Lock({ update, expressions, wait, key })));
+    }
+    return locks;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5901
