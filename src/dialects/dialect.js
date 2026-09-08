@@ -46,7 +46,7 @@ import { newTrie } from "../trie.js";
 import { TokenType, Tokenizer, initTokenizerSubclass, setDialectResolver } from "../tokens.js";
 import { BaseParser } from "../parsers/base.js";
 import * as exp from "../expressions/index.js";
-import { SAFE_IDENTIFIER_RE, registerGenerator, registerParser } from "../expressions/core.js";
+import { SAFE_IDENTIFIER_RE, registerAstDialects, registerGenerator, registerParser } from "../expressions/core.js";
 
 /**
  * py: sqlglot/optimizer/annotate_types.py — NOT PORTED.
@@ -515,6 +515,19 @@ function _with_strict_time_inverse(inverse_mapping) {
  * what `get_or_raise` is handed and what `corpus/ast/<dialect>.jsonl` is named after.
  */
 const DIALECT_CLASSES = new Map();
+
+/**
+ * The same classes keyed by CLASS NAME rather than by registry key, which is the
+ * `__dialect__` wire format `tools/astdump.py:111` emits (`type(node).__name__`).
+ *
+ * Handed to `registerAstDialects` ONCE, below, as a live reference: that function
+ * stores the Map it is given, so `registerDialect`'s writes are visible to
+ * `astDump`/`astLoad` without re-registering. Before P5 nothing ever called
+ * `registerAstDialects`, so the registry stayed empty and both directions silently
+ * degraded — the `astDump` side to `[object Object]`, the `astLoad` side to a raw
+ * `{__dialect__}` object (PORT_PLAN.md R19: an exported hook with no caller).
+ */
+const DIALECT_CLASSES_BY_NAME = new Map();
 
 /** py: `sys.maxsize` on the 64-bit interpreter that harvested the corpus. */
 const MAXSIZE = 2n ** 63n - 1n;
@@ -1141,6 +1154,7 @@ export function registerDialect(name, klass) {
   }
   // py:262-263 `cls._classes[enum.value if enum is not None else clsname.lower()]`.
   DIALECT_CLASSES.set(name, klass);
+  DIALECT_CLASSES_BY_NAME.set(klass.name, klass);
 
   klass.TIME_TRIE = newTrie(klass.TIME_MAPPING.keys());
   klass.FORMAT_TRIE = klass.FORMAT_MAPPING.size
@@ -1260,7 +1274,56 @@ export function registerDialect(name, klass) {
     ...klass.DATE_PART_MAPPING.values(),
   ]);
 
+  _mirrorSettingsOntoPrototype(klass);
+
   return klass;
+}
+
+/**
+ * DEVIATION (CONTRACTS.md §8), and the one without which none of this file works.
+ *
+ * In Python, `self.NULL_ORDERING` on a `Dialect` INSTANCE resolves through the MRO to
+ * the class attribute. In JS, `static` fields live on the constructor and are NOT on
+ * the prototype, so `instance.NULL_ORDERING` is plain `undefined`.
+ *
+ * That matters because `src/parser.js` and every `src/parsers/*.js` subclass read
+ * roughly forty settings as `this.dialect.X`, where `this.dialect` is the resolved
+ * INSTANCE — `this.dialect.tokenizer_class.COMMANDS`, `this.dialect.VALID_INTERVAL_UNITS`,
+ * `this.dialect.NULL_ORDERING`. Those call sites are faithful transliterations of
+ * upstream and must not change. The harness's `standInDialect` happens to satisfy them
+ * because it returns a plain object whose settings are OWN properties; a real class
+ * does not, and the failure is `undefined` for the 24 falsy defaults (indistinguishable
+ * from correct) and a flipped branch for the truthy ones.
+ *
+ * So after every derivation is final, the settings are mirrored onto the prototype,
+ * which reproduces Python's lookup exactly: instance -> prototype (this class's
+ * settings) -> parent prototype (inherited settings), with a subclass's own value
+ * shadowing its parent's, and no per-instance copying.
+ *
+ * The mirrored set is stated as a pattern rather than "everything static": data
+ * settings are SHOUT_CASE, plus the four lowercase autofilled class references. Methods
+ * are deliberately excluded — `Dialect.format_time` is a static AND a prototype method
+ * (see its note), and copying the static over the bridge would work only by accident.
+ */
+function _mirrorSettingsOntoPrototype(klass) {
+  const CLASS_REFS = ["tokenizer_class", "jsonpath_tokenizer_class", "parser_class", "generator_class"];
+  const names = new Set(CLASS_REFS);
+  for (let k = klass; k && k !== Function.prototype; k = Object.getPrototypeOf(k)) {
+    for (const name of Object.getOwnPropertyNames(k)) {
+      if (/^[A-Z][A-Z0-9_]*$/.test(name)) names.add(name);
+    }
+  }
+  for (const name of names) {
+    // Non-enumerable so `{...dialectInstance}` and `Object.keys` stay the instance's
+    // own state (`version`, `normalization_strategy`, `settings`), as in Python where
+    // `vars(instance)` does not include class attributes.
+    Object.defineProperty(klass.prototype, name, {
+      value: klass[name],
+      writable: true,
+      configurable: true,
+      enumerable: false,
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1277,6 +1340,12 @@ export function registerDialect(name, klass) {
 // strict-format degradations, and `QUOTE_START`/`IDENTIFIER_START` come off the
 // tokenizer rather than the literals above.
 registerDialect(Dialects.DIALECT, Dialect);
+
+// py: `tools/astdump.py:110`'s `isinstance(node, Dialect)` branch and `serde.load`'s
+// inverse both need to recognise a Dialect from inside the expression layer, which
+// cannot import this module. Same injected-callback shape as `helper.while_changing`'s
+// `hash` and `helper.is_iterable`'s `isExpr` (both CONTRACTS.md §8 rows).
+registerAstDialects(DIALECT_CLASSES_BY_NAME);
 
 // py: `sqlglot/tokens.py`'s `Tokenizer.__init__` calls `Dialect.get_or_raise(dialect)`
 // through a function-level import to break the same cycle. CONTRACTS.md §8's

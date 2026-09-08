@@ -18,6 +18,7 @@ import { pyUpper } from "../../src/_py/str.js";
 import { formatTime } from "../../src/time.js";
 import { NotPorted } from "../../src/errors.js";
 import { Parser } from "../../src/parser.js";
+import { Dialect } from "../../src/dialects/dialect.js";
 import { SnowflakeParser } from "../../src/parsers/snowflake.js";
 import { HiveParser } from "../../src/parsers/hive.js";
 import { Spark2Parser } from "../../src/parsers/spark2.js";
@@ -171,7 +172,27 @@ function attrsFor(dialect) {
  */
 export function standInDialect(tk, dialect = "") {
   const attrs = attrsFor(dialect);
-  return {
+  // Since P5 this is a REAL `Dialect` instance carrying the harvested values as OWN
+  // properties, rather than a bare object literal. Two reasons, one required and one
+  // free:
+  //
+  //   Required. `parser.py:4437`'s `_parse_hint` calls
+  //   `exp.maybe_parse(comment, into=Hint, dialect=self.dialect)`, and with
+  //   `registerParser` finally wired that reaches `Dialect.get_or_raise`, whose
+  //   `isinstance(dialect, Dialect)` check is upstream's own. A plain object failed it
+  //   with "Invalid dialect type for '[object Object]'" on 42 rows (spark 20, oracle
+  //   17, mysql 5) that had previously been silent MISMATCHes.
+  //
+  //   Free. Own properties shadow the prototype, so every harvested value still wins.
+  //   That matters: `registerDialect`'s derivations read `tokenizer_class._QUOTES`,
+  //   `KEYWORDS.has("(+)")` and `STRING_ESCAPES` off a real per-dialect `Tokenizer`
+  //   SUBCLASS, and this harness deliberately has none — P1 snapshotted tokenizer
+  //   SETTINGS into `TokenizerCore` instead. Registering these through
+  //   `registerDialect` would therefore recompute `SUPPORTS_COLUMN_JOIN_MARKS`,
+  //   `ESCAPED_SEQUENCES` and friends from the BASE tokenizer and overwrite measured
+  //   values with wrong ones. Assigning over an instance keeps the harvest
+  //   authoritative and gains only the type identity.
+  return Object.assign(new Dialect(), {
     ...attrs,
     tokenizer_class: { COMMANDS: tk.commands },
     tokenize: (sql) => tk.core.tokenize(sql).tokens,
@@ -196,7 +217,7 @@ export function standInDialect(tk, dialect = "") {
       }
       return path;
     },
-  };
+  });
 }
 
 // ---------------------------------------------------------------------------
