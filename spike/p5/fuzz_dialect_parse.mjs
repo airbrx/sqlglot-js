@@ -37,6 +37,17 @@
 //   SETTINGS and deliberately has no per-dialect `Tokenizer` SUBCLASS (see
 //   `dialect_tokenizer.mjs`'s header), so a handful of rows that need the real subclass
 //   are reachable here and not there.
+//
+//   DUCKDB — `src/` only, since `src/dialects/duckdb.js` landed (P5, after
+//   `parsers/duckdb.js` had already been ported behind the same synthetic stand-in
+//   SNOWFLAKE used before it). Before this file existed, the registry resolved
+//   "duckdb" to `spike/p3/dialect_tokenizer.mjs`'s harvested-settings stand-in;
+//   `fuzz_ast_coverage.mjs` measures that path at **996/1014 REACHED (98.2%)** on the
+//   corpus as it stands today (it was 973/990 when R22 landed the parser; the corpus
+//   has grown since). This probe's real path scores **999/1017 (98.2%)** — three MORE
+//   exact and three FEWER stub than the harness, the same direction Snowflake's row
+//   above moved, and for the same reason: three rows needed the real `DuckDBTokenizer`
+//   subclass rather than the harness's harvested-settings base tokenizer.
 
 import { readFileSync } from "node:fs";
 import { astDump, astLoad, toS } from "../../src/expressions/index.js";
@@ -51,6 +62,7 @@ const VERBOSE = process.argv.includes("--verbose");
 // carrying BASE settings and the BASE tokenizer, which is what the SNOWFLAKE row's
 // "routing only" caveat below used to be measuring.
 import "../../src/dialects/snowflake.js";
+import "../../src/dialects/duckdb.js";
 
 const atoms = new Map();
 for (const line of readFileSync("corpus/atoms.jsonl", "utf8").split("\n")) {
@@ -100,6 +112,7 @@ let defaultExact = 0;
 for (const [label, name, file, claim] of [
   ["DEFAULT  ", null, "corpus/ast/_default.jsonl", "src/ only — no harvested settings anywhere on this path"],
   ["SNOWFLAKE", "snowflake", "corpus/ast/snowflake.jsonl", "src/ only — real Snowflake class: own Tokenizer subclass + own settings"],
+  ["DUCKDB   ", "duckdb", "corpus/ast/duckdb.jsonl", "src/ only — real DuckDB class: own Tokenizer subclass + own settings"],
 ]) {
   const { b, samples } = run(name, file);
   const total = b.exact + b.mismatch + b.stub + b.error;
@@ -119,7 +132,7 @@ for (const [label, name, file, claim] of [
 // instead of moving a percentage by a fraction.
 console.log();
 const SQL = "SELECT * FROM t WHERE x = 1";
-for (const name of [null, "snowflake"]) {
+for (const name of [null, "snowflake", "duckdb"]) {
   const got = Dialect.get_or_raise(name).parse(SQL)[0];
   const shape = toS(got).split("\n").join(" ").replace(/\s+/g, " ");
   const parserName = Dialect.get_or_raise(name).constructor.parser_class.name;
