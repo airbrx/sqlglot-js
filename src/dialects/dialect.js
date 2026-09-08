@@ -455,7 +455,14 @@ export function map_date_part(part, dialect = null) {
 // The `Dialect` class, the registry, and `registerDialect`            — P5
 // ===========================================================================
 //
-// @ported-ranges sqlglot/dialects/dialect.py 68-83 85-166 168-361 363-1229
+// @ported-ranges sqlglot/dialects/dialect.py 68-83 85-166 168-361 363-1172 1184-1229
+//
+// 1173-1183 is EXCLUDED on purpose: it is the body of `to_json_path`'s `Literal`
+// branch, which needs `sqlglot/jsonpath.py` (P4) and is a `NotPorted` stub here. The
+// gap is load-bearing for `tools/lint_deny.mjs`, not cosmetic — py:1179 is a
+// `py_builtins` site (`startswith(("lax", "strict"))`, a TUPLE argument JS's
+// `startsWith` cannot take), and claiming the line would assert a shim routing that
+// does not exist. When the branch lands it must route through `pyStartswith()`.
 //
 // Everything below is `sqlglot/dialects/dialect.py`'s `_Dialect` metaclass and the
 // `Dialect` class it builds. The module-level builders above kept their own narrow
