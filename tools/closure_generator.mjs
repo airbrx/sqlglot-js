@@ -47,10 +47,12 @@ const flag = (name) => {
 
 const DIALECT_UNIT = /^([A-Za-z0-9_]+Generator)\.(.+)$/;
 const TRANSFORMS_UNIT = /^TRANSFORMS\[([A-Za-z0-9_]+)\]$/;
+const DIALECT_NEEDED = /^dialect:(.+)$/;
 
-/** `base-method` | `base-transforms` | `dialect` | `transforms.py`. */
+/** `base-method` | `base-transforms` | `dialect` | `transforms.py` | `dialect-name`. */
 export function unitKind(name) {
   if (name.startsWith("transforms.")) return "transforms.py";
+  if (DIALECT_NEEDED.test(name)) return "dialect-name";
   if (DIALECT_UNIT.test(name)) return "dialect";
   if (TRANSFORMS_UNIT.test(name)) return "base-transforms";
   return "base-method";
@@ -119,6 +121,20 @@ async function haveSet() {
   const hasDialectGenerators = existsSync("src/generators");
   const hasTransformsModule = existsSync("src/transforms.js");
 
+  // Whether the port can resolve a dialect BY NAME. Asked of the real registry rather
+  // than assumed, for the same reason as the two `existsSync` checks: P5 registers these
+  // and this tool must start counting them the day it does, not the day someone notices.
+  const { Dialect } = await import("../src/dialects/dialect.js");
+  const resolvable = (name) => {
+    try {
+      Dialect.get_or_raise(name);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const dialectCache = new Map();
+
   const have = new Set();
   const satisfied = (unit) => {
     switch (unitKind(unit)) {
@@ -130,10 +146,18 @@ async function haveSet() {
         return hasDialectGenerators;
       case "transforms.py":
         return hasTransformsModule;
+      case "dialect-name": {
+        const name = unit.match(DIALECT_NEEDED)[1];
+        if (!dialectCache.has(name)) dialectCache.set(name, resolvable(name));
+        return dialectCache.get(name);
+      }
     }
     return false;
   };
-  return { have, satisfied, impl, stubs, transforms, hasDialectGenerators, hasTransformsModule };
+  return {
+    have, satisfied, impl, stubs, transforms,
+    hasDialectGenerators, hasTransformsModule, dialectCache,
+  };
 }
 
 /* --------------------------------------------------------------------------- *
@@ -228,6 +252,9 @@ async function selftest() {
   eq("dialect method", unitKind("SnowflakeGenerator.select_sql"), "dialect");
   eq("dialect TRANSFORMS", unitKind("TSQLGenerator.TRANSFORMS[Select]"), "dialect");
   eq("transforms.py fn", unitKind("transforms.eliminate_qualify"), "transforms.py");
+  eq("dialect precondition", unitKind("dialect:snowflake"), "dialect-name");
+  // Version-suffixed dialect names really occur in this corpus ("postgres, version=15").
+  eq("versioned dialect", unitKind("dialect:clickhouse, version=23.8"), "dialect-name");
 
   // The source-grep view of src/generator.js must agree with the loaded module, or a
   // porting task and this tool are reading two different files. This is the check
@@ -370,6 +397,14 @@ if (!state.hasDialectGenerators) {
 }
 if (!state.hasTransformsModule) {
   console.log(`  src/transforms.js ABSENT — every transforms.py unit is likewise unreachable.`);
+}
+{
+  const named = [...state.dialectCache.entries()];
+  const ok = named.filter(([, v]) => v).length;
+  console.log(
+    `  dialects resolvable by name      ${ok} / ${named.length}` +
+      (ok === 0 ? "  — P5 registers these; until then a named-dialect row cannot be generated at all." : ""),
+  );
 }
 console.log(`  generate-oracle rows closed  ${base} (${((100 * base) / rows.length).toFixed(2)}%)`);
 

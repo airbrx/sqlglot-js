@@ -264,5 +264,8 @@ test("the seeded skeleton's size is stated, not implied", () => {
       return e.name === "NotPorted";
     }
   });
-  assert.equal(432 - stubs.length, 6, "exactly 6 *_sql methods are wired at the blocking step");
+  // 6 at the blocking step; +2 (`column_sql`, `identifier_sql`) from the keystone group
+  // `tools/closure_generator.mjs --curve` identified — with `column_parts`, which is a
+  // helper and so not counted here, they are the smallest set that opens any row at all.
+  assert.equal(432 - stubs.length, 8, "exactly 8 *_sql methods are wired");
 });

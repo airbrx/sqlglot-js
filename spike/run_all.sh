@@ -106,6 +106,13 @@ run "P3: raise_error + unicode columns"   node spike/p3/fuzz_raise_error.mjs
 run "P3: check_command_warning strings"   node spike/p3/fuzz_command_warning.mjs
 run "P3: AST oracle coverage (honest)"    node spike/p3/fuzz_ast_coverage.mjs
 run "P4: base Generator (settings/prims/gen)" node spike/p4/fuzz_generator_base.mjs
+# The generator's counterpart to "P3: AST oracle coverage (honest)", and wired in for the
+# same reason: without it, `tools/closure_generator.mjs`'s percentage is the only number
+# anyone would quote, and R13 is the standing proof that a closure percentage and a real
+# probe can disagree completely. It also cross-checks the two against each other and fails
+# if closure over-claims — which it caught doing on its very first run.
+run "P4: generate oracle (honest)"        node spike/p4/fuzz_generate_oracle.mjs
+run "SELFTEST: generator closure maths"   node tools/closure_generator.mjs --selftest
 run "P5: Dialect defaults vs CPython"      node spike/p5/fuzz_dialect_defaults.mjs
 run "P5: Dialect.get_or_raise().parse()"   node spike/p5/fuzz_dialect_parse.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this

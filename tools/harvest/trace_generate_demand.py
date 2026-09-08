@@ -46,6 +46,17 @@ Unit naming
     Snowflake.Generator.select_sql          dialect generator method override
     Snowflake.Generator.TRANSFORMS[Ceil]    dialect `TRANSFORMS` override
     transforms.unqualify_unnest             `sqlglot/transforms.py` function
+    dialect:snowflake                       the row needs that dialect RESOLVABLE BY NAME
+
+The last one is not a call the tracer observed; it is a precondition it derives from the
+row's own `read`/`write`. It exists because leaving it out reproduced R13 inside this
+very tool: the first run scored 1,029 rows closed, of which only 27 could actually be
+generated, because the other 1,002 need `Dialect.get_or_raise("snowflake")` and the port
+registers no dialect but the base one. A row whose generation touches only ported base
+methods is still not closeable if nothing can hand the generator that row's dialect
+settings — `IDENTIFIER_START`, `IDENTIFIERS_CAN_START_WITH_DIGIT` and `can_quote` all
+feed `identifier_sql` directly. The default dialect emits no unit: it is the base
+`Dialect`, which always exists.
 
 Base-owned units are BARE so that `--brief select_sql` reads naturally and so the
 closure tool can map a unit to `src/generator.js` by name alone, the way
@@ -283,7 +294,13 @@ def main() -> int:
                     reconstruction_failures += 1
                     continue
 
-                units = sorted(CURRENT)
+                # Derived precondition, not an observed call — see the docstring.
+                needed = set(CURRENT)
+                for name in (atom["read"], atom["write"]):
+                    if name:
+                        needed.add(f"dialect:{name}")
+
+                units = sorted(needed)
                 per_row[row["atom_id"]] = units
                 for unit in units:
                     freq[unit] += 1
