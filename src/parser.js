@@ -5214,9 +5214,20 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7857
-  _parse_references(match) {
-    const this_ = this._parse_table_parts(); const expressions = this._parse_wrapped_csv(this._parse_id_var.bind(this));
-    return this.expression(new exp.Reference({ this: new exp.Schema({ this: this_, expressions }), options: this._parse_on_handling(), match }));
+  // `match` DEFAULTS TO TRUE: `_parse_foreign_key`'s bare `_parse_references()` relies on
+  // it to consume the REFERENCES token, while CONSTRAINT_PARSERS["REFERENCES"] (py:1466)
+  // passes false because it has already matched. `_parse_table(schema=True)` — not
+  // `_parse_table_parts` — is what wraps `"Artist" ("ArtistId")` into the Schema the
+  // oracle expects; it also makes the column list OPTIONAL, where a `_parse_wrapped_csv`
+  // demanded parens and raised "Expecting (" on `REFERENCES t` with no column list.
+  // `expressions` is always None upstream (dead but dumped, so it is kept explicit).
+  _parse_references(match = true) {
+    if (match && !this._match(TokenType.REFERENCES)) return null;
+
+    const expressions = null;
+    const this_ = this._parse_table(true);
+    const options = this._parse_key_constraint_options();
+    return this.expression(new exp.Reference({ this: this_, expressions, options }));
   }
 
   /** @returns {*} */
