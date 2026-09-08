@@ -41,6 +41,7 @@ codegen: ## regenerate src/_gen (CI asserts `git diff --exit-code src/_gen` afte
 	node tools/gen_unicode_tables.mjs
 	node tools/gen_timezones.mjs $(REF)
 	node tools/gen_expr_meta.mjs
+	node tools/gen_dispatch.mjs
 
 parity: ## run the 6 parity probes + the parser class-table check
 	node tools/parity/check.mjs
@@ -72,6 +73,7 @@ lint: ## the checkable CI gates that exist today
 	node tools/lint_control_bytes.mjs
 	node tools/lint_deny.mjs
 	node tools/lint_identity.mjs
+	node tools/lint_anchors.mjs
 	node tools/check_corpus.mjs
 
 check: ## every self-test + the node:test suite (no corpus regeneration)

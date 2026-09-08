@@ -52,6 +52,7 @@ python3 spike/p3/gen_generator_kernel_ref.py > spike/out/generator_kernel.jsonl 
 python3 spike/p3/gen_parse_path_sql_ref.py   > spike/out/parse_path_sql.jsonl   || fail=1
 python3 spike/p3/gen_raise_error_ref.py      > spike/out/raise_error.jsonl      || fail=1
 python3 spike/p3/gen_command_warning_ref.py  > spike/out/command_warnings.jsonl || fail=1
+python3 spike/p4/gen_generator_base_ref.py   > spike/out/generator_base.json    || fail=1
 # P5 oracle. The base `Dialect` class's 105 settings, the four classes the metaclass
 # autofills, 17 `get_or_raise` grammar cases and 187 method cases, straight out of
 # CPython -- six of the settings are DERIVED by the metaclass, so reading the upstream
@@ -77,6 +78,7 @@ run "LINT: deny-lists routed through _py" node tools/lint_deny.mjs
 # `unalias`). `bases` already knows which classes have subclasses, so the check is
 # mechanical rather than another list someone has to remember to update.
 run "LINT: isinstance vs name identity"   node tools/lint_identity.mjs
+run "LINT: py: anchors point at defs"     node tools/lint_anchors.mjs
 # §8.1 Rule 1. Offline half only -- the live check needs gh + network, and this script is
 # meant to be reproducible from a clean tree. The load-bearing case is the FALSE positive:
 # two agents replacing two different one-line stubs in src/parser.js must NOT be flagged,
@@ -103,6 +105,7 @@ run "P3: parse-path generate call sites"  node spike/p3/fuzz_parse_path_sql.mjs
 run "P3: raise_error + unicode columns"   node spike/p3/fuzz_raise_error.mjs
 run "P3: check_command_warning strings"   node spike/p3/fuzz_command_warning.mjs
 run "P3: AST oracle coverage (honest)"    node spike/p3/fuzz_ast_coverage.mjs
+run "P4: base Generator (settings/prims/gen)" node spike/p4/fuzz_generator_base.mjs
 run "P5: Dialect defaults vs CPython"      node spike/p5/fuzz_dialect_defaults.mjs
 run "P5: Dialect.get_or_raise().parse()"   node spike/p5/fuzz_dialect_parse.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
