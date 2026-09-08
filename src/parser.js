@@ -4840,11 +4840,41 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7336
-  _to_prop_eq(expression, index) { throw new NotPorted("_to_prop_eq", "sqlglot/parser.py:7336"); }
+  // py:7336 — identity in the base parser; dialects override it (the `index` argument
+  // is unused here on purpose, not an oversight).
+  _to_prop_eq(expression, index) { return expression; }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7339
-  _kv_to_prop_eq(expressions, parse_map) { throw new NotPorted("_kv_to_prop_eq", "sqlglot/parser.py:7339"); }
+  _kv_to_prop_eq(expressions, parse_map = false) {
+    const transformed = [];
+
+    for (const [index, e0] of expressions.entries()) {
+      let e = e0;
+      if (this.constructor.KEY_VALUE_DEFINITIONS.some((C) => e instanceof C)) {
+        if (e instanceof exp.Alias) {
+          e = this.expression(new exp.PropertyEQ({ this: e.args.alias, expression: e.this }));
+        }
+
+        // py:7348 — re-tested after the Alias rewrite above, so an Alias that just
+        // BECAME a PropertyEQ skips this branch.
+        if (!(e instanceof exp.PropertyEQ)) {
+          e = this.expression(new exp.PropertyEQ({
+            this: parse_map ? e.this : exp.toIdentifier(e.this.name),
+            expression: e.expression,
+          }));
+        }
+
+        if (e.this instanceof exp.Column) e.this.replace(e.this.this);
+      } else {
+        e = this._to_prop_eq(e, index);
+      }
+
+      transformed.push(e);
+    }
+
+    return transformed;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7366
