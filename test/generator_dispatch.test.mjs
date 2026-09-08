@@ -211,6 +211,43 @@ test("a trailing enum ARGUMENT is not mistaken for an options object", () => {
   assert.equal(g.func("F", exp.Literal.string("a"), { suffix: "]" }), "F('a']");
 });
 
+test("the Generator composes with the real P5 Dialect", async () => {
+  // CROSS-BRANCH INTEGRATION BOUNDARY. `dialects/dialect.js` (R20, p5-dialect-class)
+  // and this file (R21) were built in parallel against the same CONTRACTS.md §8 rule,
+  // and nothing else checks that they actually fit. `Dialect.generator_class` is still
+  // `null` with a "P4" comment — wiring it is dialect.js's line to write, not this
+  // branch's — so the composition that matters right now is the other direction: a
+  // real resolved `Dialect` must satisfy everything the generator reads off
+  // `this.dialect`.
+  //
+  // If this test fails after a change to dialect.js, the fix is one of: add the field
+  // there, or (if upstream really lacks it) remove the read here. Do NOT "fix" it by
+  // widening BASE_DIALECT_GENERATOR_SETTINGS to paper over a missing field — R18(d)
+  // records a wrong output row caused by exactly that shape of stand-in.
+  const { Dialect } = await import("../src/dialects/dialect.js");
+  const dialect = Dialect.get_or_raise(null);
+
+  const NEEDED = [
+    "NORMALIZE_FUNCTIONS", "QUOTE_START", "QUOTE_END", "BYTE_END",
+    "IDENTIFIER_START", "IDENTIFIER_END", "PRESERVE_ORIGINAL_NAMES",
+    "STRINGS_SUPPORT_ESCAPED_SEQUENCES", "BYTE_STRINGS_SUPPORT_ESCAPED_SEQUENCES",
+    "ESCAPED_SEQUENCES",
+  ];
+  assert.deepEqual(
+    NEEDED.filter((k) => dialect[k] === undefined),
+    [],
+    "a real Dialect must carry every field the generator reads",
+  );
+  assert.ok(dialect.tokenizer_class?.STRING_ESCAPES?.length, "STRING_ESCAPES is read in the ctor");
+
+  // ...and the base Dialect must produce the same SQL as the hardcoded stand-in, or
+  // the stand-in is lying about what the base dialect does.
+  const g = new Generator({ dialect });
+  assert.equal(g.sql(exp.Literal.string("it's")), "'it''s'");
+  assert.equal(g.sql(new exp.Abs({ this: exp.Literal.number(1) })), "ABS(1)");
+  assert.equal(g.sql(exp.Literal.string("it's")), new Generator().sql(exp.Literal.string("it's")));
+});
+
 test("the seeded skeleton's size is stated, not implied", () => {
   // R13's demand made executable: the burndown numbers live in a test, so a PR that
   // ports stubs updates them deliberately.
