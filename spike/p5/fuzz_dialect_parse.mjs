@@ -51,6 +51,12 @@ const VERBOSE = process.argv.includes("--verbose");
 // carrying BASE settings and the BASE tokenizer, which is what the SNOWFLAKE row's
 // "routing only" caveat below used to be measuring.
 import "../../src/dialects/snowflake.js";
+// Same wiring for `src/dialects/postgres.js` (P5), added once that file existed.
+// Before it landed, `Dialect.get_or_raise("postgres")` fell through to
+// `dialect_tokenizer.mjs`'s synthetic stand-in via the test harness only — the real
+// production path had no Postgres settings class at all and scored measurably below
+// `fuzz_ast_coverage.mjs`'s harness-routed number (PORT_PLAN.md: this file's dispatch).
+import "../../src/dialects/postgres.js";
 
 const atoms = new Map();
 for (const line of readFileSync("corpus/atoms.jsonl", "utf8").split("\n")) {
@@ -100,6 +106,7 @@ let defaultExact = 0;
 for (const [label, name, file, claim] of [
   ["DEFAULT  ", null, "corpus/ast/_default.jsonl", "src/ only — no harvested settings anywhere on this path"],
   ["SNOWFLAKE", "snowflake", "corpus/ast/snowflake.jsonl", "src/ only — real Snowflake class: own Tokenizer subclass + own settings"],
+  ["POSTGRES ", "postgres", "corpus/ast/postgres.jsonl", "src/ only — real Postgres class: own Tokenizer subclass + own settings"],
 ]) {
   const { b, samples } = run(name, file);
   const total = b.exact + b.mismatch + b.stub + b.error;
@@ -119,7 +126,7 @@ for (const [label, name, file, claim] of [
 // instead of moving a percentage by a fraction.
 console.log();
 const SQL = "SELECT * FROM t WHERE x = 1";
-for (const name of [null, "snowflake"]) {
+for (const name of [null, "snowflake", "postgres"]) {
   const got = Dialect.get_or_raise(name).parse(SQL)[0];
   const shape = toS(got).split("\n").join(" ").replace(/\s+/g, " ");
   const parserName = Dialect.get_or_raise(name).constructor.parser_class.name;
