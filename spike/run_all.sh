@@ -62,6 +62,11 @@ PYTHONHASHSEED=0 python3 spike/p4/gen_identifier_sql_ref.py > spike/out/identifi
 # CPython -- six of the settings are DERIVED by the metaclass, so reading the upstream
 # class body gives the wrong answer for all six.
 PYTHONHASHSEED=0 python3 spike/p5/gen_dialect_ref.py > spike/out/dialect_defaults.json || fail=1
+# P5 oracle, one class down. `dialects/snowflake.py` is almost entirely hand-transcribed
+# class-level VALUES -- R21's hazard class exactly -- so its 105 resolved settings, its
+# nested Tokenizer (declared AND `__init_subclass__`-derived), and `can_quote`'s DUAL
+# exception are diffed against CPython rather than eyeballed against the upstream file.
+PYTHONHASHSEED=0 python3 spike/p5/gen_snowflake_dialect_ref.py > spike/out/snowflake_dialect.json || fail=1
 
 run "PROBE 1a: numeric differential"      node spike/fuzz_num.mjs
 run "PROBE 1b: named go/no-go literal"    node spike/gonogo_snowflake367.mjs
@@ -125,6 +130,7 @@ run "P4: identifier_sql flag space"       node spike/p4/fuzz_identifier_sql.mjs
 run "SELFTEST: generator closure maths"   node tools/closure_generator.mjs --selftest
 run "P5: Dialect defaults vs CPython"      node spike/p5/fuzz_dialect_defaults.mjs
 run "P5: Dialect.get_or_raise().parse()"   node spike/p5/fuzz_dialect_parse.mjs
+run "P5: Snowflake dialect vs CPython"     node spike/p5/fuzz_snowflake_dialect.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
 # unrun test is a comment, which is the same argument this repo makes for the deny-list

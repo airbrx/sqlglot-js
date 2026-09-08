@@ -318,6 +318,28 @@ function dialectClassFor(dialect) {
     dialectClassCache.set(dialect, Dialect);
     return Dialect;
   }
+  // If a REAL `src/dialects/<name>.js` has already registered itself, use it and
+  // synthesize nothing. `src/dialects/snowflake.js` is the first (P5); duckdb, postgres
+  // and the rest follow one file at a time.
+  //
+  // This is not merely a tidiness preference — without it the synthesis below is a
+  // silent DOWNGRADE. `registerDialect(dialect, klass)` at the bottom of this function
+  // OVERWRITES the registry entry, so any module that imported a real dialect class and
+  // then touched this harness would find `Dialect.get_or_raise("snowflake")` handing
+  // back the stand-in — base settings, base tokenizer — with no error anywhere. That is
+  // PORT_PLAN.md R19/R20's shape once more: a correct value replaced by a plausible one,
+  // through a path nothing asserts on.
+  //
+  // It deliberately does NOT import any real dialect class. This file's own header
+  // explains why the harness wants harvested settings rather than derived ones (it has
+  // no per-dialect `Tokenizer` SUBCLASS by design), and `standInDialect` shadows the
+  // class's settings per-instance either way. So for `fuzz_ast_coverage.mjs` this branch
+  // is inert until some other module does the importing, which is the point.
+  const registered = Dialect.get(dialect);
+  if (registered) {
+    dialectClassCache.set(dialect, registered);
+    return registered;
+  }
   const name = DIALECT_CLASS_NAMES[dialect];
   if (!name) throw new Error(`no upstream class name recorded for dialect ${JSON.stringify(dialect)}`);
   const ParserClass = parserClassFor(dialect);

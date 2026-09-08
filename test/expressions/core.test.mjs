@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Column, DataType, DateAdd, DateTrunc, DType, Identifier, Literal, Table, Var, Week, astLoad } from "../../src/expressions/index.js";
 import { ExprMap, ExprSet } from "../../src/_py/collections.js";
+import { SAFE_IDENTIFIER_RE, toIdentifier } from "../../src/expressions/core.js";
 
 test("DateAdd kwargs normalize unit but astLoad bypasses INIT_HOOKS", () => {
   const kwargs = new DateAdd({ this: new Var({ this: "x" }), unit: new Var({ this: "q" }) });
@@ -97,4 +98,52 @@ test("set maintains list parent/index relationships", () => {
   const replacement = [col("x"), col("y")];
   select.set("expressions", replacement, 1);
   assert.deepEqual(select.expressions.map(x => [x.name, x.index]), [["a", 0], ["x", 1], ["y", 2]]);
+});
+
+// `SAFE_IDENTIFIER_RE` — Python's `\w` is Unicode-aware and JS's is not.
+//
+// This lives in the unit suite rather than only in a spike probe because the AST corpus
+// does not reach it: every identifier in `corpus/ast/` is either fully ASCII or has a
+// non-ASCII FIRST character (which both languages reject via `^[_a-zA-Z]`). The
+// divergence needs an ASCII first char followed by a non-ASCII word character, and
+// nothing in 15,540 atoms has one. So the corpus stayed at EXACT 10,242 across the fix
+// in both directions — this test is the only thing standing between the correct
+// behaviour and a silent revert to `/^[_a-zA-Z][\w]*$/u`.
+//
+// Expectations are CPython's, taken from
+// `re.compile(r"^[_a-zA-Z][\w]*$").match(s)` at the pin, not re-derived here.
+test("SAFE_IDENTIFIER_RE matches Python's Unicode-aware \\w and newline-tolerant $", () => {
+  for (const [text, want] of [
+    ["abc", true],
+    ["_a", true],
+    ["a1_", true],
+    // `\w` is Unicode-aware upstream: these were false under a JS `\w`, which is
+    // always [A-Za-z0-9_] even with the `u` flag.
+    ["Straße", true],
+    ["DUAＬ", true],
+    ["aé", true],
+    // ...but `^[_a-zA-Z]` is ASCII-only in BOTH languages, so a non-ASCII FIRST
+    // character still fails. This is the pair that makes the rule non-obvious.
+    ["ａbc", false],
+    ["á", false],
+    ["ÄÖÜ", false],
+    // Python's `$` matches before exactly ONE trailing newline.
+    ["abc\n", true],
+    ["abc\n\n", false],
+    ["ab\nc", false],
+    ["", false],
+    ["a b", false],
+  ]) {
+    assert.equal(SAFE_IDENTIFIER_RE.test(text), want, `SAFE_IDENTIFIER_RE.test(${JSON.stringify(text)})`);
+  }
+});
+
+// The consequence, at the call site that is live on the parse/build path today.
+// `toIdentifier`'s `quoted` default is `not SAFE_IDENTIFIER_RE.match(name)`, so an
+// under-matching regex quotes identifiers CPython leaves bare.
+test("toIdentifier does not quote a Unicode-alphanumeric identifier", () => {
+  assert.equal(toIdentifier("Straße").args.quoted, false);
+  assert.equal(toIdentifier("abc").args.quoted, false);
+  assert.equal(toIdentifier("ÄÖÜ").args.quoted, true);
+  assert.equal(toIdentifier("a b").args.quoted, true);
 });

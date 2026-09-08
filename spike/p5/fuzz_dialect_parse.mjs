@@ -21,29 +21,36 @@
 //   its own settings. Whatever this scores is what a caller gets from
 //   `Dialect.get_or_raise(null).parse(sql)` today.
 //
-//   SNOWFLAKE — registry ROUTING only. It proves `get_or_raise("snowflake")` reaches
-//   `SnowflakeParser`, which is the piece P5 adds. It does NOT prove a complete
-//   Snowflake pipeline, and the number is deliberately printed rather than hidden:
-//   `src/dialects/snowflake.js` (the ~192-LOC settings class) and a Snowflake
-//   `Tokenizer` subclass do not exist yet, so this run uses the BASE tokenizer and the
-//   BASE settings. The gap between it and `fuzz_ast_coverage.mjs`'s snowflake figure is
-//   exactly the size of that missing file, measured instead of estimated.
+//   SNOWFLAKE — `src/` only as well, since `src/dialects/snowflake.js` landed. The
+//   registry resolves the name to the real `Snowflake` class, whose own nested
+//   `Tokenizer` subclass lexes the SQL and whose own settings the parser reads. When
+//   this file was written that class did not exist, the probe registered a stand-in
+//   carrying BASE settings and the BASE tokenizer, and the row scored **85.9%
+//   (1,917/2,232)**; the gap to `fuzz_ast_coverage.mjs`'s harness-routed 98.7% was
+//   described here as "exactly the size of that missing file, measured instead of
+//   estimated". Landing the file moved it to 98.7% (2,359/2,390), which settles that
+//   prediction: the gap was the settings class and nothing else.
+//
+//   The real path now scores marginally ABOVE the harness (2,359 vs 2,355 exact), which
+//   is the expected direction and worth stating so it is not read as noise:
+//   `fuzz_ast_coverage.mjs` builds its token stream from P1's harvested tokenizer
+//   SETTINGS and deliberately has no per-dialect `Tokenizer` SUBCLASS (see
+//   `dialect_tokenizer.mjs`'s header), so a handful of rows that need the real subclass
+//   are reachable here and not there.
 
 import { readFileSync } from "node:fs";
 import { astDump, astLoad, toS } from "../../src/expressions/index.js";
-import { Dialect, registerDialect } from "../../src/dialects/dialect.js";
-import { SnowflakeParser } from "../../src/parsers/snowflake.js";
+import { Dialect } from "../../src/dialects/dialect.js";
 import { captureLogs } from "../../src/logging.js";
 
 const VERBOSE = process.argv.includes("--verbose");
 
-// The next P5 dispatch replaces this with `src/dialects/snowflake.js`, whose class body
-// is the ~40 settings overrides `dialects/snowflake.py` declares. Registered here with
-// only its `Parser` so the ROUTING is under test and the settings gap stays visible.
-class Snowflake extends Dialect {
-  static Parser = SnowflakeParser;
-}
-registerDialect("snowflake", Snowflake);
+// `src/dialects/snowflake.js` self-registers under "snowflake" at module load, so this
+// bare import is the whole wiring. It replaces the stand-in this file used to declare
+// inline — a `class Snowflake extends Dialect { static Parser = SnowflakeParser }`
+// carrying BASE settings and the BASE tokenizer, which is what the SNOWFLAKE row's
+// "routing only" caveat below used to be measuring.
+import "../../src/dialects/snowflake.js";
 
 const atoms = new Map();
 for (const line of readFileSync("corpus/atoms.jsonl", "utf8").split("\n")) {
@@ -92,7 +99,7 @@ console.log("  Dialect.get_or_raise(name).parse(sql) vs the AST oracle");
 let defaultExact = 0;
 for (const [label, name, file, claim] of [
   ["DEFAULT  ", null, "corpus/ast/_default.jsonl", "src/ only — no harvested settings anywhere on this path"],
-  ["SNOWFLAKE", "snowflake", "corpus/ast/snowflake.jsonl", "routing only — base tokenizer + base settings, see header"],
+  ["SNOWFLAKE", "snowflake", "corpus/ast/snowflake.jsonl", "src/ only — real Snowflake class: own Tokenizer subclass + own settings"],
 ]) {
   const { b, samples } = run(name, file);
   const total = b.exact + b.mismatch + b.stub + b.error;
