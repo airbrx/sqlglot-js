@@ -3770,7 +3770,9 @@ export class Parser {
     const hints = [];
     try {
       while (true) {
-        const hint = this._parse_csv(() => this._parse_hint_function_call() || this._parse_var(true));
+        // py:4421 `self._parse_hint_function_call() or self._parse_var(upper=True)` --
+        // `upper`, not `any_token`. Same dropped keyword as py:5291 below.
+        const hint = this._parse_csv(() => this._parse_hint_function_call() || this._parse_var(false, null, true));
         if (!hint.length) break;
         hints.push(...hint);
       }
@@ -4135,7 +4137,13 @@ export class Parser {
     else percent = num;
     if (matched_l_paren) this._match_r_paren();
     if (this._match(TokenType.L_PAREN)) {
-      method = this._parse_var(true); seed = this._match(TokenType.COMMA) && this._parse_number(); this._match_r_paren();
+      // py:5291 `method = self._parse_var(upper=True)`. `upper` is the THIRD parameter
+      // (`any_token, tokens, upper`), so the bare `_parse_var(true)` this replaced set
+      // `any_token=True` and left `upper=False` -- two divergences from one dropped
+      // keyword: `USING SAMPLE 10% (system, 377)` produced `Var(this=system)` where
+      // CPython produces `Var(this=SYSTEM)`, and any token at all was accepted as a
+      // sampling method. PORT_PLAN.md R18's class.
+      method = this._parse_var(false, null, true); seed = this._match(TokenType.COMMA) && this._parse_number(); this._match_r_paren();
     } else if (this._match_texts(["SEED", "REPEATABLE"])) seed = this._parse_wrapped(() => this._parse_number());
     if (!method && C.DEFAULT_SAMPLING_METHOD) method = exp.var(C.DEFAULT_SAMPLING_METHOD);
     return this.expression(new exp.TableSample({ expressions, method, bucket_numerator, bucket_denominator, bucket_field, percent, size, seed }));
