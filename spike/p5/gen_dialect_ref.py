@@ -115,6 +115,74 @@ def kv_case(s):
     return row
 
 
+# PORT_PLAN.md R16 applied to this port's OWN new code: "a method being non-stub is not
+# evidence it was ported; it is evidence someone wrote a body." Five `Dialect` methods
+# have no caller in `src/` yet — their consumers are the P4 generator and the P6
+# optimizer — so nothing else in the repo would notice if they were wrong. They get a
+# CPython oracle now rather than when something finally reaches them.
+#
+# `normalize_identifier` is absent on purpose: the port announces it as NotPorted
+# because it needs a `pyLower` shim that does not exist, and generating expectations for
+# a method the port refuses to implement would be noise.
+CASE_SENSITIVE_TEXTS = ["abc", "ABC", "Abc", "aBc", "abc1", "_a", "", "ÄÖÜ", "äöü", "1234", "a_B"]
+STRATEGIES = [
+    "lowercase",
+    "uppercase",
+    "case_sensitive",
+    "case_insensitive",
+    "case_insensitive_uppercase",
+]
+
+
+def method_cases():
+    rows = []
+    for strategy in STRATEGIES:
+        d = Dialect(normalization_strategy=strategy)
+        for text in CASE_SENSITIVE_TEXTS:
+            rows.append(
+                {"m": "case_sensitive", "strategy": strategy, "text": text, "out": d.case_sensitive(text)}
+            )
+
+    d = Dialect()
+    # `identify` is a real positional parameter upstream, tri-valued: True / "safe" /
+    # "unsafe" / falsy. `parent` matters too — an Identifier inside a Func is never
+    # quoted (py:1142).
+    for text in ["abc", "ABC", "Abc", "a b", "sELECT", "a1", "1a"]:
+        for quoted in (False, True):
+            for identify in (True, False, "safe", "unsafe"):
+                for in_func in (False, True):
+                    ident = exp.Identifier(this=text, quoted=quoted)
+                    if in_func:
+                        exp.Anonymous(this=ident, expressions=[])
+                    try:
+                        out = d.can_quote(ident, identify)
+                    except ValueError as e:
+                        out = {"error": str(e)}
+                    rows.append({
+                        "m": "can_quote", "text": text, "quoted": quoted,
+                        "identify": identify, "in_func": in_func, "out": out,
+                    })
+        for identify in (True, False):
+            ident = exp.Identifier(this=text, quoted=False)
+            rows.append({
+                "m": "quote_identifier", "text": text, "identify": identify,
+                "out": d.quote_identifier(ident, identify).args["quoted"],
+            })
+
+    # py:1222 — `_col_0`, `_col_1`, ... one per column of the FIRST VALUES row.
+    for width in (0, 1, 3):
+        values = exp.Values(expressions=[exp.Tuple(expressions=[exp.Literal.number(i) for i in range(width)])])
+        rows.append({
+            "m": "generate_values_aliases", "width": width,
+            "out": [i.name for i in d.generate_values_aliases(values)],
+        })
+
+    # py:1025 — with an EMPTY TIME_MAPPING the base dialect still strips the quotes.
+    for value in ["'%Y-%m-%d'", "'abc'", "''"]:
+        rows.append({"m": "format_time", "value": value, "out": Dialect.format_time(value).name})
+    return rows
+
+
 print(
     json.dumps(
         {
@@ -140,6 +208,7 @@ print(
                 "settings": enc(instance.settings),
             },
             "get_or_raise": [kv_case(s) for s in GET_OR_RAISE_CASES],
+            "methods": method_cases(),
         },
         indent=1,
         sort_keys=True,

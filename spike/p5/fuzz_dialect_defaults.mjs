@@ -210,6 +210,59 @@ check("subclass INITCAP_SUPPORTS_CUSTOM_DELIMITERS (py:352 turns it off for non-
 check("subclass inherits base VALID_INTERVAL_UNITS size", DuckDB.VALID_INTERVAL_UNITS.size, Dialect.VALID_INTERVAL_UNITS.size);
 check("exp is loadable alongside (sanity)", typeof exp.Select, "function");
 
+// ---------------------------------------------------------------------------
+// 4. The five methods with no caller in `src/`
+// ---------------------------------------------------------------------------
+// PORT_PLAN.md R16 turned on this port's own new code. `case_sensitive`, `can_quote`,
+// `quote_identifier`, `generate_values_aliases` and `format_time` are consumed by the
+// P4 generator and the P6 optimizer, neither of which exists, so no other probe in this
+// repo would notice if any of them were quietly wrong. `normalize_identifier` is
+// excluded because the port announces it as a NotPorted stub.
+for (const row of ref.methods) {
+  const label = `${row.m}(${JSON.stringify(row.text ?? row.value ?? row.width)}` +
+    `${row.strategy ? `, ${row.strategy}` : ""}${row.identify !== undefined ? `, identify=${JSON.stringify(row.identify)}` : ""}` +
+    `${row.quoted !== undefined ? `, quoted=${row.quoted}` : ""}${row.in_func ? ", in Func" : ""})`;
+  let got;
+  try {
+    if (row.m === "case_sensitive") {
+      got = new Dialect({ normalization_strategy: row.strategy }).case_sensitive(row.text);
+    } else if (row.m === "can_quote" || row.m === "quote_identifier") {
+      const ident = new exp.Identifier({ this: row.text, quoted: row.quoted ?? false });
+      // Constructing the Func sets `ident.parent`, which is what py:1142 tests.
+      if (row.in_func) new exp.Anonymous({ this: ident, expressions: [] });
+      const d = new Dialect();
+      got = row.m === "can_quote"
+        ? d.can_quote(ident, row.identify)
+        : d.quote_identifier(ident, row.identify).args.quoted;
+    } else if (row.m === "generate_values_aliases") {
+      const values = new exp.Values({
+        expressions: [new exp.Tuple({ expressions: Array.from({ length: row.width }, (_, i) => exp.Literal.number(i)) })],
+      });
+      got = new Dialect().generate_values_aliases(values).map((i) => i.name);
+    } else if (row.m === "format_time") {
+      got = Dialect.format_time(row.value).name;
+      // `format_time("''")` reaches `Literal.string(null)`, where upstream's `str(None)`
+      // gives "None" and the port's `String(null)` gives "null". That is a KNOWN,
+      // reachable divergence in `Literal.string`, not in `Dialect.format_time` — see
+      // the long note at its definition in `expressions/focused_methods.js` for why the
+      // fix is two edits and why landing half of it regresses two bigquery rows.
+      // Recorded as a GAP with its expected value printed, never silently equalised.
+      if (got === "null" && row.out === "None") {
+        note.push(
+          `GAP  Literal.string(null): CPython "None", port "null" — reached here via ` +
+            `format_time(${JSON.stringify(row.value)}); fix is pyStr + src/parser.js:370 \`1\` -> \`1n\``,
+        );
+        continue;
+      }
+    } else {
+      throw new Error(`unhandled oracle method ${row.m}`);
+    }
+  } catch (e) {
+    got = { error: e.message };
+  }
+  check(label, got, row.out);
+}
+
 console.log();
 console.log(`  Dialect defaults vs CPython: ${checks - fails.length}/${checks} checks pass`);
 for (const line of note) console.log(`    ${line}`);

@@ -330,6 +330,40 @@ export function pyReprStr(s) {
 }
 
 /**
+ * py: str(v) for the SCALAR kinds sqlglot passes to it.
+ *
+ * NOT `String(v)`. The two agree on strings and disagree on everything else that
+ * reaches this in practice: `str(None)` is `"None"` where `String(null)` is `"null"`,
+ * and `str(True)` is `"True"` where `String(true)` is `"true"`. Both differences are
+ * output-visible — `Literal.string(x)` is `cls(this=str(string))` (core.py:1768), so
+ * `TO_DATE(x, '')` renders a literal whose text is `None` upstream and `null` in a
+ * naive port, and `Dialect.__init__`'s version parse quotes the result straight into
+ * `int()`'s ValueError message.
+ *
+ * An `Expr` is deliberately REJECTED rather than stringified. Python `str(expr)` calls
+ * `Expr.__str__`, which is `.sql()` with the DEFAULT dialect — the 58 sites enumerated
+ * in `corpus/deny/implicit_str.json` (PORT_PLAN.md §4.6). Silently rendering SQL here
+ * would reintroduce exactly the hazard that deny-list exists to catch, so a caller that
+ * means it has to say so at its own site.
+ */
+export function pyStr(v) {
+  if (v === null || v === undefined) return "None";
+  if (typeof v === "boolean") return v ? "True" : "False";
+  if (typeof v === "string") return v;
+  // A Python int is a BigInt here and a Python float is a Number; `str()` and `repr()`
+  // agree for both, so these reuse the numeric shims rather than JS coercion.
+  if (typeof v === "bigint") return pyIntToStr(v);
+  if (typeof v === "number") return pyFloatToStr(v);
+  if (v && typeof v === "object" && typeof v.sql === "function") {
+    throw new TypeError(
+      "pyStr(Expr): Python str(expr) renders SQL with the default dialect " +
+        "(corpus/deny/implicit_str.json). Call .sql(...) explicitly instead.",
+    );
+  }
+  return String(v);
+}
+
+/**
  * py: repr(v) for the value kinds sqlglot renders into error and warning messages
  * (§4.6 "Strings": list/tuple/set/dict rendering).
  *

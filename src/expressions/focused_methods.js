@@ -45,6 +45,23 @@ function nodeName(x) {
 function outputName(x) { return typeof x?.outputName === "string" ? x.outputName : nodeName(x); }
 
 export function installFocusedMethods() {
+  // py: core.py:1768 `cls(this=str(string), is_string=True)`.
+  //
+  // KNOWN DIVERGENCE, measured and deliberately not fixed here. Upstream is Python
+  // `str()`; this is JS `String()`, and they disagree on `None` -> "None" vs "null".
+  // `spike/p5/fuzz_dialect_defaults.mjs` pins the reachable case: `format_time("''")`
+  // yields `Literal(this='None')` upstream (time.py returns None for an empty format)
+  // and `Literal(this='null')` here, so `TO_DATE(x, '')` differs.
+  //
+  // Swapping in `pyStr` (src/_py/str.js) fixes that and BREAKS two bigquery rows,
+  // because it also makes the shim honest about numbers: `pyStr` follows this repo's
+  // convention that a BigInt models a Python int and a Number models a Python float, so
+  // `pyStr(1)` is "1.0". The only caller that passes a bare number is
+  // `src/parser.js:370` (`GENERATE_DATE_ARRAY`'s default step), whose upstream at
+  // parser.py:411 is `exp.Literal.string(1)` — a Python INT. The complete fix is
+  // therefore two edits, `pyStr` here AND `1` -> `1n` there, and the second belongs to
+  // whoever owns `src/parser.js`. Landing only the first is a net regression on the
+  // corpus, so neither is landed and the pair is written down instead.
   C.Literal.string = (value) => new C.Literal({ this: String(value), is_string: true });
   C.Literal.number = (value) => {
     const normalized = typeof value === "number" && Number.isSafeInteger(value) ? BigInt(value) : value;

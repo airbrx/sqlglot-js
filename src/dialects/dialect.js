@@ -37,7 +37,7 @@
 
 import { seqGet, suggestClosestMatchAndFail, toBool } from "../helper.js";
 import { NotPorted, ParseError } from "../errors.js";
-import { cpSlice, pyIsLower, pyIsPrintable, pyIsUpper, pyUpper } from "../_py/str.js";
+import { cpSlice, pyIsLower, pyIsPrintable, pyIsUpper, pyStr, pyUpper } from "../_py/str.js";
 import { pyIntFromStr } from "../_py/num.js";
 import { PyTypeError, PyValueError } from "../_py/errors.js";
 import { pyTruthy } from "../_py/truthy.js";
@@ -533,22 +533,6 @@ const DIALECT_CLASSES_BY_NAME = new Map();
 const MAXSIZE = 2n ** 63n - 1n;
 
 /**
- * py: `str(value)` for the three types that can reach `__init__`'s version parse —
- * `to_bool` returns a bool or a str, and the `k=v=w` path leaves None.
- *
- * `String(true)` is "true", but Python's is "True", and that string is quoted verbatim
- * into the ValueError message `int()` then raises. Verified against CPython:
- * `Dialect.get_or_raise("duckdb, version=1")` raises
- * "invalid literal for int() with base 10: 'True'" — because `to_bool("1")` is `True`,
- * so asking for version 1 is an error rather than version (1, 0, 0).
- */
-function _pyStr(v) {
-  if (v === null || v === undefined) return "None";
-  if (typeof v === "boolean") return v ? "True" : "False";
-  return String(v);
-}
-
-/**
  * py: sqlglot/dialects/dialect.py:363 `class Dialect(metaclass=_Dialect)`.
  *
  * READ THIS BEFORE ADDING A METHOD
@@ -878,7 +862,7 @@ export class Dialect {
 
     let parts;
     if ("version" in opts) {
-      parts = _pyStr(opts.version).split(".");
+      parts = pyStr(opts.version).split(".");
       delete opts.version;
     } else {
       parts = [String(MAXSIZE)];
@@ -906,7 +890,7 @@ export class Dialect {
       // ValueError. Both are reproduced rather than coerced.
       if (typeof normalization_strategy !== "string") {
         throw new PyTypeError(
-          `'${_pyStr(normalization_strategy)}' object has no attribute 'upper'`,
+          `'${pyStr(normalization_strategy)}' object has no attribute 'upper'`,
         );
       }
       const name = pyUpper(normalization_strategy);
