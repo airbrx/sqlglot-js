@@ -20,6 +20,7 @@ import { NotPorted } from "../../src/errors.js";
 import { Parser } from "../../src/parser.js";
 import { SnowflakeParser } from "../../src/parsers/snowflake.js";
 import { HiveParser } from "../../src/parsers/hive.js";
+import { Spark2Parser } from "../../src/parsers/spark2.js";
 
 const snapshot = JSON.parse(readFileSync("corpus/tokens/settings.json", "utf8"));
 
@@ -218,6 +219,7 @@ export function standInDialect(tk, dialect = "") {
 const PARSER_CLASSES = new Map([
   ["snowflake", SnowflakeParser],
   ["hive", HiveParser],
+  ["spark2", Spark2Parser],
 ]);
 
 /** The `Parser` subclass that owns `dialect`'s grammar, or the base `Parser`. */

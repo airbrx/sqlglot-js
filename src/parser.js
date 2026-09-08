@@ -266,7 +266,7 @@ function build_pad(args, is_left = true) {
 }
 
 /** py: sqlglot/parser.py:170 */
-function build_trim(args, is_left = true, reverse_args = false) {
+export function build_trim(args, is_left = true, reverse_args = false) {
   let this_ = seqGet(args, 0);
   let expression = seqGet(args, 1);
   if (expression && reverse_args) { const t = this_; this_ = expression; expression = t; }
@@ -4778,7 +4778,15 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7211
-  _parse_connector_function(connector) { throw new NotPorted("_parse_connector_function", "sqlglot/parser.py:7211"); }
+  _parse_connector_function(connector) {
+    const args = this._parse_function_args(false);
+    if (!pyTruthy(args)) this.raise_error("Expected at least one argument");
+
+    // Wrapped so the connector keeps its precedence in the parent context
+    // py: `connector(*args, copy=False)` — the trailing options object is how
+    // `src/expressions/core.js`'s variadic `and_`/`or_` spell a keyword argument.
+    return new exp.Paren({ this: connector(...args, { copy: false }) });
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7219
@@ -5350,7 +5358,10 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8556
-  _parse_join_hint(func_name) { throw new NotPorted("_parse_join_hint", "sqlglot/parser.py:8556"); }
+  _parse_join_hint(func_name) {
+    const args = this._parse_csv(this._parse_table.bind(this));
+    return new exp.JoinHint({ this: pyUpper(func_name), expressions: args });
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8560
@@ -5699,7 +5710,7 @@ export class Parser {
       if (columnDef instanceof exp.ColumnDef) return columnDef;
       const exists = this._parse_exists(true);
       if (this._match_pair(TokenType.PARTITION, TokenType.L_PAREN, false)) {
-        return this.expression(new exp.AddPartition({ exists, this: this._parse_field(true), location: this._match_text_seq("LOCATION", false) && this._parse_property() }));
+        return this.expression(new exp.AddPartition({ exists, this: this._parse_field(true), location: this._match_text_seq("LOCATION", { advance: false }) && this._parse_property() }));
       }
       return null;
     };
@@ -5760,7 +5771,7 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:9187
   _parse_alter_table_rename() {
-    if (this._match(TokenType.COLUMN) || (!this.constructor.ALTER_RENAME_REQUIRES_COLUMN && !this._match_text_seq("TO", false))) {
+    if (this._match(TokenType.COLUMN) || (!this.constructor.ALTER_RENAME_REQUIRES_COLUMN && !this._match_text_seq("TO", { advance: false }))) {
       const exists = this._parse_exists();
       const oldColumn = this._parse_column();
       const to = this._match_text_seq("TO");
@@ -5777,7 +5788,7 @@ export class Parser {
   _parse_alter_table_set() {
     const alterSet = this.expression(new exp.AlterSet());
     if (this._match(TokenType.L_PAREN, false) || this._match_text_seq("TABLE", "PROPERTIES")) alterSet.set("expressions", this._parse_wrapped_csv(() => this._parse_assignment()));
-    else if (this._match_text_seq("FILESTREAM_ON", false)) alterSet.set("expressions", [this._parse_assignment()]);
+    else if (this._match_text_seq("FILESTREAM_ON", { advance: false })) alterSet.set("expressions", [this._parse_assignment()]);
     else if (this._match_texts(["LOGGED", "UNLOGGED"])) alterSet.set("option", exp.var(this._prev.text.toUpperCase()));
     else if (this._match_text_seq("WITHOUT") && this._match_texts(["CLUSTER", "OIDS"])) alterSet.set("option", exp.var(`WITHOUT ${this._prev.text.toUpperCase()}`));
     else if (this._match_text_seq("LOCATION")) alterSet.set("location", this._parse_field());
@@ -5938,7 +5949,7 @@ export class Parser {
       const withExpressions = [];
       while (this._match(TokenType.WITH)) {
         if (this._match_texts(["SYNC", "ASYNC"])) {
-          if (this._match_text_seq("MODE", false)) {
+          if (this._match_text_seq("MODE", { advance: false })) {
             withExpressions.push(`${this._prev.text.toUpperCase()} MODE`);
             this._advance();
           }
@@ -6288,7 +6299,7 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10003
-  _parse_star_ops() { const starToken = this._prev; if (this._match_text_seq("COLUMNS", "(", false)) { const this_ = this._parse_function(); if (this_ instanceof exp.Columns) this_.set("unpack", true); return this_; } const index = this._index; const ilike = this._match(TokenType.ILIKE) ? this._parse_string() : null; if (!ilike) this._retreat(index); return this.expression(new exp.Star({ ilike, except_: this._parse_star_op("EXCEPT", "EXCLUDE"), replace: this._parse_star_op("REPLACE"), rename: this._parse_star_op("RENAME") })).updatePositions(starToken); }
+  _parse_star_ops() { const starToken = this._prev; if (this._match_text_seq("COLUMNS", "(", { advance: false })) { const this_ = this._parse_function(); if (this_ instanceof exp.Columns) this_.set("unpack", true); return this_; } const index = this._index; const ilike = this._match(TokenType.ILIKE) ? this._parse_string() : null; if (!ilike) this._retreat(index); return this.expression(new exp.Star({ ilike, except_: this._parse_star_op("EXCEPT", "EXCLUDE"), replace: this._parse_star_op("REPLACE"), rename: this._parse_star_op("RENAME") })).updatePositions(starToken); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10027
