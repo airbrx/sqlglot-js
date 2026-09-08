@@ -130,6 +130,12 @@ function attrsFor(dialect) {
   for (const name of attrSnapshot.attrs) {
     out[name] = TRIE_ATTRS.has(name) ? trieFromJson(raw[name]) : dec(raw[name]);
   }
+  // `build_logarithm` (parser.py:90) reads `dialect.parser_class.LOG_DEFAULTS_TO_LN`,
+  // an attribute of the PARSER class rather than of the Dialect. Rebuilt as a nested
+  // object so the ported builder keeps upstream's exact spelling — the same shape, and
+  // the same argument, as `tokenizer_class.COMMANDS` below.
+  out.parser_class = {};
+  for (const name of attrSnapshot.parser_class_attrs) out.parser_class[name] = dec(raw.parser_class[name]);
   attrCache.set(dialect, out);
   return out;
 }
