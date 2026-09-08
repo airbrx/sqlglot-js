@@ -5,7 +5,7 @@
 import * as C from "./classes.js";
 import { Expr, convert, maybeCopy, maybeParse, registerAstEnums, dotBuild, COLUMN_PARTS } from "./core.js";
 import { PyValueError, PyKeyError } from "../_py/errors.js";
-import { NotPorted } from "../errors.js";
+import { NotPorted, ErrorLevel } from "../errors.js";
 import { EXPR_META } from "../_gen/expr_meta.js";
 import { literalNumberText } from "../_py/num.js";
 
@@ -179,16 +179,21 @@ export function installFocusedMethods() {
     if (DType[upper]) return new C.DataType({ this: DType[upper], expressions: null, nested: false }).setKwargs(kwargs);
     if (udt) return new C.DataType({ this: DType.USERDEFINED, kind: dtype, ...kwargs });
     // Upstream reaches here for anything the bare-name lookup above misses -- e.g. the
-    // parameterised `DECIMAL(38, 0)` that Snowflake's TYPE_CONVERTERS builds -- and
-    // resolves it with `parse_one(dtype, into=cls)`. That needs `registerParser`, which
-    // nothing calls yet, so this is an unported dependency and says so: a TypeError
-    // here reads as a crash in the caller when the caller is in fact correct.
-    // `dialect` is named in the message rather than dropped: it is precisely what the
-    // unported `parse_one(dtype, read=dialect, into=cls)` call would consume.
-    throw new NotPorted(
-      `DataType.from_str(${JSON.stringify(String(dtype))}, dialect=${dialect ? dialect.constructor.name : "None"})`,
-      "sqlglot/expressions/datatypes.py:386",
-    );
+    // parameterised `DECIMAL(38, 0)` / `DECIMAL(18, 3)` that Snowflake's and DuckDB's
+    // TYPE_CONVERTERS build -- and resolves it with
+    // `parse_one(dtype, read=dialect, into=cls, error_level=IGNORE)`.
+    //
+    // That was a `NotPorted` stub on the stated grounds that it "needs `registerParser`,
+    // which nothing calls yet". R17 wired `registerParser` (dialects/dialect.js:1455),
+    // so the dependency is satisfied and the real path can run. Only this branch
+    // changed: the UNKNOWN / bare-name / `udt` short-circuits above are untouched, so
+    // nothing that already worked can take a different route -- this can only convert a
+    // throw into a value.
+    return maybeParse(String(dtype), {
+      into: C.DataType,
+      dialect,
+      error_level: ErrorLevel.IGNORE,
+    }).setKwargs(kwargs);
   };
   C.DataType.prototype.isType = function (...dtypes) {
     let options = {};
