@@ -73,6 +73,7 @@ run "LINT: deny-lists routed through _py" node tools/lint_deny.mjs
 # `unalias`). `bases` already knows which classes have subclasses, so the check is
 # mechanical rather than another list someone has to remember to update.
 run "LINT: isinstance vs name identity"   node tools/lint_identity.mjs
+run "LINT: py: anchors point at defs"     node tools/lint_anchors.mjs
 # §8.1 Rule 1. Offline half only -- the live check needs gh + network, and this script is
 # meant to be reproducible from a clean tree. The load-bearing case is the FALSE positive:
 # two agents replacing two different one-line stubs in src/parser.js must NOT be flagged,

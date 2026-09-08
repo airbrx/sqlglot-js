@@ -73,6 +73,7 @@ lint: ## the checkable CI gates that exist today
 	node tools/lint_control_bytes.mjs
 	node tools/lint_deny.mjs
 	node tools/lint_identity.mjs
+	node tools/lint_anchors.mjs
 	node tools/check_corpus.mjs
 
 check: ## every self-test + the node:test suite (no corpus regeneration)
