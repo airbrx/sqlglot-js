@@ -4,16 +4,22 @@
   "ALIAS_POST_VERSION",
   "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN",
   "ALTER_TABLE_SUPPORTS_CASCADE",
+  "ARRAY_AGG_INCLUDES_NULLS",
+  "ARRAY_FUNCS_PROPAGATES_NULLS",
   "BYTE_STRING_IS_BYTES_TYPE",
   "CONCAT_COALESCE",
+  "CONCAT_WS_COALESCE",
   "CREATABLE_KIND_MAPPING",
   "DATE_PART_MAPPING",
   "DPIPE_IS_STRING_CONCAT",
   "FORMAT_MAPPING",
   "HAS_DISTINCT_ARRAY_CONSTRUCTORS",
+  "HEX_LOWERCASE",
   "HEX_STRING_IS_INTEGER_TYPE",
   "IDENTIFIERS_CAN_START_WITH_DIGIT",
+  "JSON_EXTRACT_SCALAR_SCALAR_ONLY",
   "LEAST_GREATEST_IGNORES_NULLS",
+  "LOG_BASE_FIRST",
   "NORMALIZE_NOT_NULL",
   "NULL_ORDERING",
   "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED",
@@ -47,8 +53,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": false,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -430,9 +439,12 @@
    },
    "FORMAT_TRIE": {},
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -601,6 +613,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "athena": {
@@ -608,8 +623,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": false,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -991,9 +1009,12 @@
    },
    "FORMAT_TRIE": {},
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -1195,6 +1216,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "bigquery": {
@@ -1202,8 +1226,11 @@
    "ALIAS_POST_VERSION": false,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": true,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": false,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -1800,9 +1827,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": true,
    "HEX_STRING_IS_INTEGER_TYPE": true,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": true,
    "LEAST_GREATEST_IGNORES_NULLS": false,
+   "LOG_BASE_FIRST": false,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -2061,6 +2091,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": true
    }
   },
   "clickhouse": {
@@ -2068,8 +2101,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": false,
    "CREATABLE_KIND_MAPPING": {
     "$d": [
      [
@@ -2456,9 +2492,12 @@
    },
    "FORMAT_TRIE": {},
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": true,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": true,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": null,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_last",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": true,
@@ -2664,6 +2703,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": true
    }
   },
   "databricks": {
@@ -2671,8 +2713,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": null,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": true,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": true,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -3159,9 +3204,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": true,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -3589,6 +3637,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": true
    }
   },
   "dax": {
@@ -3596,8 +3647,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": false,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -3979,9 +4033,12 @@
    },
    "FORMAT_TRIE": {},
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -4150,6 +4207,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "doris": {
@@ -4157,8 +4217,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": false,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -4582,9 +4645,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": true,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": false,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -4892,6 +4958,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": true
    }
   },
   "dremio": {
@@ -4899,8 +4968,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": true,
+   "CONCAT_WS_COALESCE": true,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -5485,9 +5557,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_last",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -6028,6 +6103,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": true
    }
   },
   "drill": {
@@ -6035,8 +6113,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": true,
+   "CONCAT_WS_COALESCE": true,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -6528,9 +6609,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_last",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -6959,6 +7043,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": true
    }
   },
   "druid": {
@@ -6966,8 +7053,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": false,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -7349,9 +7439,12 @@
    },
    "FORMAT_TRIE": {},
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -7520,6 +7613,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "duckdb": {
@@ -7527,8 +7623,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": true,
+   "CONCAT_WS_COALESCE": true,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -7910,9 +8009,12 @@
    },
    "FORMAT_TRIE": {},
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_last",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": true,
@@ -8115,6 +8217,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "dune": {
@@ -8122,8 +8227,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": true,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -8547,9 +8655,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": false,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_last",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -8813,6 +8924,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "exasol": {
@@ -8820,8 +8934,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": true,
+   "CONCAT_WS_COALESCE": false,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -9325,9 +9442,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_last",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -9719,6 +9839,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "fabric": {
@@ -9726,8 +9849,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": false,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": true,
+   "CONCAT_WS_COALESCE": true,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -10374,9 +10500,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": false,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -10949,6 +11078,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": true
    }
   },
   "hive": {
@@ -10956,8 +11088,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": true,
+   "ARRAY_AGG_INCLUDES_NULLS": null,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": true,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -11444,9 +11579,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": true,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -11874,6 +12012,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": true
    }
   },
   "materialize": {
@@ -11881,8 +12022,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": true,
+   "CONCAT_WS_COALESCE": true,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -12441,9 +12585,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_large",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -12975,6 +13122,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "mysql": {
@@ -12982,8 +13132,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": false,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -13407,9 +13560,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": true,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": false,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -13717,6 +13873,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": true
    }
   },
   "oracle": {
@@ -13724,8 +13883,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": false,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": false,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -14190,9 +14352,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_large",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -14517,6 +14682,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "postgres": {
@@ -14524,8 +14692,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": true,
+   "CONCAT_WS_COALESCE": true,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -15084,9 +15255,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": false,
    "NULL_ORDERING": "nulls_are_large",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -15618,6 +15792,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "presto": {
@@ -15625,8 +15802,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": false,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -16050,9 +16230,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": false,
+   "LOG_BASE_FIRST": null,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_last",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -16316,6 +16499,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "prql": {
@@ -16323,8 +16509,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": false,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -16706,9 +16895,12 @@
    },
    "FORMAT_TRIE": {},
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -16877,6 +17069,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "redshift": {
@@ -16884,8 +17079,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": true,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": true,
+   "CONCAT_WS_COALESCE": true,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -17454,9 +17652,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": true,
+   "HEX_LOWERCASE": true,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_large",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -18006,6 +18207,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "risingwave": {
@@ -18013,8 +18217,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": true,
+   "CONCAT_WS_COALESCE": true,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -18573,9 +18780,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_large",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -19107,6 +19317,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "singlestore": {
@@ -19114,8 +19327,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": false,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -19567,9 +19783,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": true,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": false,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -19913,6 +20132,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": true
    }
   },
   "snowflake": {
@@ -19920,8 +20142,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": false,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": null,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": true,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": false,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -20561,9 +20786,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": false,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_large",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -21241,6 +21469,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "solr": {
@@ -21248,8 +21479,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": false,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -21631,9 +21865,12 @@
    },
    "FORMAT_TRIE": {},
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -21802,6 +22039,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "spark": {
@@ -21809,8 +22049,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": null,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": true,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": true,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -22297,9 +22540,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": true,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -22727,6 +22973,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": true
    }
   },
   "spark2": {
@@ -22734,8 +22983,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": null,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": true,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -23222,9 +23474,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": true,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -23652,6 +23907,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": true
    }
   },
   "sqlite": {
@@ -23659,8 +23917,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": false,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -24042,9 +24303,12 @@
    },
    "FORMAT_TRIE": {},
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -24213,6 +24477,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "starrocks": {
@@ -24220,8 +24487,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": false,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -24645,9 +24915,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": true,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": false,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -24955,6 +25228,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": true
    }
   },
   "tableau": {
@@ -24962,8 +25238,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": false,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -25345,9 +25624,12 @@
    },
    "FORMAT_TRIE": {},
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": false,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -25516,6 +25798,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "teradata": {
@@ -25523,8 +25808,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": false,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -25997,9 +26285,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -26364,6 +26655,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "trino": {
@@ -26371,8 +26665,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": true,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": false,
+   "CONCAT_WS_COALESCE": true,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -26796,9 +27093,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": false,
+   "LOG_BASE_FIRST": true,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_last",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -27062,6 +27362,9 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": false
    }
   },
   "tsql": {
@@ -27069,8 +27372,11 @@
    "ALIAS_POST_VERSION": true,
    "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN": false,
    "ALTER_TABLE_SUPPORTS_CASCADE": false,
+   "ARRAY_AGG_INCLUDES_NULLS": true,
+   "ARRAY_FUNCS_PROPAGATES_NULLS": false,
    "BYTE_STRING_IS_BYTES_TYPE": false,
    "CONCAT_COALESCE": true,
+   "CONCAT_WS_COALESCE": true,
    "CREATABLE_KIND_MAPPING": {
     "$d": []
    },
@@ -27717,9 +28023,12 @@
     }
    },
    "HAS_DISTINCT_ARRAY_CONSTRUCTORS": false,
+   "HEX_LOWERCASE": false,
    "HEX_STRING_IS_INTEGER_TYPE": false,
    "IDENTIFIERS_CAN_START_WITH_DIGIT": false,
+   "JSON_EXTRACT_SCALAR_SCALAR_ONLY": false,
    "LEAST_GREATEST_IGNORES_NULLS": true,
+   "LOG_BASE_FIRST": false,
    "NORMALIZE_NOT_NULL": true,
    "NULL_ORDERING": "nulls_are_small",
    "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED": false,
@@ -28292,7 +28601,13 @@
      "YYY",
      "YYYY"
     ]
+   },
+   "parser_class": {
+    "LOG_DEFAULTS_TO_LN": true
    }
   }
- }
+ },
+ "parser_class_attrs": [
+  "LOG_DEFAULTS_TO_LN"
+ ]
 }

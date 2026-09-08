@@ -183,6 +183,78 @@ function build_mod(args) {
   return new exp.Mod({ this: this_, expression });
 }
 
+/** py: sqlglot/parser.py:80 -- default argument order is base, expression */
+function build_logarithm(args, dialect) {
+  let this_ = seqGet(args, 0);
+  let expression = seqGet(args, 1);
+
+  if (expression) {
+    if (!dialect.LOG_BASE_FIRST) { const t = this_; this_ = expression; expression = t; }
+    return new exp.Log({ this: this_, expression });
+  }
+  // py: `dialect.parser_class.LOG_DEFAULTS_TO_LN` — a PARSER-class attribute, harvested
+  // into the stand-in Dialect alongside `tokenizer_class`.
+  const cls = dialect.parser_class.LOG_DEFAULTS_TO_LN ? exp.Ln : exp.Log;
+  return new cls({ this: this_ });
+}
+
+/** py: sqlglot/parser.py:93 */
+function build_hex(args, dialect) {
+  const arg = seqGet(args, 0);
+  return dialect.HEX_LOWERCASE ? new exp.LowerHex({ this: arg }) : new exp.Hex({ this: arg });
+}
+
+/** py: sqlglot/parser.py:110 */
+function build_extract_json_with_path(expr_type) {
+  return (args, dialect) => {
+    const expression = new expr_type({
+      this: seqGet(args, 0),
+      expression: dialect.to_json_path(seqGet(args, 1)),
+    });
+    if (args.length > 2 && expr_type === exp.JSONExtract) expression.set("expressions", args.slice(2));
+    if (expr_type === exp.JSONExtractScalar) {
+      expression.set("scalar_only", dialect.JSON_EXTRACT_SCALAR_SCALAR_ONLY);
+    }
+    return expression;
+  };
+}
+
+/** py: sqlglot/parser.py:193 */
+function build_array_append(args, dialect) {
+  return new exp.ArrayAppend({
+    this: seqGet(args, 0),
+    expression: seqGet(args, 1),
+    null_propagation: dialect.ARRAY_FUNCS_PROPAGATES_NULLS,
+  });
+}
+
+/** py: sqlglot/parser.py:214 */
+function build_array_prepend(args, dialect) {
+  return new exp.ArrayPrepend({
+    this: seqGet(args, 0),
+    expression: seqGet(args, 1),
+    null_propagation: dialect.ARRAY_FUNCS_PROPAGATES_NULLS,
+  });
+}
+
+/** py: sqlglot/parser.py:235 -- variadic: `this` plus the rest, unlike its siblings */
+function build_array_concat(args, dialect) {
+  return new exp.ArrayConcat({
+    this: seqGet(args, 0),
+    expressions: args.slice(1),
+    null_propagation: dialect.ARRAY_FUNCS_PROPAGATES_NULLS,
+  });
+}
+
+/** py: sqlglot/parser.py:256 */
+function build_array_remove(args, dialect) {
+  return new exp.ArrayRemove({
+    this: seqGet(args, 0),
+    expression: seqGet(args, 1),
+    null_propagation: dialect.ARRAY_FUNCS_PROPAGATES_NULLS,
+  });
+}
+
 /** py: sqlglot/parser.py:138 */
 function build_pad(args, is_left = true) {
   return new exp.Pad({
@@ -260,15 +332,22 @@ export class Parser {
     /* py:377 */ ["IFNULL", build_coalesce],
     /* py:377 */ ["NVL", build_coalesce],
     /* py:378 */ ["ARRAY", (args) => new exp.Array({ expressions: args })],
-    // py:379  ["ARRAYAGG", /* TODO lambda */],
-    // py:382  ["ARRAY_AGG", /* TODO lambda */],
-    // py:385  ["ARRAY_APPEND", /* TODO build_array_append */],
-    // py:386  ["ARRAY_CAT", /* TODO build_array_concat */],
-    // py:387  ["ARRAY_CONCAT", /* TODO build_array_concat */],
+    // py:379/382 `nulls_excluded=dialect.ARRAY_AGG_INCLUDES_NULLS is None or None` —
+    // an `x is None or None` chain, so the value is either True (attr is None) or None.
+    // Never False: `or None` collapses the falsy branch.
+    /* py:379 */ ["ARRAYAGG", (args, dialect) => new exp.ArrayAgg({
+      this: seqGet(args, 0), nulls_excluded: dialect.ARRAY_AGG_INCLUDES_NULLS === null ? true : null,
+    })],
+    /* py:382 */ ["ARRAY_AGG", (args, dialect) => new exp.ArrayAgg({
+      this: seqGet(args, 0), nulls_excluded: dialect.ARRAY_AGG_INCLUDES_NULLS === null ? true : null,
+    })],
+    /* py:385 */ ["ARRAY_APPEND", build_array_append],
+    /* py:386 */ ["ARRAY_CAT", build_array_concat],
+    /* py:387 */ ["ARRAY_CONCAT", build_array_concat],
     /* py:388 */ ["ARRAY_INTERSECT", (args) => new exp.ArrayIntersect({ expressions: args })],
     /* py:389 */ ["ARRAY_INTERSECTION", (args) => new exp.ArrayIntersect({ expressions: args })],
-    // py:390  ["ARRAY_PREPEND", /* TODO build_array_prepend */],
-    // py:391  ["ARRAY_REMOVE", /* TODO build_array_remove */],
+    /* py:390 */ ["ARRAY_PREPEND", build_array_prepend],
+    /* py:391 */ ["ARRAY_REMOVE", build_array_remove],
     /* py:392 */ ["COUNT", (args) => new exp.Count({ this: seqGet(args, 0), expressions: args.slice(1), big_int: true })],
     /* py:393 */ ["CONCAT", (args, dialect) => new exp.Concat({
       expressions: args,
@@ -276,7 +355,11 @@ export class Parser {
       safe: !dialect.STRICT_STRING_CONCAT,
       coalesce: dialect.CONCAT_COALESCE,
     })],
-    // py:398  ["CONCAT_WS", /* TODO lambda */],
+    /* py:398 */ ["CONCAT_WS", (args, dialect) => new exp.ConcatWs({
+      expressions: args,
+      safe: !dialect.STRICT_STRING_CONCAT,
+      coalesce: dialect.CONCAT_WS_COALESCE,
+    })],
     /* py:403 */ ["CONVERT_TIMEZONE", build_convert_timezone],
     /* py:404 */ ["DATE_TO_DATE_STR", (args) => new exp.Cast({
       this: seqGet(args, 0), to: new exp.DataType({ this: exp.DType.TEXT }),
@@ -291,13 +374,15 @@ export class Parser {
     /* py:416 */ ["GLOB", (args) => new exp.Glob({ this: seqGet(args, 1), expression: seqGet(args, 0) })],
     /* py:417 */ ["GREATEST", (args, dialect) => new exp.Greatest({ this: seqGet(args, 0), expressions: args.slice(1), ignore_nulls: dialect.LEAST_GREATEST_IGNORES_NULLS })],
     /* py:422 */ ["LEAST", (args, dialect) => new exp.Least({ this: seqGet(args, 0), expressions: args.slice(1), ignore_nulls: dialect.LEAST_GREATEST_IGNORES_NULLS })],
-    // py:427  ["HEX", /* TODO build_hex */],
-    // py:428  ["JSON_EXTRACT", /* TODO build_extract_json_with_path(...) */],
-    // py:429  ["JSON_EXTRACT_SCALAR", /* TODO build_extract_json_with_path(...) */],
-    // py:430  ["JSON_EXTRACT_PATH_TEXT", /* TODO build_extract_json_with_path(...) */],
-    // py:431  ["JSON_KEYS", /* TODO lambda */],
-    // py:434  ["LIKE", /* TODO build_like */],
-    // py:435  ["LOG", /* TODO build_logarithm */],
+    /* py:427 */ ["HEX", build_hex],
+    /* py:428 */ ["JSON_EXTRACT", build_extract_json_with_path(exp.JSONExtract)],
+    /* py:429 */ ["JSON_EXTRACT_SCALAR", build_extract_json_with_path(exp.JSONExtractScalar)],
+    /* py:430 */ ["JSON_EXTRACT_PATH_TEXT", build_extract_json_with_path(exp.JSONExtractScalar)],
+    /* py:431 */ ["JSON_KEYS", (args, dialect) => new exp.JSONKeys({
+      this: seqGet(args, 0), expression: dialect.to_json_path(seqGet(args, 1)),
+    })],
+    // py:434  ["LIKE", /* TODO build_like */]  — `build_like` lives in dialects/dialect.py
+    /* py:435 */ ["LOG", build_logarithm],
     /* py:436 */ ["LOG2", (args) => new exp.Log({ this: exp.Literal.number(2), expression: seqGet(args, 0) })],
     /* py:437 */ ["LOG10", (args) => new exp.Log({ this: exp.Literal.number(10), expression: seqGet(args, 0) })],
     /* py:438 */ ["LOWER", build_lower],
@@ -318,7 +403,7 @@ export class Parser {
     /* py:455 */ ["TIME_TO_TIME_STR", (args) => new exp.Cast({
       this: seqGet(args, 0), to: new exp.DataType({ this: exp.DType.TEXT }),
     })],
-    // py:459  ["TO_HEX", /* TODO build_hex */]  — needs `dialect.HEX_LOWERCASE`, not harvested
+    /* py:459 */ ["TO_HEX", build_hex],
     /* py:460 */ ["TS_OR_DS_TO_DATE_STR", (args) => new exp.Substring({
       this: new exp.Cast({ this: seqGet(args, 0), to: new exp.DataType({ this: exp.DType.TEXT }) }),
       start: exp.Literal.number(1),

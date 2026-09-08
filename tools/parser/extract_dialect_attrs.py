@@ -65,16 +65,22 @@ PARSER_ATTRS = [
     "ALIAS_POST_VERSION",
     "ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN",
     "ALTER_TABLE_SUPPORTS_CASCADE",
+    "ARRAY_AGG_INCLUDES_NULLS",
+    "ARRAY_FUNCS_PROPAGATES_NULLS",
     "BYTE_STRING_IS_BYTES_TYPE",
     "CONCAT_COALESCE",
+    "CONCAT_WS_COALESCE",
     "CREATABLE_KIND_MAPPING",
     "DATE_PART_MAPPING",
     "DPIPE_IS_STRING_CONCAT",
     "FORMAT_MAPPING",
     "HAS_DISTINCT_ARRAY_CONSTRUCTORS",
+    "HEX_LOWERCASE",
     "HEX_STRING_IS_INTEGER_TYPE",
     "IDENTIFIERS_CAN_START_WITH_DIGIT",
+    "JSON_EXTRACT_SCALAR_SCALAR_ONLY",
     "LEAST_GREATEST_IGNORES_NULLS",
+    "LOG_BASE_FIRST",
     "NORMALIZE_NOT_NULL",
     "NULL_ORDERING",
     "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED",
@@ -104,6 +110,18 @@ PARSER_ATTRS = [
 # Tries are nested dicts with an integer 0 end-marker; they need trie_to_json, not enc.
 # (Same treatment, and same reason, as the keyword trie in extract_settings.py.)
 TRIE_ATTRS = ["TIME_TRIE", "FORMAT_TRIE"]
+
+# Read off `dialect.parser_class`, not off the Dialect itself: `build_logarithm`
+# (parser.py:90) resolves `dialect.parser_class.LOG_DEFAULTS_TO_LN` to choose Ln vs Log
+# when LOG is called with one argument. It splits 14 True / 21 False across dialects, so
+# a base-class default would be wrong for a third of the corpus.
+#
+# Snapshotted here rather than read off the JS `Parser` subclass for the same reason
+# `tokenizer_class.COMMANDS` is: the parser that owns a dialect's grammar is P5-P9 scope,
+# and only `parsers/snowflake.js` exists today. The JS side rebuilds these into a
+# `parser_class` object on the stand-in Dialect, so the ported `build_logarithm` keeps
+# reading `dialect.parser_class.LOG_DEFAULTS_TO_LN` exactly as upstream writes it.
+PARSER_CLASS_ATTRS = ["LOG_DEFAULTS_TO_LN"]
 
 
 def enc(v):
@@ -145,6 +163,11 @@ def trie_to_json(node):
 def assert_covers(Dialect):
     """Fail loudly if a declared attribute no longer exists upstream."""
     missing = [a for a in PARSER_ATTRS + TRIE_ATTRS if not hasattr(Dialect, a)]
+    missing += [
+        f"parser_class.{a}"
+        for a in PARSER_CLASS_ATTRS
+        if not hasattr(Dialect.get_or_raise("").parser_class, a)
+    ]
     if missing:
         raise SystemExit(
             "these attributes are declared here but absent from upstream Dialect "
@@ -167,14 +190,19 @@ def main():
         attrs = {a: enc(getattr(d, a)) for a in PARSER_ATTRS}
         for a in TRIE_ATTRS:
             attrs[a] = trie_to_json(getattr(d, a))
+        attrs["parser_class"] = {
+            a: enc(getattr(d.parser_class, a)) for a in PARSER_CLASS_ATTRS
+        }
         dialects[name] = attrs
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w") as f:
-        json.dump({"attrs": PARSER_ATTRS + TRIE_ATTRS, "dialects": dialects}, f,
-                  indent=1, sort_keys=True)
+        json.dump({"attrs": PARSER_ATTRS + TRIE_ATTRS,
+                   "parser_class_attrs": PARSER_CLASS_ATTRS,
+                   "dialects": dialects}, f, indent=1, sort_keys=True)
         f.write("\n")
-    print(f"{OUT}: {len(dialects)} dialects x {len(PARSER_ATTRS) + len(TRIE_ATTRS)} attributes")
+    n = len(PARSER_ATTRS) + len(TRIE_ATTRS) + len(PARSER_CLASS_ATTRS)
+    print(f"{OUT}: {len(dialects)} dialects x {n} attributes")
 
 
 if __name__ == "__main__":
