@@ -18,8 +18,14 @@ import {
   isIdentifierStart,
   isDigit,
   upperCodePoint,
+  lowerCodePoint,
+  LOWER_CONTEXT_SENSITIVE,
 } from "../_gen/unicode.js";
 import { PyValueError, PyTypeError, PyIndexError } from "./errors.js";
+// No cycle: errors.js imports _py/errors.js and _py/sort.js, neither of which imports
+// this module. `NotPorted` is the project-wide spelling of an announced gap and the
+// alternative — inventing a _py error class for a non-Python concept — is worse.
+import { NotPorted } from "../errors.js";
 // No cycle: num.js imports from _gen/unicode.js, never from this module.
 import { pyFloatToStr, pyIntToStr } from "./num.js";
 
@@ -122,6 +128,56 @@ export function pyUpper(s) {
   let out = "";
   for (const ch of s) {
     const mapped = upperCodePoint(ch.codePointAt(0));
+    out += mapped === null ? ch : mapped;
+  }
+  return out;
+}
+
+/**
+ * py: str.lower()
+ *
+ * NOT `String.prototype.toLowerCase()`, for exactly the reason `pyUpper` is not
+ * `toUpperCase()`: JS case conversion is bound to the ENGINE's Unicode version. Measured
+ * over the full range against the pinned interpreter, `toLowerCase()` maps 67 code points
+ * that CPython 3.9.25 (unicodedata 13.0.0) leaves alone — U+1C8A, U+2C5F, the U+A7Cx-A7Dx
+ * block and others that gained a lowercase mapping after Unicode 13.0. Identifier
+ * normalization is directly output-visible (`Generator.identifier_sql` lowercases every
+ * unquoted identifier when `normalize` is set, and looks the result up in
+ * `RESERVED_KEYWORDS`), so `toLowerCase()` here would pass all 15,540 corpus rows — which
+ * are 0.024% non-ASCII — and still be wrong. That is the `too_wide`/R4 hazard class.
+ *
+ * Added at P4 because PORT_PLAN.md R20 put it there: `Dialect.normalize_identifier`
+ * (dialects/dialect.js:1028) is an announced stub whose stated blocker is the absence of
+ * this function, and `identifier_sql` is the caller that made it real.
+ *
+ * THE ONE THING THIS DOES NOT DO. Unlike `str.upper()`, `str.lower()` is
+ * CONTEXT-SENSITIVE: CPython's `handle_capital_sigma` (Objects/unicodeobject.c) maps
+ * U+03A3 to final sigma U+03C2 rather than U+03C3 when the sigma ends a word — formally,
+ * when scanning BACKWARD past any run of Case_Ignorable code points reaches a Cased one,
+ * and scanning FORWARD past any such run does not. (Spelled out in words rather than as
+ * Unicode property escapes on purpose: tools/lint_unicode.mjs bans that syntax in this
+ * file, and the ban is right — it must not appear even in a comment that could be copied
+ * into code.) A per-code-point table cannot express that, so this refuses on U+03A3
+ * rather than emitting the wrong sigma. A full-range sweep in five
+ * contexts (spike/py/gen_unicode_ref.py, asserted by tools/gen_unicode_tables.mjs)
+ * measures U+03A3 as the ONLY such code point, so every other input is exact.
+ *
+ * Finishing it needs two more generated tables, Cased and Case_Ignorable, neither of
+ * which `unicodedata` exposes directly; both are derivable by probing the pin the way
+ * the existing tables are. Until then this is a loud refusal rather than a silent
+ * near-miss — R19's trade, made deliberately.
+ */
+export function pyLower(s) {
+  let out = "";
+  for (const ch of s) {
+    const cp = ch.codePointAt(0);
+    if (cp === LOWER_CONTEXT_SENSITIVE) {
+      throw new NotPorted(
+        "pyLower(U+03A3): str.lower()'s final-sigma rule",
+        "Objects/unicodeobject.c handle_capital_sigma",
+      );
+    }
+    const mapped = lowerCodePoint(cp);
     out += mapped === null ? ch : mapped;
   }
   return out;
