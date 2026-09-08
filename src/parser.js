@@ -183,6 +183,33 @@ function build_mod(args) {
   return new exp.Mod({ this: this_, expression });
 }
 
+/** py: sqlglot/parser.py:138 */
+function build_pad(args, is_left = true) {
+  return new exp.Pad({
+    this: seqGet(args, 0),
+    expression: seqGet(args, 1),
+    fill_pattern: seqGet(args, 2),
+    is_left,
+  });
+}
+
+/** py: sqlglot/parser.py:170 */
+function build_trim(args, is_left = true, reverse_args = false) {
+  let this_ = seqGet(args, 0);
+  let expression = seqGet(args, 1);
+  if (expression && reverse_args) { const t = this_; this_ = expression; expression = t; }
+  return new exp.Trim({ this: this_, expression, position: is_left ? "LEADING" : "TRAILING" });
+}
+
+/** py: sqlglot/parser.py:185 -- LOCATE/CHARINDEX take (substr, this) in that order */
+function build_locate_strposition(args) {
+  return new exp.StrPosition({
+    this: seqGet(args, 1),
+    substr: seqGet(args, 0),
+    position: seqGet(args, 2),
+  });
+}
+
 /** py: sqlglot/parser.py:98 -- LOWER(HEX(..)) collapses to LowerHex */
 function build_lower(args) {
   const arg = seqGet(args, 0);
@@ -232,24 +259,36 @@ export class Parser {
     /* py:377 */ ["COALESCE", build_coalesce],
     /* py:377 */ ["IFNULL", build_coalesce],
     /* py:377 */ ["NVL", build_coalesce],
-    // py:378  ["ARRAY", /* TODO lambda */],
+    /* py:378 */ ["ARRAY", (args) => new exp.Array({ expressions: args })],
     // py:379  ["ARRAYAGG", /* TODO lambda */],
     // py:382  ["ARRAY_AGG", /* TODO lambda */],
     // py:385  ["ARRAY_APPEND", /* TODO build_array_append */],
     // py:386  ["ARRAY_CAT", /* TODO build_array_concat */],
     // py:387  ["ARRAY_CONCAT", /* TODO build_array_concat */],
-    // py:388  ["ARRAY_INTERSECT", /* TODO lambda */],
-    // py:389  ["ARRAY_INTERSECTION", /* TODO lambda */],
+    /* py:388 */ ["ARRAY_INTERSECT", (args) => new exp.ArrayIntersect({ expressions: args })],
+    /* py:389 */ ["ARRAY_INTERSECTION", (args) => new exp.ArrayIntersect({ expressions: args })],
     // py:390  ["ARRAY_PREPEND", /* TODO build_array_prepend */],
     // py:391  ["ARRAY_REMOVE", /* TODO build_array_remove */],
-    // py:392  ["COUNT", /* TODO lambda */],
-    // py:393  ["CONCAT", /* TODO lambda */],
+    /* py:392 */ ["COUNT", (args) => new exp.Count({ this: seqGet(args, 0), expressions: args.slice(1), big_int: true })],
+    /* py:393 */ ["CONCAT", (args, dialect) => new exp.Concat({
+      expressions: args,
+      // py: `not dialect.STRICT_STRING_CONCAT` — Python `not` on the harvested value.
+      safe: !dialect.STRICT_STRING_CONCAT,
+      coalesce: dialect.CONCAT_COALESCE,
+    })],
     // py:398  ["CONCAT_WS", /* TODO lambda */],
     /* py:403 */ ["CONVERT_TIMEZONE", build_convert_timezone],
-    // py:404  ["DATE_TO_DATE_STR", /* TODO lambda */],
-    // py:408  ["GENERATE_DATE_ARRAY", /* TODO lambda */],
-    // py:413  ["GENERATE_UUID", /* TODO lambda */],
-    // py:416  ["GLOB", /* TODO lambda */],
+    /* py:404 */ ["DATE_TO_DATE_STR", (args) => new exp.Cast({
+      this: seqGet(args, 0), to: new exp.DataType({ this: exp.DType.TEXT }),
+    })],
+    /* py:408 */ ["GENERATE_DATE_ARRAY", (args) => new exp.GenerateDateArray({
+      start: seqGet(args, 0),
+      end: seqGet(args, 1),
+      step: seqGet(args, 2) || new exp.Interval({ this: exp.Literal.string(1), unit: exp.var("DAY") }),
+    })],
+    /* py:413 */ ["GENERATE_UUID", (args, dialect) => new exp.Uuid({ is_string: dialect.UUID_IS_STRING_TYPE || null })],
+    // py:416 GLOB's args are SWAPPED relative to the node's fields.
+    /* py:416 */ ["GLOB", (args) => new exp.Glob({ this: seqGet(args, 1), expression: seqGet(args, 0) })],
     /* py:417 */ ["GREATEST", (args, dialect) => new exp.Greatest({ this: seqGet(args, 0), expressions: args.slice(1), ignore_nulls: dialect.LEAST_GREATEST_IGNORES_NULLS })],
     /* py:422 */ ["LEAST", (args, dialect) => new exp.Least({ this: seqGet(args, 0), expressions: args.slice(1), ignore_nulls: dialect.LEAST_GREATEST_IGNORES_NULLS })],
     // py:427  ["HEX", /* TODO build_hex */],
@@ -259,25 +298,33 @@ export class Parser {
     // py:431  ["JSON_KEYS", /* TODO lambda */],
     // py:434  ["LIKE", /* TODO build_like */],
     // py:435  ["LOG", /* TODO build_logarithm */],
-    // py:436  ["LOG2", /* TODO lambda */],
-    // py:437  ["LOG10", /* TODO lambda */],
+    /* py:436 */ ["LOG2", (args) => new exp.Log({ this: exp.Literal.number(2), expression: seqGet(args, 0) })],
+    /* py:437 */ ["LOG10", (args) => new exp.Log({ this: exp.Literal.number(10), expression: seqGet(args, 0) })],
     /* py:438 */ ["LOWER", build_lower],
-    // py:439  ["LPAD", /* TODO lambda */],
-    // py:440  ["LEFTPAD", /* TODO lambda */],
-    // py:441  ["LTRIM", /* TODO lambda */],
+    /* py:439 */ ["LPAD", (args) => build_pad(args)],
+    /* py:440 */ ["LEFTPAD", (args) => build_pad(args)],
+    /* py:441 */ ["LTRIM", (args) => build_trim(args)],
     /* py:442 */ ["MOD", build_mod],
-    // py:443  ["RIGHTPAD", /* TODO lambda */],
-    // py:444  ["RPAD", /* TODO lambda */],
-    // py:445  ["RTRIM", /* TODO lambda */],
-    // py:446  ["SCOPE_RESOLUTION", /* TODO lambda */],
+    /* py:443 */ ["RIGHTPAD", (args) => build_pad(args, false)],
+    /* py:444 */ ["RPAD", (args) => build_pad(args, false)],
+    /* py:445 */ ["RTRIM", (args) => build_trim(args, false)],
+    /* py:446 */ ["SCOPE_RESOLUTION", (args) => (args.length !== 2
+      ? new exp.ScopeResolution({ expression: seqGet(args, 0) })
+      : new exp.ScopeResolution({ this: seqGet(args, 0), expression: seqGet(args, 1) }))],
     /* py:451 */ ["STRPOS", exp.StrPosition.from_arg_list],
-    // py:452  ["CHARINDEX", /* TODO lambda */],
+    /* py:452 */ ["CHARINDEX", (args) => build_locate_strposition(args)],
     /* py:453 */ ["INSTR", exp.StrPosition.from_arg_list],
-    // py:454  ["LOCATE", /* TODO lambda */],
-    // py:455  ["TIME_TO_TIME_STR", /* TODO lambda */],
-    // py:459  ["TO_HEX", /* TODO build_hex */],
-    // py:460  ["TS_OR_DS_TO_DATE_STR", /* TODO lambda */],
-    // py:468  ["UNNEST", /* TODO lambda */],
+    /* py:454 */ ["LOCATE", (args) => build_locate_strposition(args)],
+    /* py:455 */ ["TIME_TO_TIME_STR", (args) => new exp.Cast({
+      this: seqGet(args, 0), to: new exp.DataType({ this: exp.DType.TEXT }),
+    })],
+    // py:459  ["TO_HEX", /* TODO build_hex */]  — needs `dialect.HEX_LOWERCASE`, not harvested
+    /* py:460 */ ["TS_OR_DS_TO_DATE_STR", (args) => new exp.Substring({
+      this: new exp.Cast({ this: seqGet(args, 0), to: new exp.DataType({ this: exp.DType.TEXT }) }),
+      start: exp.Literal.number(1),
+      length: exp.Literal.number(10),
+    })],
+    /* py:468 */ ["UNNEST", (args) => new exp.Unnest({ expressions: ensureList(seqGet(args, 0)) })],
     /* py:469 */ ["UPPER", build_upper],
     // `or None`: a falsy flag must become None, not False -- the arg is dumped either way.
     /* py:470 */ ["UUID", (args, dialect) => new exp.Uuid({ is_string: dialect.UUID_IS_STRING_TYPE || null })],
