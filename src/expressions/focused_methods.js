@@ -5,7 +5,7 @@
 import * as C from "./classes.js";
 import { Expr, convert, maybeCopy, maybeParse, registerAstEnums, dotBuild, COLUMN_PARTS } from "./core.js";
 import { PyValueError, PyKeyError } from "../_py/errors.js";
-import { NotPorted } from "../errors.js";
+import { NotPorted, ErrorLevel } from "../errors.js";
 import { EXPR_META } from "../_gen/expr_meta.js";
 import { literalNumberText } from "../_py/num.js";
 
@@ -133,8 +133,20 @@ export function installFocusedMethods() {
     return tail.reverse();
   });
 
-  C.DataType.build = function (dtype, { udt = false, copy = true, ...kwargs } = {}) {
-    if (typeof dtype === "string") return this.fromStr(dtype, { udt, ...kwargs });
+  // py: datatypes.py:348 `build(cls, dtype, dialect=None, udt=False, copy=True, **kwargs)`.
+  //
+  // `dialect` is a NAMED parameter upstream, NOT part of `**kwargs`: it exists only to
+  // tell `from_str` which grammar to parse a string `dtype` with, and never reaches
+  // `cls(...)`. Destructuring only `udt`/`copy` here left it in `...kwargs`, which the
+  // three branches below then spread into the node — so `CAST(x AS FOO)` built
+  // `DataType(this=USERDEFINED, kind=FOO, dialect=<Dialect>)` against CPython's
+  // `DataType(this=USERDEFINED, kind=FOO)`, and the extra arg dumped as
+  // `dialect=[object Object]`. PORT_PLAN.md R18's class exactly (a keyword parameter
+  // folded into the JS options object), one level below the parser: all five call
+  // sites (`parser.js:4716/4724/4748/5386`, `builders.js:182`) are themselves faithful
+  // to upstream's `dialect=self.dialect`.
+  C.DataType.build = function (dtype, { dialect = null, udt = false, copy = true, ...kwargs } = {}) {
+    if (typeof dtype === "string") return this.fromStr(dtype, { dialect, udt, ...kwargs });
     if (dtype && dtype.__enum__ === "DType") return new C.DataType({ this: DType[dtype.name] || dtype }).setKwargs(kwargs);
     if (udt && (dtype instanceof C.Identifier || dtype instanceof C.Dot)) return new C.DataType({ this: DType.USERDEFINED, kind: dtype, ...kwargs });
     if (dtype instanceof C.DataType) return maybeCopy(dtype, copy);
@@ -156,17 +168,32 @@ export function installFocusedMethods() {
   // Verified against the pinned tree: `exp.DataType.from_str('double').args` is
   // {'this': DType.DOUBLE, 'expressions': None, 'nested': False}, and from_str('UNKNOWN')
   // is {'this': DType.UNKNOWN}.
-  C.DataType.fromStr = function (dtype, { udt = false, ...kwargs } = {}) {
+  //
+  // `dialect` is a NAMED parameter here too (`from_str(cls, dtype, dialect=None,
+  // udt=False, **kwargs)`), consumed by the `parse_one(dtype, read=dialect, ...)` path
+  // and never forwarded into `cls(...)`. See `build` above for what leaving it in
+  // `...kwargs` produced.
+  C.DataType.fromStr = function (dtype, { dialect = null, udt = false, ...kwargs } = {}) {
     const upper = String(dtype).toUpperCase();
     if (upper === "UNKNOWN") return new C.DataType({ this: DType.UNKNOWN, ...kwargs });
     if (DType[upper]) return new C.DataType({ this: DType[upper], expressions: null, nested: false }).setKwargs(kwargs);
     if (udt) return new C.DataType({ this: DType.USERDEFINED, kind: dtype, ...kwargs });
     // Upstream reaches here for anything the bare-name lookup above misses -- e.g. the
-    // parameterised `DECIMAL(38, 0)` that Snowflake's TYPE_CONVERTERS builds -- and
-    // resolves it with `parse_one(dtype, into=cls)`. That needs `registerParser`, which
-    // nothing calls yet, so this is an unported dependency and says so: a TypeError
-    // here reads as a crash in the caller when the caller is in fact correct.
-    throw new NotPorted(`DataType.from_str(${JSON.stringify(String(dtype))})`, "sqlglot/expressions/datatypes.py:386");
+    // parameterised `DECIMAL(38, 0)` / `DECIMAL(18, 3)` that Snowflake's and DuckDB's
+    // TYPE_CONVERTERS build -- and resolves it with
+    // `parse_one(dtype, read=dialect, into=cls, error_level=IGNORE)`.
+    //
+    // That was a `NotPorted` stub on the stated grounds that it "needs `registerParser`,
+    // which nothing calls yet". R17 wired `registerParser` (dialects/dialect.js:1455),
+    // so the dependency is satisfied and the real path can run. Only this branch
+    // changed: the UNKNOWN / bare-name / `udt` short-circuits above are untouched, so
+    // nothing that already worked can take a different route -- this can only convert a
+    // throw into a value.
+    return maybeParse(String(dtype), {
+      into: C.DataType,
+      dialect,
+      error_level: ErrorLevel.IGNORE,
+    }).setKwargs(kwargs);
   };
   C.DataType.prototype.isType = function (...dtypes) {
     let options = {};

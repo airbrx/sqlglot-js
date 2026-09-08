@@ -205,7 +205,7 @@ function build_hex(args, dialect) {
 }
 
 /** py: sqlglot/parser.py:110 */
-function build_extract_json_with_path(expr_type) {
+export function build_extract_json_with_path(expr_type) {
   return (args, dialect) => {
     const expression = new expr_type({
       this: seqGet(args, 0),
@@ -238,7 +238,7 @@ function build_array_prepend(args, dialect) {
 }
 
 /** py: sqlglot/parser.py:235 -- variadic: `this` plus the rest, unlike its siblings */
-function build_array_concat(args, dialect) {
+export function build_array_concat(args, dialect) {
   return new exp.ArrayConcat({
     this: seqGet(args, 0),
     expressions: args.slice(1),
@@ -317,14 +317,51 @@ export function build_var_map(args) {
 }
 
 // ---------------------------------------------------------------------------
-// JSONB operator builders (module-level upstream, py:318-331)
+// JSON / JSONB operator builders (module-level upstream, py:295-331)
 // ---------------------------------------------------------------------------
 // Upstream defines these as named module-level functions AND separately inlines the
-// same three bodies as lambdas inside `Parser.COLUMN_OPERATORS` (py:1100/1103/1106);
-// this file mirrors both, because `parsers/postgres.py` references the named forms by
-// module path (`parser.build_jsonb_extract`) in its own `JSON_OPERATORS` while the base
+// same bodies as lambdas inside `Parser.COLUMN_OPERATORS` (py:1094/1097/1100/1103/1106);
+// this file mirrors both, because `parsers/postgres.py` and `parsers/duckdb.py`
+// reference the named forms by module path (`parser.build_jsonb_extract`,
+// `parser.build_json_extract`) in their own `JSON_OPERATORS` while the base
 // `COLUMN_OPERATORS` keeps its lambdas. Their signature is the `COLUMN_OPERATORS` /
 // `JSON_OPERATORS` value signature — `(self, this, rhs)` — not a `FUNCTIONS` builder's.
+//
+// The `build_json_*` PAIR below was absent until DuckDB needed it: R19 landed the
+// `build_jsonb_*` trio because Postgres's `JSON_OPERATORS` names those three, but
+// Postgres builds its own ARROW/DARROW entries from `build_json_extract_path` inline,
+// so nothing referenced the non-B pair. `parsers/duckdb.py:95-96` is their first
+// reader — the R19 "declared, but read by nothing" shape one level down.
+
+/** py: sqlglot/parser.py:295 */
+export function build_json_extract(self, this_, path) {
+  return self.expression(
+    new exp.JSONExtract({
+      this: this_,
+      expression: self.dialect.to_json_path(path),
+      // py: `self.JSON_ARROWS_REQUIRE_JSON_TYPE` — a CLASS field read off the instance.
+      // JS statics are not on the prototype (PORT_PLAN.md R20), so a bare
+      // `self.JSON_ARROWS_REQUIRE_JSON_TYPE` reads `undefined` and silently flips the
+      // flag to false for every dialect that sets it.
+      only_json_types: self.constructor.JSON_ARROWS_REQUIRE_JSON_TYPE,
+    }),
+  );
+}
+
+/** py: sqlglot/parser.py:305 */
+export function build_json_extract_scalar(self, this_, path) {
+  return self.expression(
+    new exp.JSONExtractScalar({
+      this: this_,
+      expression: self.dialect.to_json_path(path),
+      only_json_types: self.constructor.JSON_ARROWS_REQUIRE_JSON_TYPE,
+      // py: `self.dialect.JSON_EXTRACT_SCALAR_SCALAR_ONLY` — a DIALECT setting, so it
+      // stays on `self.dialect` (mirrored onto the prototype by `registerDialect`),
+      // not on `self.constructor`.
+      scalar_only: self.dialect.JSON_EXTRACT_SCALAR_SCALAR_ONLY,
+    }),
+  );
+}
 
 /** py: sqlglot/parser.py:318 */
 export function build_jsonb_extract(self, this_, path) {
@@ -3733,7 +3770,9 @@ export class Parser {
     const hints = [];
     try {
       while (true) {
-        const hint = this._parse_csv(() => this._parse_hint_function_call() || this._parse_var(true));
+        // py:4421 `self._parse_hint_function_call() or self._parse_var(upper=True)` --
+        // `upper`, not `any_token`. Same dropped keyword as py:5291 below.
+        const hint = this._parse_csv(() => this._parse_hint_function_call() || this._parse_var(false, null, true));
         if (!hint.length) break;
         hints.push(...hint);
       }
@@ -4098,7 +4137,13 @@ export class Parser {
     else percent = num;
     if (matched_l_paren) this._match_r_paren();
     if (this._match(TokenType.L_PAREN)) {
-      method = this._parse_var(true); seed = this._match(TokenType.COMMA) && this._parse_number(); this._match_r_paren();
+      // py:5291 `method = self._parse_var(upper=True)`. `upper` is the THIRD parameter
+      // (`any_token, tokens, upper`), so the bare `_parse_var(true)` this replaced set
+      // `any_token=True` and left `upper=False` -- two divergences from one dropped
+      // keyword: `USING SAMPLE 10% (system, 377)` produced `Var(this=system)` where
+      // CPython produces `Var(this=SYSTEM)`, and any token at all was accepted as a
+      // sampling method. PORT_PLAN.md R18's class.
+      method = this._parse_var(false, null, true); seed = this._match(TokenType.COMMA) && this._parse_number(); this._match_r_paren();
     } else if (this._match_texts(["SEED", "REPEATABLE"])) seed = this._parse_wrapped(() => this._parse_number());
     if (!method && C.DEFAULT_SAMPLING_METHOD) method = exp.var(C.DEFAULT_SAMPLING_METHOD);
     return this.expression(new exp.TableSample({ expressions, method, bucket_numerator, bucket_denominator, bucket_field, percent, size, seed }));
@@ -4162,9 +4207,23 @@ export class Parser {
   // py: sqlglot/parser.py:5404
   _parse_pivot() { throw new NotPorted("_parse_pivot", "sqlglot/parser.py:5404"); }
 
-  /** @returns {*} */
-  // py: sqlglot/parser.py:5521
-  _pivot_column_names(aggregations) { throw new NotPorted("_pivot_column_names", "sqlglot/parser.py:5521"); }
+  /**
+   * py: sqlglot/parser.py:5521
+   *
+   * `[agg.alias for agg in aggregations if agg.alias]` — the trailing `if agg.alias`
+   * is Python truthiness over `Expr.alias`, which returns `""` (not None) when a node
+   * carries no alias, so un-aliased aggregations are DROPPED rather than contributing
+   * an empty name.
+   *
+   * Ported because `DuckDBParser._pivot_column_names` (`parsers/duckdb.py:362`) calls
+   * `super()` for the single-aggregation case. Note its only reader upstream is
+   * `_parse_pivot` (py:5476), still a stub here — so this is correct-but-not-yet-
+   * reachable, the R19 shape. Left as a stub it would have made DuckDB's override
+   * throw the moment `_parse_pivot` lands, for a one-line body.
+   */
+  _pivot_column_names(aggregations) {
+    return aggregations.filter((agg) => pyTruthy(agg.alias)).map((agg) => agg.alias);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5524
