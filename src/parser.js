@@ -1149,7 +1149,7 @@ export class Parser {
     /* py:1149 */ [exp.Tuple, (self) => self._parse_value(false)],
     /* py:1150 */ [exp.Whens, (self) => self._parse_when_matched()],
     /* py:1151 */ [exp.Where, (self) => self._parse_where()],
-    // py:1152  [exp.Window, ...]  — `_parse_named_window` is still a NotPorted stub
+    /* py:1152 */ [exp.Window, (self) => self._parse_named_window()],
     /* py:1153 */ [exp.With, (self) => self._parse_with()],
   ]);
 
@@ -1543,7 +1543,7 @@ export class Parser {
     /* py:1601 */ [TokenType.GROUP_BY, (self) => ["group", self._parse_group()]],
     /* py:1602 */ [TokenType.HAVING, (self) => ["having", self._parse_having()]],
     /* py:1603 */ [TokenType.QUALIFY, (self) => ["qualify", self._parse_qualify()]],
-    // py:1604  [TokenType.WINDOW, ...]   — `_parse_window_clause` is a stub
+    /* py:1604 */ [TokenType.WINDOW, (self) => ["windows", self._parse_window_clause()]],
     /* py:1605 */ [TokenType.ORDER_BY, (self) => ["order", self._parse_order()]],
     /* py:1606 */ [TokenType.LIMIT, (self) => ["limit", self._parse_limit()]],
     /* py:1607 */ [TokenType.FETCH, (self) => ["limit", self._parse_limit()]],
@@ -1555,7 +1555,7 @@ export class Parser {
     /* py:1613 */ [TokenType.CLUSTER_BY, (self) => ["cluster", self._parse_cluster()]],
     /* py:1617 */ [TokenType.DISTRIBUTE_BY, (self) => ["distribute", self._parse_sort(exp.Distribute, TokenType.DISTRIBUTE_BY)]],
     /* py:1621 */ [TokenType.SORT_BY, (self) => ["sort", self._parse_sort(exp.Sort, TokenType.SORT_BY)]],
-    // py:1622  [TokenType.CONNECT_BY, ...]     — `_parse_connect` is a stub
+    /* py:1622 */ [TokenType.CONNECT_BY, (self) => ["connect", self._parse_connect(true)]],
   ]);
 
   /** py: sqlglot/parser.py:1624 */
@@ -3598,11 +3598,45 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4219
-  _parse_cte() { throw new NotPorted("_parse_cte", "sqlglot/parser.py:4219"); }
+  _parse_cte() {
+    const index = this._index;
+
+    const alias = this._parse_table_alias(this.constructor.ID_VAR_TOKENS);
+    if (!alias || !alias.this) this.raise_error("Expected CTE to have alias");
+
+    const key_expressions = this._match_text_seq("USING", "KEY") ? this._parse_wrapped_id_vars() : null;
+
+    if (!this._match(TokenType.ALIAS) && !this.constructor.OPTIONAL_ALIAS_TOKEN_CTE) {
+      this._retreat(index);
+      return null;
+    }
+
+    const comments = this._prev_comments;
+
+    let materialized;
+    if (this._match_text_seq("NOT", "MATERIALIZED")) materialized = false;
+    else if (this._match_text_seq("MATERIALIZED")) materialized = true;
+    else materialized = null;
+
+    const cte = this.expression(new exp.CTE({
+      this: this._parse_wrapped(() => this._parse_statement()),
+      alias,
+      materialized,
+      key_expressions,
+    }), null, comments);
+
+    const values = cte.this;
+    if (values instanceof exp.Values) cte.set("this", this._values_to_select(values));
+
+    return cte;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4259
-  _values_to_select(values) { throw new NotPorted("_values_to_select", "sqlglot/parser.py:4259"); }
+  _values_to_select(values) {
+    if (values.alias) return exp.select("*").from_(values);
+    return exp.select("*").from_(exp.alias_(values, "_values", { table: true }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4264
@@ -4181,11 +4215,34 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5628
-  _parse_connect_with_prior() { throw new NotPorted("_parse_connect_with_prior", "sqlglot/parser.py:5628"); }
+  _parse_connect_with_prior() {
+    // py:5629 `self.NO_PAREN_FUNCTION_PARSERS["PRIOR"] = ...` — no instance attribute
+    // shadows the ClassVar, so this mutates the SHARED CLASS dict and pops it again at
+    // py:5633. Reproduced on `this.constructor` rather than made instance-local, so the
+    // visibility (and the restore) match upstream exactly.
+    this.constructor.NO_PAREN_FUNCTION_PARSERS.set("PRIOR",
+      (self) => self.expression(new exp.Prior({ this: self._parse_bitwise() })));
+    const connect = this._parse_disjunction();
+    this.constructor.NO_PAREN_FUNCTION_PARSERS.delete("PRIOR");
+    return connect;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5636
-  _parse_connect(skip_start_token) { throw new NotPorted("_parse_connect", "sqlglot/parser.py:5636"); }
+  _parse_connect(skip_start_token = false) {
+    let start;
+    if (skip_start_token) start = null;
+    else if (this._match_text_seq("START", "WITH")) start = this._parse_disjunction();
+    else return null;
+
+    this._match(TokenType.CONNECT_BY);
+    const nocycle = this._match_text_seq("NOCYCLE");
+    const connect = this._parse_connect_with_prior();
+
+    if (!start && this._match_text_seq("START", "WITH")) start = this._parse_disjunction();
+
+    return this.expression(new exp.Connect({ start, connect, nocycle }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5653
@@ -4693,7 +4750,7 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:7147
   _parse_field(any_token = false, tokens = null, anonymous_func = false) {
-    const C=this.constructor,after=C.SUPPORTS_DIGIT_PREFIXED_FIELD_NAMES&&this._prev.token_type===TokenType.DOT;let field=anonymous_func?(this._parse_function(null,anonymous_func,true,any_token)||this._parse_primary()):(this._parse_primary()||this._parse_function(null,anonymous_func,true,any_token));field=field||this._parse_id_var(any_token,tokens);if(after&&field instanceof exp.Literal&&field.is_number){let name=field.name;if(this._is_connected()&&this._parse_var(true))name+=this._prev.text;field=new exp.Identifier({this:name,quoted:true}).update_positions(field);}return field;
+    const C=this.constructor,after=C.SUPPORTS_DIGIT_PREFIXED_FIELD_NAMES&&this._prev.token_type===TokenType.DOT;let field=anonymous_func?(this._parse_function(null,anonymous_func,true,any_token)||this._parse_primary()):(this._parse_primary()||this._parse_function(null,anonymous_func,true,any_token));field=field||this._parse_id_var(any_token,tokens);if(after&&field instanceof exp.Literal&&field.is_number){let name=field.name;if(this._is_connected()&&this._parse_var(true))name+=this._prev.text;field=new exp.Identifier({this:name,quoted:true}).updatePositions(field);}return field;
   }
 
   /** @returns {*} */
@@ -5269,11 +5326,13 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8612
-  _parse_window_clause() { throw new NotPorted("_parse_window_clause", "sqlglot/parser.py:8612"); }
+  _parse_window_clause() {
+    return this._match(TokenType.WINDOW) ? this._parse_csv(() => this._parse_named_window()) : null;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8615
-  _parse_named_window() { throw new NotPorted("_parse_named_window", "sqlglot/parser.py:8615"); }
+  _parse_named_window() { return this._parse_window(this._parse_id_var(), true); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8618
@@ -5388,7 +5447,7 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:8835
   _parse_string_as_identifier() {
-    if(!this._match(TokenType.STRING))return null;const output=exp.toIdentifier(this._prev.text,true);output.update_positions(this._prev);return output;
+    if(!this._match(TokenType.STRING))return null;const output=exp.toIdentifier(this._prev.text,true);output.updatePositions(this._prev);return output;
   }
 
   /** @returns {*} */
