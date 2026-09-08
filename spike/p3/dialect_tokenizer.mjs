@@ -18,6 +18,7 @@ import { pyUpper } from "../../src/_py/str.js";
 import { formatTime } from "../../src/time.js";
 import { NotPorted } from "../../src/errors.js";
 import { Parser } from "../../src/parser.js";
+import { BaseParser } from "../../src/parsers/base.js";
 import { Dialect, registerDialect } from "../../src/dialects/dialect.js";
 import { SnowflakeParser } from "../../src/parsers/snowflake.js";
 import { HiveParser } from "../../src/parsers/hive.js";
@@ -241,6 +242,12 @@ export function standInDialect(tk, dialect = "") {
 // start being measured; a dialect with no entry keeps using the base `Parser`, which is
 // what every non-Snowflake row does today.
 const PARSER_CLASSES = new Map([
+  // The DEFAULT dialect is not the base `Parser`. `dialects/dialect.py:824` sets
+  // `Dialect.parser_class = BaseParser` (sqlglot/parsers/base.py), which adds LOCALTIME,
+  // LOCALTIMESTAMP, CURRENT_CATALOG and SESSION_USER to `NO_PAREN_FUNCTIONS` and drops
+  // STRAIGHT_JOIN from two token sets. Every OTHER dialect subclasses `parser.Parser`
+  // directly, so the fallback below stays `Parser` and only this key changes.
+  ["", BaseParser],
   ["snowflake", SnowflakeParser],
   ["hive", HiveParser],
   ["spark2", Spark2Parser],
