@@ -6316,7 +6316,11 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:10045
   _parse_grant_principal() {
-    const kind = this._match_texts(["ROLE", "GROUP"]) ? this._prev.text.toUpperCase() : null;
+    // py: `kind = self._match_texts(("ROLE", "GROUP")) and self._prev.text.upper()` — a
+    // Python `and` yields the FALSE OPERAND, not None, so an unmatched kind is `False`
+    // and dumps as `false`. `null` here was a silent one-token diff on every
+    // GRANT/REVOKE row that does not name an explicit ROLE/GROUP.
+    const kind = this._match_texts(["ROLE", "GROUP"]) ? pyUpper(this._prev.text) : false;
     const principal = this._parse_id_var();
     return principal ? this.expression(new exp.GrantPrincipal({ this: principal, kind })) : null;
   }
