@@ -1537,7 +1537,7 @@ export class Parser {
     // Values are `(key, expression)` tuples upstream; `_parse_query_modifiers`
     // destructures them as `const [key, expression] = parser(this)`, so they are
     // 2-element ARRAYS here.
-    // py:1598  [TokenType.MATCH_RECOGNIZE, ...]  — `_parse_match_recognize` is a stub
+    /* py:1598 */ [TokenType.MATCH_RECOGNIZE, (self) => ["match", self._parse_match_recognize()]],
     /* py:1599 */ [TokenType.PREWHERE, (self) => ["prewhere", self._parse_prewhere()]],
     /* py:1600 */ [TokenType.WHERE, (self) => ["where", self._parse_where()]],
     /* py:1601 */ [TokenType.GROUP_BY, (self) => ["group", self._parse_group()]],
@@ -3708,11 +3708,105 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4468
-  _parse_match_recognize_measure() { throw new NotPorted("_parse_match_recognize_measure", "sqlglot/parser.py:4468"); }
+  _parse_match_recognize_measure() {
+    return this.expression(new exp.MatchRecognizeMeasure({
+      // py: `_match_texts(...) and self._prev.text.upper()` — False when unmatched.
+      window_frame: this._match_texts(["FINAL", "RUNNING"]) && pyUpper(this._prev.text),
+      this: this._parse_expression(),
+    }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4476
-  _parse_match_recognize() { throw new NotPorted("_parse_match_recognize", "sqlglot/parser.py:4476"); }
+  _parse_match_recognize() {
+    if (!this._match(TokenType.MATCH_RECOGNIZE)) return null;
+
+    this._match_l_paren();
+
+    const partition = this._parse_partition_by();
+    const order = this._parse_order();
+
+    const measures = this._match_text_seq("MEASURES")
+      ? this._parse_csv(() => this._parse_match_recognize_measure())
+      : null;
+
+    let rows;
+    if (this._match_text_seq("ONE", "ROW", "PER", "MATCH")) {
+      rows = exp.var("ONE ROW PER MATCH");
+    } else if (this._match_text_seq("ALL", "ROWS", "PER", "MATCH")) {
+      let text = "ALL ROWS PER MATCH";
+      if (this._match_text_seq("SHOW", "EMPTY", "MATCHES")) text += " SHOW EMPTY MATCHES";
+      else if (this._match_text_seq("OMIT", "EMPTY", "MATCHES")) text += " OMIT EMPTY MATCHES";
+      else if (this._match_text_seq("WITH", "UNMATCHED", "ROWS")) text += " WITH UNMATCHED ROWS";
+      rows = exp.var(text);
+    } else {
+      rows = null;
+    }
+
+    let after;
+    if (this._match_text_seq("AFTER", "MATCH", "SKIP")) {
+      let text = "AFTER MATCH SKIP";
+      if (this._match_text_seq("PAST", "LAST", "ROW")) text += " PAST LAST ROW";
+      else if (this._match_text_seq("TO", "NEXT", "ROW")) text += " TO NEXT ROW";
+      else if (this._match_text_seq("TO", "FIRST") || this._match_text_seq("TO", "LAST")) {
+        // py:4513 `self._prev` is the FIRST/LAST just matched, not the TO.
+        const direction = pyUpper(this._prev.text);
+        const pattern_var = this._advance_any();
+        if (!pattern_var) this.raise_error(`Expecting pattern variable after AFTER MATCH SKIP TO ${direction}`);
+        // py: `raise_error` need not throw below ErrorLevel.IMMEDIATE, so upstream
+        // still guards `pattern_var` here after having just reported it missing.
+        text += ` TO ${direction} ${pattern_var ? pattern_var.text : ""}`;
+      }
+      after = exp.var(text);
+    } else {
+      after = null;
+    }
+
+    let pattern;
+    if (this._match_text_seq("PATTERN")) {
+      this._match_l_paren();
+
+      if (!this._curr.bool()) this.raise_error("Expecting )", this._curr);
+
+      let paren = 1;
+      const start = this._curr;
+      // py:4536 `end` is bound INSIDE the loop; the `self._curr` check above is what
+      // guarantees at least one iteration, so it is always assigned by the time
+      // `_find_sql` reads it.
+      let end;
+
+      while (this._curr.bool() && paren > 0) {
+        if (this._curr.token_type === TokenType.L_PAREN) paren += 1;
+        if (this._curr.token_type === TokenType.R_PAREN) paren -= 1;
+
+        end = this._prev;
+        this._advance();
+      }
+
+      if (paren > 0) this.raise_error("Expecting )", this._curr);
+
+      pattern = exp.var(this._find_sql(start, end));
+    } else {
+      pattern = null;
+    }
+
+    const define = this._match_text_seq("DEFINE")
+      ? this._parse_csv(() => this._parse_name_as_expression())
+      : null;
+
+    this._match_r_paren();
+
+    return this.expression(new exp.MatchRecognize({
+      partition_by: partition,
+      order,
+      measures,
+      rows,
+      after,
+      pattern,
+      define,
+      alias: this._parse_table_alias(),
+    }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4569
@@ -4095,7 +4189,11 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5653
-  _parse_name_as_expression() { throw new NotPorted("_parse_name_as_expression", "sqlglot/parser.py:5653"); }
+  _parse_name_as_expression() {
+    let this_ = this._parse_id_var(true);
+    if (this._match(TokenType.ALIAS)) this_ = this.expression(new exp.Alias({ alias: this_, this: this._parse_disjunction() }));
+    return this_;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5659
