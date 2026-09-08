@@ -53,6 +53,10 @@ python3 spike/p3/gen_parse_path_sql_ref.py   > spike/out/parse_path_sql.jsonl   
 python3 spike/p3/gen_raise_error_ref.py      > spike/out/raise_error.jsonl      || fail=1
 python3 spike/p3/gen_command_warning_ref.py  > spike/out/command_warnings.jsonl || fail=1
 python3 spike/p4/gen_generator_base_ref.py   > spike/out/generator_base.json    || fail=1
+# P4 oracle. identifier_sql over the full (name x normalize x identify x quoted x pretty)
+# space -- PYTHONHASHSEED pinned like every other oracle here, since the reference reads
+# Generator settings whose iteration order is observable.
+PYTHONHASHSEED=0 python3 spike/p4/gen_identifier_sql_ref.py > spike/out/identifier_sql_ref.json || fail=1
 # P5 oracle. The base `Dialect` class's 105 settings, the four classes the metaclass
 # autofills, 17 `get_or_raise` grammar cases and 187 method cases, straight out of
 # CPython -- six of the settings are DERIVED by the metaclass, so reading the upstream
@@ -112,6 +116,12 @@ run "P4: base Generator (settings/prims/gen)" node spike/p4/fuzz_generator_base.
 # probe can disagree completely. It also cross-checks the two against each other and fails
 # if closure over-claims — which it caught doing on its very first run.
 run "P4: generate oracle (honest)"        node spike/p4/fuzz_generate_oracle.mjs
+# The corpus reaches identifier_sql on 10,870 of 15,540 rows and still exercises almost
+# none of its branches (0.024% non-ASCII, no empty name, one of eight flag combinations).
+# Both defects in its first port were invisible to all of them. R4's lesson generalised:
+# for a method whose job is a decision over arbitrary text, corpus coverage is not method
+# coverage.
+run "P4: identifier_sql flag space"       node spike/p4/fuzz_identifier_sql.mjs
 run "SELFTEST: generator closure maths"   node tools/closure_generator.mjs --selftest
 run "P5: Dialect defaults vs CPython"      node spike/p5/fuzz_dialect_defaults.mjs
 run "P5: Dialect.get_or_raise().parse()"   node spike/p5/fuzz_dialect_parse.mjs

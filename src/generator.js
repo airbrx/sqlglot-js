@@ -80,7 +80,7 @@ import { ErrorLevel, NotPorted, UnsupportedError, concatMessages } from "./error
 import { PyValueError } from "./_py/errors.js";
 import { nameSequence } from "./helper.js";
 import { logger } from "./logging.js";
-import { cpAt, cpLen, pyIsDigit, pyIsSpace, pyLower, pyStrip, pyRstrip } from "./_py/str.js";
+import { cpAt, cpLen, cpSlice, pyIsDigit, pyIsSpace, pyLower, pyStrip, pyRstrip } from "./_py/str.js";
 import * as exp from "./expressions/index.js";
 import { registerGenerator } from "./expressions/core.js";
 
@@ -215,6 +215,40 @@ export const BASE_DIALECT_GENERATOR_SETTINGS = Object.freeze({
   // CONTRACTS.md §8 records the same rule for every tokenizer dict.
   ESCAPED_SEQUENCES: new Map(),
   tokenizer_class: Object.freeze({ STRING_ESCAPES: Object.freeze(["'"]) }),
+
+  // Added for `identifier_sql`/`column_parts`/`column_sql`, re-read from CPython by the
+  // command above rather than guessed — which is what this object's docstring requires
+  // and what R18(d) is about. All three are False at the base `Dialect`, so leaving them
+  // out would have read `undefined` and taken the SAME branch: correct by accident on the
+  // base and silently wrong for the first dialect that flips one. That is exactly R20's
+  // "24 of the base defaults are falsy, so two thirds behave correctly by accident".
+  IDENTIFIERS_CAN_START_WITH_DIGIT: false,
+  SUPPORTS_COLUMN_JOIN_MARKS: false,
+  PROJECTION_ALIASES_SHADOW_SOURCE_NAMES: false,
+
+  /**
+   * py: `Dialect.can_quote` (dialects/dialect.py:1125).
+   *
+   * The first METHOD any generator path has needed off `self.dialect`, and this object
+   * cannot host one honestly: `can_quote` is real behaviour — `case_sensitive` over the
+   * dialect's normalization strategy, plus `SAFE_IDENTIFIER_RE` — and a second copy here
+   * would be a stand-in that DIVERGES from the thing it stands in for, which is the
+   * R18(d) failure with extra steps. So it announces instead.
+   *
+   * Not solved by importing `dialects/dialect.js` here either: that file is architected
+   * NOT to import this one (it reaches the generator through `registerGenerator`), and
+   * `new Generator().dialect === BASE_DIALECT_GENERATOR_SETTINGS` is an asserted contract
+   * (test/generator_dispatch.test.mjs:163). Wiring `Dialect.generator_class` is the
+   * documented P5 line that closes this properly; until then every real path passes a
+   * resolved `Dialect` and only a bare `new Generator()` reaches this throw.
+   */
+  can_quote() {
+    throw new NotPorted(
+      "BASE_DIALECT_GENERATOR_SETTINGS.can_quote — the stand-in cannot host Dialect " +
+        "METHODS; pass a resolved Dialect (Dialect.get_or_raise(...))",
+      "sqlglot/dialects/dialect.py:1125",
+    );
+  },
 });
 
 /**
@@ -1667,10 +1701,13 @@ export class Generator {
       // reads back `undefined`, so `this.RESERVED_KEYWORDS.has(...)` would throw. Going
       // through `this.constructor` also keeps a dialect subclass's override honoured.
       this.constructor.RESERVED_KEYWORDS.has(lower) ||
-      // py: `text[:1].isdigit()`. Rule 3: the first CODE POINT via `cpAt`, not `text[0]`,
-      // which would hand a lone surrogate half to the predicate. `pyIsDigit("")` is false,
-      // matching Python's `"".isdigit()`, so the empty-name case needs no separate guard.
-      (!this.dialect.IDENTIFIERS_CAN_START_WITH_DIGIT && pyIsDigit(cpAt(text, 0) ?? ""))
+      // py: `text[:1].isdigit()`. Rule 3: by CODE POINT, so not `text[0]`, which would
+      // hand a lone surrogate half to the predicate. `cpSlice` and NOT `cpAt`, because
+      // `text[:1]` is a SLICE: Python slices clamp and yield "" for an empty string,
+      // whereas an INDEX raises — and `cpAt` faithfully reproduces the raising kind, so
+      // `cpAt(text, 0)` threw `PyIndexError` on `Identifier(this="")`. `pyIsDigit("")` is
+      // false, matching `"".isdigit()`, so "" then needs no separate guard.
+      (!this.dialect.IDENTIFIERS_CAN_START_WITH_DIGIT && pyIsDigit(cpSlice(text, 0, 1)))
     ) {
       text = `${this._identifier_start}${this._replace_line_breaks(text)}${this._identifier_end}`;
     }
