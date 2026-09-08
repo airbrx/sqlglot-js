@@ -3,12 +3,19 @@
 // Scope, deliberately narrow
 // --------------------------
 // The `Dialect` class itself is P5. This file holds only the module-level *builder
-// functions* that `sqlglot/parsers/snowflake.py` imports at its top — the ones that
-// appear as values inside `SnowflakeParser.FUNCTIONS` / `TYPE_CONVERTERS` and are
-// therefore hard dependencies of the parser subclass, not of the dialect settings
+// functions* that the ported `sqlglot/parsers/*.py` subclasses import at their top —
+// the ones that appear as values inside a parser's `FUNCTIONS` / `TYPE_CONVERTERS` and
+// are therefore hard dependencies of the parser subclass, not of the dialect settings
 // class. Upstream keeps them in `dialects/dialect.py`, so this file mirrors that
 // location rather than inventing a new home; when P5 ports the `Dialect` class it
 // lands in this same file next to them.
+//
+// Members are added here strictly on demand, one per importing parser: `snowflake.js`
+// established the first set; `hive.js` adds `build_regexp_extract`, `spark2.js` adds
+// `pivot_column_names`, and `spark.js`/`databricks.js` add `build_date_delta`. A
+// helper that is genuinely specific to ONE dialect belongs in that dialect's own file
+// instead — all four of these are in upstream's shared `dialects/dialect.py`, imported
+// by several dialects each, so they belong here.
 //
 // Nothing here resolves a dialect by NAME (CONTRACTS.md §8). Every function that needs
 // dialect state takes an already-resolved dialect object, exactly as upstream's
@@ -18,7 +25,7 @@
 // for a missing dialect, it is the documented default, and it is reproduced by
 // consulting the base `DATE_PART_MAPPING` literal below rather than by any lookup.
 //
-// @ported-ranges sqlglot/dialects/dialect.py 858-953 1610-1637 1700-1706 1916-1920 1925-1963 2167-2176 2384-2394 2462-2474 2604-2617 2620-2625
+// @ported-ranges sqlglot/dialects/dialect.py 858-953 1610-1637 1654-1674 1700-1706 1892-1914 1916-1920 1925-1963 2167-2176 2384-2394 2462-2474 2477-2497 2604-2617 2620-2625
 //
 // One range per member ported, so `tools/lint_deny.mjs` measures this file against
 // what it actually claims rather than against all 2,600 lines of `dialects/dialect.py`
@@ -73,6 +80,79 @@ export function build_formatted_time(exp_class, dialect_override = null, default
     if (!fmt) fmt = default_ === true ? target_dialect.TIME_FORMAT : default_ || null;
 
     return new exp_class({ this: seqGet(args, 0), format: target_dialect.format_time(fmt) });
+  };
+}
+
+/** py: sqlglot/dialects/dialect.py:1654 */
+export function build_date_delta(
+  exp_class,
+  unit_mapping = null,
+  default_unit = "DAY",
+  supports_timezone = false,
+) {
+  return function _builder(args) {
+    const unit_based = args.length >= 3;
+    const has_timezone = args.length === 4;
+    const this_ = unit_based ? args[2] : seqGet(args, 0);
+    let unit = null;
+    if (unit_based || default_unit) {
+      unit = unit_based ? args[0] : exp.Literal.string(default_unit);
+      // py: `unit_mapping.get(unit.name.lower(), unit.name)` — dict.get with a default.
+      if (unit_mapping) {
+        const key = unit.name.toLowerCase();
+        unit = exp.var_(unit_mapping.has(key) ? unit_mapping.get(key) : unit.name);
+      }
+    }
+    const expression = new exp_class({ this: this_, expression: seqGet(args, 1), unit });
+    if (supports_timezone && has_timezone) expression.set("zone", args[args.length - 1]);
+    return expression;
+  };
+}
+
+/**
+ * py: sqlglot/dialects/dialect.py:1892
+ *
+ * The non-`Alias` branch renders each aggregation back to SQL (`agg.sql(dialect=...,
+ * normalize_functions="lower")`), which needs the full `Generator` — a P7 component,
+ * not the minimal kernel this phase has. `Spark2Parser._pivot_column_names` short-
+ * circuits to `[]` for the single-aggregation case before ever reaching here, so the
+ * reachable-today path is the `Alias` one; anything else announces itself rather than
+ * approximating a rendered name.
+ */
+export function pivot_column_names(aggregations, dialect) {
+  const names = [];
+  for (const agg of aggregations) {
+    if (agg instanceof exp.Alias) {
+      names.push(agg.alias);
+    } else {
+      throw new NotPorted(
+        "pivot_column_names(non-Alias aggregation)",
+        "sqlglot/dialects/dialect.py:1912 Expr.sql",
+      );
+    }
+  }
+
+  return names;
+}
+
+/** py: sqlglot/dialects/dialect.py:2477 */
+export function build_regexp_extract(expr_type) {
+  return function _builder(args, dialect) {
+    // The "position" argument specifies the index of the string character to start matching from.
+    // `null_if_pos_overflow` reflects the dialect's behavior when position is greater than the string
+    // length. If true, returns NULL. If false, returns an empty string. `null_if_pos_overflow` is
+    // only needed for exp.RegexpExtract - exp.RegexpExtractAll always returns an empty array if
+    // position overflows.
+    const kwargs = {
+      this: seqGet(args, 0),
+      expression: seqGet(args, 1),
+      group: seqGet(args, 2) || exp.Literal.number(dialect.REGEXP_EXTRACT_DEFAULT_GROUP),
+      parameters: seqGet(args, 3),
+    };
+    if (expr_type === exp.RegexpExtract) {
+      kwargs.null_if_pos_overflow = dialect.REGEXP_EXTRACT_POSITION_OVERFLOW_RETURNS_NULL;
+    }
+    return new expr_type(kwargs);
   };
 }
 

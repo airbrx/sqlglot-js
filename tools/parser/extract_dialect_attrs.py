@@ -56,6 +56,13 @@ OUT = "corpus/parser/dialect_attrs.json"
 # DATEADD/DATEDIFF/DATE_PART builder), REGEXP_EXTRACT_POSITION_OVERFLOW_RETURNS_NULL
 # (REGEXP_SUBSTR) and TIME_FORMAT (build_formatted_time's `default=True`).
 #
+# `src/parsers/hive.js` adds a fourth, REGEXP_EXTRACT_DEFAULT_GROUP: `build_regexp_extract`
+# (dialect.py:2488) reads it for the `group` default of REGEXP_EXTRACT / REGEXP_EXTRACT_ALL,
+# and Hive/Spark set it to 1 where the base Dialect uses 0. Omitting it did not fail loudly
+# — `dialect.REGEXP_EXTRACT_DEFAULT_GROUP` read back `undefined` and built
+# `Literal(this=undefined)`, which the AST oracle reported as an ordinary MISMATCH rather
+# than as a missing attribute. That is exactly the failure mode this list exists to prevent.
+#
 # Declared explicitly, in sorted order, for the same reason CORE_SLOTS is: an attribute
 # that upstream adds (or that the JS port starts reading) shows up as a diff here
 # instead of silently reading back `undefined` at runtime. `assert_covers` below fails
@@ -86,6 +93,7 @@ PARSER_ATTRS = [
     "NUMBERS_CAN_BE_UNDERSCORE_SEPARATED",
     "ON_CONDITION_EMPTY_BEFORE_ERROR",
     "PRESERVE_ORIGINAL_NAMES",
+    "REGEXP_EXTRACT_DEFAULT_GROUP",
     "REGEXP_EXTRACT_POSITION_OVERFLOW_RETURNS_NULL",
     "SAFE_DIVISION",
     "SET_OP_DISTINCT_BY_DEFAULT",

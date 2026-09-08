@@ -3348,7 +3348,10 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3759
-  _parse_row() { return this.expression(new exp.Row({ expressions: this._parse_wrapped_csv(this._parse_assignment.bind(this)) })); }
+  _parse_row() {
+    if (!this._match(TokenType.FORMAT)) return null;
+    return this._parse_row_format();
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3764
