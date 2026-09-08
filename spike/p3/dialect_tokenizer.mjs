@@ -18,6 +18,8 @@ import { pyUpper } from "../../src/_py/str.js";
 import { formatTime } from "../../src/time.js";
 import { NotPorted } from "../../src/errors.js";
 import { Parser } from "../../src/parser.js";
+import { BaseParser } from "../../src/parsers/base.js";
+import { Dialect, registerDialect } from "../../src/dialects/dialect.js";
 import { SnowflakeParser } from "../../src/parsers/snowflake.js";
 import { HiveParser } from "../../src/parsers/hive.js";
 import { Spark2Parser } from "../../src/parsers/spark2.js";
@@ -172,7 +174,28 @@ function attrsFor(dialect) {
  */
 export function standInDialect(tk, dialect = "") {
   const attrs = attrsFor(dialect);
-  return {
+  // Since P5 this is a REAL `Dialect` instance carrying the harvested values as OWN
+  // properties, rather than a bare object literal. Two reasons, one required and one
+  // free:
+  //
+  //   Required. `parser.py:4437`'s `_parse_hint` calls
+  //   `exp.maybe_parse(comment, into=Hint, dialect=self.dialect)`, and with
+  //   `registerParser` finally wired that reaches `Dialect.get_or_raise`, whose
+  //   `isinstance(dialect, Dialect)` check is upstream's own. A plain object failed it
+  //   with "Invalid dialect type for '[object Object]'" on 42 rows (spark 20, oracle
+  //   17, mysql 5) that had previously been silent MISMATCHes.
+  //
+  //   Free. Own properties shadow the prototype, so every harvested value still wins.
+  //   That matters: `registerDialect`'s derivations read `tokenizer_class._QUOTES`,
+  //   `KEYWORDS.has("(+)")` and `STRING_ESCAPES` off a real per-dialect `Tokenizer`
+  //   SUBCLASS, and this harness deliberately has none — P1 snapshotted tokenizer
+  //   SETTINGS into `TokenizerCore` instead. Registering these through
+  //   `registerDialect` would therefore recompute `SUPPORTS_COLUMN_JOIN_MARKS`,
+  //   `ESCAPED_SEQUENCES` and friends from the BASE tokenizer and overwrite measured
+  //   values with wrong ones. Assigning over an instance keeps the harvest
+  //   authoritative and gains only the type identity.
+  const Klass = dialectClassFor(dialect);
+  return Object.assign(new Klass(), {
     ...attrs,
     tokenizer_class: { COMMANDS: tk.commands },
     tokenize: (sql) => tk.core.tokenize(sql).tokens,
@@ -197,7 +220,7 @@ export function standInDialect(tk, dialect = "") {
       }
       return path;
     },
-  };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -220,6 +243,12 @@ export function standInDialect(tk, dialect = "") {
 // start being measured; a dialect with no entry keeps using the base `Parser`, which is
 // what every non-Snowflake row does today.
 const PARSER_CLASSES = new Map([
+  // The DEFAULT dialect is not the base `Parser`. `dialects/dialect.py:824` sets
+  // `Dialect.parser_class = BaseParser` (sqlglot/parsers/base.py), which adds LOCALTIME,
+  // LOCALTIMESTAMP, CURRENT_CATALOG and SESSION_USER to `NO_PAREN_FUNCTIONS` and drops
+  // STRAIGHT_JOIN from two token sets. Every OTHER dialect subclasses `parser.Parser`
+  // directly, so the fallback below stays `Parser` and only this key changes.
+  ["", BaseParser],
   ["snowflake", SnowflakeParser],
   ["hive", HiveParser],
   ["spark2", Spark2Parser],
@@ -231,4 +260,69 @@ const PARSER_CLASSES = new Map([
 /** The `Parser` subclass that owns `dialect`'s grammar, or the base `Parser`. */
 export function parserClassFor(dialect) {
   return PARSER_CLASSES.get(dialect) || Parser;
+}
+
+// ---------------------------------------------------------------------------
+// Per-dialect Dialect subclass
+// ---------------------------------------------------------------------------
+// `src/dialects/` has no per-dialect settings classes yet -- those are the next P5
+// dispatch, one file each, the same shape the `parsers/<dialect>.js` ports took. The
+// harness needs a class anyway, for two things an instance carrying harvested values
+// cannot supply:
+//
+//   `parser_class`. `Dialect.parser()` reads `this.constructor.parser_class`, so the
+//   dialect a SUB-parse resolves to decides its grammar. `parser.py:4437`'s
+//   `_parse_hint` re-parses a `/*+ ... */` comment through
+//   `maybe_parse(..., dialect=self.dialect)`; with the base class that reached
+//   `BaseParser` and produced `Anonymous(this=MERGE)` where CPython, going through
+//   `SparkParser`, produces `JoinHint`.
+//
+//   The class NAME. `tools/astdump.py:111` dumps a Dialect held on an arg as
+//   `{"__dialect__": type(node).__name__}`, so an arg carrying one (via
+//   `DataType.from_str(..., dialect=...)`) compares by that name.
+//
+// Names are upstream's, harvested rather than title-cased: `DuckDB`, `MySQL`, `TSQL`,
+// `PRQL`, `SQLite`, `StarRocks`, `RisingWave`, `SingleStore` and `DAX` are none of them
+// what a `key[0].toUpperCase()` rule produces, and a wrong name is a silent MISMATCH on
+// the `__dialect__` wire format rather than an error.
+const DIALECT_CLASS_NAMES = {
+  "": "Dialect", athena: "Athena", bigquery: "BigQuery", clickhouse: "ClickHouse",
+  databricks: "Databricks", dax: "DAX", doris: "Doris", dremio: "Dremio",
+  drill: "Drill", druid: "Druid", duckdb: "DuckDB", dune: "Dune", exasol: "Exasol",
+  fabric: "Fabric", hive: "Hive", materialize: "Materialize", mysql: "MySQL",
+  oracle: "Oracle", postgres: "Postgres", presto: "Presto", prql: "PRQL",
+  redshift: "Redshift", risingwave: "RisingWave", singlestore: "SingleStore",
+  snowflake: "Snowflake", solr: "Solr", spark: "Spark", spark2: "Spark2",
+  sqlite: "SQLite", starrocks: "StarRocks", tableau: "Tableau", teradata: "Teradata",
+  trino: "Trino", tsql: "TSQL",
+};
+
+const dialectClassCache = new Map();
+
+/**
+ * A registered `Dialect` subclass for `dialect`, carrying only its `Parser`.
+ *
+ * Its class-level SETTINGS are deliberately left at the base defaults and then shadowed
+ * per-instance by `standInDialect`'s harvested values. Letting `registerDialect` derive
+ * them would be worse, not better: several (`SUPPORTS_COLUMN_JOIN_MARKS`,
+ * `ESCAPED_SEQUENCES`, `QUOTE_START`, ...) come off a real per-dialect `Tokenizer`
+ * SUBCLASS, which this harness has none of by design -- P1 snapshotted tokenizer
+ * settings into `TokenizerCore` instead -- so they would be computed from the BASE
+ * tokenizer and overwrite measured values with wrong ones.
+ */
+function dialectClassFor(dialect) {
+  if (dialectClassCache.has(dialect)) return dialectClassCache.get(dialect);
+  if (dialect === "") {
+    dialectClassCache.set(dialect, Dialect);
+    return Dialect;
+  }
+  const name = DIALECT_CLASS_NAMES[dialect];
+  if (!name) throw new Error(`no upstream class name recorded for dialect ${JSON.stringify(dialect)}`);
+  const ParserClass = parserClassFor(dialect);
+  // Named via a computed key so `klass.name` is upstream's, which is what the
+  // `__dialect__` wire format compares against.
+  const klass = { [name]: class extends Dialect { static Parser = ParserClass; } }[name];
+  registerDialect(dialect, klass);
+  dialectClassCache.set(dialect, klass);
+  return klass;
 }

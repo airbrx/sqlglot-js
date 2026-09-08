@@ -1,5 +1,6 @@
 // Behavioral methods from expressions/query.py, ddl.py and dml.py.
 import { Expr, maybeCopy, maybeParse, toIdentifier, alias_, column, and_, trailingOptions } from "./core.js";
+import { ParseError } from "../errors.js";
 // Installed after the generated catalogue is registered: generated constructors do
 // not form a JS inheritance hierarchy, so Python traits are applied explicitly.
 function getter(C, name, fn) {
@@ -36,6 +37,27 @@ export function installQueryMethods(classes) {
 
   // py: core.py:2626 _is_wrong_expression
   const isWrongExpression = (expression, Into) => !!Into && expression instanceof Expr && !(expression instanceof Into);
+
+  // THE `prefix` OPTION
+  // -------------------
+  // `_apply_builder`, `_apply_child_list_builder` and `_apply_list_builder` each take a
+  // `prefix` (core.py:2635/2661/2708) and hand it to `maybe_parse`, which prepends it
+  // to the SQL before parsing: `Select.from_("t")` parses `"FROM t"`, not `"t"`.
+  // `_apply_conjunction_builder` deliberately has no `prefix` — `where()` parses a bare
+  // condition — so it is absent below too.
+  //
+  // Every call site here dropped it originally, and that was INVISIBLE for as long as
+  // `registerParser` was never called: the P2-safe leaf fallback (core.js:588) ignores
+  // `prefix` entirely, so `from_("t")` produced `From(this=Identifier("t"))` either way.
+  // Wiring the real parser in `dialects/dialect.js` made the omission a hard error
+  // ("Failed to parse 't' into From"), not a wrong shape. That is PORT_PLAN.md R18's
+  // lesson in the other direction: a shortcut justified by "nothing reaches this yet"
+  // expires the moment something does, and nothing was watching for it.
+  //
+  // Threaded through the options object rather than as a positional parameter because
+  // it already flows to `parsed(x, {...o})` unchanged; the builder's own prefix is
+  // spread FIRST so a caller cannot override it, matching upstream, where `prefix` is a
+  // bound parameter of the helper and can never appear in the caller's `**opts`.
 
   // py: core.py:2630 _apply_builder
   const applyBuilder = (expression, self, key, o = {}, Into = null, intoArg = "this") => {
@@ -119,9 +141,9 @@ export function installQueryMethods(classes) {
     if (!Object.getOwnPropertyDescriptor(K.prototype, "namedSelects")) getter(K, "namedSelects", function () { return this.selects.map(x => value(x, "outputName", "output_name")); });
     getter(K, "named_selects", function () { return this.namedSelects; });
     method(K, "subquery", function (alias = null, o = {}) { const x = maybeCopy(this, o.copy ?? true); return new (C("Subquery"))({ this: x, alias: alias instanceof Expr ? alias : (alias ? new (C("TableAlias"))({ this: toIdentifier(alias) }) : null) }); });
-    method(K, "limit", function (x, o = {}) { return applyBuilder(x, this, "limit", o, C("Limit"), "expression"); });
-    method(K, "offset", function (x, o = {}) { return applyBuilder(x, this, "offset", o, C("Offset"), "expression"); });
-    method(K, "orderBy", function (...xs) { const o=options(xs); return applyChildListBuilder(xs,this,"order",o,C("Order")); });
+    method(K, "limit", function (x, o = {}) { return applyBuilder(x, this, "limit", { prefix: "LIMIT", ...o }, C("Limit"), "expression"); });
+    method(K, "offset", function (x, o = {}) { return applyBuilder(x, this, "offset", { prefix: "OFFSET", ...o }, C("Offset"), "expression"); });
+    method(K, "orderBy", function (...xs) { const o=options(xs); return applyChildListBuilder(xs,this,"order",{prefix:"ORDER BY",...o},C("Order")); });
     method(K, "order_by", K.prototype.orderBy);
     // py: query.py:264 -- `where` (and only `where`) unwraps Where operands before
     // handing them to the conjunction builder; having/qualify deliberately do not.
@@ -227,12 +249,25 @@ export function installQueryMethods(classes) {
   get("Select", "namedSelects", function () { const out = []; for (const e of this.expressions) { if (value(e, "aliasOrName", "alias_or_name")) out.push(value(e, "outputName", "output_name")); else if (e.constructor?.name === "Aliases") for (const a of e.args.aliases || []) out.push(value(a, "name")); } return out; }, "named_selects");
   get("Select", "isStar", function () { return this.expressions.some(e => !!value(e, "isStar", "is_star")); }, "is_star");
   method(C("Select"), "select", function (...xs) { const o=options(xs); return applyListBuilder(xs,this,"expressions",o,Expr); });
-  method(C("Select"), "lateral", function (...xs) { const o=options(xs); return applyListBuilder(xs,this,"laterals",o,C("Lateral")); });
+  method(C("Select"), "lateral", function (...xs) { const o=options(xs); return applyListBuilder(xs,this,"laterals",{prefix:"LATERAL VIEW",...o},C("Lateral")); });
   method(C("Select"), "window", function (...xs) { const o=options(xs); return applyListBuilder(xs,this,"windows",o,C("Window")); });
   method(C("Select"), "join", function (expression, o = {}) {
     // Parsing the source as a Join first is significant: registered parsers can
     // preserve a complete JOIN clause, while AST callers may pass its source.
-    let parsedJoin = parsed(expression, { ...o, into: C("Join"), copy: o.copy ?? true });
+    //
+    // py: query.py:1412 — `maybe_parse(expression, into=Join, prefix="JOIN")`, and on
+    // ParseError a second attempt with `into=(Join, Expr)` and NO prefix. Both halves
+    // were missing here and neither was observable while `PARSE` was null (the leaf
+    // fallback ignores `prefix` and never raises), so `join("u")` produced
+    // `Join(this=Identifier("u"))` rather than parsing `"JOIN u"`. See the `prefix`
+    // note on the builders above.
+    let parsedJoin;
+    try {
+      parsedJoin = parsed(expression, { ...o, into: C("Join"), prefix: "JOIN", copy: o.copy ?? true });
+    } catch (e) {
+      if (!(e instanceof ParseError)) throw e;
+      parsedJoin = parsed(expression, { ...o, into: [C("Join"), Expr], copy: o.copy ?? true });
+    }
     let join = parsedJoin instanceof C("Join") ? parsedJoin : new (C("Join"))({ this: parsedJoin });
     if (join.this instanceof C("Select")) join.set("this", join.this.subquery(null, { copy: false }));
 
@@ -313,7 +348,11 @@ export function installQueryMethods(classes) {
     return out;
   });
   method(C("Select"), "lock", function (update=true,o={}) { const out=maybeCopy(this,o.copy??true); out.set("locks",[new (C("Lock"))({update})]); return out; });
-  method(C("Select"), "from_", function (x, o = {}) { return applyBuilder(x, this, "from_", o, C("From")); });
+  method(C("Select"), "from_", function (x, o = {}) { return applyBuilder(x, this, "from_", { prefix: "FROM", ...o }, C("From")); });
+  // py: the `prefix=` argument each of these three passes to _apply_child_list_builder
+  // (query.py:1221, :1261, :1301). Kept beside the loop that consumes it so the three
+  // stay in step; see the `prefix` note on `applyBuilder` above for why they matter.
+  const PREFIX_BY_KEY = { group: "GROUP BY", sort: "SORT BY", cluster: "CLUSTER BY" };
   for (const [js, py, key, Into] of [["groupBy","group_by","group","Group"],["sortBy","sort_by","sort","Sort"],["clusterBy","cluster_by","cluster","Cluster"]]) {
     // py: query.py:1212 -- group_by (alone among the four) early-returns on no args,
     // so it never materialises an empty Group(); order_by/sort_by/cluster_by do.
@@ -321,7 +360,7 @@ export function installQueryMethods(classes) {
     method(C("Select"), js, function (...xs) {
       const o=options(xs);
       if (earlyReturn && !xs.length) return maybeCopy(this, o.copy ?? true);
-      return applyChildListBuilder(xs,this,key,o,C(Into));
+      return applyChildListBuilder(xs,this,key,{prefix:PREFIX_BY_KEY[key],...o},C(Into));
     });
     method(C("Select"), py, C("Select").prototype[js]);
   }
@@ -380,14 +419,14 @@ export function installQueryMethods(classes) {
   // DML methods (dml.py). Kept here to avoid a circular builders dependency.
   // Delete.where / Update.where call the conjunction builder directly -- unlike
   // Query.where they do NOT unwrap a Where operand first (dml.py:146, :411).
-  for (const K of all) if (has(K,"DML")) method(K,"returning",function(x,o={}){ return applyBuilder(x,this,"returning",o,C("Returning")); });
+  for (const K of all) if (has(K,"DML")) method(K,"returning",function(x,o={}){ return applyBuilder(x,this,"returning",{prefix:"RETURNING",...o},C("Returning")); });
   method(C("Delete"),"delete",function(x,o={}){ return applyBuilder(x,this,"this",o,C("Table")); });
   method(C("Delete"),"where",function(...xs){const o=options(xs);return applyConjunctionBuilder(xs,this,"where",o,C("Where"));});
   method(C("Insert"),"with_",function(a,b,o={}){return cte(this,a,b,o);});
   method(C("Update"),"table",function(x,o={}){return applyBuilder(x,this,"this",o,C("Table"));});
   method(C("Update"),"set_",function(...xs){const o=options(xs);return applyListBuilder(xs,this,"expressions",o,Expr);});
   method(C("Update"),"where",function(...xs){const o=options(xs);return applyConjunctionBuilder(xs,this,"where",o,C("Where"));});
-  method(C("Update"),"from_",function(x=null,o={}){return x ? applyBuilder(x,this,"from_",o,C("From")) : maybeCopy(this,o.copy??true);});
+  method(C("Update"),"from_",function(x=null,o={}){return x ? applyBuilder(x,this,"from_",{prefix:"FROM",...o},C("From")) : maybeCopy(this,o.copy??true);});
   method(C("Update"),"with_",function(a,b,o={}){return cte(this,a,b,o);});
 
   // Tuple.isin has no upstream override: Tuple is a Condition, so it inherits

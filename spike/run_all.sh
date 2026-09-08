@@ -53,6 +53,11 @@ python3 spike/p3/gen_parse_path_sql_ref.py   > spike/out/parse_path_sql.jsonl   
 python3 spike/p3/gen_raise_error_ref.py      > spike/out/raise_error.jsonl      || fail=1
 python3 spike/p3/gen_command_warning_ref.py  > spike/out/command_warnings.jsonl || fail=1
 python3 spike/p4/gen_generator_base_ref.py   > spike/out/generator_base.json    || fail=1
+# P5 oracle. The base `Dialect` class's 105 settings, the four classes the metaclass
+# autofills, 17 `get_or_raise` grammar cases and 187 method cases, straight out of
+# CPython -- six of the settings are DERIVED by the metaclass, so reading the upstream
+# class body gives the wrong answer for all six.
+PYTHONHASHSEED=0 python3 spike/p5/gen_dialect_ref.py > spike/out/dialect_defaults.json || fail=1
 
 run "PROBE 1a: numeric differential"      node spike/fuzz_num.mjs
 run "PROBE 1b: named go/no-go literal"    node spike/gonogo_snowflake367.mjs
@@ -101,6 +106,8 @@ run "P3: raise_error + unicode columns"   node spike/p3/fuzz_raise_error.mjs
 run "P3: check_command_warning strings"   node spike/p3/fuzz_command_warning.mjs
 run "P3: AST oracle coverage (honest)"    node spike/p3/fuzz_ast_coverage.mjs
 run "P4: base Generator (settings/prims/gen)" node spike/p4/fuzz_generator_base.mjs
+run "P5: Dialect defaults vs CPython"      node spike/p5/fuzz_dialect_defaults.mjs
+run "P5: Dialect.get_or_raise().parse()"   node spike/p5/fuzz_dialect_parse.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
 # unrun test is a comment, which is the same argument this repo makes for the deny-list

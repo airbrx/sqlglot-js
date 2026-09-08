@@ -490,6 +490,22 @@ export function astDump(node) {
   // a number, so the conversion has to happen here. Number() is the matching precision:
   // the oracle side has already been through `JSON.parse`, which produced a double.
   if (typeof node === "bigint") return Number(node);
+  // py: tools/astdump.py:110 `isinstance(node, Dialect)` -> {"__dialect__": ClassName}.
+  // An arg really can hold a Dialect: `DataType.from_str(..., dialect=...)` stores it,
+  // which is how `CAST(x AS some_udt)` carries one.
+  //
+  // Membership in DIALECT_REGISTRY rather than `instanceof Dialect`, for the same
+  // reason `astLoad` below is name-keyed: this layer cannot import
+  // `dialects/dialect.js` (that module imports the expression layer), so the registry
+  // is injected by `registerAstDialects`. Keying by CLASS NAME is not a choice — the
+  // wire format IS `type(node).__name__`, so the oracle already fixes it.
+  //
+  // Before this branch existed the object fell through to `return node` and JSON
+  // serialised as `[object Object]`; once the harness's stand-in became a real
+  // `Dialect` (whose `version` holds BigInts) the same path threw instead.
+  if (node && typeof node === "object" && node.constructor && DIALECT_REGISTRY.has(node.constructor.name)) {
+    return { __dialect__: node.constructor.name };
+  }
   return node;
 }
 export function astLoad(obj) {
