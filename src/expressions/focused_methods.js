@@ -124,15 +124,25 @@ export function installFocusedMethods() {
     throw new PyValueError(`Invalid data type: ${String(dtype)}. Expected str or DType`);
   };
   // py: datatypes.py:386 from_str.  The string form goes through the parser upstream,
-  // and `nested` is set by the parser -- False for a scalar type, True for a nested
-  // one.  So DataType.build("INT") carries nested=False while DataType.build(DType.INT)
-  // and DType.INT.into_expr() do not, and "UNKNOWN" is short-circuited before parsing
-  // and so carries no `nested` either.  Invisible to the AST oracle, which only ever
-  // reaches DataType nodes through astLoad.
+  // so the node it returns is the PARSER's node: `_parse_types` sets both `expressions`
+  // (None for a scalar type) and `nested` (False for a scalar, True for a nested one).
+  // So DataType.build("INT") carries {this, expressions: None, nested: False} while
+  // DataType.build(DType.INT) and DType.INT.into_expr() carry {this} alone, and
+  // "UNKNOWN" is short-circuited before parsing and so carries neither.
+  //
+  // `expressions: null` was originally omitted here on the stated grounds that this is
+  // "invisible to the AST oracle, which only ever reaches DataType nodes through
+  // astLoad".  That is no longer true: `build_as_cast` (parsers/spark2.py:17) calls
+  // `DataType.from_str` for BOOLEAN/DATE/DOUBLE/FLOAT/INT/STRING/TIMESTAMP and Spark's
+  // TIMESTAMP_LTZ/NTZ, so the node is dumped and compared.  `astDump` emits args in
+  // INSERTION order, so the missing key was a positional diff, not just an absent one.
+  // Verified against the pinned tree: `exp.DataType.from_str('double').args` is
+  // {'this': DType.DOUBLE, 'expressions': None, 'nested': False}, and from_str('UNKNOWN')
+  // is {'this': DType.UNKNOWN}.
   C.DataType.fromStr = function (dtype, { udt = false, ...kwargs } = {}) {
     const upper = String(dtype).toUpperCase();
     if (upper === "UNKNOWN") return new C.DataType({ this: DType.UNKNOWN, ...kwargs });
-    if (DType[upper]) return new C.DataType({ this: DType[upper], nested: false }).setKwargs(kwargs);
+    if (DType[upper]) return new C.DataType({ this: DType[upper], expressions: null, nested: false }).setKwargs(kwargs);
     if (udt) return new C.DataType({ this: DType.USERDEFINED, kind: dtype, ...kwargs });
     // Upstream reaches here for anything the bare-name lookup above misses -- e.g. the
     // parameterised `DECIMAL(38, 0)` that Snowflake's TYPE_CONVERTERS builds -- and

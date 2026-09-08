@@ -144,7 +144,21 @@ test("is_star has no Alias/Paren/expressions arms", () => {
 
 test("DataType.build carries the parser's nested flag for string input only", () => {
   assert.equal(e.DataType.build("INT").args.nested, false);
-  assert.deepEqual(Object.keys(e.DataType.build("INT", { nullable: true }).args), ["this", "nested", "nullable"]);
+  // The string form goes through `parse_one(dtype, into=DataType)` upstream, so it
+  // carries the PARSER's full arg set -- `expressions` (None for a scalar type) as well
+  // as `nested`. This assertion previously expected ["this", "nested", "nullable"],
+  // omitting `expressions`; that matched the port's own `fromStr` shortcut rather than
+  // upstream. Ground truth from the pinned tree @ 91119bc:
+  //   list(exp.DataType.build('INT', nullable=True).args) ==
+  //       ['this', 'expressions', 'nested', 'nullable']
+  // The order matters because `astDump` serialises args in INSERTION order, so a missing
+  // key is a positional diff for every oracle row that reaches `from_str` -- which
+  // `build_as_cast` (parsers/spark2.py:17) now does for BOOLEAN/DATE/DOUBLE/FLOAT/INT/
+  // STRING/TIMESTAMP and Spark's TIMESTAMP_LTZ/NTZ.
+  assert.deepEqual(
+    Object.keys(e.DataType.build("INT", { nullable: true }).args),
+    ["this", "expressions", "nested", "nullable"],
+  );
   // The enum and into_expr forms bypass the parser, so they carry no `nested`.
   assert.equal("nested" in e.DataType.build(e.DataType.Type.INT).args, false);
   assert.equal("nested" in e.DataType.Type.INT.intoExpr().args, false);

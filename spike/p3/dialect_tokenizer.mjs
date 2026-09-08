@@ -19,6 +19,10 @@ import { formatTime } from "../../src/time.js";
 import { NotPorted } from "../../src/errors.js";
 import { Parser } from "../../src/parser.js";
 import { SnowflakeParser } from "../../src/parsers/snowflake.js";
+import { HiveParser } from "../../src/parsers/hive.js";
+import { Spark2Parser } from "../../src/parsers/spark2.js";
+import { SparkParser } from "../../src/parsers/spark.js";
+import { DatabricksParser } from "../../src/parsers/databricks.js";
 
 const snapshot = JSON.parse(readFileSync("corpus/tokens/settings.json", "utf8"));
 
@@ -216,6 +220,10 @@ export function standInDialect(tk, dialect = "") {
 // what every non-Snowflake row does today.
 const PARSER_CLASSES = new Map([
   ["snowflake", SnowflakeParser],
+  ["hive", HiveParser],
+  ["spark2", Spark2Parser],
+  ["spark", SparkParser],
+  ["databricks", DatabricksParser],
 ]);
 
 /** The `Parser` subclass that owns `dialect`'s grammar, or the base `Parser`. */
