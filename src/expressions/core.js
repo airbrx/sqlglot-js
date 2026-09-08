@@ -548,6 +548,23 @@ export const COLUMN_PARTS = Object.freeze(["this", "table", "db", "catalog"]);
  * transliterations. CONTRACTS.md §8 carries the row.
  */
 export const SAFE_IDENTIFIER_RE = Object.freeze({
+  /**
+   * Upstream's pattern TEXT, kept because a `re.Pattern` has `.pattern` and things read
+   * it. `generator.py:854` aliases this object wholesale (`SAFE_JSON_PATH_KEY_RE:
+   * t.ClassVar = exp.SAFE_IDENTIFIER_RE`, reproduced at `generator.js`), and
+   * `spike/p4/fuzz_generator_base.mjs` diffs that setting's source text against CPython.
+   * Named `source` (JS's spelling) with `toString` alongside, so both the `RegExp`-shaped
+   * and the stringifying reader see the pattern instead of "[object Object]".
+   *
+   * NOTE for whoever ports `generators/bigquery.py:279` (`^[\-\w]*$`) and
+   * `generators/hive.py:237` (`^[_\-a-zA-Z][\-\w]*$`): those override this setting with
+   * their own patterns and carry the SAME `\w` defect. They need this treatment too, not
+   * a plain `RegExp`.
+   */
+  source: "^[_a-zA-Z][\\w]*$",
+  toString() {
+    return this.source;
+  },
   test(s) {
     if (typeof s !== "string") return false;
     // py: `$` — one optional trailing newline, and only one.
