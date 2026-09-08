@@ -12,9 +12,10 @@
 //
 // Members are added here strictly on demand, one per importing parser: `snowflake.js`
 // established the first set; `hive.js` adds `build_regexp_extract`, `spark2.js` adds
-// `pivot_column_names`, and `spark.js`/`databricks.js` add `build_date_delta`. A
+// `pivot_column_names`, `spark.js`/`databricks.js` add `build_date_delta`, and
+// `postgres.js` adds `build_json_extract_path` and `build_timestamp_trunc`. A
 // helper that is genuinely specific to ONE dialect belongs in that dialect's own file
-// instead — all four of these are in upstream's shared `dialects/dialect.py`, imported
+// instead — all of these are in upstream's shared `dialects/dialect.py`, imported
 // by several dialects each, so they belong here.
 //
 // Nothing here resolves a dialect by NAME (CONTRACTS.md §8). Every function that needs
@@ -25,7 +26,7 @@
 // for a missing dialect, it is the documented default, and it is reproduced by
 // consulting the base `DATE_PART_MAPPING` literal below rather than by any lookup.
 //
-// @ported-ranges sqlglot/dialects/dialect.py 858-953 1610-1637 1654-1674 1700-1706 1892-1914 1916-1920 1925-1963 2167-2176 2384-2394 2462-2474 2477-2497 2604-2617 2620-2625
+// @ported-ranges sqlglot/dialects/dialect.py 858-953 1610-1637 1654-1674 1700-1706 1892-1914 1916-1920 1921-1922 1925-1963 2167-2176 2223-2265 2384-2394 2462-2474 2477-2497 2604-2617 2620-2625
 //
 // One range per member ported, so `tools/lint_deny.mjs` measures this file against
 // what it actually claims rather than against all 2,600 lines of `dialects/dialect.py`
@@ -35,7 +36,7 @@
 // P5 ports the surrounding code the range list grows and the lint starts demanding
 // their markers.
 
-import { seqGet, suggestClosestMatchAndFail, toBool } from "../helper.js";
+import { isInt, seqGet, suggestClosestMatchAndFail, toBool } from "../helper.js";
 import { NotPorted, ParseError } from "../errors.js";
 import { cpSlice, pyIsLower, pyIsPrintable, pyIsUpper, pyStr, pyUpper } from "../_py/str.js";
 import { pyIntFromStr } from "../_py/num.js";
@@ -87,6 +88,77 @@ export function build_formatted_time(exp_class, dialect_override = null, default
     if (!fmt) fmt = default_ === true ? target_dialect.TIME_FORMAT : default_ || null;
 
     return new exp_class({ this: seqGet(args, 0), format: target_dialect.format_time(fmt) });
+  };
+}
+
+/** py: sqlglot/dialects/dialect.py:1921 */
+export function build_timestamp_trunc(args) {
+  return new exp.TimestampTrunc({ this: seqGet(args, 1), unit: seqGet(args, 0) });
+}
+
+/**
+ * py: sqlglot/dialects/dialect.py:2223
+ *
+ * Two details of upstream's body are load-bearing and easy to drop:
+ *
+ *   * `del args[2:]` MUTATES the caller's list ("to avoid failing in the expression
+ *     validator due to the arg count"), so the truncation is reproduced with
+ *     `args.splice(2)` rather than by slicing a copy. `splice` is also safe when
+ *     `args.length < 2`, where `args.length = 2` would pad with holes.
+ *   * `only_json_types` is OMITTED (not set to null) for the JSONB classes, because
+ *     `exp.JSONBExtract`/`JSONBExtractScalar` genuinely have no such arg — verified
+ *     against their `argTypes`. This is the one place in this file where a missing key
+ *     is correct rather than an AST difference.
+ *
+ * `issubclass` goes through `.bases`, never the JS prototype chain: `defineExpr`
+ * flattens the Python MRO, so `JSONBExtract` extends `Expr` directly and
+ * `x.prototype instanceof exp.JSONExtract` is always false. Upstream's two JSONB
+ * classes are siblings (`expressions/json.py:78,82`), so this is an identity check
+ * today, but the `.bases` form keeps it correct if either is ever subclassed.
+ */
+export function build_json_extract_path(
+  expr_type,
+  zero_based_indexing = true,
+  arrow_req_json_type = false,
+  json_type = null,
+) {
+  return function _builder(args) {
+    const segments = [new exp.JSONPathRoot()];
+    for (const arg of args.slice(1)) {
+      if (!(arg instanceof exp.Literal)) {
+        // We use the fallback parser because we can't really transpile non-literals safely
+        const rest = args.slice(2);
+        return new expr_type({
+          this: seqGet(args, 0),
+          expression: seqGet(args, 1),
+          expressions: pyTruthy(rest) ? rest : null,
+        });
+      }
+
+      const text = arg.name;
+      if (isInt(text) && (!arrow_req_json_type || !arg.isString)) {
+        const index = Number.parseInt(text, 10);
+        segments.push(new exp.JSONPathSubscript({ this: zero_based_indexing ? index : index - 1 }));
+      } else {
+        segments.push(new exp.JSONPathKey({ this: text }));
+      }
+    }
+
+    // This is done to avoid failing in the expression validator due to the arg count
+    args.splice(2);
+    const kwargs = {
+      this: seqGet(args, 0),
+      expression: new exp.JSONPath({ expressions: segments }),
+    };
+
+    const is_jsonb = ["JSONBExtract", "JSONBExtractScalar"].some(
+      (n) => expr_type.name === n || expr_type.bases?.includes(n),
+    );
+    if (!is_jsonb) kwargs.only_json_types = arrow_req_json_type;
+
+    if (json_type !== null) kwargs.json_type = json_type;
+
+    return new expr_type(kwargs);
   };
 }
 

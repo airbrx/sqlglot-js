@@ -25,6 +25,7 @@ import { HiveParser } from "../../src/parsers/hive.js";
 import { Spark2Parser } from "../../src/parsers/spark2.js";
 import { SparkParser } from "../../src/parsers/spark.js";
 import { DatabricksParser } from "../../src/parsers/databricks.js";
+import { PostgresParser } from "../../src/parsers/postgres.js";
 
 const snapshot = JSON.parse(readFileSync("corpus/tokens/settings.json", "utf8"));
 
@@ -253,6 +254,7 @@ const PARSER_CLASSES = new Map([
   ["spark2", Spark2Parser],
   ["spark", SparkParser],
   ["databricks", DatabricksParser],
+  ["postgres", PostgresParser],
 ]);
 
 /** The `Parser` subclass that owns `dialect`'s grammar, or the base `Parser`. */
