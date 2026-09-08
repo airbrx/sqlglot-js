@@ -53,6 +53,7 @@ python3 spike/p3/gen_parse_path_sql_ref.py   > spike/out/parse_path_sql.jsonl   
 python3 spike/p3/gen_raise_error_ref.py      > spike/out/raise_error.jsonl      || fail=1
 python3 spike/p3/gen_command_warning_ref.py  > spike/out/command_warnings.jsonl || fail=1
 python3 spike/p4/gen_generator_base_ref.py   > spike/out/generator_base.json    || fail=1
+python3 spike/p4/gen_transforms_ref.py       > spike/out/transforms.json        || fail=1
 # P4 oracle. identifier_sql over the full (name x normalize x identify x quoted x pretty)
 # space -- PYTHONHASHSEED pinned like every other oracle here, since the reference reads
 # Generator settings whose iteration order is observable.
@@ -121,6 +122,11 @@ run "P4: base Generator (settings/prims/gen)" node spike/p4/fuzz_generator_base.
 # probe can disagree completely. It also cross-checks the two against each other and fails
 # if closure over-claims — which it caught doing on its very first run.
 run "P4: generate oracle (honest)"        node spike/p4/fuzz_generate_oracle.mjs
+# src/transforms.js is unreachable from the generate-oracle corpus (PORT_PLAN.md R26:
+# every consuming row also needs a dialect's own Generator subclass, which does not
+# exist yet), so this is the only differential signal on it: parse + transform + dump,
+# against CPython's sqlglot.transforms doing the same.
+run "P4: transforms.py functions vs CPython" node spike/p4/fuzz_transforms.mjs
 # The corpus reaches identifier_sql on 10,870 of 15,540 rows and still exercises almost
 # none of its branches (0.024% non-ASCII, no empty name, one of eight flag combinations).
 # Both defects in its first port were invisible to all of them. R4's lesson generalised:
