@@ -245,6 +245,21 @@ export function installQueryMethods(classes) {
     method(C(name), "select", function (...xs) { const o=options(xs), out=maybeCopy(this,o.copy??true); out.this.unnest().select(...xs,{...o,copy:false}); out.expression.unnest().select(...xs,{...o,copy:false}); return out; });
   }
 
+  // py: expressions/core.py:1628 `Binary.left`/`Binary.right` (`@property`, returning
+  // `args["this"]`/`args["expression"]`). Upstream defines these ONCE on `Binary` and
+  // every binary-op subclass (Add, And, Connector, EQ, ...) inherits them for free;
+  // generated classes here do not form a JS inheritance chain (see the module
+  // docstring), so the base `Binary` class itself would see them but no subclass
+  // would — installed on every class whose `bases` names `Binary`, matching `has()`'s
+  // own membership test rather than a hand-picked subclass list. Needed by
+  // `connector_sql` (P4 keystone-group step), which reads `expression.left`/`.right`.
+  for (const C of all) {
+    if (has(C, "Binary")) {
+      getter(C, "left", function () { return this.this; });
+      getter(C, "right", function () { return this.expression; });
+    }
+  }
+
   get("Select", "selects", function () { return this.expressions; });
   get("Select", "namedSelects", function () { const out = []; for (const e of this.expressions) { if (value(e, "aliasOrName", "alias_or_name")) out.push(value(e, "outputName", "output_name")); else if (e.constructor?.name === "Aliases") for (const a of e.args.aliases || []) out.push(value(a, "name")); } return out; }, "named_selects");
   get("Select", "isStar", function () { return this.expressions.some(e => !!value(e, "isStar", "is_star")); }, "is_star");

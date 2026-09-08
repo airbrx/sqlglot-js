@@ -276,9 +276,12 @@ test("the seeded skeleton's size is stated, not implied", () => {
     (n) => !ONLY_THROWS.test(Function.prototype.toString.call(Generator.prototype[n]).trim()),
   );
   // 6 at the blocking step; +2 (`column_sql`, `identifier_sql`) from the keystone group
-  // `tools/closure_generator.mjs --curve` identified — with `column_parts`, which is a
-  // helper and so not counted here, they are the smallest set that opens any row at all.
-  assert.equal(bodied.length, 8, "exactly 8 *_sql methods have a real body");
+  // `tools/closure_generator.mjs --curve` identified; +42 from the P4 "render a basic
+  // SELECT statement" keystone-group step (select_sql/query_modifiers/prepend_ctes/
+  // table_sql/from_sql/cast_sql/connector_sql/... and their connective glue — see
+  // PORT_PLAN.md). `binary`, `op_expressions` and `table_parts`, which that same step
+  // also ported, are not `*_sql`-suffixed and so not counted here.
+  assert.equal(bodied.length, 50, "exactly 50 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -288,7 +291,7 @@ test("the seeded skeleton's size is stated, not implied", () => {
       return e.name === "NotPorted";
     }
   });
-  assert.equal(432 - stubs.length, 7, "7 of those 8 also run without a resolved Dialect");
+  assert.equal(432 - stubs.length, 49, "49 of those 50 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],
