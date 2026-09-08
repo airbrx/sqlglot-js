@@ -256,6 +256,30 @@ test("the seeded skeleton's size is stated, not implied", () => {
   const sqlMethods = Object.getOwnPropertyNames(Generator.prototype).filter((n) => n.endsWith("_sql"));
   assert.equal(sqlMethods.length, 432, "upstream has 432 *_sql methods (424 public + 8 private)");
 
+  // TWO numbers, because they are genuinely different and collapsing them would hide the
+  // more interesting one.
+  //
+  //   HAS A BODY          the source is not a lone `throw new NotPorted`
+  //   RUNS ON THE STAND-IN it also survives `new Generator()`, i.e. the default
+  //                        BASE_DIALECT_GENERATOR_SETTINGS can serve everything it reads
+  //
+  // `identifier_sql` is the first ported method where these differ: it is fully ported
+  // and verified against CPython (spike/p4/fuzz_identifier_sql.mjs, 1,160 exact over the
+  // flag space), but it calls `this.dialect.can_quote`, and the stand-in is a frozen
+  // data object that deliberately hosts no Dialect METHODS — a second copy of `can_quote`
+  // there would be a stand-in that diverges from what it stands in for (R18(d)). It
+  // therefore announces `NotPorted` on a bare `new Generator()` and works on every real
+  // path, all of which pass a resolved Dialect. Wiring `Dialect.generator_class` is the
+  // P5 line that collapses these two numbers back into one.
+  const ONLY_THROWS = /^[^(]*\([^)]*\)\s*\{\s*throw new NotPorted\([^)]*\);?\s*\}$/;
+  const bodied = sqlMethods.filter(
+    (n) => !ONLY_THROWS.test(Function.prototype.toString.call(Generator.prototype[n]).trim()),
+  );
+  // 6 at the blocking step; +2 (`column_sql`, `identifier_sql`) from the keystone group
+  // `tools/closure_generator.mjs --curve` identified — with `column_parts`, which is a
+  // helper and so not counted here, they are the smallest set that opens any row at all.
+  assert.equal(bodied.length, 8, "exactly 8 *_sql methods have a real body");
+
   const stubs = sqlMethods.filter((n) => {
     try {
       new Generator()[n](new exp.Expr({}));
@@ -264,5 +288,10 @@ test("the seeded skeleton's size is stated, not implied", () => {
       return e.name === "NotPorted";
     }
   });
-  assert.equal(432 - stubs.length, 6, "exactly 6 *_sql methods are wired at the blocking step");
+  assert.equal(432 - stubs.length, 7, "7 of those 8 also run without a resolved Dialect");
+  assert.deepEqual(
+    bodied.filter((n) => stubs.includes(n)),
+    ["identifier_sql"],
+    "and the one that does not is identifier_sql, for the documented reason",
+  );
 });
