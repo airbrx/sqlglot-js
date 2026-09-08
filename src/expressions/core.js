@@ -13,6 +13,7 @@ const SQLGLOT_META = "sqlglot.meta";
 // deny:implicit_str sqlglot/expressions/core.py:2567
 import { pyDecimal, pyIntFromStr, decNeg } from "../_py/num.js";
 import { PyValueError } from "../_py/errors.js";
+import { pyIsAlnum } from "../_py/str.js";
 
 // py: str.splitlines (the JS newline regexes omit several CPython boundaries).
 function pySplitlines(s) { return String(s).split(/\r\n|[\n\r\v\f\x1c-\x1e\x85\u2028\u2029]/); }
@@ -522,7 +523,47 @@ export function astLoad(obj) {
 // Builder primitives (core.py). Parsing strings is intentionally injectable until P3.
 export const TABLE_PARTS = Object.freeze(["this", "db", "catalog"]);
 export const COLUMN_PARTS = Object.freeze(["this", "table", "db", "catalog"]);
-export const SAFE_IDENTIFIER_RE = /^[_a-zA-Z][\w]*$/u;
+/**
+ * py: `sqlglot/expressions/core.py` `SAFE_IDENTIFIER_RE = re.compile(r"^[_a-zA-Z][\w]*$")`
+ *
+ * NOT a `RegExp`, and it cannot be one. Two independent things about that pattern mean
+ * something different in JS, and both were wrong while this was `/^[_a-zA-Z][\w]*$/u`:
+ *
+ *   `\w`. In a Python `str` pattern it is UNICODE-aware — "alphanumeric characters (as
+ *   defined by `str.isalnum()`) as well as the underscore". In JS it is *always* exactly
+ *   `[A-Za-z0-9_]`, and the `u` flag does NOT change that (it only affects `\p{...}` and
+ *   surrogate handling). So `"Straße"` and `"DUAＬ"` are safe identifiers upstream and
+ *   were unsafe here. Equivalence verified the way §4.6 requires rather than by reading
+ *   the docs: a full `sys.maxunicode` sweep comparing Python's `\w` against
+ *   `str.isalnum() or ch == "_"` returns **0 mismatches over all 1,114,112 code points**,
+ *   so `pyIsAlnum` (which is table-generated from the same data) is exact, and no runtime
+ *   `\p{...}` is needed — which `tools/lint_unicode.mjs` forbids anyway.
+ *
+ *   `$`. Python's `$` matches at the end of the string OR immediately before a single
+ *   trailing newline, so `"abc\n"` MATCHES upstream (`"abc\n\n"` does not). JS `$`
+ *   without `m` matches only at the very end.
+ *
+ * Kept under upstream's name and with a `.test()` method so both call sites — the
+ * `quoted` default in `to_identifier` below, and `Dialect.can_quote` — stay byte-identical
+ * transliterations. CONTRACTS.md §8 carries the row.
+ */
+export const SAFE_IDENTIFIER_RE = Object.freeze({
+  test(s) {
+    if (typeof s !== "string") return false;
+    // py: `$` — one optional trailing newline, and only one.
+    const body = s.endsWith("\n") ? s.slice(0, -1) : s;
+    const chars = [...body]; // by CODE POINT (§4.6), not UTF-16 unit
+    if (chars.length === 0) return false;
+    const first = chars[0];
+    if (!(first === "_" || (first >= "a" && first <= "z") || (first >= "A" && first <= "Z"))) {
+      return false;
+    }
+    for (let i = 1; i < chars.length; i++) {
+      if (chars[i] !== "_" && !pyIsAlnum(chars[i])) return false;
+    }
+    return true;
+  },
+});
 export const DType = Object.freeze({});
 let PARSE = null;
 let GENERATE = null;

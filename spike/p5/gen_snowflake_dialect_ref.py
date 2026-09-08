@@ -150,7 +150,21 @@ tokenizer = {
 # py:123 `can_quote` -- the DUAL exception, which is the whole point of the override.
 # Every case pairs an identifier with a PARENT, because the override tests
 # `isinstance(identifier.parent, exp.Table)` and a bare Identifier takes the base path.
-CAN_QUOTE_TEXTS = ["dual", "DUAL", "Dual", "duall", "abc", "ABC", "a b"]
+#
+# The non-ASCII entries are not padding. The port has no `pyLower` shim (that absence is
+# why the base `normalize_identifier` is a NotPorted stub), so `can_quote` spells
+# upstream's `identifier.name.lower()` as JS `toLowerCase()`. These cases TEST that
+# substitution instead of leaving it as a comment claiming the two agree -- and they
+# double as the only coverage anywhere of `case_sensitive` under the UPPERCASE
+# normalization strategy, which is Snowflake's and which the base probe never exercises
+# (`fuzz_dialect_defaults.mjs` drives the base dialect, whose strategy is LOWERCASE).
+CAN_QUOTE_TEXTS = [
+    "dual", "DUAL", "Dual", "duall", "abc", "ABC", "a b",
+    # Case-mapping edge cases: `İ` lowercases to TWO code points, `ẞ` is the capital of
+    # a letter whose lowercase is two ASCII chars upstream of Unicode 5.1, and the
+    # fullwidth `Ｌ` must NOT fold into ASCII `l` (else "DUAＬ" would match "dual").
+    "İ", "ß", "ẞ", "Straße", "ÄÖÜ", "äöü", "DUAＬ", "ＤUAL", "DUAL ",
+]
 
 
 def can_quote_cases():
