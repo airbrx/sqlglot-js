@@ -1225,17 +1225,21 @@ export class Parser {
   ]);
 
   /** py: sqlglot/parser.py:1198 */
-  // Four of the five entries are ported here because `_parse_command` reaches
+  // Four of the five entries landed first because `_parse_command` reaches
   // `_parse_string` on the Command fallback path, which the 18 `check_command_warning`
-  // assertions exercise. UNICODE_STRING is left as an anchored TODO: its lambda calls
-  // `_match_text_seq("UESCAPE")` and recurses into `_parse_string`, so it belongs with
-  // the stub-queue task that owns it rather than being half-done here.
+  // assertions exercise. The fifth, UNICODE_STRING, was an anchored TODO until its two
+  // dependencies (`_match_text_seq`, `_parse_string`) were both ported; it is wired now
+  // and is what lets Postgres's `U&'...'` literals parse. Its `escape` uses Python's
+  // `and`, which yields the FALSE OPERAND, so a literal with no UESCAPE clause dumps
+  // `escape: false` -- confirmed against the oracle, not assumed.
   static STRING_PARSERS = new Map([
     /* py:1199 */ [TokenType.HEREDOC_STRING, (self, token) => self.expression(new exp.RawString({ this: token.text }), token)],
     /* py:1202 */ [TokenType.NATIONAL_STRING, (self, token) => self.expression(new exp.National({ this: token.text }), token)],
     /* py:1205 */ [TokenType.RAW_STRING, (self, token) => self.expression(new exp.RawString({ this: token.text }), token)],
     /* py:1208 */ [TokenType.STRING, (self, token) => self.expression(new exp.Literal({ this: token.text, is_string: true }), token)],
-    // py:1211  [TokenType.UNICODE_STRING, /* TODO lambda */],
+    /* py:1211 */ [TokenType.UNICODE_STRING, (self, token) => self.expression(new exp.UnicodeString({
+      this: token.text, escape: self._match_text_seq("UESCAPE") && self._parse_string(),
+    }), token)],
   ]);
 
   /** py: sqlglot/parser.py:1219 */
