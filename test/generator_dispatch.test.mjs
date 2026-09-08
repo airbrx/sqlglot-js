@@ -227,16 +227,18 @@ test("the Generator composes with the real P5 Dialect", async () => {
   const { Dialect } = await import("../src/dialects/dialect.js");
   const dialect = Dialect.get_or_raise(null);
 
-  const NEEDED = [
-    "NORMALIZE_FUNCTIONS", "QUOTE_START", "QUOTE_END", "BYTE_END",
-    "IDENTIFIER_START", "IDENTIFIER_END", "PRESERVE_ORIGINAL_NAMES",
-    "STRINGS_SUPPORT_ESCAPED_SEQUENCES", "BYTE_STRINGS_SUPPORT_ESCAPED_SEQUENCES",
-    "ESCAPED_SEQUENCES",
-  ];
+  // DERIVED from the stand-in's own keys, not a hand-written list — so a field added
+  // to BASE_DIALECT_GENERATOR_SETTINGS is automatically checked against a real Dialect
+  // and cannot quietly become a stand-in-only value. This closes the loop on the exact
+  // failure the P3 harness had: `standInDialect` returned a plain object whose settings
+  // were OWN properties, which is why ~40 `this.dialect.X` reads in parser.js looked
+  // fine there and read `undefined` against the real class (R20).
+  const NEEDED = Object.keys(BASE_DIALECT_GENERATOR_SETTINGS).filter((k) => k !== "tokenizer_class");
+  assert.ok(NEEDED.length >= 9, "precondition: the stand-in declares the fields we read");
   assert.deepEqual(
     NEEDED.filter((k) => dialect[k] === undefined),
     [],
-    "a real Dialect must carry every field the generator reads",
+    "a real Dialect must carry every field the stand-in declares",
   );
   assert.ok(dialect.tokenizer_class?.STRING_ESCAPES?.length, "STRING_ESCAPES is read in the ctor");
 
