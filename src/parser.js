@@ -139,7 +139,7 @@ function _textIn(texts, text) {
  * so the returned function takes `(self, this_)` and mirrors upstream's
  * `_parse_binary_range(self, this)`.
  */
-function binary_range_parser(expr_type, reverse_args = false) {
+export function binary_range_parser(expr_type, reverse_args = false) {
   return function _parse_binary_range(self, this_) {
     let expression = self._parse_bitwise();
     if (reverse_args) [this_, expression] = [expression, this_];
@@ -314,6 +314,31 @@ export function build_var_map(args) {
     keys: exp.array(...keys, { copy: false }),
     values: exp.array(...values, { copy: false }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// JSONB operator builders (module-level upstream, py:318-331)
+// ---------------------------------------------------------------------------
+// Upstream defines these as named module-level functions AND separately inlines the
+// same three bodies as lambdas inside `Parser.COLUMN_OPERATORS` (py:1100/1103/1106);
+// this file mirrors both, because `parsers/postgres.py` references the named forms by
+// module path (`parser.build_jsonb_extract`) in its own `JSON_OPERATORS` while the base
+// `COLUMN_OPERATORS` keeps its lambdas. Their signature is the `COLUMN_OPERATORS` /
+// `JSON_OPERATORS` value signature — `(self, this, rhs)` — not a `FUNCTIONS` builder's.
+
+/** py: sqlglot/parser.py:318 */
+export function build_jsonb_extract(self, this_, path) {
+  return self.expression(new exp.JSONBExtract({ this: this_, expression: path }));
+}
+
+/** py: sqlglot/parser.py:322 */
+export function build_jsonb_extract_scalar(self, this_, path) {
+  return self.expression(new exp.JSONBExtractScalar({ this: this_, expression: path }));
+}
+
+/** py: sqlglot/parser.py:328 */
+export function build_jsonb_contains_top_key(self, this_, key) {
+  return self.expression(new exp.JSONBContainsTopKey({ this: this_, expression: key }));
 }
 
 export class Parser {
@@ -1200,17 +1225,21 @@ export class Parser {
   ]);
 
   /** py: sqlglot/parser.py:1198 */
-  // Four of the five entries are ported here because `_parse_command` reaches
+  // Four of the five entries landed first because `_parse_command` reaches
   // `_parse_string` on the Command fallback path, which the 18 `check_command_warning`
-  // assertions exercise. UNICODE_STRING is left as an anchored TODO: its lambda calls
-  // `_match_text_seq("UESCAPE")` and recurses into `_parse_string`, so it belongs with
-  // the stub-queue task that owns it rather than being half-done here.
+  // assertions exercise. The fifth, UNICODE_STRING, was an anchored TODO until its two
+  // dependencies (`_match_text_seq`, `_parse_string`) were both ported; it is wired now
+  // and is what lets Postgres's `U&'...'` literals parse. Its `escape` uses Python's
+  // `and`, which yields the FALSE OPERAND, so a literal with no UESCAPE clause dumps
+  // `escape: false` -- confirmed against the oracle, not assumed.
   static STRING_PARSERS = new Map([
     /* py:1199 */ [TokenType.HEREDOC_STRING, (self, token) => self.expression(new exp.RawString({ this: token.text }), token)],
     /* py:1202 */ [TokenType.NATIONAL_STRING, (self, token) => self.expression(new exp.National({ this: token.text }), token)],
     /* py:1205 */ [TokenType.RAW_STRING, (self, token) => self.expression(new exp.RawString({ this: token.text }), token)],
     /* py:1208 */ [TokenType.STRING, (self, token) => self.expression(new exp.Literal({ this: token.text, is_string: true }), token)],
-    // py:1211  [TokenType.UNICODE_STRING, /* TODO lambda */],
+    /* py:1211 */ [TokenType.UNICODE_STRING, (self, token) => self.expression(new exp.UnicodeString({
+      this: token.text, escape: self._match_text_seq("UESCAPE") && self._parse_string(),
+    }), token)],
   ]);
 
   /** py: sqlglot/parser.py:1219 */
@@ -4570,7 +4599,13 @@ export class Parser {
           else if(this.dialect.DPIPE_IS_STRING_CONCAT&&this._match(TokenType.DPIPE)) node=this.expression(new exp.DPipe({this:node,expression:this._parse_term(),safe:!this.dialect.STRICT_STRING_CONCAT}));
           else if(this._match(TokenType.DQMARK)) node=this.expression(new exp.Coalesce({this:node,expressions:ensureList(this._parse_term())}));
           else if(this._match_pair(TokenType.LT,TokenType.LT)) node=this.expression(new exp.BitwiseLeftShift({this:node,expression:this._parse_term()}));
-          else if(this._match_pair(TokenType.GT,TokenType.GT)) node=this.expression(new exp.BitwiseRightShift({this:node,expression:this._parse_term()})); else break; } return node;
+          else if(this._match_pair(TokenType.GT,TokenType.GT)) node=this.expression(new exp.BitwiseRightShift({this:node,expression:this._parse_term()}));
+          // py:6330 — the ONLY read of `JSON_OPERATORS`. Empty on the base parser, so this
+          // branch is inert until a dialect populates it (`PostgresParser` is the first).
+          // The table's values wrap in `self.expression(...)` themselves, so unlike every
+          // other branch here this one does NOT re-wrap the result.
+          else if(C.JSON_OPERATORS.size&&this._match_set(C.JSON_OPERATORS)) node=C.JSON_OPERATORS.get(this._prev.token_type)(this,node,this._parse_term());
+          else break; } return node;
   }
 
   /** @returns {*} */
@@ -5127,14 +5162,34 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:7802
   _parse_unique_key() {
-    const this_ = this._parse_wrapped_id_vars(); return this.expression(new exp.UniqueColumnConstraint({ this: this_, is_key: true }));
+    // A constraint keyword here (`UNIQUE NOT NULL`, `UNIQUE PRIMARY KEY`, ...) belongs to
+    // the NEXT constraint, not to this one, so it is not consumed as the key's name.
+    if (
+      this._curr.bool()
+      && this._curr.token_type !== TokenType.IDENTIFIER
+      && this.constructor.CONSTRAINT_PARSERS.has(pyUpper(this._curr.text))
+    ) {
+      return null;
+    }
+    return this._parse_id_var(false);
   }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7811
   _parse_unique() {
-    const nulls = this._match_text_seq("NULLS", "NOT", "DISTINCT") ? false : (this._match_text_seq("NULLS", "DISTINCT") ? true : null);
-    return this.expression(new exp.UniqueColumnConstraint({ this: this._parse_wrapped_id_vars(), nulls }));
+    this._match_texts(["KEY", "INDEX"]);
+    // All five values are SIDE-EFFECTING parses, and Python evaluates keyword arguments
+    // in written order, so the property order below is load-bearing, not cosmetic.
+    // `index_type`'s `and` chain yields the FALSE OPERAND when `USING` is absent, so an
+    // ordinary UNIQUE dumps `index_type: false` (not null) -- same shape as
+    // `_parse_grant_principal`'s `kind`.
+    return this.expression(new exp.UniqueColumnConstraint({
+      nulls: this._match_text_seq("NULLS", "NOT", "DISTINCT"),
+      this: this._parse_schema(this._parse_unique_key()),
+      index_type: this._match(TokenType.USING) && this._advance_any() && this._prev.text,
+      on_conflict: this._parse_on_conflict(),
+      options: this._parse_key_constraint_options(),
+    }));
   }
 
   /** @returns {*} */
@@ -5159,9 +5214,20 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7857
-  _parse_references(match) {
-    const this_ = this._parse_table_parts(); const expressions = this._parse_wrapped_csv(this._parse_id_var.bind(this));
-    return this.expression(new exp.Reference({ this: new exp.Schema({ this: this_, expressions }), options: this._parse_on_handling(), match }));
+  // `match` DEFAULTS TO TRUE: `_parse_foreign_key`'s bare `_parse_references()` relies on
+  // it to consume the REFERENCES token, while CONSTRAINT_PARSERS["REFERENCES"] (py:1466)
+  // passes false because it has already matched. `_parse_table(schema=True)` — not
+  // `_parse_table_parts` — is what wraps `"Artist" ("ArtistId")` into the Schema the
+  // oracle expects; it also makes the column list OPTIONAL, where a `_parse_wrapped_csv`
+  // demanded parens and raised "Expecting (" on `REFERENCES t` with no column list.
+  // `expressions` is always None upstream (dead but dumped, so it is kept explicit).
+  _parse_references(match = true) {
+    if (match && !this._match(TokenType.REFERENCES)) return null;
+
+    const expressions = null;
+    const this_ = this._parse_table(true);
+    const options = this._parse_key_constraint_options();
+    return this.expression(new exp.Reference({ this: this_, expressions, options }));
   }
 
   /** @returns {*} */
