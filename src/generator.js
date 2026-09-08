@@ -15,11 +15,16 @@
 //   * REAL and verified: the dispatch machinery (`_buildDispatch`, `_DISPATCH_CACHE`,
 //     `sql()`), the pretty/comment/indent primitives, `unsupported()`, the 126
 //     class-level settings, and 6 proof-of-concept `*_sql` methods.
-//   * SKELETON: the other 426 `*_sql` methods throw `NotPorted`, and all 143
-//     `TRANSFORMS` entries are commented-out anchors. `TRANSFORMS` is therefore an
-//     EMPTY Map — deliberately, at this step, and it is exactly the R14 state that
-//     must not be mistaken for wired. `grep -c NotPorted src/generator.js` is the
-//     burndown; `TRANSFORMS.size === 0` is the table burndown.
+//   * SKELETON: the other 426 `*_sql` methods throw `NotPorted`, as do the 46
+//     non-`*_sql` methods not listed above. `TRANSFORMS` is an EMPTY Map: 133 of its
+//     entries are commented-out anchored lines and the remaining 10 sit behind the
+//     one `**JSON_PATH_PART_TRANSFORMS` spread line (133 + 10 = upstream's 143).
+//     `AFTER_HAVING_MODIFIER_TRANSFORMS` is likewise empty (0 of 5).
+//     This is deliberate at this step and is exactly the R14 state that must not be
+//     mistaken for wired. `grep -c NotPorted src/generator.js` is the method burndown;
+//     `TRANSFORMS.size === 0` is the table burndown; both are asserted with their
+//     current numbers in test/generator_dispatch.test.mjs, so porting work has to
+//     update them on purpose.
 //
 // FIVE RULES, each of which has already cost this project a defect class elsewhere:
 //
@@ -60,6 +65,7 @@
 // ---------------------------------------------------------------------------------
 
 import { ErrorLevel, NotPorted, UnsupportedError, concatMessages } from "./errors.js";
+import { PyValueError } from "./_py/errors.js";
 import { nameSequence } from "./helper.js";
 import { logger } from "./logging.js";
 import { cpAt, cpLen, pyIsSpace, pyStrip, pyRstrip } from "./_py/str.js";
@@ -112,18 +118,31 @@ function _isinstance(x, classes) {
  * Pops a trailing options object off a var-args list.
  *
  * Rule 2's mechanism: `func(name, *args, prefix="(", ...)` is keyword-only after
- * var-args, so the options arrive last. An `Expr` is never a plain object, so the
- * `constructor === Object` test cannot mistake a real argument for options — the same
- * discrimination `expressions/core.js:541 trailingOptions` already makes. Kept local
- * rather than imported because this file's callers pass rest-arrays, not `arguments`.
+ * var-args, so the options arrive last. Kept local rather than imported because this
+ * file's callers pass rest-arrays, not `arguments`.
+ *
+ * An `Expr` is never a plain object, so it cannot be mistaken for options — but
+ * "not an Expr" is NOT the same as "not a plain object", and the obvious
+ * `constructor === Object` test alone is wrong here: `exp.DType.VARCHAR` and the
+ * `Properties.Location` members are plain frozen objects too, so a genuine trailing
+ * enum ARGUMENT would be silently swallowed as options and dropped from the output.
+ * No upstream call site passes a bare `DType` as the last positional today (checked),
+ * and `function_fallback_sql` cannot forward one because a `DataType` is not a `Func` —
+ * but R18 records that "a correctness argument that rests on 'nothing reaches this yet'
+ * expires silently the moment something does", and 426 stubs are still to be written
+ * against this signature. Hence the explicit `__enum__` exclusion.
+ *
+ * NOTE for the foundation owner: `expressions/core.js:541 trailingOptions` has the same
+ * gap and is shared P2 code, so it is reported rather than changed here (§8.1 Rule 3).
  *
  * @param {any[]} args mutated in place — the options object is REMOVED
  * @returns {object}
  */
 function _trailingOptions(args) {
-  return args.length && args.at(-1) != null && args.at(-1).constructor === Object
-    ? args.pop()
-    : {};
+  const last = args.length ? args.at(-1) : undefined;
+  const isOptions =
+    last != null && last.constructor === Object && last.__enum__ === undefined;
+  return isOptions ? args.pop() : {};
 }
 
 /**
@@ -259,7 +278,13 @@ export function _buildDispatch(cls) {
 export class Generator {
   /** py: sqlglot/generator.py:136 */
   static TRANSFORMS = new Map([
-    // py:137  SPREAD: JSON_PATH_PART_TRANSFORMS — merge manually (§4.4 MRO)
+    // py:137  SPREAD `**JSON_PATH_PART_TRANSFORMS` — TEN entries, not one:
+    //         JSONPath{Filter,Key,Recursive,Root,Script,Selector,Slice,Subscript,Union,
+    //         Wildcard} (jsonpath.py:219, verified against the pin). Spelled out because
+    //         a lone "SPREAD" line reads as ONE seeded item while standing for ten
+    //         unseeded ones — R14's shape. 133 explicit entries below + these 10 = the
+    //         143 that `Generator.TRANSFORMS` resolves to upstream. Fill from
+    //         `src/jsonpath.js`'s own table when it lands, never by hand.
     // py:138  [exp.Adjacent, /* TODO lambda */],
     // py:139  [exp.AllowedValuesProperty, /* TODO lambda */],
     // py:142  [exp.AnalyzeColumns, /* TODO lambda */],
@@ -1355,7 +1380,11 @@ export class Generator {
     } else if (expression instanceof exp.Property) {
       sql = this.property_sql(expression);
     } else {
-      throw new TypeError(`Unsupported expression type ${expression.constructor.name}`);
+      // py: `raise ValueError(...)`. `PyValueError`, not a JS `TypeError`: the port's
+      // convention for a Python `ValueError` is the `_py/errors.js` class (15 existing
+      // sites), and a bare `TypeError` is neither upstream's type nor a `PyException`,
+      // so it would be invisible to any `instanceof PyValueError` handler.
+      throw new PyValueError(`Unsupported expression type ${expression.constructor.name}`);
     }
 
     return this.comments && comment ? this.maybe_comment(sql, expression) : sql;
@@ -1633,7 +1662,14 @@ export class Generator {
     const property_name = exp.Properties.PROPERTY_TO_NAME.get(property_cls);
     if (!property_name) this.unsupported(`Unsupported property ${expression.constructor.key}`);
 
-    return `${property_name}=${this.sql(expression, "this")}`;
+    // py: `f"{property_name}=..."` where a missed `dict.get` gave `None`, and an
+    // f-string renders that as the four characters "None". JS would interpolate
+    // "undefined", so the fallback is spelled out. NOT a defensive default — it is a
+    // reachable path with observable output: `StorageHandlerProperty`,
+    // `SerdeProperties`, `PartitionByListProperty` and `RowFormatSerdeProperty` are all
+    // absent from PROPERTY_TO_NAME and have no `*_sql`, so they land here and CPython
+    // really does emit `None='x'`.
+    return `${property_name ?? "None"}=${this.sql(expression, "this")}`;
   }
 
   /** @returns {*} */

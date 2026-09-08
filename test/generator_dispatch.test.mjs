@@ -15,6 +15,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import * as exp from "../src/expressions/index.js";
 import { Generator, _buildDispatch, BASE_DIALECT_GENERATOR_SETTINGS } from "../src/generator.js";
+import { PyValueError } from "../src/_py/errors.js";
 import { DISPATCH } from "../src/_gen/dispatch/index.js";
 
 const WANT = DISPATCH.Generator;
@@ -169,6 +170,45 @@ test("SUPPORTED_JSON_PATH_PARTS announces its deferral instead of reading undefi
   // and surface as an output mismatch far from the cause (R18's
   // REGEXP_EXTRACT_DEFAULT_GROUP). It throws instead.
   assert.throws(() => Generator.SUPPORTED_JSON_PATH_PARTS, /not ported yet/);
+});
+
+test("property_sql renders a missed lookup as Python's 'None', not 'undefined'", () => {
+  // Found by adversarial review. `PROPERTY_TO_NAME.get()` misses for several real,
+  // reachable property classes; Python's f-string then renders `str(None)` = "None"
+  // while a JS template literal renders "undefined". Reachable and observable:
+  // StorageHandlerProperty has no PROPERTY_TO_NAME entry and no *_sql method, so it
+  // lands in property_sql, one of sql()'s only two fallbacks. CPython @ 91119bc emits
+  // exactly "None='x'" — verified directly, not reasoned about.
+  const g = new Generator();
+  const node = new exp.StorageHandlerProperty({ this: exp.Literal.string("x") });
+  assert.equal(g.sql(node), "None='x'");
+  assert.deepEqual(g.unsupported_messages, ["Unsupported property storagehandlerproperty"]);
+});
+
+test("sql() raises PyValueError, the port's stand-in for Python's ValueError", () => {
+  // Upstream generator.py:1131 is `raise ValueError`. A JS TypeError is neither that
+  // type nor a PyException, so it would be invisible to `instanceof PyValueError`.
+  assert.throws(
+    () => new Generator().sql(new exp.Expr({})),
+    (e) => e instanceof PyValueError && /Unsupported expression type Expr/.test(e.message),
+  );
+});
+
+test("a trailing enum ARGUMENT is not mistaken for an options object", () => {
+  // `exp.DType.*` and `Properties.Location.*` are plain frozen objects, so the naive
+  // `constructor === Object` options test swallows them and drops the argument from the
+  // output with no error. Not reachable from any upstream call site today — which is
+  // exactly the kind of "safe for now" that R18 records as expiring silently, with 426
+  // stubs still to be written against these signatures.
+  const g = new Generator();
+  assert.equal(exp.DType.VARCHAR.constructor, Object, "precondition: DType is a plain object");
+  // The enum must survive into format_args and be rendered (or fail loudly), never
+  // vanish. Rendering an unsupported node type raises — that is the loud outcome.
+  assert.throws(() => g.func("F", exp.Literal.string("a"), exp.DType.VARCHAR), PyValueError);
+  // ...whereas a real options object is still consumed. `suffix` REPLACES the default
+  // ")" rather than being appended to it, so this is "F('a']" — confirmed against
+  // CPython, which emits the same.
+  assert.equal(g.func("F", exp.Literal.string("a"), { suffix: "]" }), "F('a']");
 });
 
 test("the seeded skeleton's size is stated, not implied", () => {
