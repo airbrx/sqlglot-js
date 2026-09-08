@@ -83,6 +83,7 @@ import { logger } from "./logging.js";
 import { cpAt, cpLen, cpSlice, pyIsDigit, pyIsSpace, pyLower, pyStrip, pyRstrip, pyUpper } from "./_py/str.js";
 import * as exp from "./expressions/index.js";
 import { registerGenerator } from "./expressions/core.js";
+import { formatTime } from "./time.js";
 
 /**
  * py: sqlglot/generator.py:65 `AFTER_HAVING_MODIFIER_TRANSFORMS`
@@ -95,6 +96,84 @@ export const AFTER_HAVING_MODIFIER_TRANSFORMS = new Map([
   // py:66  ["windows", ...]  — needs `expressions()` on the `windows` key; stub-queue scope
   // py:70  ["qualify", ...]  — trivial, but paired with the above; stub-queue scope
 ]);
+
+/**
+ * py: sqlglot/generator.py:32 `unsupported_args(*args)` — a Python decorator.
+ *
+ * Upstream's decorator body is `def _func(generator, expression): ...; return
+ * func(generator, expression)` — TWO EXPLICIT positional parameters, always, never an
+ * implicit `self`. That is deliberate on upstream's part: it is what lets the same
+ * decorator wrap both a class method (`approxquantile_sql`, where Python's bound-call
+ * convention passes `self` as that first positional arg for free) and a bare
+ * `(generator, expression)`-shaped function used directly as a `TRANSFORMS` value
+ * (`arg_max_or_min_no_count`, `dialects/dialect.py`; Snowflake's own `exp.Levenshtein:
+ * unsupported_args(...)(rename_func("EDITDISTANCE"))`).
+ *
+ * JS does not unify those two calling conventions the way Python does: a `TRANSFORMS`
+ * value is invoked as a plain 2-arg call (`handler(this, expression)`, `generator.js`'s
+ * `sql()`), while a class method is invoked via `this`-binding
+ * (`instance.method(expression)`, one explicit arg). Reproducing upstream's single
+ * `_func(generator, expression)` shape and calling `func(generator, expression)` — a
+ * PLAIN call, matching the TRANSFORMS convention exactly — makes this correct for the
+ * `rename_func`/TRANSFORMS-value case. For a class method (`approxquantile_sql` below),
+ * the class body routes through a same-shaped standalone `(self, expression)` function
+ * instead of wrapping the bound method directly — see that call site's own note, which
+ * is the same shape this file already uses for every `TRANSFORMS` lambda.
+ *
+ * Truthiness of `expression.args[arg_name]` uses plain JS truthiness, matching every
+ * other `expression.args[key]` read already in this file (none route through
+ * `pyTruthy`) — a real divergence only for an empty-list-valued arg, which none of the
+ * call sites that exist today (`count`, `weight`, `accuracy`, `ins_cost`, `del_cost`,
+ * `sub_cost`) can take.
+ *
+ * @param {...(string|[string,string])} args argument names, or `[name, diagnostic]` pairs
+ * @returns {(func: Function) => Function}
+ */
+export function unsupported_args(...args) {
+  const diagnostic_by_arg = new Map();
+  for (const arg of args) {
+    if (typeof arg === "string") diagnostic_by_arg.set(arg, null);
+    else diagnostic_by_arg.set(arg[0], arg[1]);
+  }
+
+  return function decorator(func) {
+    return function _func(generator, expression) {
+      const expression_name = expression.constructor.name;
+      const dialect_name = generator.dialect.constructor.name;
+
+      for (const [arg_name, diag0] of diagnostic_by_arg) {
+        if (expression.args[arg_name]) {
+          const diagnostic =
+            diag0 ||
+            `Argument '${arg_name}' is not supported for expression '${expression_name}' when targeting ${dialect_name}.`;
+          generator.unsupported(diagnostic);
+        }
+      }
+
+      return func(generator, expression);
+    };
+  };
+}
+
+/**
+ * py: sqlglot/jsonpath.py:238 `ALL_JSON_PATH_PARTS = set(JSON_PATH_PART_TRANSFORMS)`.
+ *
+ * `sqlglot/jsonpath.py` itself (the tokenizer and recursive-descent `parse()`) is
+ * still unported, but this one module-level constant does not need it: it is exactly
+ * the ten expression classes tagged `traits: ["JSONPathPart"]` in `_gen/expr_meta.js`
+ * (mechanically generated from the real class hierarchy, matching the
+ * `JSONPath{Filter,Key,Recursive,Root,Script,Selector,Slice,Subscript,Union,Wildcard}`
+ * list already verified against the pin in this file's `TRANSFORMS`/
+ * `JSON_PATH_PART_TRANSFORMS` note above). Deriving it from the trait rather than
+ * hand-listing the ten classes is what keeps "would not notice an 11th" true — see
+ * `SUPPORTED_JSON_PATH_PARTS` below, and `registerDialect`'s py:304-309 pruning
+ * (dialects/dialect.js), which imports this same constant.
+ */
+export const ALL_JSON_PATH_PARTS = new Set(
+  Object.values(exp.EXPR_META)
+    .filter((meta) => meta.traits.includes("JSONPathPart"))
+    .map((meta) => exp.EXPR_CLASSES[meta.key]),
+);
 
 /**
  * py: sqlglot/generator.py:76 `_DISPATCH_CACHE`
@@ -699,23 +778,17 @@ export class Generator {
    * (jsonpath.py:238), i.e. the 10 keys of a table in `sqlglot/jsonpath.py` — a module
    * this phase deliberately defers.
    *
-   * A THROWING GETTER, not an empty `Set`, and not simply absent. All three were
-   * considered and the other two are worse:
-   *   * absent -> a reader gets `undefined` and, per R18's `REGEXP_EXTRACT_DEFAULT_GROUP`
-   *     precedent, that surfaces as an ordinary output MISMATCH far from the cause;
-   *   * `new Set()` -> every membership test SILENTLY returns false, so unsupported
-   *     JSON paths would be emitted as if checked. That is the worst of the three.
-   * Throwing keeps the name present (so §4.2's "exported field set equals upstream's"
-   * holds), fails at the first read rather than in the output, and stays greppable.
-   * A dialect subclass may still shadow it with a plain `static` field.
-   *
-   * Populate when `src/jsonpath.js` lands, DERIVED from that module's
-   * `JSON_PATH_PART_TRANSFORMS` keys — never as a hand-written list of 10 classes,
-   * which would not notice upstream gaining an 11th.
+   * Was a THROWING GETTER before `ALL_JSON_PATH_PARTS` above got its trait-derived
+   * definition (this file's own note there records why hand-listing the ten classes
+   * was rejected as the fix). Now a real getter, matching `ALL_JSON_PATH_PARTS.copy()`
+   * — a fresh `Set` per read, so a caller mutating its result (as `registerDialect`'s
+   * pruning does to a DIALECT's copy, never this one) cannot corrupt the shared
+   * constant. A dialect subclass may still shadow it with a plain `static` field, same
+   * as upstream's `SnowflakeGenerator.SUPPORTED_JSON_PATH_PARTS = {...}` override.
    */
   // py: sqlglot/generator.py:518
   static get SUPPORTED_JSON_PATH_PARTS() {
-    throw new NotPorted("SUPPORTED_JSON_PATH_PARTS", "sqlglot/jsonpath.py:238");
+    return new Set(ALL_JSON_PATH_PARTS);
   }
 
   /** py: sqlglot/generator.py:521 */
@@ -3778,9 +3851,21 @@ export class Generator {
     return total > this.max_text_width;
   }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:4713
+   * @param {exp.Expr} expression
+   * @param {Map<string,string>|null} [inverse_time_mapping]
+   * @param {*} [inverse_time_trie]
+   * @returns {string|null}
+   */
   // py: sqlglot/generator.py:4713
-  format_time(expression, inverse_time_mapping, inverse_time_trie) { throw new NotPorted("format_time", "sqlglot/generator.py:4713"); }
+  format_time(expression, inverse_time_mapping = null, inverse_time_trie = null) {
+    return formatTime(
+      this.sql(expression, "format"),
+      inverse_time_mapping || this.dialect.INVERSE_TIME_MAPPING,
+      inverse_time_trie || this.dialect.INVERSE_TIME_TRIE,
+    );
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4725
