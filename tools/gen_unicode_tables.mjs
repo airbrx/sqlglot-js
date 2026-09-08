@@ -138,6 +138,33 @@ if (ref.upper_context_sensitive?.length) {
   body += `const UPPER_VALS = ${JSON.stringify(vals.join(","))}.split(",");\n`;
 }
 
+// str.lower(), same encoding as upper. NOT guarded by a `context_sensitive` throw the
+// way upper is, because for lower that guard WOULD fire: U+03A3 lowercases to final
+// sigma U+03C2 at end of word. The ref sweep reports the exact set, it is asserted to be
+// that one code point, and `pyLower` refuses on it rather than emitting the wrong sigma.
+{
+  const sensitive = ref.lower_context_sensitive ?? [];
+  if (sensitive.length !== 1 || sensitive[0] !== 0x3a3) {
+    throw new Error(
+      `str.lower() context-sensitivity changed: expected [0x3a3], got ` +
+        JSON.stringify(sensitive.map((c) => `0x${c.toString(16)}`)),
+    );
+  }
+  const cps = [];
+  const vals = [];
+  let prev = 0;
+  for (const [cp, s] of ref.lower_map) {
+    if (s.includes(",")) throw new Error(`lower(${cp}) contains the list separator`);
+    cps.push((cp - prev).toString(36));
+    prev = cp;
+    vals.push(s);
+  }
+  counts.lower = { ranges: ref.lower_map.length, bytes: cps.join(",").length + vals.join(",").length };
+  body += `\nconst LOWER_CPS = decode(\n  "${cps.join(",")}",\n);\n`;
+  body += `const LOWER_VALS = ${JSON.stringify(vals.join(","))}.split(",");\n`;
+  body += `\n// py: the ONE code point where str.lower() is context-sensitive (final sigma).\nexport const LOWER_CONTEXT_SENSITIVE = 0x${sensitive[0].toString(16)};\n`;
+}
+
 body += `
 // py: str.isprintable() — per code point.
 export function isPrintable(cp) {
@@ -214,6 +241,24 @@ export function upperCodePoint(cp) {
     if (cp < v) hi = mid - 1;
     else if (cp > v) lo = mid + 1;
     else return UPPER_VALS[mid];
+  }
+  return null;
+}
+
+// py: str.lower() for one code point. Same shape as upperCodePoint, and the mapping is
+// likewise 1-to-many in principle. UNLIKE upper, str.lower() is context-sensitive on
+// exactly one code point — U+03A3, which becomes final sigma U+03C2 at end of word — so
+// this function is NOT a complete model of str.lower() on its own; \`pyLower\` layers the
+// refusal on top. See LOWER_CONTEXT_SENSITIVE.
+export function lowerCodePoint(cp) {
+  let lo = 0;
+  let hi = LOWER_CPS.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const v = LOWER_CPS[mid];
+    if (cp < v) hi = mid - 1;
+    else if (cp > v) lo = mid + 1;
+    else return LOWER_VALS[mid];
   }
   return null;
 }

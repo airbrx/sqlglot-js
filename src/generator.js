@@ -14,14 +14,26 @@
 //
 //   * REAL and verified: the dispatch machinery (`_buildDispatch`, `_DISPATCH_CACHE`,
 //     `sql()`), the pretty/comment/indent primitives, `unsupported()`, the 126
-//     class-level settings, and 6 proof-of-concept `*_sql` methods.
-//   * SKELETON: the other 426 `*_sql` methods throw `NotPorted`, as do the 46
-//     non-`*_sql` methods not listed above. `TRANSFORMS` is an EMPTY Map: 133 of its
+//     class-level settings, and 8 `*_sql` methods — 6 proof-of-concept from the blocking
+//     step, plus `column_sql` and `identifier_sql` (with the helper `column_parts`),
+//     which `tools/closure_generator.mjs --curve` measured as the smallest group that
+//     opens ANY generate-oracle row: individually all three are worth zero.
+//   * SKELETON: the other 424 `*_sql` methods throw `NotPorted`, as do the 30
+//     non-`*_sql` methods not listed above. (That second count read "46" from the
+//     blocking step until it was actually counted here; the true figure was 31 then and
+//     is 30 now. These numbers are the burndown of record, so a wrong one is a defect —
+//     `grep -oP '^  \K[\w$]+(?=\s*\(.*throw new NotPorted)' src/generator.js | grep -v
+//     _sql$ | sort -u | wc -l` is the check.) `TRANSFORMS` is an EMPTY Map: 133 of its
 //     entries are commented-out anchored lines and the remaining 10 sit behind the
 //     one `**JSON_PATH_PART_TRANSFORMS` spread line (133 + 10 = upstream's 143).
 //     `AFTER_HAVING_MODIFIER_TRANSFORMS` is likewise empty (0 of 5).
 //     This is deliberate at this step and is exactly the R14 state that must not be
-//     mistaken for wired. `grep -c NotPorted src/generator.js` is the method burndown;
+//     mistaken for wired. `grep -c NotPorted src/generator.js` OVER-counts the method
+//     burndown by exactly 3 — `constructor`, `preprocess` (py:981 ENSURE_BOOLS) and
+//     `_move_ctes_to_top_level` are ported bodies carrying a GUARDED throw for a branch
+//     the base class cannot reach. The predicate that means what it says is "the whole
+//     body is one `throw new NotPorted`", which is what `closure_generator.mjs --selftest`
+//     asserts the source grep and the loaded module agree on;
 //     `TRANSFORMS.size === 0` is the table burndown; both are asserted with their
 //     current numbers in test/generator_dispatch.test.mjs, so porting work has to
 //     update them on purpose.
@@ -68,7 +80,7 @@ import { ErrorLevel, NotPorted, UnsupportedError, concatMessages } from "./error
 import { PyValueError } from "./_py/errors.js";
 import { nameSequence } from "./helper.js";
 import { logger } from "./logging.js";
-import { cpAt, cpLen, pyIsSpace, pyStrip, pyRstrip } from "./_py/str.js";
+import { cpAt, cpLen, cpSlice, pyIsDigit, pyIsSpace, pyLower, pyStrip, pyRstrip } from "./_py/str.js";
 import * as exp from "./expressions/index.js";
 import { registerGenerator } from "./expressions/core.js";
 
@@ -203,6 +215,40 @@ export const BASE_DIALECT_GENERATOR_SETTINGS = Object.freeze({
   // CONTRACTS.md §8 records the same rule for every tokenizer dict.
   ESCAPED_SEQUENCES: new Map(),
   tokenizer_class: Object.freeze({ STRING_ESCAPES: Object.freeze(["'"]) }),
+
+  // Added for `identifier_sql`/`column_parts`/`column_sql`, re-read from CPython by the
+  // command above rather than guessed — which is what this object's docstring requires
+  // and what R18(d) is about. All three are False at the base `Dialect`, so leaving them
+  // out would have read `undefined` and taken the SAME branch: correct by accident on the
+  // base and silently wrong for the first dialect that flips one. That is exactly R20's
+  // "24 of the base defaults are falsy, so two thirds behave correctly by accident".
+  IDENTIFIERS_CAN_START_WITH_DIGIT: false,
+  SUPPORTS_COLUMN_JOIN_MARKS: false,
+  PROJECTION_ALIASES_SHADOW_SOURCE_NAMES: false,
+
+  /**
+   * py: `Dialect.can_quote` (dialects/dialect.py:1125).
+   *
+   * The first METHOD any generator path has needed off `self.dialect`, and this object
+   * cannot host one honestly: `can_quote` is real behaviour — `case_sensitive` over the
+   * dialect's normalization strategy, plus `SAFE_IDENTIFIER_RE` — and a second copy here
+   * would be a stand-in that DIVERGES from the thing it stands in for, which is the
+   * R18(d) failure with extra steps. So it announces instead.
+   *
+   * Not solved by importing `dialects/dialect.js` here either: that file is architected
+   * NOT to import this one (it reaches the generator through `registerGenerator`), and
+   * `new Generator().dialect === BASE_DIALECT_GENERATOR_SETTINGS` is an asserted contract
+   * (test/generator_dispatch.test.mjs:163). Wiring `Dialect.generator_class` is the
+   * documented P5 line that closes this properly; until then every real path passes a
+   * resolved `Dialect` and only a bare `new Generator()` reaches this throw.
+   */
+  can_quote() {
+    throw new NotPorted(
+      "BASE_DIALECT_GENERATOR_SETTINGS.can_quote — the stand-in cannot host Dialect " +
+        "METHODS; pass a resolved Dialect (Dialect.get_or_raise(...))",
+      "sqlglot/dialects/dialect.py:1125",
+    );
+  },
 });
 
 /**
@@ -1402,13 +1448,47 @@ export class Generator {
   // py: sqlglot/generator.py:1150
   characterset_sql(expression) { throw new NotPorted("characterset_sql", "sqlglot/generator.py:1150"); }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:1154
-  column_parts(expression) { throw new NotPorted("column_parts", "sqlglot/generator.py:1154"); }
+  /**
+   * py: sqlglot/generator.py:1154
+   * @param {exp.Column} expression
+   * @returns {string}
+   */
+  column_parts(expression) {
+    if (expression.args.shadow && this.dialect.PROJECTION_ALIASES_SHADOW_SOURCE_NAMES) {
+      // py comment: "The qualifier would be captured by a colliding projection alias
+      // (see qualify_columns)".
+      return this.sql(expression, "this");
+    }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:1170
-  column_sql(expression) { throw new NotPorted("column_sql", "sqlglot/generator.py:1170"); }
+    // py: `".".join(self.sql(part) for part in (...) if part)`. The `if part` is Python
+    // falsiness over an arg value: an Expr is always truthy, so this drops only the
+    // absent parts. Rendering them instead would emit the string "undefined" between
+    // dots — the JS-template-literal counterpart of Python's "None", which P4's blocking
+    // step already had to fix once in `property_sql`.
+    const parts = [
+      expression.args.catalog,
+      expression.args.db,
+      expression.args.table,
+      expression.args.this,
+    ];
+    return parts.filter((part) => Boolean(part)).map((part) => this.sql(part)).join(".");
+  }
+
+  /**
+   * py: sqlglot/generator.py:1170
+   * @param {exp.Column} expression
+   * @returns {string}
+   */
+  column_sql(expression) {
+    let join_mark = expression.args.join_mark ? " (+)" : "";
+
+    if (join_mark && !this.dialect.SUPPORTS_COLUMN_JOIN_MARKS) {
+      join_mark = "";
+      this.unsupported("Outer join syntax using the (+) operator is not supported.");
+    }
+
+    return `${this.column_parts(expression)}${join_mark}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1179
@@ -1600,7 +1680,39 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2001
-  identifier_sql(expression) { throw new NotPorted("identifier_sql", "sqlglot/generator.py:2001"); }
+  identifier_sql(expression) {
+    let text = expression.name;
+    // py: `text.lower()` — `pyLower`, NOT `toLowerCase()`. Node's own lowercasing maps 67
+    // code points CPython 3.9.25 does not, and BOTH uses below are output-visible: `text`
+    // when `normalize` is set, and the `RESERVED_KEYWORDS` membership test that decides
+    // whether to quote. This is the caller R20 named when it deferred `pyLower` to P4.
+    const lower = pyLower(text);
+    const quoted = expression.quoted;
+    text = this.normalize && !quoted ? lower : text;
+    // py: `str.replace` is replace-ALL. `split`/`join` rather than `replaceAll` because
+    // `replaceAll`'s replacement string honours `$&`/`$1`/`$$` patterns and Python's does
+    // not; `_escaped_identifier_end` is dialect-supplied, so a `$` in it would silently
+    // corrupt the output rather than being inserted literally.
+    text = text.split(this._identifier_end).join(this._escaped_identifier_end);
+    if (
+      quoted ||
+      this.dialect.can_quote(expression, this.identify) ||
+      // Rule 1: a `static` field is NOT visible as `this.X` from an instance method — it
+      // reads back `undefined`, so `this.RESERVED_KEYWORDS.has(...)` would throw. Going
+      // through `this.constructor` also keeps a dialect subclass's override honoured.
+      this.constructor.RESERVED_KEYWORDS.has(lower) ||
+      // py: `text[:1].isdigit()`. Rule 3: by CODE POINT, so not `text[0]`, which would
+      // hand a lone surrogate half to the predicate. `cpSlice` and NOT `cpAt`, because
+      // `text[:1]` is a SLICE: Python slices clamp and yield "" for an empty string,
+      // whereas an INDEX raises — and `cpAt` faithfully reproduces the raising kind, so
+      // `cpAt(text, 0)` threw `PyIndexError` on `Identifier(this="")`. `pyIsDigit("")` is
+      // false, matching `"".isdigit()`, so "" then needs no separate guard.
+      (!this.dialect.IDENTIFIERS_CAN_START_WITH_DIGIT && pyIsDigit(cpSlice(text, 0, 1)))
+    ) {
+      text = `${this._identifier_start}${this._replace_line_breaks(text)}${this._identifier_end}`;
+    }
+    return text;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2018

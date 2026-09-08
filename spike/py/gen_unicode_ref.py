@@ -197,6 +197,48 @@ def main():
     ]
     out["upper_context_sensitive"] = ctx
 
+    # str.lower(), per code point, same shape and same reason as upper_map above.
+    #
+    # Added at P4, which is where PORT_PLAN.md R20 said it had to land: the Dialect port
+    # left `normalize_identifier` an announced stub (dialects/dialect.js:1028) precisely
+    # because `_py/str.js` had `pyUpper` and no `pyLower`, and `Generator.identifier_sql`
+    # is the caller that makes it real. Measured over the full range against this
+    # interpreter: JS `toLowerCase()` maps 67 code points that CPython 3.9.25 does not —
+    # the same 67 the upper table exists for — and identifier normalization is directly
+    # output-visible, so `toLowerCase()` is the R4 `too_wide` hazard exactly (it passes
+    # every one of the 15,540 corpus rows and is still wrong).
+    lower = {}
+    for cp in range(maxcp + 1):
+        try:
+            ch = chr(cp)
+        except (ValueError, UnicodeError):
+            continue
+        low = ch.lower()
+        if low != ch:
+            lower[cp] = low
+    out["lower_map"] = [[cp, s] for cp, s in sorted(lower.items())]
+
+    # UNLIKE str.upper(), str.lower() IS context-sensitive, so the assertion above is not
+    # merely a formality here — it fires. CPython's `handle_capital_sigma`
+    # (unicodeobject.c) lowercases U+03A3 to final sigma U+03C2 rather than U+03C3 when
+    # it stands at the end of a word, which a per-code-point table cannot express.
+    #
+    # This sweeps the WHOLE range in five contexts rather than a probe list, because the
+    # table's faithfulness claim is "every code point except the ones listed here", and
+    # a hand-written probe list cannot support that quantifier. Measured at the pin the
+    # answer is exactly one code point, U+03A3; `pyLower` refuses to guess on that one.
+    ctx_sensitive = []
+    for cp in range(maxcp + 1):
+        if 0xD800 <= cp <= 0xDFFF:
+            continue
+        ch = chr(cp)
+        iso = ch.lower()
+        for before, after in (("A", ""), ("", "A"), ("A", "A"), ("Α", ""), ("", "Α")):
+            if (before + ch + after).lower() != before.lower() + iso + after.lower():
+                ctx_sensitive.append(cp)
+                break
+    out["lower_context_sensitive"] = ctx_sensitive
+
     json.dump(out, sys.stdout, separators=(",", ":"))
     sys.stdout.write("\n")
 

@@ -16,8 +16,11 @@ import {
   isIdentifierStart,
   isDigit,
   upperCodePoint,
+  lowerCodePoint,
+  LOWER_CONTEXT_SENSITIVE,
   PROVENANCE,
 } from "../src/_gen/unicode.js";
+import { pyLower } from "../src/_py/str.js";
 
 const ref = JSON.parse(readFileSync("spike/out/unicode_ref.json", "utf8"));
 const MAX = ref.maxunicode;
@@ -113,6 +116,63 @@ for (const [name, fn] of Object.entries(impls)) {
 }
 
 // Guard the provenance contract itself: if the harvesting interpreter's Unicode
+// str.lower(), full range — the differential gate PORT_PLAN.md R20 required before
+// `pyLower` could be used anywhere. Checks the TABLE against CPython, checks `pyLower`'s
+// string-level behaviour against CPython, and counts the engine divergence that is the
+// reason the table exists at all.
+{
+  const want = new Map(ref.lower_map);
+  const sensitive = new Set(ref.lower_context_sensitive ?? []);
+  let diffs = 0;
+  let strDiffs = 0;
+  let engineDiffs = 0;
+  let refused = 0;
+  const samples = [];
+  for (let cp = 0; cp <= MAX; cp++) {
+    const self = String.fromCodePoint(cp);
+    const expected = want.get(cp) ?? self;
+    const got = lowerCodePoint(cp) ?? self;
+    if (got !== expected) {
+      diffs++;
+      if (samples.length < 8) samples.push("U+" + cp.toString(16).toUpperCase().padStart(4, "0"));
+    }
+    if ((cp < 0xd800 || cp > 0xdfff) && self.toLowerCase() !== expected) engineDiffs++;
+
+    // `pyLower` must equal CPython's isolated `str.lower()` on every code point except
+    // the context-sensitive one, where it must REFUSE rather than guess.
+    let out;
+    try {
+      out = pyLower(self);
+    } catch {
+      refused++;
+      if (!sensitive.has(cp)) strDiffs++; // refused something it should have mapped
+      continue;
+    }
+    if (sensitive.has(cp)) strDiffs++; // mapped something it should have refused
+    else if (out !== expected) strDiffs++;
+  }
+  bad += diffs + strDiffs;
+  console.log(
+    `    ${"lower".padEnd(13)}${String(diffs).padStart(8)} divergences  ` +
+      `${diffs === 0 ? "exact" : samples.join(" ")}`,
+  );
+  console.log(
+    `    ${"pyLower".padEnd(13)}${String(strDiffs).padStart(8)} divergences  ` +
+      `${strDiffs === 0 ? `exact (refused ${refused}: U+03A3 final sigma)` : "MISMATCH"}`,
+  );
+  console.log(
+    `      (for comparison, Node's own toLowerCase() diverges from CPython ` +
+      `${PROVENANCE.python_version} on ${engineDiffs} code points — that is why the table exists)`,
+  );
+  if (refused !== sensitive.size || !sensitive.has(LOWER_CONTEXT_SENSITIVE)) {
+    console.log(
+      `      WARNING: refusal set (${refused}) does not match the measured ` +
+        `context-sensitive set (${sensitive.size}).`,
+    );
+    bad++;
+  }
+}
+
 // version moves, the tables are stale and must be regenerated (PORT_PLAN.md §5.2/R6).
 const provOk = PROVENANCE.unidata_version === ref.unidata_version;
 console.log(
