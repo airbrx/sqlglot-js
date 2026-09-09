@@ -164,12 +164,24 @@ test("a dialect NAME is refused rather than silently defaulting", () => {
   assert.equal(new Generator({ dialect: null }).dialect, BASE_DIALECT_GENERATOR_SETTINGS);
 });
 
-test("SUPPORTED_JSON_PATH_PARTS announces its deferral instead of reading undefined", () => {
-  // The one setting whose value lives in the unported jsonpath module. An empty Set
-  // would make every membership test silently false; absence would read `undefined`
-  // and surface as an output mismatch far from the cause (R18's
-  // REGEXP_EXTRACT_DEFAULT_GROUP). It throws instead.
-  assert.throws(() => Generator.SUPPORTED_JSON_PATH_PARTS, /not ported yet/);
+test("SUPPORTED_JSON_PATH_PARTS is the trait-derived ALL_JSON_PATH_PARTS, not a throw", () => {
+  // `sqlglot/jsonpath.py` (the tokenizer + `parse()`) is still unported, but its
+  // `ALL_JSON_PATH_PARTS` constant doesn't need it -- it's exactly the ten expression
+  // classes tagged `traits: ["JSONPathPart"]`, which `_gen/expr_meta.js` already
+  // carries. The base Generator supports all ten, matching upstream's
+  // `SUPPORTED_JSON_PATH_PARTS = ALL_JSON_PATH_PARTS.copy()`; only a dialect subclass
+  // (e.g. Snowflake) narrows it.
+  const want = [
+    "JSONPathFilter", "JSONPathKey", "JSONPathRecursive", "JSONPathRoot",
+    "JSONPathScript", "JSONPathSelector", "JSONPathSlice", "JSONPathSubscript",
+    "JSONPathUnion", "JSONPathWildcard",
+  ].sort();
+  const got = [...Generator.SUPPORTED_JSON_PATH_PARTS].map((c) => c.name).sort();
+  assert.deepEqual(got, want);
+
+  // `.copy()` semantics: mutating one read must not affect the next.
+  Generator.SUPPORTED_JSON_PATH_PARTS.clear();
+  assert.equal(Generator.SUPPORTED_JSON_PATH_PARTS.size, 10);
 });
 
 test("property_sql renders a missed lookup as Python's 'None', not 'undefined'", () => {
