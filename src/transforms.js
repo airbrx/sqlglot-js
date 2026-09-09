@@ -29,7 +29,7 @@
 // tools/lint_deny.mjs's `isPortedSite`, which otherwise treats a hand-written file with
 // no seeded `// py:` skeleton as fully ported and flags every deny-list site in the
 // REST of transforms.py as an unacknowledged one):
-// @ported-ranges sqlglot/transforms.py 19-71 144-200 201-264 615-631 131-141 297-399 741-1084
+// @ported-ranges sqlglot/transforms.py 19-71 144-200 201-264 555-567 570-579 615-631 131-141 297-399 732-738 741-1084
 //
 // The added ranges (Databricks-chain generator step, PORT_PLAN.md) cover
 // `unnest_generate_series`, `unnest_to_explode`, `unqualify_columns`,
@@ -398,6 +398,32 @@ export function unnest_to_explode(expression, unnest_using_arrays_zip = true) {
         }
       }
     }
+  }
+
+  return expression;
+}
+
+/**
+ * py: sqlglot/transforms.py:555 `add_within_group_for_percentiles(expression)`
+ *
+ * Transforms percentiles by adding a WITHIN GROUP clause to them. Added for
+ * `generators/postgres.js`'s `TRANSFORMS[exp.PercentileCont]`/`[exp.PercentileDisc]`
+ * (PORT_PLAN.md P4) — the same gap `generators/snowflake.js`'s header comment already
+ * named as blocking its own two equivalent entries.
+ *
+ * @param {exp.Expr} expression
+ * @returns {exp.Expr}
+ */
+export function add_within_group_for_percentiles(expression) {
+  if (
+    PERCENTILES.some((cls) => expression instanceof cls) &&
+    !(expression.parent instanceof exp.WithinGroup) &&
+    expression.expression
+  ) {
+    const column = expression.this.pop();
+    expression.set("this", expression.expression.pop());
+    const order = new exp.Order({ expressions: [new exp.Ordered({ this: column })] });
+    expression = new exp.WithinGroup({ this: expression, expression: order });
   }
 
   return expression;

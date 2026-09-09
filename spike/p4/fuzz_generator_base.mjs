@@ -46,7 +46,7 @@ const dtypeName = (v) => (v && v.__enum__ === "DType" ? `DType.${v.name}` : name
 // Deliberately-unseeded tables. PORT_PLAN.md §7 P4 puts filling these in the stub
 // queue, AFTER this blocking step is reviewed. Listed BY NAME rather than inferred
 // from emptiness, so a table that becomes accidentally empty later still fails.
-const DEFERRED_TABLES = new Set(["TRANSFORMS"]);
+const DEFERRED_TABLES = new Set([]);
 
 // `AFTER_HAVING_MODIFIER_TRANSFORMS` moved from fully-deferred to PARTIALLY seeded on
 // the Databricks-chain generator step (PORT_PLAN.md R31): `cluster`/`distribute`/`sort`
@@ -57,7 +57,27 @@ const DEFERRED_TABLES = new Set(["TRANSFORMS"]);
 // below (which demands the full upstream key set) fits a table that is correctly
 // SOME of each, so this gets its own explicit, named check instead of forcing it
 // through either.
-const PARTIALLY_SEEDED_MAP_KEYS = new Map([["AFTER_HAVING_MODIFIER_TRANSFORMS", ["cluster", "distribute", "sort"]]]);
+// `TRANSFORMS` (py:136, expression-CLASS-keyed) moved from fully-deferred to
+// PARTIALLY seeded on the Postgres generator step (PORT_PLAN.md P4,
+// `src/generators/postgres.js`): 14 upstream `// TODO lambda` placeholders that a real
+// Postgres corpus row reached — either "Unsupported expression type X" (no dispatch
+// entry at all) or a `function_fallback_sql` mismatch — are real now, each a verified
+// one-line port of its CPython lambda. The other 129 of the 143 upstream keys stay
+// unseeded (still nobody's caller). Same reason this table gets its own entry here as
+// `AFTER_HAVING_MODIFIER_TRANSFORMS` below: neither `DEFERRED_TABLES` (demands exactly
+// 0) nor a full-map comparison (demands the full 143-key set) fits "correctly SOME".
+const PARTIALLY_SEEDED_MAP_KEYS = new Map([
+  ["AFTER_HAVING_MODIFIER_TRANSFORMS", ["cluster", "distribute", "sort"]],
+  [
+    "TRANSFORMS",
+    [
+      "exp.Adjacent", "exp.ArrayContainedBy", "exp.ArrayContainsAll", "exp.ArrayOverlaps",
+      "exp.Except", "exp.Intersect", "exp.JSONBContainsAnyTopKeys", "exp.JSONBContainsAllTopKeys",
+      "exp.JSONBContainsTopKey", "exp.JSONBDeleteAtPath", "exp.JSONBPathExists", "exp.Operator",
+      "exp.Union", "exp.Variadic",
+    ],
+  ],
+]);
 
 for (const [name, want] of Object.entries(ref.settings)) {
   let got;
@@ -83,7 +103,9 @@ for (const [name, want] of Object.entries(ref.settings)) {
 
   if (PARTIALLY_SEEDED_MAP_KEYS.has(name)) {
     const wantSeeded = PARTIALLY_SEEDED_MAP_KEYS.get(name);
-    const gotKeys = got instanceof Map ? [...got.keys()] : Object.keys(got ?? {});
+    // `nameOf` turns an expression-CLASS key (TRANSFORMS) into "exp.ClassName"; a
+    // plain string key (AFTER_HAVING_MODIFIER_TRANSFORMS) passes through unchanged.
+    const gotKeys = got instanceof Map ? [...got.keys()].map(nameOf) : Object.keys(got ?? {});
     if (JSON.stringify(gotKeys) !== JSON.stringify(wantSeeded)) {
       note("settings", `${name}: expected exactly the seeded subset`, wantSeeded, gotKeys);
     } else {

@@ -26,7 +26,7 @@
 // for a missing dialect, it is the documented default, and it is reproduced by
 // consulting the base `DATE_PART_MAPPING` literal below rather than by any lookup.
 //
-// @ported-ranges sqlglot/dialects/dialect.py 858-953 1610-1637 1654-1674 1700-1706 1892-1914 1916-1920 1921-1922 1925-1963 2167-2176 2223-2265 2384-2394 2462-2474 2477-2497 2604-2617 2620-2625
+// @ported-ranges sqlglot/dialects/dialect.py 858-953 1297-1299 1314-1316 1330-1332 1438-1454 1610-1637 1654-1674 1700-1706 1830-1837 1892-1914 1916-1920 1921-1922 1925-1963 1966-1967 1970-1973 2167-2176 2179-2184 2187-2220 2223-2265 2268-2295 2298-2302 2305-2323 2384-2394 2406-2407 2410-2411 2462-2474 2477-2497 2604-2617 2620-2625 2628-2641 2654-2672
 //
 // One range per member ported, so `tools/lint_deny.mjs` measures this file against
 // what it actually claims rather than against all 2,600 lines of `dialects/dialect.py`
@@ -38,7 +38,7 @@
 
 import { flatten, isInt, seqGet, suggestClosestMatchAndFail, toBool } from "../helper.js";
 import { NotPorted, ParseError } from "../errors.js";
-import { cpSlice, pyIsLower, pyIsPrintable, pyIsUpper, pyStr, pyUpper } from "../_py/str.js";
+import { cpSlice, pyIsLower, pyIsPrintable, pyIsUpper, pyLower, pyStr, pyUpper } from "../_py/str.js";
 import { pyIntFromStr } from "../_py/num.js";
 import { PyTypeError, PyValueError } from "../_py/errors.js";
 import { pyTruthy } from "../_py/truthy.js";
@@ -49,6 +49,7 @@ import { BaseParser } from "../parsers/base.js";
 import { ALL_JSON_PATH_PARTS, Generator, unsupported_args } from "../generator.js";
 import * as exp from "../expressions/index.js";
 import { SAFE_IDENTIFIER_RE, registerAstDialects, registerGenerator, registerParser } from "../expressions/core.js";
+import { findAllInScope } from "../optimizer/scope.js";
 
 /**
  * py: sqlglot/optimizer/annotate_types.py — NOT PORTED.
@@ -1123,6 +1124,242 @@ export function sequence_sql(self, expression) {
   return self.func("SEQUENCE", start, end, step);
 }
 
+// ---------------------------------------------------------------------------
+// Added for the Postgres generator step (PORT_PLAN.md P4, `generators/postgres.js`):
+// every function below is imported from `sqlglot/dialects/dialect.py` by
+// `generators/postgres.py`, in upstream source order.
+// ---------------------------------------------------------------------------
+
+/** py: sqlglot/dialects/dialect.py:1297 */
+export function no_paren_current_date_sql(self, expression) {
+  const zone = self.sql(expression, "this");
+  return zone ? `CURRENT_DATE AT TIME ZONE ${zone}` : "CURRENT_DATE";
+}
+
+/** py: sqlglot/dialects/dialect.py:1314 */
+export function no_pivot_sql(self, expression) {
+  self.unsupported("PIVOT unsupported");
+  return "";
+}
+
+/** py: sqlglot/dialects/dialect.py:1330 */
+export function no_map_from_entries_sql(self, expression) {
+  self.unsupported("MAP_FROM_ENTRIES unsupported");
+  return "";
+}
+
+/** py: sqlglot/dialects/dialect.py:1438 `generate_series_sql(func_name, exclusive_func_name=None)` */
+export function generate_series_sql(func_name, exclusive_func_name = null) {
+  return function _generate_series_sql(self, expression) {
+    const start = expression.args.start;
+    const end = expression.args.end;
+    const step = expression.args.step;
+
+    if (expression.args.is_end_exclusive) {
+      if (exclusive_func_name) return self.func(exclusive_func_name, start, end, step);
+      const adjusted_end = new exp.Sub({ this: end, expression: exp.Literal.number(1) });
+      return self.func(func_name, start, adjusted_end, step);
+    }
+
+    return self.func(func_name, start, end, step);
+  };
+}
+
+/** py: sqlglot/dialects/dialect.py:1830 */
+export function count_if_to_sum(self, expression) {
+  let cond = expression.this;
+
+  if (expression.this instanceof exp.Distinct) {
+    cond = expression.this.expressions[0];
+    self.unsupported("DISTINCT is not supported when converting COUNT_IF to SUM");
+  }
+
+  return self.func("sum", exp.func("if", cond, 1, 0));
+}
+
+/** py: sqlglot/dialects/dialect.py:1966 */
+export function any_value_to_max_sql(self, expression) {
+  return self.func("MAX", expression.this);
+}
+
+/** py: sqlglot/dialects/dialect.py:1970 */
+export function bool_xor_sql(self, expression) {
+  const a = self.sql(expression.left);
+  const b = self.sql(expression.right);
+  return `(${a} AND (NOT ${b})) OR ((NOT ${a}) AND ${b})`;
+}
+
+/** py: sqlglot/dialects/dialect.py:2179 */
+export function no_last_day_sql(self, expression) {
+  const trunc_curr_date = exp.func("date_trunc", "month", expression.this);
+  const plus_one_month = exp.func("date_add", trunc_curr_date, 1, "month");
+  const minus_one_day = exp.func("date_sub", plus_one_month, 1, "day");
+
+  return self.sql(exp.cast(minus_one_day, exp.DType.DATE));
+}
+
+/**
+ * py: sqlglot/dialects/dialect.py:2187 `merge_without_target_sql(self, expression)`.
+ * Remove table refs from columns in when statements.
+ *
+ * Needs `Dialect.normalize_identifier`, ported above (this is its first real caller —
+ * see the note on that method for why the `NotPorted` stub could stay in place until
+ * now) and `findAllInScope` (`src/optimizer/scope.js`'s Tier A surface, PORT_PLAN.md
+ * §6 — this does NOT need the Tier B `Scope`/`build_scope` machinery).
+ */
+export function merge_without_target_sql(self, expression) {
+  const alias = expression.this.args.alias;
+
+  const normalize = (identifier) => (identifier ? self.dialect.normalize_identifier(identifier).name : null);
+
+  const targets = new Set([normalize(expression.this.this)]);
+
+  if (alias) targets.add(normalize(alias.this));
+
+  for (const when of expression.args.whens.expressions) {
+    // only remove the target table names from certain parts of WHEN MATCHED / WHEN NOT
+    // MATCHED; they are still valid in the <condition>, the right hand side of each
+    // UPDATE and the VALUES part (not the column list) of the INSERT
+    const then = when.args.then;
+    if (then) {
+      if (then instanceof exp.Update) {
+        for (const equals of findAllInScope(then, exp.EQ)) {
+          const equal_lhs = equals.this;
+          if (equal_lhs instanceof exp.Column && targets.has(normalize(equal_lhs.args.table))) {
+            equal_lhs.replace(exp.column(equal_lhs.this));
+          }
+        }
+      }
+      if (then instanceof exp.Insert) {
+        const column_list = then.this;
+        if (column_list instanceof exp.Tuple) {
+          for (const column of column_list.expressions) {
+            if (targets.has(normalize(column.args.table))) {
+              column.replace(exp.column(column.this));
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return self.merge_sql(expression);
+}
+
+/**
+ * py: sqlglot/dialects/dialect.py:2268 `json_extract_segments(name, quoted_index=True, op=None)`
+ */
+export function json_extract_segments(name, options = {}) {
+  const { quoted_index = true, op = null } = options;
+
+  return function _json_extract_segments(self, expression) {
+    let path = expression.expression;
+    if (!(path instanceof exp.JSONPath)) {
+      return rename_func(name)(self, expression);
+    }
+
+    const segments = [];
+    for (const segment of path.expressions) {
+      const escape = segment.args.quoted;
+      let segment_sql = self.sql(segment);
+      if (segment_sql) {
+        if (segment instanceof exp.JSONPathPart && (quoted_index || !(segment instanceof exp.JSONPathSubscript))) {
+          if (escape) segment_sql = self.escape_str(segment_sql);
+          segment_sql = `${self.dialect.QUOTE_START}${segment_sql}${self.dialect.QUOTE_END}`;
+        }
+        segments.push(segment_sql);
+      }
+    }
+
+    if (op) return [self.sql(expression, "this"), ...segments].join(` ${op} `);
+    return self.func(name, expression.this, ...segments);
+  };
+}
+
+/** py: sqlglot/dialects/dialect.py:2298 */
+export function json_path_key_only_name(self, expression) {
+  if (expression.this instanceof exp.JSONPathWildcard) {
+    self.unsupported("Unsupported wildcard in JSONPathKey expression");
+  }
+
+  return expression.name;
+}
+
+/** py: sqlglot/dialects/dialect.py:2305 */
+export function filter_array_using_unnest(self, expression) {
+  let alias, cond = expression.expression;
+
+  if (cond instanceof exp.Lambda && cond.expressions.length === 1) {
+    alias = cond.expressions[0];
+    cond = cond.this;
+  } else if (cond instanceof exp.Predicate) {
+    alias = "_u";
+  } else if (expression instanceof exp.ArrayRemove) {
+    alias = "_u";
+    cond = new exp.NEQ({ this: alias, expression: expression.expression });
+  } else {
+    self.unsupported("Unsupported filter condition");
+    return "";
+  }
+
+  const unnest = new exp.Unnest({ expressions: [expression.this] });
+  const filtered = exp.select(alias).from_(exp.alias_(unnest, null, { table: [alias] })).where(cond);
+  return self.sql(new exp.Array({ expressions: [filtered] }));
+}
+
+/** py: sqlglot/dialects/dialect.py:2406 */
+export function sha256_sql(self, expression) {
+  return self.func(`SHA${expression.text("length") || "256"}`, expression.this);
+}
+
+/** py: sqlglot/dialects/dialect.py:2410 */
+export function sha2_digest_sql(self, expression) {
+  return self.func(`SHA${expression.text("length") || "256"}`, expression.this);
+}
+
+/** py: sqlglot/dialects/dialect.py:2628 */
+export function regexp_replace_global_modifier(expression) {
+  let modifiers = expression.args.modifiers;
+  const single_replace = expression.args.single_replace;
+  const occurrence = expression.args.occurrence;
+
+  if (!single_replace && (!occurrence || (occurrence.is_int && occurrence.toPy() === 0n))) {
+    if (!modifiers || modifiers.is_string) {
+      // Append 'g' to the modifiers if they are not provided since the semantics of
+      // REGEXP_REPLACE from the input dialect is to replace all occurrences of the
+      // pattern.
+      const value = !modifiers ? "" : modifiers.name;
+      modifiers = exp.Literal.string(value + "g");
+    }
+  }
+
+  return modifiers;
+}
+
+/**
+ * py: sqlglot/dialects/dialect.py:2654 `getbit_sql(self, expression)`.
+ *
+ * Generates SQL for Getbit according to DuckDB and Postgres, transpiling it if either:
+ * 1. The zero index corresponds to the least-significant bit
+ * 2. The input type is an integer value
+ */
+export function getbit_sql(self, expression) {
+  const value = expression.this;
+  const position = expression.expression;
+
+  if (
+    !expression.args.zero_is_msb
+    && expression.isType(...exp.DataType.SIGNED_INTEGER_TYPES, ...exp.DataType.UNSIGNED_INTEGER_TYPES)
+  ) {
+    // Use bitwise operations: (value >> position) & 1
+    const shifted = new exp.BitwiseRightShift({ this: value, expression: position });
+    const masked = new exp.BitwiseAnd({ this: shifted, expression: exp.Literal.number(1) });
+    return self.sql(masked);
+  }
+
+  return self.func("GET_BIT", value, position);
+}
+
 // ===========================================================================
 // The `Dialect` class, the registry, and `registerDialect`            — P5
 // ===========================================================================
@@ -1282,6 +1519,21 @@ const DIALECT_CLASSES_BY_NAME = new Map();
 
 /** py: `sys.maxsize` on the 64-bit interpreter that harvested the corpus. */
 const MAXSIZE = 2n ** 63n - 1n;
+
+/**
+ * py: sqlglot/dialects/dialect.py:81-82 `ASCII_LOWER = str.maketrans(string.ascii_uppercase,
+ * string.ascii_lowercase)` / `ASCII_UPPER = str.maketrans(string.ascii_lowercase,
+ * string.ascii_uppercase)`, as used by `Dialect.normalize_identifier`'s
+ * `expression.this.translate(ASCII_LOWER/ASCII_UPPER)`.
+ *
+ * Not two module-level translate tables plus a `.translate()` call: `str.maketrans`
+ * over exactly the 26 ASCII letters is equivalent to flipping the case of only the
+ * `[A-Za-z]` characters and leaving every other code point (including non-ASCII
+ * letters) untouched, which a plain regex replace does directly with no lookup table.
+ */
+function _asciiTranslate(s, upper) {
+  return upper ? s.replace(/[a-z]/g, (c) => c.toUpperCase()) : s.replace(/[A-Z]/g, (c) => c.toLowerCase());
+}
 
 /**
  * py: sqlglot/dialects/dialect.py:363 `class Dialect(metaclass=_Dialect)`.
@@ -1692,22 +1944,49 @@ export class Dialect {
   }
 
   /**
-   * py: sqlglot/dialects/dialect.py:1062
+   * py: sqlglot/dialects/dialect.py:1062 `Dialect.normalize_identifier(expression)`.
    *
-   * NOT PORTED, deliberately, and announced rather than approximated. The body needs
-   * Python `str.lower()`, and `src/_py/str.js` has `pyUpper` but no `pyLower`:
-   * `String.prototype.toLowerCase` is bound to the ENGINE's Unicode version, which
-   * PORT_PLAN.md §4.6 measures at 67 code points of disagreement with the harvesting
-   * interpreter, and identifier normalization is directly output-visible. Writing it
-   * with `toLowerCase()` would pass every corpus row (0.024% non-ASCII) and be wrong —
-   * the `too_wide`/R4 hazard class exactly. `pyLower` is a `_py/` addition with its own
-   * differential gate, not something to slip in here.
-   *
-   * No caller exists in `src/` today (`grep normalize_identifier src/` is empty); it is
-   * the optimizer's and the generator's entry point, so P4/P6 is when it must be real.
+   * Previously a deliberate `NotPorted` stub because the body needs Python
+   * `str.lower()`/`str.upper()`, and no caller existed in `src/` to force the issue
+   * (`identifier_sql` calls `pyLower`/`pyUpper` directly instead, per R20 — see the
+   * comment that used to live here). `generators/postgres.js`'s
+   * `merge_without_target_sql` (PORT_PLAN.md, P4) is the first real caller, and it only
+   * ever runs against `Postgres`, whose `ASCII_ONLY_NORMALIZATION = true` means the
+   * `translate(ASCII_LOWER/ASCII_UPPER)` branch — not `pyLower`/`pyUpper` — is what
+   * actually executes for it. Both branches are ported below regardless, matching this
+   * project's precedent of porting the whole function rather than only the reached
+   * branch; the `pyLower`/`pyUpper` branch is exercised the moment a non-ASCII-only
+   * dialect (e.g. `Hive`/`Spark2`/`Spark`/`Databricks`, none of which override
+   * `ASCII_ONLY_NORMALIZATION`) grows its own caller.
    */
-  normalize_identifier(_expression) {
-    throw new NotPorted("Dialect.normalize_identifier", "sqlglot/dialects/dialect.py:1062");
+  normalize_identifier(expression) {
+    if (
+      expression instanceof exp.Identifier
+      && this.normalization_strategy !== NormalizationStrategy.CASE_SENSITIVE
+      && (
+        !expression.args.quoted
+        || this.normalization_strategy === NormalizationStrategy.CASE_INSENSITIVE
+        || this.normalization_strategy === NormalizationStrategy.CASE_INSENSITIVE_UPPERCASE
+      )
+    ) {
+      let normalized;
+      if (
+        this.normalization_strategy === NormalizationStrategy.UPPERCASE
+        || this.normalization_strategy === NormalizationStrategy.CASE_INSENSITIVE_UPPERCASE
+      ) {
+        normalized = this.constructor.ASCII_ONLY_NORMALIZATION
+          ? _asciiTranslate(expression.this, true)
+          : pyUpper(expression.this);
+      } else {
+        normalized = this.constructor.ASCII_ONLY_NORMALIZATION
+          ? _asciiTranslate(expression.this, false)
+          : pyLower(expression.this);
+      }
+
+      expression.set("this", normalized);
+    }
+
+    return expression;
   }
 
   /**

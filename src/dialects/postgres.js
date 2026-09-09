@@ -11,23 +11,25 @@
 // prototype, so an instance's settings are `undefined` until `registerDialect` mirrors
 // them, as its last step, after every derivation is final.
 //
-// TWO DELIBERATE GAPS, both announced rather than faked, same reasons as Snowflake's:
-//
-//   `Generator = PostgresGenerator` (py:143) is NOT declared. `generators/postgres.js`
-//   does not exist yet (P4 landed only the base `Generator`, PORT_PLAN.md R21) and
-//   `registerDialect` throws `NotPorted` the instant any dialect sets `generator_class`
-//   (`sqlglot/dialects/dialect.py:304`'s `SUPPORTED_JSON_PATH_PARTS` pruning needs the
-//   unported `sqlglot/jsonpath.py`) — a hole with a live guard on it, not a silent one.
+// ONE REMAINING DELIBERATE GAP, announced rather than faked, same reason as
+// Snowflake's:
 //
 //   `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()` (py:12, from
 //   `sqlglot/typing/postgres.py`) is declared as an empty `Map()` for the same reason
 //   Snowflake's is: `sqlglot/optimizer/annotate_types.py` and `typing/` are P6+.
+//
+// `Generator = PostgresGenerator` (py:143) IS now declared (PORT_PLAN.md P4,
+// `generators/postgres.js`) — the `SUPPORTED_JSON_PATH_PARTS` pruning this file's
+// header used to say would throw is guarded defensively in `registerDialect`
+// (`dialects/dialect.js`'s `try { ... gen_cls.SUPPORTED_JSON_PATH_PARTS } catch {}`),
+// same as it already was for Snowflake/Databricks/DuckDB before this dialect.
 //
 // Every setting below is diffed value-by-value against CPython by
 // `spike/p5/fuzz_dialect_parse.mjs`'s POSTGRES row.
 
 import { Tokenizer, TokenType, initTokenizerSubclass } from "../tokens.js";
 import { PostgresParser } from "../parsers/postgres.js";
+import { PostgresGenerator } from "../generators/postgres.js";
 import * as exp from "../expressions/index.js";
 import { Dialect, Dialects, registerDialect } from "./dialect.js";
 
@@ -195,6 +197,9 @@ export class Postgres extends Dialect {
 
   /** py:141 `Parser = PostgresParser` — what `registerDialect` turns into `parser_class`. */
   static Parser = PostgresParser;
+
+  /** py:143 `Generator = PostgresGenerator` — what `registerDialect` turns into `generator_class`. */
+  static Generator = PostgresGenerator;
 
   /** py:72 `class Tokenizer(tokens.Tokenizer)`; see `PostgresTokenizer` above. */
   static Tokenizer = PostgresTokenizer;
