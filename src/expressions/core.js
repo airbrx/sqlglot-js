@@ -621,6 +621,8 @@ export function and_(...expressions) { const o = trailingOptions(expressions); r
 export function or_(...expressions) { const o = trailingOptions(expressions); return combine(expressions, "Or", o); }
 export function xor(...expressions) { const o = trailingOptions(expressions); return combine(expressions, "Xor", o); }
 export function not_(expression, options = {}) { return new (cls("Not"))({ this: maybeParse(expression, { ...options, copy: options.copy ?? true }) }); }
+/** py: expressions/core.py:2980 `paren(expression, copy=True)`. */
+export function paren(expression, copy = true) { return new (cls("Paren"))({ this: maybeParse(expression, { copy }) }); }
 /** py: core.py Dot.build */
 export function dotBuild(expressions) {
   const xs = [...expressions];
