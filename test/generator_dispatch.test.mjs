@@ -315,8 +315,15 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // `super().jsonpath_sql(expression)`). `bracket_offset_expressions`,
   // `json_path_part`, `_embed_ignore_nulls`, `naked_property`, `lateral_op`, and
   // `datatype_param_bound_limiter`, ported in the same step, are not `*_sql`-suffixed
-  // and so not counted here either.
-  assert.equal(bodied.length, 79, "exactly 79 *_sql methods have a real body");
+  // and so not counted here either. +6 from PORT_PLAN.md R32 (the scoped DuckDB
+  // generator step, `src/generators/duckdb.js`): `anonymous_sql`, `nullsafeeq_sql`,
+  // `nullsafeneq_sql`, `case_sql`, `if_sql`, `arraysize_sql` — each a base-Generator
+  // gap that a DuckDB `TRANSFORMS` lambda reaches (e.g. `UnixSeconds` round-trips a
+  // `self.func(...)` string back through `exp.cast`/`maybe_parse`, which needs
+  // `anonymous_sql` for the unrecognized-function-name case; `ArrayContains`'s
+  // `check_null` branch chains `if_sql` -> `case_sql` -> `arraysize_sql`), not
+  // DuckDB-specific code itself.
+  assert.equal(bodied.length, 85, "exactly 85 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -326,7 +333,7 @@ test("the seeded skeleton's size is stated, not implied", () => {
       return e.name === "NotPorted";
     }
   });
-  assert.equal(432 - stubs.length, 78, "78 of those 79 also run without a resolved Dialect");
+  assert.equal(432 - stubs.length, 84, "84 of those 85 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],

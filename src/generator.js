@@ -3317,9 +3317,26 @@ export class Generator {
   // py: sqlglot/generator.py:3616
   exists_sql(expression) { return `EXISTS${this.wrap(expression)}`; }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:3619
-  case_sql(expression) { throw new NotPorted("case_sql", "sqlglot/generator.py:3619"); }
+  /** py: sqlglot/generator.py:3619 — ported for PORT_PLAN.md R32. */
+  case_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const statements = [this_ ? `CASE ${this_}` : "CASE"];
+
+    for (const e of expression.args.ifs) {
+      statements.push(`WHEN ${this.sql(e, "this")}`);
+      statements.push(`THEN ${this.sql(e, "true")}`);
+    }
+
+    const default_ = this.sql(expression, "default");
+    if (default_) statements.push(`ELSE ${default_}`);
+    statements.push("END");
+
+    if (this.pretty && this.too_wide(statements)) {
+      return this.indent(statements.join("\n"), { skip_first: true, skip_last: true });
+    }
+
+    return statements.join(" ");
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3639
@@ -3378,9 +3395,10 @@ export class Generator {
   // py: sqlglot/generator.py:3769
   timeserieskey_sql(expression) { throw new NotPorted("timeserieskey_sql", "sqlglot/generator.py:3769"); }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:3773
-  if_sql(expression) { throw new NotPorted("if_sql", "sqlglot/generator.py:3773"); }
+  /** py: sqlglot/generator.py:3773 — ported for PORT_PLAN.md R32. */
+  if_sql(expression) {
+    return this.case_sql(new exp.Case({ ifs: [expression], default: expression.args.false }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3776
@@ -3563,9 +3581,21 @@ export class Generator {
   // py: sqlglot/generator.py:3992
   reference_sql(expression) { throw new NotPorted("reference_sql", "sqlglot/generator.py:3992"); }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:4000
-  anonymous_sql(expression) { throw new NotPorted("anonymous_sql", "sqlglot/generator.py:4000"); }
+  /**
+   * py: sqlglot/generator.py:4000
+   *
+   * Ported for PORT_PLAN.md R32 (DuckDB generator scoping): several `TRANSFORMS`
+   * lambdas build a function-call SQL STRING via `self.func(...)` and then feed that
+   * string back into `exp.cast`/`maybe_parse`, which round-trips it through the
+   * DEFAULT parser. A function name that parser does not recognize (e.g. `EPOCH`)
+   * comes back as `exp.Anonymous`, so anything downstream that renders it needs this
+   * method — not a DuckDB-specific gap, a base-Generator one any dialect can hit.
+   */
+  anonymous_sql(expression) {
+    const parent = expression.parent;
+    const is_qualified = parent instanceof exp.Dot && expression === parent.expression;
+    return this.func(this.sql(expression, "this"), ...expression.expressions, { normalize: !is_qualified });
+  }
 
   /**
    * py: sqlglot/generator.py:4009
@@ -4161,13 +4191,11 @@ export class Generator {
   // py: sqlglot/generator.py:4596
   neq_sql(expression) { return this.binary(expression, "<>"); }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:4599
-  nullsafeeq_sql(expression) { throw new NotPorted("nullsafeeq_sql", "sqlglot/generator.py:4599"); }
+  /** py: sqlglot/generator.py:4599 — ported for PORT_PLAN.md R32 (DuckDB's `EqualNull` TRANSFORMS entry builds a `NullSafeEQ` node and renders it through this method). */
+  nullsafeeq_sql(expression) { return this.binary(expression, "IS NOT DISTINCT FROM"); }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:4602
-  nullsafeneq_sql(expression) { throw new NotPorted("nullsafeneq_sql", "sqlglot/generator.py:4602"); }
+  /** py: sqlglot/generator.py:4602 */
+  nullsafeneq_sql(expression) { return this.binary(expression, "IS DISTINCT FROM"); }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4605
@@ -4921,9 +4949,21 @@ export class Generator {
   // py: sqlglot/generator.py:5885
   unixseconds_sql(expression) { throw new NotPorted("unixseconds_sql", "sqlglot/generator.py:5885"); }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:5895
-  arraysize_sql(expression) { throw new NotPorted("arraysize_sql", "sqlglot/generator.py:5895"); }
+  // py: sqlglot/generator.py:5895 — ported for PORT_PLAN.md R32.
+  arraysize_sql(expression) {
+    let dim = expression.expression;
+
+    if (dim && this.constructor.ARRAY_SIZE_DIM_REQUIRED === null) {
+      if (!(dim.is_int && dim.name === "1")) {
+        this.unsupported("Cannot transpile dimension argument for ARRAY_LENGTH");
+      }
+      dim = null;
+    }
+
+    if (this.constructor.ARRAY_SIZE_DIM_REQUIRED && !dim) dim = exp.Literal.number(1);
+
+    return this.func(this.constructor.ARRAY_SIZE_NAME, expression.this, dim);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5910

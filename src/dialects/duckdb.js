@@ -20,15 +20,14 @@
 // settings rather than DuckDB's own — measurably less accurate than the harness's
 // internal routing until now.
 //
-// ONE DELIBERATE GAP, announced rather than faked:
-//
-//   `Generator = DuckDBGenerator` (py:128) is NOT declared. `generators/duckdb.js`
-//   does not exist — P4 landed the base `Generator` and explicitly deferred the
-//   per-dialect ones (PORT_PLAN.md R21). `registerDialect` itself throws `NotPorted`
-//   the moment any dialect sets `generator_class`, because py:304's
-//   `SUPPORTED_JSON_PATH_PARTS` pruning needs the unported `sqlglot/jsonpath.py`; so
-//   this is not a silent omission, it is a hole with a live guard on it, same shape as
-//   Snowflake's.
+// `Generator = DuckDBGenerator` (py:128) IS now declared — `generators/duckdb.js`
+// carries a deliberately SCOPED subset of the 4,788-line upstream file (PORT_PLAN.md
+// R32; see that file's own header for exactly what is and is not ported). The
+// `SUPPORTED_JSON_PATH_PARTS` pruning `registerDialect` does at py:304 is read
+// defensively (a `try`/`catch` around `gen_cls.SUPPORTED_JSON_PATH_PARTS`, not a
+// `NotPorted` throw) — the same shape `SnowflakeGenerator` (PR #39) and the
+// Databricks chain (PR #43) already exercise, so there was never a guard here that
+// blocked setting `generator_class`.
 //
 // `EXPRESSION_METADATA` (py:38, from the unported `sqlglot/typing/duckdb.py`) is
 // declared as an empty Map for the same reason Snowflake's is: `sqlglot/typing/` and
@@ -40,6 +39,7 @@
 
 import { Tokenizer, TokenType, initTokenizerSubclass } from "../tokens.js";
 import { DuckDBParser } from "../parsers/duckdb.js";
+import { DuckDBGenerator } from "../generators/duckdb.js";
 import * as exp from "../expressions/index.js";
 import { DATE_PART_MAPPING, Dialect, Dialects, NormalizationStrategy, registerDialect } from "./dialect.js";
 
@@ -183,6 +183,9 @@ export class DuckDB extends Dialect {
 
   /** py:69 `class Tokenizer(tokens.Tokenizer)`; see `DuckDBTokenizer` above. */
   static Tokenizer = DuckDBTokenizer;
+
+  /** py:128 `Generator = DuckDBGenerator` — what `registerDialect` turns into `generator_class`. */
+  static Generator = DuckDBGenerator;
 
   /**
    * py: sqlglot/dialects/duckdb.py:57

@@ -59,6 +59,11 @@ import { captureLogs } from "../../src/logging.js";
 // registering all four links in the chain.
 import "../../src/dialects/snowflake.js";
 import "../../src/dialects/databricks.js";
+// `duckdb.js` registers a fifth, single-file population: the real `DuckDBGenerator`,
+// but a DELIBERATELY SCOPED one (PORT_PLAN.md R32) — roughly 60 of 147 `TRANSFORMS`
+// entries and none of the 140 `*_sql` overrides, so its % EXACT is not expected to
+// approach SNOWFLAKE's.
+import "../../src/dialects/duckdb.js";
 
 const VERBOSE = process.argv.includes("--verbose");
 
@@ -145,6 +150,7 @@ console.log("  Dialect.get_or_raise(name).generate(ast) vs the generate oracle")
 const CHAIN_AST_POOL = ["hive", "spark2", "spark", "spark, version=3.0.0", "spark, version=4.0.0", "databricks", "_default"];
 
 let snowflakeExact = 0;
+let duckdbExact = 0;
 const chainExact = {};
 for (const [label, name, genStem, astStems, claim] of [
   ["DEFAULT   ", null, "_default", ["_default"], "src/ only — base Generator, no dialect-specific settings on this path"],
@@ -153,12 +159,14 @@ for (const [label, name, genStem, astStems, claim] of [
   ["SPARK2    ", "spark2", "spark2", CHAIN_AST_POOL, "src/ only — real Spark2Generator extends HiveGenerator"],
   ["SPARK     ", "spark", "spark", CHAIN_AST_POOL, "src/ only — real SparkGenerator extends Spark2Generator"],
   ["DATABRICKS", "databricks", "databricks", CHAIN_AST_POOL, "src/ only — real DatabricksGenerator extends SparkGenerator"],
+  ["DUCKDB    ", "duckdb", "duckdb", ["duckdb"], "src/ only — real DuckDBGenerator, a SCOPED subset (PORT_PLAN.md R32), not full TRANSFORMS/*_sql coverage"],
 ]) {
   const { b, samples } = run(name, genStem, astStems);
   const total = b.exact + b.mismatch + b.stub + b.error;
   const reached = b.exact + b.mismatch;
   const pct = reached ? ((100 * b.exact) / reached).toFixed(1) : "0.0";
   if (name === "snowflake") snowflakeExact = b.exact;
+  if (name === "duckdb") duckdbExact = b.exact;
   if (name && ["hive", "spark2", "spark", "databricks"].includes(name)) chainExact[name] = b.exact;
   console.log(
     `    ${label}  ${b.exact}/${reached} of REACHED rows exact (${pct}%)  ` +
@@ -172,7 +180,7 @@ for (const [label, name, genStem, astStems, claim] of [
 // merely counted, mirroring `fuzz_dialect_parse.mjs`'s closing check.
 console.log();
 const AST = { c: "Select", a: [["expressions", [{ c: "Column", a: [["this", { c: "Identifier", a: [["this", "a"], ["quoted", false]] }]] }]]] };
-for (const name of [null, "snowflake", "hive", "spark2", "spark", "databricks"]) {
+for (const name of [null, "snowflake", "hive", "spark2", "spark", "databricks", "duckdb"]) {
   const got = Dialect.get_or_raise(name).generate(astLoad(AST));
   const generatorName = Dialect.get_or_raise(name).constructor.generator_class.name;
   console.log(`    get_or_raise(${JSON.stringify(name)}).generate(SELECT a)  via ${generatorName}  -> ${JSON.stringify(got)}`);
@@ -180,6 +188,7 @@ for (const name of [null, "snowflake", "hive", "spark2", "spark", "databricks"])
 
 const failures = [];
 if (!snowflakeExact) failures.push("the snowflake dialect generated nothing exactly");
+if (!duckdbExact) failures.push("the duckdb dialect generated nothing exactly");
 for (const name of ["hive", "spark2", "spark", "databricks"]) {
   if (!chainExact[name]) failures.push(`the ${name} dialect generated nothing exactly`);
 }

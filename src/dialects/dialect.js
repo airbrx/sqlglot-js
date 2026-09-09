@@ -711,6 +711,13 @@ export function timestamptrunc_sql(func = "DATE_TRUNC", zone = false) {
   };
 }
 
+/** py: sqlglot/dialects/dialect.py:1747 */
+export function no_time_sql(self, expression) {
+  const this_ = exp.cast(expression.this, exp.DType.TIMESTAMPTZ);
+  const expr = exp.cast(new exp.AtTimeZone({ this: this_, zone: expression.args.zone }), exp.DType.TIME);
+  return self.sql(expr);
+}
+
 /** py: sqlglot/dialects/dialect.py:1730 */
 export function no_timestamp_sql(self, expression) {
   const zone = expression.args.zone;
@@ -926,6 +933,12 @@ export function no_recursive_cte_sql(self, expression) {
 /** py: sqlglot/dialects/dialect.py:1319 */
 export function no_trycast_sql(self, expression) {
   return self.cast_sql(expression);
+}
+
+/** py: sqlglot/dialects/dialect.py:1323 */
+export function no_comment_column_constraint_sql(self, expression) {
+  self.unsupported("CommentColumnConstraint unsupported");
+  return "";
 }
 
 /** py: sqlglot/dialects/dialect.py:1335 */

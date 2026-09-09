@@ -162,10 +162,10 @@ check("SHOW in the BASE Tokenizer.COMMANDS (i.e. it was really removed)", Tokeni
 // ---------------------------------------------------------------------------
 check("parser_class", DuckDB.parser_class === DuckDBParser, ref.classes.parser_class === "DuckDBParser");
 check("parser_class name", DuckDB.parser_class.name, ref.classes.parser_class);
-note.push(
-  `GAP  generator_class: CPython has ${JSON.stringify(ref.classes.generator_class)}, port has null — ` +
-    "generators/duckdb.js is P4 (the base Generator landed; per-dialect ones deferred, R21)",
-);
+// PORT_PLAN.md R32: `generators/duckdb.js` now exists and `DuckDB.Generator =
+// DuckDBGenerator` is wired — this was a `GAP` note ("port has null") through R29-R31;
+// a real `check` now that the class exists, matching `parser_class` just above.
+check("generator_class name", DuckDB.generator_class.name, ref.classes.generator_class);
 note.push(
   `DEVIATION  tokenizer_class.name: CPython ${JSON.stringify(ref.classes.tokenizer_class)}, port ` +
     `${JSON.stringify(tk.name)} — JS has no nested class declaration; identity is asserted above instead`,
