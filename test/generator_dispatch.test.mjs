@@ -292,8 +292,31 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // SELECT statement" keystone-group step (select_sql/query_modifiers/prepend_ctes/
   // table_sql/from_sql/cast_sql/connector_sql/... and their connective glue — see
   // PORT_PLAN.md). `binary`, `op_expressions` and `table_parts`, which that same step
-  // also ported, are not `*_sql`-suffixed and so not counted here.
-  assert.equal(bodied.length, 50, "exactly 50 *_sql methods have a real body");
+  // also ported, are not `*_sql`-suffixed and so not counted here. +29 from the
+  // Databricks-chain generator step (PORT_PLAN.md R31 — `src/generators/
+  // {hive,spark2,spark,databricks}.js` land): `bracket_sql`/`escape_sql`/`_like_sql`/
+  // `like_sql`/`ilike_sql`/`trim_sql`/`interval_sql`/`var_sql`/`exists_sql`/
+  // `columndef_sql`/`schema_sql`/`schema_columns_sql`/`version_sql`/`_jsonpathkey_sql`/
+  // `ignorenulls_sql`/`national_sql`/`cluster_sql`/`distribute_sql`/`sort_sql`/
+  // `struct_sql`/`altercolumn_sql`/`_alter_column_null_constraint_sql`/
+  // `renamecolumn_sql`/`lambda_sql`/`lateral_sql`/`placeholder_sql`/`trycast_sql`/
+  // `ifblock_sql`/`jsonpath_sql` — every one of them a base method that one of the four
+  // new generator classes' own overrides, its `TRANSFORMS` table, or its
+  // `query_modifiers`-reached `AFTER_HAVING_MODIFIER_TRANSFORMS` entries call, which no
+  // earlier dialect had exercised (the DML-only `CLUSTER BY`/`DISTRIBUTE BY`/`SORT BY`
+  // trio was TODO-commented since the P4 keystone group, R25, and had no caller until
+  // real HIVE corpus rows reached it here; `struct_sql`/`altercolumn_sql`/
+  // `renamecolumn_sql` are reached by `Spark2Generator`'s `Generator.struct_sql(self,
+  // expression)`-by-name call and its two `super(HiveGenerator, self)`
+  // grandparent-skip calls; `lambda_sql`/`lateral_sql` are reached by
+  // `transforms.unnest_to_explode`'s `LATERAL VIEW EXPLODE` output, which every
+  // `HiveGenerator`-descended `exp.Select` TRANSFORMS entry chains in; `jsonpath_sql`
+  // is reached by `DatabricksGenerator`'s own override, which calls
+  // `super().jsonpath_sql(expression)`). `bracket_offset_expressions`,
+  // `json_path_part`, `_embed_ignore_nulls`, `naked_property`, `lateral_op`, and
+  // `datatype_param_bound_limiter`, ported in the same step, are not `*_sql`-suffixed
+  // and so not counted here either.
+  assert.equal(bodied.length, 79, "exactly 79 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -303,7 +326,7 @@ test("the seeded skeleton's size is stated, not implied", () => {
       return e.name === "NotPorted";
     }
   });
-  assert.equal(432 - stubs.length, 49, "49 of those 50 also run without a resolved Dialect");
+  assert.equal(432 - stubs.length, 78, "78 of those 79 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],

@@ -16,15 +16,13 @@
 // need their own `registerDialect` call — one per class, matching how the parser chain
 // registers each link separately.
 //
-// THREE DELIBERATE GAPS, all announced rather than faked, same reasons Snowflake's are:
+// TWO DELIBERATE GAPS REMAIN, announced rather than faked, same reasons Snowflake's
+// are; ONE CLOSED THIS ROUND:
 //
-//   `Generator = HiveGenerator` (py:118) is NOT declared, in any of the four files.
-//   `generators/{hive,spark2,spark,databricks}.js` do not exist yet — this is explicitly
-//   the NEXT per-dialect item in Ben's corrected priority order (PORT_PLAN.md §1),
-//   not this one. Omitting `Generator` lets `registerDialect` fall through to
-//   `base_generator` (the real base `Generator`, R27) exactly as `postgres.js`/
-//   `duckdb.js` already do — verified this still works with zero new hazard code
-//   needed (R28's finding), not merely assumed.
+//   `Generator = HiveGenerator` (py:126) IS now declared — `generators/hive.js` exists
+//   (PORT_PLAN.md, the Databricks-chain generator step, following Ben's corrected
+//   priority order §1). `registerDialect` no longer falls through to `base_generator`
+//   for this dialect; it resolves the real chain-specific `Generator` subclass instead.
 //
 //   `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()` (py:30, from the unported
 //   `sqlglot/typing/hive.py`) is declared as an empty `Map()`, same treatment as every
@@ -61,6 +59,7 @@
 
 import { Tokenizer, TokenType, initTokenizerSubclass } from "../tokens.js";
 import { HiveParser } from "../parsers/hive.js";
+import { HiveGenerator } from "../generators/hive.js";
 import { Dialect, Dialects, NormalizationStrategy, registerDialect } from "./dialect.js";
 
 /**
@@ -193,6 +192,9 @@ export class Hive extends Dialect {
 
   /** py:118 `Parser = HiveParser` — what `registerDialect` turns into `parser_class`. */
   static Parser = HiveParser;
+
+  /** py:126 `Generator = HiveGenerator` — what `registerDialect` turns into `generator_class`. */
+  static Generator = HiveGenerator;
 
   /** py:84 `class Tokenizer(tokens.Tokenizer)`; see `HiveTokenizer` above. */
   static Tokenizer = HiveTokenizer;

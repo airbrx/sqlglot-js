@@ -46,7 +46,7 @@ import { formatTime, subsecondPrecision, TIMEZONES } from "../time.js";
 import { newTrie } from "../trie.js";
 import { TokenType, Tokenizer, initTokenizerSubclass, setDialectResolver } from "../tokens.js";
 import { BaseParser } from "../parsers/base.js";
-import { ALL_JSON_PATH_PARTS, Generator } from "../generator.js";
+import { ALL_JSON_PATH_PARTS, Generator, unsupported_args } from "../generator.js";
 import * as exp from "../expressions/index.js";
 import { SAFE_IDENTIFIER_RE, registerAstDialects, registerGenerator, registerParser } from "../expressions/core.js";
 
@@ -789,9 +789,19 @@ export function date_delta_sql(name, cast = false) {
   };
 }
 
-/** py: sqlglot/dialects/dialect.py:2537 */
+/**
+ * py: sqlglot/dialects/dialect.py:2537
+ *
+ * `expression.unit` (py) is `TimeUnit.unit`'s `self.args.get("unit")` property —
+ * there is no equivalent bare `.unit` getter on the JS `Expr` class (R31: found via
+ * `SparkGenerator.TRANSFORMS[exp.TimestampDiff]`, which reaches this function and
+ * exposed `TIMESTAMPDIFF(foo, bar)` — the unit silently dropped — against the real
+ * per-dialect generate path; `unit_to_var`/`weekstart_unit_to_str` elsewhere in this
+ * file already use `expression.args.unit` for the same property, so this was the one
+ * caller still using the bare form).
+ */
 export function timestampdiff_sql(self, expression) {
-  return self.func("TIMESTAMPDIFF", expression.unit, expression.expression, expression.this);
+  return self.func("TIMESTAMPDIFF", expression.args.unit, expression.expression, expression.this);
 }
 
 /** py: sqlglot/dialects/dialect.py:2541 `no_make_interval_sql(self, expression, sep=", ")` */
@@ -861,6 +871,243 @@ export function nth_value_from_sql(self, expression) {
   const from_first = expression.args.from_first;
   if (from_first === null || from_first === undefined) return this_;
   return `${this_} FROM ${from_first ? "FIRST" : "LAST"}`;
+}
+
+// ---------------------------------------------------------------------------
+// Added for the Databricks-chain generator step (PORT_PLAN.md; `Hive <- Spark2
+// <- Spark <- Databricks`): every function below is imported from
+// `sqlglot/dialects/dialect.py` by one or more of `generators/{hive,spark2,spark,
+// databricks}.py`, in upstream source order except where a factory needs a
+// dependency declared later in this file (same precedent `timestamptrunc_sql`
+// above already set).
+// ---------------------------------------------------------------------------
+
+/** py: sqlglot/dialects/dialect.py:1236 */
+export function bracket_to_element_at_sql(self, expression) {
+  const index = seqGet(
+    exp.applyIndexOffset(
+      expression.this,
+      expression.expressions,
+      1 - (expression.args.offset ?? 0),
+      { dialect: self.dialect },
+    ),
+    0,
+  );
+  return self.func("ELEMENT_AT", expression.this, index);
+}
+
+/** py: sqlglot/dialects/dialect.py:1249 `@unsupported_args("accuracy")` */
+export const approx_count_distinct_sql = unsupported_args("accuracy")(
+  function _approx_count_distinct_sql(self, expression) {
+    return self.func("APPROX_COUNT_DISTINCT", expression.this);
+  },
+);
+
+/** py: sqlglot/dialects/dialect.py:1287 */
+export function no_ilike_sql(self, expression) {
+  return self.like_sql(
+    new exp.Like({
+      this: new exp.Lower({ this: expression.this }),
+      expression: new exp.Lower({ this: expression.expression }),
+      negate: expression.args.negate,
+    }),
+  );
+}
+
+/** py: sqlglot/dialects/dialect.py:1302 */
+export function no_recursive_cte_sql(self, expression) {
+  if (expression.args.recursive) {
+    self.unsupported("Recursive CTEs are unsupported");
+    expression.set("recursive", false);
+  }
+  return self.with_sql(expression);
+}
+
+/** py: sqlglot/dialects/dialect.py:1319 */
+export function no_trycast_sql(self, expression) {
+  return self.cast_sql(expression);
+}
+
+/** py: sqlglot/dialects/dialect.py:1335 */
+export function property_sql(self, expression) {
+  return `${self.property_name(expression, true)}=${self.sql(expression, "value")}`;
+}
+
+/** py: sqlglot/dialects/dialect.py:1382 */
+export function struct_extract_sql(self, expression) {
+  return `${self.sql(expression, "this")}.${self.sql(exp.toIdentifier(expression.expression.name))}`;
+}
+
+/** py: sqlglot/dialects/dialect.py:1640 `time_format(dialect=None)` */
+export function time_format(dialect = null) {
+  return function _time_format(self, expression) {
+    const time_format_ = self.format_time(expression);
+    return time_format_ !== Dialect.get_or_raise(dialect).TIME_FORMAT ? time_format_ : null;
+  };
+}
+
+/** py: sqlglot/dialects/dialect.py:1770 */
+export function left_to_substring_sql(self, expression) {
+  return self.sql(
+    new exp.Substring({ this: expression.this, start: exp.Literal.number(1), length: expression.expression }),
+  );
+}
+
+/** py: sqlglot/dialects/dialect.py:1778 */
+export function right_to_substring_sql(self, expression) {
+  return self.sql(
+    new exp.Substring({
+      this: expression.this,
+      start: new exp.Length({ this: expression.this }).sub(new exp.Paren({ this: expression.expression.sub(1) })),
+    }),
+  );
+}
+
+/** py: sqlglot/dialects/dialect.py:1840 `trim_sql(self, expression, default_trim_type="")` */
+export function trim_sql(self, expression, default_trim_type = "") {
+  const remove_chars = self.sql(expression, "expression");
+
+  // Use TRIM/LTRIM/RTRIM syntax if the expression isn't database-specific
+  if (!remove_chars) return self.trim_sql(expression);
+
+  const target = self.sql(expression, "this");
+  let trim_type = self.sql(expression, "position") || default_trim_type;
+  const collation = self.sql(expression, "collation");
+
+  trim_type = trim_type ? `${trim_type} ` : "";
+  const remove_chars_ = remove_chars ? `${remove_chars} ` : "";
+  const from_part = trim_type || remove_chars_ ? "FROM " : "";
+  const collation_ = collation ? ` COLLATE ${collation}` : "";
+  return `TRIM(${trim_type}${remove_chars_}${from_part}${target}${collation_})`;
+}
+
+/** py: sqlglot/dialects/dialect.py:1872 `@unsupported_args("position", "occurrence", "parameters")` */
+export const regexp_extract_sql = unsupported_args("position", "occurrence", "parameters")(
+  function _regexp_extract_sql(self, expression) {
+    let group = expression.args.group;
+
+    // Do not render group if it's the default value for this dialect
+    if (group && group.name === String(self.dialect.REGEXP_EXTRACT_DEFAULT_GROUP)) group = null;
+
+    return self.func(expression.constructor.sqlName(), expression.this, expression.expression, group);
+  },
+);
+
+/** py: sqlglot/dialects/dialect.py:1885 `@unsupported_args("position", "occurrence", "modifiers")` */
+export const regexp_replace_sql = unsupported_args("position", "occurrence", "modifiers")(
+  function _regexp_replace_sql(self, expression) {
+    return self.func("REGEXP_REPLACE", expression.this, expression.expression, expression.args.replacement);
+  },
+);
+
+/** py: sqlglot/dialects/dialect.py:1976 */
+export function is_parse_json(expression) {
+  return expression instanceof exp.ParseJSON || (expression instanceof exp.Cast && expression.isType("json"));
+}
+
+/** py: sqlglot/dialects/dialect.py:1994 `arg_max_or_min_no_count(name)` */
+export function arg_max_or_min_no_count(name) {
+  return unsupported_args("count")(function _arg_max_or_min_sql(self, expression) {
+    return self.func(name, expression.this, expression.expression);
+  });
+}
+
+/**
+ * py: sqlglot/dialects/dialect.py:60 `DATETIME_ADD = (exp.DateAdd, exp.TimeAdd,
+ * exp.DatetimeAdd, exp.TsOrDsAdd, exp.TimestampAdd)`. A real runtime tuple (unlike
+ * its sibling `DATE_ADD_OR_SUB`/`DATETIME_DELTA`, which are `t.Union` type aliases
+ * with no JS equivalent needed): `date_delta_to_binary_interval_op` below does an
+ * `isinstance` check against it.
+ */
+export const DATETIME_ADD = [exp.DateAdd, exp.TimeAdd, exp.DatetimeAdd, exp.TsOrDsAdd, exp.TimestampAdd];
+
+/** py: sqlglot/dialects/dialect.py:2047 `date_delta_to_binary_interval_op(cast=True)` */
+export function date_delta_to_binary_interval_op(cast = true) {
+  return function date_delta_to_binary_interval_op_sql(self, expression) {
+    let this_ = expression.this;
+    const unit = unit_to_var(expression);
+    const op = DATETIME_ADD.some((cls) => expression instanceof cls) ? "+" : "-";
+
+    let to_type = null;
+    if (cast) {
+      if (expression instanceof exp.TsOrDsAdd) {
+        to_type = expression.returnType;
+      } else if (this_.is_string) {
+        to_type =
+          expression instanceof exp.DatetimeAdd || expression instanceof exp.DatetimeSub
+            ? exp.DType.DATETIME
+            : exp.DType.DATE;
+      }
+    }
+
+    this_ = to_type ? exp.cast(this_, to_type) : this_;
+
+    const expr = expression.expression;
+    const interval = expr instanceof exp.Interval ? expr : new exp.Interval({ this: expr, unit });
+
+    return `${self.sql(this_)} ${op} ${self.sql(interval)}`;
+  };
+}
+
+/**
+ * py: sqlglot/dialects/dialect.py:2414
+ *
+ * The `is_end_exclusive` branch calls `self._simplify_unless_literal`
+ * (generator.js), still a live `NotPorted` guard: it needs
+ * `sqlglot/optimizer/simplify.py` (P6+, unported), same status as `annotate_types`
+ * above. Ported whole regardless, per this project's precedent of announcing a
+ * narrow unreached-by-most-rows gap rather than declining to port the function
+ * that contains it.
+ */
+export function sequence_sql(self, expression) {
+  let start = expression.args.start;
+  let end = expression.args.end;
+  const step = expression.args.step;
+
+  let target_type;
+  if (start instanceof exp.Cast) target_type = start.to;
+  else if (end instanceof exp.Cast) target_type = end.to;
+  else target_type = null;
+
+  if (start && end) {
+    if (target_type && target_type.isType("date", "timestamp")) {
+      if (start instanceof exp.Cast && target_type === start.to) {
+        end = exp.cast(end, target_type);
+      } else {
+        start = exp.cast(start, target_type);
+      }
+    }
+
+    if (expression.args.is_end_exclusive) {
+      const step_value = step || exp.Literal.number(1);
+      end = new exp.Paren({ this: new exp.Sub({ this: end, expression: step_value }) });
+
+      const sequence_call = new exp.Anonymous({
+        this: "SEQUENCE",
+        expressions: [start, end, step].filter((e) => e),
+      });
+      const zero = exp.Literal.number(0);
+      const should_return_empty = exp.or_(
+        new exp.EQ({ this: step_value.copy(), expression: zero.copy() }),
+        exp.and_(
+          new exp.GT({ this: step_value.copy(), expression: zero.copy() }),
+          new exp.GT({ this: start.copy(), expression: end.copy() }),
+        ),
+        exp.and_(
+          new exp.LT({ this: step_value.copy(), expression: zero.copy() }),
+          new exp.LT({ this: start.copy(), expression: end.copy() }),
+        ),
+      );
+      const empty_array_or_sequence = new exp.If({
+        this: should_return_empty,
+        true: new exp.Array({ expressions: [] }),
+        false: sequence_call,
+      });
+      return self.sql(self._simplify_unless_literal(empty_array_or_sequence));
+    }
+  }
+
+  return self.func("SEQUENCE", start, end, step);
 }
 
 // ===========================================================================

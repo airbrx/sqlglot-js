@@ -1,16 +1,19 @@
 // py: sqlglot/dialects/spark2.py — `class Spark2(Hive)`.
 //
 // Link 2 of 4 in `Hive <- Spark2 <- Spark <- Databricks` — see `hive.js`'s header for
-// the full explanation of the split, the `registerDialect` requirement, and the three
-// deliberate gaps (`Generator`, `EXPRESSION_METADATA`, `COERCES_TO`/`JSONPathTokenizer`)
-// that apply verbatim to every file in this chain. This file adds `class Spark2 extends
-// Hive` with its 3 overridden settings and the nested `Tokenizer` subclass.
+// the full explanation of the split, the `registerDialect` requirement, and the
+// remaining deliberate gaps (`EXPRESSION_METADATA`, `COERCES_TO`/`JSONPathTokenizer`)
+// that apply verbatim to every file in this chain. `Generator = Spark2Generator` (py:41)
+// IS now declared, same as `hive.js`'s own `Generator` — `generators/spark2.js` exists
+// (PORT_PLAN.md, the Databricks-chain generator step). This file adds `class Spark2
+// extends Hive` with its 3 overridden settings and the nested `Tokenizer` subclass.
 //
 // Every setting below is diffed value-by-value against CPython by
 // `spike/p5/fuzz_dialect_parse.mjs`'s SPARK2 row.
 
 import { Tokenizer, TokenType, initTokenizerSubclass } from "../tokens.js";
 import { Spark2Parser } from "../parsers/spark2.js";
+import { Spark2Generator } from "../generators/spark2.js";
 import { Dialects, registerDialect } from "./dialect.js";
 import { Hive } from "./hive.js";
 
@@ -62,6 +65,9 @@ export class Spark2 extends Hive {
 
   /** py:39 `Parser = Spark2Parser` — what `registerDialect` turns into `parser_class`. */
   static Parser = Spark2Parser;
+
+  /** py:41 `Generator = Spark2Generator` — what `registerDialect` turns into `generator_class`. */
+  static Generator = Spark2Generator;
 
   /** py:29 `class Tokenizer(Hive.Tokenizer)`; see `Spark2Tokenizer` above. */
   static Tokenizer = Spark2Tokenizer;

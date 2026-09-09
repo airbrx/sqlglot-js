@@ -46,7 +46,18 @@ const dtypeName = (v) => (v && v.__enum__ === "DType" ? `DType.${v.name}` : name
 // Deliberately-unseeded tables. PORT_PLAN.md §7 P4 puts filling these in the stub
 // queue, AFTER this blocking step is reviewed. Listed BY NAME rather than inferred
 // from emptiness, so a table that becomes accidentally empty later still fails.
-const DEFERRED_TABLES = new Set(["TRANSFORMS", "AFTER_HAVING_MODIFIER_TRANSFORMS"]);
+const DEFERRED_TABLES = new Set(["TRANSFORMS"]);
+
+// `AFTER_HAVING_MODIFIER_TRANSFORMS` moved from fully-deferred to PARTIALLY seeded on
+// the Databricks-chain generator step (PORT_PLAN.md R31): `cluster`/`distribute`/`sort`
+// (Hive/Spark's DML-only `CLUSTER BY`/`DISTRIBUTE BY`/`SORT BY`, reached via
+// `query_modifiers`) are real now, verified against real HIVE/SPARK corpus rows;
+// `windows`/`qualify` stay unseeded (still nobody's caller). Neither the blanket
+// `DEFERRED_TABLES` path (which demands exactly 0) nor the general "map" comparison
+// below (which demands the full upstream key set) fits a table that is correctly
+// SOME of each, so this gets its own explicit, named check instead of forcing it
+// through either.
+const PARTIALLY_SEEDED_MAP_KEYS = new Map([["AFTER_HAVING_MODIFIER_TRANSFORMS", ["cluster", "distribute", "sort"]]]);
 
 for (const [name, want] of Object.entries(ref.settings)) {
   let got;
@@ -67,6 +78,18 @@ for (const [name, want] of Object.entries(ref.settings)) {
     const size = got instanceof Map ? got.size : [...(got ?? [])].length;
     if (size !== 0) note("settings", `${name}: expected deferred/empty at this step`, 0, size);
     else skeleton.push(`table ${name} (0 of ${want.size} entries seeded)`);
+    continue;
+  }
+
+  if (PARTIALLY_SEEDED_MAP_KEYS.has(name)) {
+    const wantSeeded = PARTIALLY_SEEDED_MAP_KEYS.get(name);
+    const gotKeys = got instanceof Map ? [...got.keys()] : Object.keys(got ?? {});
+    if (JSON.stringify(gotKeys) !== JSON.stringify(wantSeeded)) {
+      note("settings", `${name}: expected exactly the seeded subset`, wantSeeded, gotKeys);
+    } else {
+      settingsChecked++;
+      skeleton.push(`table ${name} (${wantSeeded.length} of ${want.size} entries seeded: ${wantSeeded.join(", ")})`);
+    }
     continue;
   }
 
