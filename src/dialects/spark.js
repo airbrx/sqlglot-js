@@ -2,15 +2,17 @@
 //
 // Link 3 of 4 in `Hive <- Spark2 <- Spark <- Databricks` — see `hive.js`'s header for
 // the full explanation of the split, the `registerDialect` requirement, and the
-// deliberate gaps that apply verbatim to every file in this chain. This file adds
-// `class Spark extends Spark2` with its 4 overridden settings and the nested
-// `Tokenizer` subclass.
+// remaining deliberate gaps that apply verbatim to every file in this chain.
+// `Generator = SparkGenerator` (py:46) IS now declared — `generators/spark.js` exists
+// (PORT_PLAN.md, the Databricks-chain generator step). This file adds `class Spark
+// extends Spark2` with its 4 overridden settings and the nested `Tokenizer` subclass.
 //
 // Every setting below is diffed value-by-value against CPython by
 // `spike/p5/fuzz_dialect_parse.mjs`'s SPARK row.
 
 import { TokenType, initTokenizerSubclass } from "../tokens.js";
 import { SparkParser } from "../parsers/spark.js";
+import { SparkGenerator } from "../generators/spark.js";
 import { Dialects, registerDialect } from "./dialect.js";
 import { Spark2 } from "./spark2.js";
 
@@ -66,8 +68,11 @@ export class Spark extends Spark2 {
     ["ss", "%Sstrict"],
   ]);
 
-  /** py:37 `Parser = SparkParser` — what `registerDialect` turns into `parser_class`. */
+  /** py:44 `Parser = SparkParser` — what `registerDialect` turns into `parser_class`. */
   static Parser = SparkParser;
+
+  /** py:46 `Generator = SparkGenerator` — what `registerDialect` turns into `generator_class`. */
+  static Generator = SparkGenerator;
 
   /** py:16 `class Tokenizer(Spark2.Tokenizer)`; see `SparkTokenizer` above. */
   static Tokenizer = SparkTokenizer;

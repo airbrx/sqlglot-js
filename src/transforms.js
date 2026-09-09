@@ -29,9 +29,22 @@
 // tools/lint_deny.mjs's `isPortedSite`, which otherwise treats a hand-written file with
 // no seeded `// py:` skeleton as fully ported and flags every deny-list site in the
 // REST of transforms.py as an unacknowledged one):
-// @ported-ranges sqlglot/transforms.py 19-71 144-200 201-264 615-631
+// @ported-ranges sqlglot/transforms.py 19-71 144-200 201-264 615-631 131-141 297-399 741-1084
+//
+// The added ranges (Databricks-chain generator step, PORT_PLAN.md) cover
+// `unnest_generate_series`, `unnest_to_explode`, `unqualify_columns`,
+// `unqualify_pivot_fields`, `remove_unique_constraints`,
+// `ctas_with_tmp_tables_to_create_tmp_view`, `move_schema_columns_to_partitioned_by`,
+// `move_partitioned_by_to_schema_columns`, `any_to_exists`, and
+// `inherit_struct_field_names` — every `transforms.py` function
+// `generators/{hive,spark2,spark,databricks}.py` import, in upstream source order.
+// `struct_kv_to_alias` (839), `eliminate_join_marks` (853), `eliminate_window_clause`
+// (1001), and everything else inside 741-1084 that none of the four dialects reference
+// stay unported — the range still ends at 1084 because `lint_deny.mjs`'s ranges gate
+// deny-listed SITES, not "every function must exist"; an unported function has no site
+// to flag.
 
-import { findNewName } from "./helper.js";
+import { findNewName, seqGet } from "./helper.js";
 import { UnsupportedError } from "./errors.js";
 import * as exp from "./expressions/index.js";
 
@@ -244,6 +257,388 @@ export function eliminate_semi_and_anti_joins(expression) {
         join.pop();
         expression.where(exists, { copy: false });
       }
+    }
+  }
+
+  return expression;
+}
+
+// ---------------------------------------------------------------------------
+// Added for the Databricks-chain generator step (PORT_PLAN.md): every
+// `transforms.py` function `generators/{hive,spark2,spark,databricks}.py` import that
+// this file did not already carry, ported in upstream source order.
+// ---------------------------------------------------------------------------
+
+/**
+ * py: sqlglot/transforms.py:131 `unnest_generate_series(expression)`
+ *
+ * Unnests GENERATE_SERIES or SEQUENCE table references.
+ *
+ * @param {exp.Expr} expression
+ * @returns {exp.Expr}
+ */
+export function unnest_generate_series(expression) {
+  const this_ = expression.this;
+  if (expression instanceof exp.Table && this_ instanceof exp.GenerateSeries) {
+    const unnest = new exp.Unnest({ expressions: [this_] });
+    if (expression.alias) {
+      return exp.alias_(unnest, expression.alias, { table: [expression.alias], copy: false });
+    }
+    return unnest;
+  }
+
+  return expression;
+}
+
+/**
+ * py: sqlglot/transforms.py:297 `unnest_to_explode(expression, unnest_using_arrays_zip=True)`
+ *
+ * Convert cross join unnest into lateral view explode.
+ *
+ * @param {exp.Expr} expression
+ * @param {boolean} [unnest_using_arrays_zip]
+ * @returns {exp.Expr}
+ */
+export function unnest_to_explode(expression, unnest_using_arrays_zip = true) {
+  function _unnest_zip_exprs(u, unnest_exprs, has_multi_expr) {
+    if (has_multi_expr) {
+      if (!unnest_using_arrays_zip) {
+        throw new UnsupportedError("Cannot transpile UNNEST with multiple input arrays");
+      }
+
+      // Use INLINE(ARRAYS_ZIP(...)) for multiple expressions
+      const zip_exprs = [new exp.Anonymous({ this: "ARRAYS_ZIP", expressions: unnest_exprs })];
+      u.set("expressions", zip_exprs);
+      return zip_exprs;
+    }
+    return unnest_exprs;
+  }
+
+  function _udtf_type(u, has_multi_expr) {
+    if (u.args.offset) return exp.Posexplode;
+    return has_multi_expr ? exp.Inline : exp.Explode;
+  }
+
+  if (expression instanceof exp.Select) {
+    const from_ = expression.args.from_;
+
+    if (from_ && from_.this instanceof exp.Unnest) {
+      const unnest = from_.this;
+      const alias = unnest.args.alias;
+      const exprs = unnest.expressions;
+      const has_multi_expr = exprs.length > 1;
+      const [this_] = _unnest_zip_exprs(unnest, exprs, has_multi_expr);
+
+      const columns = alias ? alias.columns : [];
+      const offset = unnest.args.offset;
+      if (offset) {
+        columns.unshift(offset instanceof exp.Identifier ? offset : exp.toIdentifier("pos"));
+      }
+
+      unnest.replace(
+        new exp.Table({
+          this: new (_udtf_type(unnest, has_multi_expr))({ this: this_ }),
+          alias: alias ? new exp.TableAlias({ this: alias.this, columns }) : null,
+        }),
+      );
+    }
+
+    const joins = expression.args.joins || [];
+    for (const join of [...joins]) {
+      const join_expr = join.this;
+
+      const is_lateral = join_expr instanceof exp.Lateral;
+
+      const unnest = is_lateral ? join_expr.this : join_expr;
+
+      if (unnest instanceof exp.Unnest) {
+        const alias = is_lateral ? join_expr.args.alias : unnest.args.alias;
+
+        if (alias == null) {
+          throw new UnsupportedError(
+            "CROSS JOIN UNNEST to LATERAL VIEW EXPLODE transformation requires an alias",
+          );
+        }
+
+        let exprs = unnest.expressions;
+        // The number of unnest.expressions will be changed by _unnest_zip_exprs, we
+        // need to record it here
+        const has_multi_expr = exprs.length > 1;
+        exprs = _unnest_zip_exprs(unnest, exprs, has_multi_expr);
+
+        const idx = joins.indexOf(join);
+        if (idx !== -1) joins.splice(idx, 1);
+
+        const alias_cols = alias.columns;
+
+        // Handle UNNEST to LATERAL VIEW EXPLODE: Exception is raised when there are 0
+        // or > 2 aliases. Spark LATERAL VIEW EXPLODE requires single alias for
+        // array/struct and two for Map type column unlike unnest in trino/presto
+        // which can take an arbitrary amount.
+        if (!has_multi_expr && ![1, 2].includes(alias_cols.length)) {
+          throw new UnsupportedError(
+            "CROSS JOIN UNNEST to LATERAL VIEW EXPLODE transformation requires explicit column aliases",
+          );
+        }
+
+        const offset = unnest.args.offset;
+        if (offset) {
+          alias_cols.unshift(offset instanceof exp.Identifier ? offset : exp.toIdentifier("pos"));
+        }
+
+        for (let i = 0; i < Math.min(exprs.length, alias_cols.length); i++) {
+          expression.append(
+            "laterals",
+            new exp.Lateral({
+              this: new (_udtf_type(unnest, has_multi_expr))({ this: exprs[i] }),
+              view: true,
+              alias: new exp.TableAlias({ this: alias.this, columns: alias_cols }),
+            }),
+          );
+        }
+      }
+    }
+  }
+
+  return expression;
+}
+
+/**
+ * py: sqlglot/transforms.py:570 `remove_within_group_for_percentiles(expression)`
+ *
+ * Transforms percentiles by getting rid of their corresponding WITHIN GROUP clause.
+ *
+ * @param {exp.Expr} expression
+ * @returns {exp.Expr}
+ */
+export function remove_within_group_for_percentiles(expression) {
+  if (
+    expression instanceof exp.WithinGroup &&
+    PERCENTILES.some((cls) => expression.this instanceof cls) &&
+    expression.expression instanceof exp.Order
+  ) {
+    const quantile = expression.this.this;
+    const input_value = expression.find(exp.Ordered).this;
+    return expression.replace(new exp.ApproxQuantile({ this: input_value, quantile }));
+  }
+
+  return expression;
+}
+
+/**
+ * py: sqlglot/transforms.py:732 `unqualify_columns(expression)`
+ *
+ * @param {exp.Expr} expression
+ * @returns {exp.Expr}
+ */
+export function unqualify_columns(expression) {
+  for (const column of [...expression.findAll(exp.Column)]) {
+    // We only wanna pop off the table, db, catalog args
+    for (const part of column.parts.slice(0, -1)) part.pop();
+  }
+
+  return expression;
+}
+
+/**
+ * py: sqlglot/transforms.py:741 `unqualify_pivot_fields(expression)`
+ *
+ * Some dialects only accept simple column names in a (UN)PIVOT's FOR clause and
+ * IN-list (Oracle raises ORA-01748), even though the aggregate itself may stay
+ * qualified.
+ *
+ * @param {exp.Expr} expression
+ * @returns {exp.Expr}
+ */
+export function unqualify_pivot_fields(expression) {
+  if (expression instanceof exp.Pivot) {
+    expression.set("fields", expression.fields.map((field) => unqualify_columns(field)));
+  }
+
+  return expression;
+}
+
+/**
+ * py: sqlglot/transforms.py:758 `remove_unique_constraints(expression)`
+ *
+ * @param {exp.Create} expression
+ * @returns {exp.Expr}
+ */
+export function remove_unique_constraints(expression) {
+  for (const constraint of [...expression.findAll(exp.UniqueColumnConstraint)]) {
+    if (constraint.parent) constraint.parent.pop();
+  }
+
+  return expression;
+}
+
+/**
+ * py: sqlglot/transforms.py:767
+ * `ctas_with_tmp_tables_to_create_tmp_view(expression, tmp_storage_provider=lambda e: e)`
+ *
+ * @param {exp.Create} expression
+ * @param {(e: exp.Expr) => exp.Expr} [tmp_storage_provider]
+ * @returns {exp.Expr}
+ */
+export function ctas_with_tmp_tables_to_create_tmp_view(expression, tmp_storage_provider = (e) => e) {
+  const properties = expression.args.properties;
+  const temporary = (properties ? properties.expressions : []).some(
+    (prop) => prop instanceof exp.TemporaryProperty,
+  );
+
+  // CTAS with temp tables map to CREATE TEMPORARY VIEW
+  if (expression.kind === "TABLE" && temporary) {
+    if (expression.expression) {
+      return new exp.Create({
+        kind: "TEMPORARY VIEW",
+        this: expression.this,
+        expression: expression.expression,
+      });
+    }
+    return tmp_storage_provider(expression);
+  }
+
+  return expression;
+}
+
+/**
+ * py: sqlglot/transforms.py:791 `move_schema_columns_to_partitioned_by(expression)`
+ *
+ * In Hive, the PARTITIONED BY property acts as an extension of a table's schema. When
+ * the PARTITIONED BY value is an array of column names, they are transformed into a
+ * schema. The corresponding columns are removed from the create statement.
+ *
+ * @param {exp.Create} expression
+ * @returns {exp.Expr}
+ */
+export function move_schema_columns_to_partitioned_by(expression) {
+  const schema = expression.this;
+  const is_partitionable = ["TABLE", "VIEW"].includes(expression.kind);
+
+  if (schema instanceof exp.Schema && is_partitionable) {
+    const prop = expression.find(exp.PartitionedByProperty);
+    if (prop && prop.this && !(prop.this instanceof exp.Schema)) {
+      const columns = new Set(prop.this.expressions.map((v) => v.name.toUpperCase()));
+      const schema_exprs = schema.expressions;
+      const partitions = schema_exprs.filter((col) => columns.has(col.name.toUpperCase()));
+      schema.set(
+        "expressions",
+        schema_exprs.filter((e) => !partitions.includes(e)),
+      );
+      prop.replace(new exp.PartitionedByProperty({ this: new exp.Schema({ expressions: partitions }) }));
+      expression.set("this", schema);
+    }
+  }
+
+  return expression;
+}
+
+/**
+ * py: sqlglot/transforms.py:814 `move_partitioned_by_to_schema_columns(expression)`
+ *
+ * Spark 3 supports both "HIVEFORMAT" and "DATASOURCE" formats for CREATE TABLE.
+ * Currently, SQLGlot uses the DATASOURCE format for Spark 3.
+ *
+ * @param {exp.Create} expression
+ * @returns {exp.Expr}
+ */
+export function move_partitioned_by_to_schema_columns(expression) {
+  const prop = expression.find(exp.PartitionedByProperty);
+  if (
+    prop &&
+    prop.this &&
+    prop.this instanceof exp.Schema &&
+    prop.this.expressions.every((e) => e instanceof exp.ColumnDef && e.kind)
+  ) {
+    const prop_this = new exp.Tuple({
+      expressions: prop.this.expressions.map((e) => exp.toIdentifier(e.this)),
+    });
+    const schema = expression.this;
+    for (const e of prop.this.expressions) schema.append("expressions", e);
+    prop.set("this", prop_this);
+  }
+
+  return expression;
+}
+
+/**
+ * py: sqlglot/transforms.py:974 `any_to_exists(expression)`
+ *
+ * Transform ANY operator to Spark's EXISTS. Both ANY and EXISTS accept queries but
+ * currently only array expressions are supported for this transformation.
+ *
+ * @param {exp.Expr} expression
+ * @returns {exp.Expr}
+ */
+export function any_to_exists(expression) {
+  if (expression instanceof exp.Select) {
+    for (const any_expr of [...expression.findAll(exp.Any)]) {
+      const this_ = any_expr.this;
+      if (this_ instanceof exp.Query || any_expr.parent instanceof exp.Like || any_expr.parent instanceof exp.ILike) {
+        continue;
+      }
+
+      const binop = any_expr.parent;
+      if (binop instanceof exp.Binary) {
+        const lambda_arg = exp.toIdentifier("x");
+        any_expr.replace(lambda_arg);
+        const lambda_expr = new exp.Lambda({ this: binop.copy(), expressions: [lambda_arg] });
+        binop.replace(new exp.Exists({ this: this_.unnest(), expression: lambda_expr }));
+      }
+    }
+  }
+
+  return expression;
+}
+
+/**
+ * py: sqlglot/expressions/aggregate.py:223 `PERCENTILES = (PercentileCont, PercentileDisc)`.
+ * A different upstream file's module constant, needed only for
+ * `remove_within_group_for_percentiles`'s `isinstance` checks above; scoped locally
+ * rather than standing up the whole of `aggregate.py` for a 2-element tuple, same
+ * precedent as `generators/snowflake.js`'s own local copy.
+ */
+const PERCENTILES = [exp.PercentileCont, exp.PercentileDisc];
+
+/**
+ * py: sqlglot/transforms.py:1032 `inherit_struct_field_names(expression)`
+ *
+ * Inherit field names from the first struct in an array. This transformation makes
+ * the field names explicit on all structs by adding PropertyEQ nodes, in order to
+ * facilitate transpilation to other dialects.
+ *
+ * @param {exp.Expr} expression
+ * @returns {exp.Expr}
+ */
+export function inherit_struct_field_names(expression) {
+  const first_item = seqGet(expression.expressions, 0);
+  if (
+    expression instanceof exp.Array &&
+    expression.args.struct_name_inheritance &&
+    first_item instanceof exp.Struct &&
+    first_item.expressions.every((fld) => fld instanceof exp.PropertyEQ)
+  ) {
+    const field_names = first_item.expressions.map((fld) => fld.this);
+
+    // Apply field names to subsequent structs that don't have them
+    for (const struct of expression.expressions.slice(1)) {
+      if (!(struct instanceof exp.Struct) || struct.expressions.length !== field_names.length) continue;
+
+      // Convert unnamed expressions to PropertyEQ with inherited names
+      const new_expressions = [];
+      struct.expressions.forEach((expr, i) => {
+        if (!(expr instanceof exp.PropertyEQ)) {
+          // Create PropertyEQ: field_name := value, preserving the type from the
+          // inner expression
+          const property_eq = new exp.PropertyEQ({ this: field_names[i].copy(), expression: expr });
+          property_eq.type = expr.type;
+          new_expressions.push(property_eq);
+        } else {
+          new_expressions.push(expr);
+        }
+      });
+
+      struct.set("expressions", new_expressions);
     }
   }
 

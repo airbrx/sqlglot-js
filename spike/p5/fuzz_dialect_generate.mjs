@@ -29,6 +29,24 @@
 //   SNOWFLAKE — `src/` only as well. The registry resolves to the real `Snowflake`
 //   class, whose `generator_class` is the real `SnowflakeGenerator` — its own
 //   `TRANSFORMS`, its own settings, its own `*_sql` overrides.
+//
+// HIVE/SPARK2/SPARK/DATABRICKS (PORT_PLAN.md, the Databricks-chain generator step) add
+// a fourth population: the real four-link `Hive <- Spark2 <- Spark <- Databricks`
+// inheritance chain, each resolving through the registry to its own
+// `{Hive,Spark2,Spark,Databricks}Generator`.
+//
+// Their AST lookup pools MULTIPLE `corpus/ast/*.jsonl` stems rather than just the
+// row's own dialect, which SNOWFLAKE/DEFAULT don't need to: `atom_id` is a
+// content-addressed hash of the AST shape, harvested once per distinct SQL string
+// across the WHOLE corpus, not scoped per dialect file. Measured directly: querying
+// `corpus/gen/spark2.jsonl`'s 94 `ast_ref`s against `corpus/ast/spark2.jsonl` alone
+// finds ZERO of them (spark2's own AST harvest happens to have no content overlap with
+// its own generate corpus), while pooling `hive`/`spark2`/`spark`/`databricks`/
+// `_default` finds all 94 — the four dialects share so much AST shape with each other
+// and with the base corpus that a single-stem lookup silently starves whichever
+// dialect's harvest was smallest. SNOWFLAKE/DEFAULT are left on single-stem lookup
+// deliberately: changing an established row's behavior is out of this step's scope,
+// and neither shows the zero-overlap failure mode.
 
 import { readFileSync } from "node:fs";
 import { astLoad } from "../../src/expressions/index.js";
@@ -36,32 +54,37 @@ import { Dialect } from "../../src/dialects/dialect.js";
 import { captureLogs } from "../../src/logging.js";
 
 // `src/dialects/snowflake.js` self-registers under "snowflake" at module load, so this
-// bare import is the whole wiring -- same shape as `fuzz_dialect_parse.mjs`.
+// bare import is the whole wiring -- same shape as `fuzz_dialect_parse.mjs`. Same for
+// `databricks.js`, which transitively imports `spark.js` -> `spark2.js` -> `hive.js`,
+// registering all four links in the chain.
 import "../../src/dialects/snowflake.js";
+import "../../src/dialects/databricks.js";
 
 const VERBOSE = process.argv.includes("--verbose");
 
-/** ast_ref/atom_id -> parsed row from corpus/ast/<dialect>.jsonl, loaded lazily per file. */
-function loadAstFile(dialectFileStem) {
+/** ast_ref/atom_id -> parsed row, pooled from one or more corpus/ast/<stem>.jsonl files. */
+function loadAstFiles(dialectFileStems) {
   const map = new Map();
-  let text;
-  try {
-    text = readFileSync(`corpus/ast/${dialectFileStem}.jsonl`, "utf8");
-  } catch {
-    return map;
-  }
-  for (const line of text.split("\n")) {
-    if (!line) continue;
-    const row = JSON.parse(line);
-    map.set(row.atom_id, row);
+  for (const stem of dialectFileStems) {
+    let text;
+    try {
+      text = readFileSync(`corpus/ast/${stem}.jsonl`, "utf8");
+    } catch {
+      continue;
+    }
+    for (const line of text.split("\n")) {
+      if (!line) continue;
+      const row = JSON.parse(line);
+      if (!map.has(row.atom_id)) map.set(row.atom_id, row);
+    }
   }
   return map;
 }
 
-function run(dialectName, genFileStem, astFileStem) {
+function run(dialectName, genFileStem, astFileStems) {
   const b = { exact: 0, mismatch: 0, stub: 0, error: 0 };
   const samples = [];
-  const astRows = loadAstFile(astFileStem);
+  const astRows = loadAstFiles(Array.isArray(astFileStems) ? astFileStems : [astFileStems]);
 
   let genText;
   try {
@@ -119,16 +142,24 @@ function run(dialectName, genFileStem, astFileStem) {
 console.log();
 console.log("  Dialect.get_or_raise(name).generate(ast) vs the generate oracle");
 
+const CHAIN_AST_POOL = ["hive", "spark2", "spark", "spark, version=3.0.0", "spark, version=4.0.0", "databricks", "_default"];
+
 let snowflakeExact = 0;
-for (const [label, name, genStem, astStem, claim] of [
-  ["DEFAULT  ", null, "_default", "_default", "src/ only — base Generator, no dialect-specific settings on this path"],
-  ["SNOWFLAKE", "snowflake", "snowflake", "snowflake", "src/ only — real SnowflakeGenerator: own TRANSFORMS + own settings + own *_sql overrides"],
+const chainExact = {};
+for (const [label, name, genStem, astStems, claim] of [
+  ["DEFAULT   ", null, "_default", ["_default"], "src/ only — base Generator, no dialect-specific settings on this path"],
+  ["SNOWFLAKE ", "snowflake", "snowflake", ["snowflake"], "src/ only — real SnowflakeGenerator: own TRANSFORMS + own settings + own *_sql overrides"],
+  ["HIVE      ", "hive", "hive", CHAIN_AST_POOL, "src/ only — real HiveGenerator: own TRANSFORMS + own settings + own *_sql overrides"],
+  ["SPARK2    ", "spark2", "spark2", CHAIN_AST_POOL, "src/ only — real Spark2Generator extends HiveGenerator"],
+  ["SPARK     ", "spark", "spark", CHAIN_AST_POOL, "src/ only — real SparkGenerator extends Spark2Generator"],
+  ["DATABRICKS", "databricks", "databricks", CHAIN_AST_POOL, "src/ only — real DatabricksGenerator extends SparkGenerator"],
 ]) {
-  const { b, samples } = run(name, genStem, astStem);
+  const { b, samples } = run(name, genStem, astStems);
   const total = b.exact + b.mismatch + b.stub + b.error;
   const reached = b.exact + b.mismatch;
   const pct = reached ? ((100 * b.exact) / reached).toFixed(1) : "0.0";
   if (name === "snowflake") snowflakeExact = b.exact;
+  if (name && ["hive", "spark2", "spark", "databricks"].includes(name)) chainExact[name] = b.exact;
   console.log(
     `    ${label}  ${b.exact}/${reached} of REACHED rows exact (${pct}%)  ` +
       `[${total} total: ${b.exact} exact, ${b.mismatch} mismatch, ${b.stub} stub, ${b.error} error]`,
@@ -141,7 +172,7 @@ for (const [label, name, genStem, astStem, claim] of [
 // merely counted, mirroring `fuzz_dialect_parse.mjs`'s closing check.
 console.log();
 const AST = { c: "Select", a: [["expressions", [{ c: "Column", a: [["this", { c: "Identifier", a: [["this", "a"], ["quoted", false]] }]] }]]] };
-for (const name of [null, "snowflake"]) {
+for (const name of [null, "snowflake", "hive", "spark2", "spark", "databricks"]) {
   const got = Dialect.get_or_raise(name).generate(astLoad(AST));
   const generatorName = Dialect.get_or_raise(name).constructor.generator_class.name;
   console.log(`    get_or_raise(${JSON.stringify(name)}).generate(SELECT a)  via ${generatorName}  -> ${JSON.stringify(got)}`);
@@ -149,6 +180,9 @@ for (const name of [null, "snowflake"]) {
 
 const failures = [];
 if (!snowflakeExact) failures.push("the snowflake dialect generated nothing exactly");
+for (const name of ["hive", "spark2", "spark", "databricks"]) {
+  if (!chainExact[name]) failures.push(`the ${name} dialect generated nothing exactly`);
+}
 
 console.log();
 if (failures.length) {
