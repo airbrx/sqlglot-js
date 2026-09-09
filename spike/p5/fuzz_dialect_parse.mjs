@@ -48,6 +48,16 @@
 //   exact and three FEWER stub than the harness, the same direction Snowflake's row
 //   above moved, and for the same reason: three rows needed the real `DuckDBTokenizer`
 //   subclass rather than the harness's harvested-settings base tokenizer.
+//
+//   HIVE / SPARK2 / SPARK / DATABRICKS — `src/` only, since `src/dialects/
+//   {hive,spark2,spark,databricks}.js` landed (P5, PORT_PLAN.md R30) — the four-link
+//   chain `Hive <- Spark2 <- Spark <- Databricks` whose PARSER side (`src/parsers/
+//   {hive,spark2,spark,databricks}.js`) had already been ported behind the same
+//   synthetic stand-in every other dialect used before its own settings class landed.
+//   Before these four files existed, the registry did not resolve these names at all —
+//   `Dialect.get_or_raise("hive")` threw `PyValueError: Unknown dialect 'hive'`, same
+//   failure mode R28 measured for pre-landing Postgres, not merely "scored below the
+//   harness" the way pre-R24 Snowflake did.
 
 import { readFileSync } from "node:fs";
 import { astDump, astLoad, toS } from "../../src/expressions/index.js";
@@ -69,6 +79,12 @@ import "../../src/dialects/duckdb.js";
 // production path had no Postgres settings class at all and scored measurably below
 // `fuzz_ast_coverage.mjs`'s harness-routed number (PORT_PLAN.md: this file's dispatch).
 import "../../src/dialects/postgres.js";
+// Same wiring for the `Hive <- Spark2 <- Spark <- Databricks` chain (P5, R30). Only the
+// LEAF import is needed: `import "./databricks.js"` transitively imports `spark.js`,
+// which imports `spark2.js`, which imports `hive.js`, and each runs its own
+// `registerDialect` call at module load — same chain-import shape
+// `src/parsers/databricks.js` already relies on for `DatabricksParser`.
+import "../../src/dialects/databricks.js";
 
 const atoms = new Map();
 for (const line of readFileSync("corpus/atoms.jsonl", "utf8").split("\n")) {
@@ -120,6 +136,10 @@ for (const [label, name, file, claim] of [
   ["SNOWFLAKE", "snowflake", "corpus/ast/snowflake.jsonl", "src/ only — real Snowflake class: own Tokenizer subclass + own settings"],
   ["DUCKDB   ", "duckdb", "corpus/ast/duckdb.jsonl", "src/ only — real DuckDB class: own Tokenizer subclass + own settings"],
   ["POSTGRES ", "postgres", "corpus/ast/postgres.jsonl", "src/ only — real Postgres class: own Tokenizer subclass + own settings"],
+  ["HIVE     ", "hive", "corpus/ast/hive.jsonl", "src/ only — real Hive class: own Tokenizer subclass + own settings"],
+  ["SPARK2   ", "spark2", "corpus/ast/spark2.jsonl", "src/ only — real Spark2 class: own Tokenizer subclass + own settings"],
+  ["SPARK    ", "spark", "corpus/ast/spark.jsonl", "src/ only — real Spark class: own Tokenizer subclass + own settings"],
+  ["DATABRICKS", "databricks", "corpus/ast/databricks.jsonl", "src/ only — real Databricks class: own Tokenizer subclass + own settings"],
 ]) {
   const { b, samples } = run(name, file);
   const total = b.exact + b.mismatch + b.stub + b.error;
@@ -139,7 +159,7 @@ for (const [label, name, file, claim] of [
 // instead of moving a percentage by a fraction.
 console.log();
 const SQL = "SELECT * FROM t WHERE x = 1";
-for (const name of [null, "snowflake", "duckdb", "postgres"]) {
+for (const name of [null, "snowflake", "duckdb", "postgres", "hive", "spark2", "spark", "databricks"]) {
   const got = Dialect.get_or_raise(name).parse(SQL)[0];
   const shape = toS(got).split("\n").join(" ").replace(/\s+/g, " ");
   const parserName = Dialect.get_or_raise(name).constructor.parser_class.name;
