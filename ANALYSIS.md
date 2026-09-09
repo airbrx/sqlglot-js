@@ -117,6 +117,28 @@ Polyglot replaces the **parsing** layer. The **policy** layer must be rebuilt on
 
 Comparison baseline: SqlParser.js is near-zero overhead (a few dozen regex passes, no init, no memory footprint, zero deps) and its failure mode is already production-proven fail-open.
 
+### 4.3 Addendum (2026-09-09): first-order measurements — all four engines, same box
+
+Since no WASM numbers exist upstream, we measured directly: Node v22.12.0, 2-core aarch64 (the Agor box — slower than gateway hardware, so treat ratios as the signal, not absolutes). Four representative gateway-shaped queries (short SELECT, CTE+join, INSERT…SELECT, windowed analytic), Databricks dialect, min-of-5 reps. Harness: `/tmp/parserbench` (throwaway; regex parser exercised via a read-only copy of `SqlParser.js` with the logger stubbed).
+
+| Engine | Cold init | Steady-state RSS¹ | short | cte_join | insert_sel | analytic |
+|---|---|---|---|---|---|---|
+| regex SqlParser (full `parse()`) | ~0 ms | ~63 MB | 43 µs | 77 µs | 49 µs | 75 µs |
+| polyglot 0.9.2 WASM `parse` | 190 ms | **~510 MB** | 34–103 µs² | 213 µs | 80 µs | 244 µs |
+| polyglot `analyzeQuery` | — | — | 54–73 µs | 649 µs | 54 µs | 828 µs |
+| sqlingo.js 0.6.1 (`parseOne`) | 111 ms | ~102 MB | 84 µs | 441 µs | 133 µs | 451 µs |
+| sqlglot-js (this repo, today³) | 168 ms | ~184 MB | 37 µs | 209 µs | 77 µs | 237 µs |
+
+¹ RSS after 80k–160k sustained calls with forced GC; Node baseline alone is ~43 MB. ² 103 µs first-measured, 34 µs later in the same process (JIT warm-up); true warm cost is the low end. ³ Parse-only via the spike harness (`tokenizerFor`/`parserClassFor` + `Parser.parse`); all four queries parsed exact in both Databricks and Snowflake with zero NotPorted hits. A "completed" sqlglot-js wouldn't be slower on these — completion adds coverage, not per-call cost — but it lacks an `analyzeQuery` equivalent, so add a (cheap, boundary-free) JS AST walk for table extraction.
+
+**Findings:**
+
+1. **Latency is a non-issue for all three candidates.** The regex parser's own full pipeline costs 43–77 µs — it is *not* orders of magnitude faster than real parsers. Worst case measured anywhere is polyglot `analyzeQuery` at 828 µs on the windowed-analytic query. Sub-millisecond parse overhead in front of warehouse queries that take seconds is noise. The §4.2 latency concern is resolved at first order (production-traffic shapes still deserve the shadow run).
+2. **Memory is polyglot's real cost, not latency.** WASM linear memory grows to peak workload and never shrinks: ~510 MB steady-state RSS under sustained `analyzeQuery` load, stable over 160k calls (no leak — verified flat from call 20k to 160k) but ~8x the regex baseline and ~3–5x the pure-JS engines (~100–185 MB). Per-container memory budgeting, not p99 latency, is the polyglot line-item.
+3. **Correctness spot-check:** polyglot's `analyzeQuery.baseTables` on the CTE query returned exactly `prod.sales.orders` + `prod.crm.customers` with catalog/schema/table parts split and CTE names excluded — the precise output shape SqlParser.js's `_extractTables` blind spots fail on.
+4. **sqlglot-js already matches polyglot's WASM parse speed** (37–240 µs vs 34–244 µs) — a transliterated-Python JS parser under V8 is not slow, and has no serialization boundary. sqlingo.js is ~2x slower on complex queries (consistent with its stated performance non-goal) but still sub-millisecond.
+5. Caveats: 4 queries is a smoke test, not a distribution; the 510 MB plateau depends on peak query complexity; polyglot's `analyzeQuery` does strictly more work than bare `parse` (transitive analysis + JSON boundary); no measurement of pathological/adversarial inputs (where WASM's missing `stacker` matters — guard configuration still required).
+
 ---
 
 ## 5. The advisor divergence risk — explicitly not fixed by this migration
