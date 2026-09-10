@@ -10,10 +10,17 @@
 
 ## Top-level functions
 
-**Target design — not implemented as a package yet.** The underlying parse machinery is real
-and differentially tested (`PORT_PLAN.md` P3, currently 9,888/15,478 corpus rows exact); what
-doesn't exist is the public wrapper below and dialect selection by name (`CONTRACTS.md` §8
-forbids resolving a dialect string to a class until P5's `Dialect` registry lands).
+**Target design — not implemented as a package yet.** The underlying parse AND generate
+machinery is real and differentially tested (10,879/15,478 corpus rows exact on the parse
+side; four dialects — Databricks chain, Snowflake, DuckDB, Postgres — also generate for
+real); what doesn't exist at this specific layer is the public wrapper functions below. Their
+real equivalent already exists and is real, just not under these names: P5's `Dialect`
+registry (`src/dialects/dialect.js`) landed for all four originally-prioritized dialects, so
+`Dialect.get_or_raise(name)` — not the string-taking functions below — is today's actual
+dialect-by-name entry point. `CONTRACTS.md` §8's restriction on resolving a dialect string
+before P5 existed no longer applies to those four names; it still applies to the other ~42
+harvested dialects, which have no real `Dialect` subclass yet and would need one invented
+(the thing that restriction was written to prevent).
 
 ### `parse(sql, options?)`
 
@@ -27,6 +34,12 @@ function parse(sql: string, options?: {
 Parses `sql` (which may contain multiple `;`-separated statements) and returns one expression
 tree per statement, in order. A statement that fails to parse under `errorLevel: "ignore"`
 comes back as `null` in its slot rather than throwing.
+
+> **The real equivalent works today** for four dialects: `Dialect.get_or_raise(read).parse(sql)`
+> (`src/dialects/dialect.js`) does exactly this, already returning an array. `read` must be
+> one of `"snowflake"`, `"duckdb"`, `"postgres"`, `"hive"`, `"spark2"`, `"spark"`,
+> `"databricks"`, or omitted for the default dialect — after importing the matching
+> `src/dialects/<name>.js` for its registration side effect.
 
 ### `parseOne(sql, options?)`
 
@@ -55,8 +68,14 @@ function transpile(sql: string, options?: {
 ```
 
 Parses under `read` and generates under `write`, one output string per input statement. This
-is the round-trip entry point — `parse` + `.sql({ dialect })` per statement — and needs
-`Generator` (P4) before it can do anything.
+is the round-trip entry point — `parse` + `.sql({ dialect })` per statement.
+
+> **The underlying round-trip works today** for the four dialects with a real `Generator`
+> (Databricks chain, Snowflake, DuckDB — partial, see PORT_PLAN.md R32 — and Postgres):
+> `Dialect.get_or_raise(write).generate(Dialect.get_or_raise(read).parse(sql)[0])` does what
+> `transpile` will do, for one statement. E.g. parsing `` SELECT `id` FROM t `` under
+> `"databricks"` and generating under `"postgres"` produces `SELECT "id" FROM t` — a real
+> cross-dialect identifier-quoting difference, not just round-tripping the input back out.
 
 ### `tokenize(sql, options?)`
 
@@ -69,17 +88,21 @@ function tokenize(sql: string, options?: {
 
 Returns the raw token stream without building a tree. **This one is closer to real** — the
 `Tokenizer`/`TokenizerCore` machinery underneath is fully ported and byte-exact-tested against
-CPython over 23,457 streams (P1); only the top-level convenience wrapper and dialect-by-name
-selection are missing.
+CPython over 23,457 streams (P1), and `Dialect.get_or_raise(read).tokenize(sql)` is a real,
+working dialect-by-name entry point for the four dialects with a real `Dialect` class; only
+the top-level convenience wrapper name is missing. Note the field is `token.token_type`
+(a number, the `TokenType` enum value) on the real `Token` class today, not the camelCase
+`tokenType` this target signature might suggest — `src/tokens.js`'s `Token` keeps upstream's
+own snake_case field name unchanged rather than converting it.
 
 ## The `exp` namespace
 
 **Real today**, imported directly from the module rather than a package
 (`src/expressions/index.js`) until a package exists. Every SQL construct is a class —
-`Select`, `Column`, `Where`, `Literal`, `Join`, and 1,044 more, generated from upstream's own
-class metadata (argument types, required args, traits) and checked against 5,240 assertions
-plus a full corpus AST round-trip (`astDump(astLoad(row.ast))` deep-equals the original for
-every one of 15,540 harvested rows).
+`Select`, `Column`, `Where`, `Literal`, `Join`, and more — 1,048 total, generated from
+upstream's own class metadata (argument types, required args, traits) and checked against
+5,240 assertions plus a full corpus AST round-trip (`astDump(astLoad(row.ast))` deep-equals
+the original for every one of 15,540 harvested rows).
 
 ### Constructing nodes
 
@@ -112,8 +135,14 @@ Every `Expr` (real today, `src/expressions/core.js`):
   internally for CTE/subquery deduplication in the (not yet ported) optimizer.
 - **`.eq(x)`, `.neq(x)`, `.and_(x)`, `.or_(x)`**, and the rest of the comparison/boolean
   builder methods for fluently composing conditions on an existing node.
-- **`.sql(options?)`** — **not real yet.** Throws `"No SQL generator registered (available in
-  P4)"`. Every other method above works without it.
+- **`.sql(options?)`** — **real today**, through the default dialect, as soon as any dialect
+  module has been imported for its registration side effect (`import
+  "./src/dialects/dialect.js"` alone is enough — it wires the base `Generator`). Still only
+  throws `"No SQL generator registered"` if called before that import happens at all. What's
+  still target design here is the `options.dialect` string shorthand shown in the signature
+  above — the equivalent real call today is `Dialect.get_or_raise(name).generate(expr)`
+  rather than `expr.sql({ dialect: name })`, since the option-string-to-`Dialect` lookup is
+  itself the top-level wrapper this whole page is written ahead of.
 
 ### Errors
 
@@ -138,11 +167,18 @@ upstream, same default (`raise`).
 - **`Schema` / `MappingSchema`** — column-type-aware parsing and the optimizer's `qualify`
   pass depend on these; no target doc yet, no code yet (`src/schema.js` doesn't exist).
 - **`diff`** — structural AST diffing; same status, no target doc yet.
-- **Dialect selection by name** — until P5, every example above that takes `read`/`write` as a
-  bare string like `"snowflake"` is describing the *intended* interface; today the equivalent
-  internal mechanism (`spike/p3/dialect_tokenizer.mjs`'s `parserClassFor`) selects a `Parser`
-  subclass by a literal, compile-time import — not a runtime string lookup — specifically
-  because `CONTRACTS.md` §8 forbids the latter before a real `Dialect.get_or_raise` exists.
+- **Dialect selection by name, at THIS package layer** — every example above that takes
+  `read`/`write` as a bare string like `"snowflake"` is still describing the *intended*
+  top-level interface, which doesn't exist as a package yet. The underlying mechanism it
+  will wrap, however, is real: `Dialect.get_or_raise(name)` (`src/dialects/dialect.js`) is a
+  genuine runtime string-to-class registry today, for four names (`snowflake`, `duckdb`,
+  `postgres`, `hive`/`spark2`/`spark`/`databricks`). `CONTRACTS.md` §8's restriction was
+  about resolving a dialect string *before* any real `Dialect.get_or_raise` existed — the
+  test harness's own `dialectClassFor` (`spike/p3/dialect_tokenizer.mjs`) now checks that
+  registry first and only falls back to its old compile-time-import shortcut for dialects
+  that still have no real `Dialect` subclass (~42 of the 46 harvested ones).
+- **Every dialect beyond the four above** — no real `Parser`, `Dialect`, or `Generator`;
+  `Dialect.get_or_raise("bigquery")` (for example) still throws `Unknown dialect`.
 
 See `PORT_PLAN.md` for the phase (P4, P5, ...) each of these lands in, and the real, current,
 measured status of everything on this page.
