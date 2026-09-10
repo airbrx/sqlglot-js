@@ -282,6 +282,18 @@ function build_locate_strposition(args) {
   });
 }
 
+/**
+ * py: sqlglot/parser.py:63 -- LIKE(x, y[, escape]) function-call syntax to exp.Like.
+ * Note the argument swap: `LIKE(x, y)` means `y LIKE x` (args[1] is the pattern, args[0] is
+ * the subject), matching upstream's own `this=seq_get(args, 1), expression=seq_get(args, 0)`.
+ * A same-named but differently-shaped curried factory also exists in dialects/dialect.js
+ * (`build_like(expr_type, not_like)`) for a different call site -- this is NOT that one.
+ */
+function build_like(args) {
+  const like = new exp.Like({ this: seqGet(args, 1), expression: seqGet(args, 0) });
+  return args.length > 2 ? new exp.Escape({ this: like, expression: seqGet(args, 2) }) : like;
+}
+
 /** py: sqlglot/parser.py:98 -- LOWER(HEX(..)) collapses to LowerHex */
 function build_lower(args) {
   const arg = seqGet(args, 0);
@@ -443,7 +455,7 @@ export class Parser {
     /* py:431 */ ["JSON_KEYS", (args, dialect) => new exp.JSONKeys({
       this: seqGet(args, 0), expression: dialect.to_json_path(seqGet(args, 1)),
     })],
-    // py:434  ["LIKE", /* TODO build_like */]  — `build_like` lives in dialects/dialect.py
+    /* py:434 */ ["LIKE", build_like],
     /* py:435 */ ["LOG", build_logarithm],
     /* py:436 */ ["LOG2", (args) => new exp.Log({ this: exp.Literal.number(2), expression: seqGet(args, 0) })],
     /* py:437 */ ["LOG10", (args) => new exp.Log({ this: exp.Literal.number(10), expression: seqGet(args, 0) })],
