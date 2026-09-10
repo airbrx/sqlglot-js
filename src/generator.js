@@ -430,13 +430,22 @@ export class Generator {
     //         unseeded ones — R14's shape. 133 explicit entries below + these 10 = the
     //         143 that `Generator.TRANSFORMS` resolves to upstream. Fill from
     //         `src/jsonpath.js`'s own table when it lands, never by hand.
-    // py:138  [exp.Adjacent, /* TODO lambda */],
+    // py:138 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4): reached by
+    // corpus rows like `NUMRANGE(...) -|- NUMRANGE(...)`, which previously threw
+    // "Unsupported expression type Adjacent" (no dispatch entry at all).
+    [exp.Adjacent, (self, e) => self.binary(e, "-|-")],
     // py:139  [exp.AllowedValuesProperty, /* TODO lambda */],
     // py:142  [exp.AnalyzeColumns, /* TODO lambda */],
     // py:143  [exp.AnalyzeWith, /* TODO lambda */],
-    // py:144  [exp.ArrayContainedBy, /* TODO lambda */],
-    // py:145  [exp.ArrayContainsAll, /* TODO lambda */],
-    // py:146  [exp.ArrayOverlaps, /* TODO lambda */],
+    // py:144-146 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4), whose
+    // `TRANSFORMS` inherits these three straight from the base map (`{**Generator.
+    // TRANSFORMS, ...}`, no Postgres-specific override) and is the first dialect
+    // generator in this port to reach any of them, per real-corpus mismatches
+    // (`ARRAY_CONTAINS_ALL(a, b)`/`ARRAY_OVERLAPS(...)` function-fallback rendering
+    // where CPython emits the bare infix operator).
+    [exp.ArrayContainedBy, (self, e) => self.binary(e, "<@")],
+    [exp.ArrayContainsAll, (self, e) => self.binary(e, "@>")],
+    [exp.ArrayOverlaps, (self, e) => self.binary(e, "&&")],
     // py:147  [exp.AssumeColumnConstraint, /* TODO lambda */],
     // py:148  [exp.AutoRefreshProperty, /* TODO lambda */],
     // py:149  [exp.BackupProperty, /* TODO lambda */],
@@ -471,7 +480,9 @@ export class Generator {
     // py:188  [exp.EphemeralColumnConstraint, /* TODO lambda */],
     // py:191  [exp.ExcludeColumnConstraint, /* TODO lambda */],
     // py:192  [exp.ExecuteAsProperty, /* TODO lambda */],
-    // py:193  [exp.Except, /* TODO lambda */],
+    // py:193 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4), same
+    // `set_operations` wiring as `exp.Intersect`/`exp.Union` below.
+    [exp.Except, (self, e) => self.set_operations(e)],
     // py:194  [exp.ExternalProperty, /* TODO lambda */],
     // py:195  [exp.Floor, /* TODO lambda */],
     // py:196  [exp.Get, /* TODO lambda */],
@@ -482,14 +493,30 @@ export class Generator {
     // py:201  [exp.InheritsProperty, /* TODO lambda */],
     // py:202  [exp.InlineLengthColumnConstraint, /* TODO lambda */],
     // py:203  [exp.InputModelProperty, /* TODO lambda */],
-    // py:204  [exp.Intersect, /* TODO lambda */],
+    // py:204 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4), same
+    // `set_operations` wiring as `exp.Except`/`exp.Union`.
+    [exp.Intersect, (self, e) => self.set_operations(e)],
     // py:205  [exp.IntervalSpan, /* TODO lambda */],
     // py:206  [exp.Int64, /* TODO lambda */],
-    // py:207  [exp.JSONBContainsAnyTopKeys, /* TODO lambda */],
-    // py:208  [exp.JSONBContainsAllTopKeys, /* TODO lambda */],
-    // py:209  [exp.JSONBContainsTopKey, /* TODO lambda */],
-    // py:210  [exp.JSONBDeleteAtPath, /* TODO lambda */],
-    // py:211  [exp.JSONBPathExists, /* TODO lambda */],
+    // py:207 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4), same
+    // reason as `JSONBContainsTopKey` below: a real corpus mismatch
+    // (`J_S_O_N_B_CONTAINS_ANY_TOP_KEYS(...)` fallback vs CPython's `?|`).
+    [exp.JSONBContainsAnyTopKeys, (self, e) => self.binary(e, "?|")],
+    // py:208 — ported alongside its two siblings immediately above/below (same `?`-family
+    // operator shape), not itself a measured corpus mismatch.
+    [exp.JSONBContainsAllTopKeys, (self, e) => self.binary(e, "?&")],
+    // py:209 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4), same
+    // reason as `ArrayContainedBy`/`ArrayContainsAll`/`ArrayOverlaps` above: inherited
+    // as-is into `PostgresGenerator.TRANSFORMS`, and its function-fallback rendering
+    // (`J_S_O_N_B_CONTAINS_TOP_KEY(...)`, the class-name-to-SNAKE_CASE fallback
+    // mis-splitting the `JSONB` run) was a real corpus mismatch against CPython's `?`.
+    [exp.JSONBContainsTopKey, (self, e) => self.binary(e, "?")],
+    // py:210 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4): a real
+    // corpus mismatch (`J_S_O_N_B_DELETE_AT_PATH(...)` fallback vs CPython's `#-`).
+    [exp.JSONBDeleteAtPath, (self, e) => self.binary(e, "#-")],
+    // py:211 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4): a real
+    // corpus mismatch (`J_S_O_N_B_PATH_EXISTS(...)` fallback vs CPython's `@?`).
+    [exp.JSONBPathExists, (self, e) => self.binary(e, "@?")],
     // py:212  [exp.JSONObject, /* TODO lambda */],
     // py:213  [exp.JSONObjectAgg, /* TODO lambda */],
     // py:214  [exp.LanguageProperty, /* TODO lambda */],
@@ -505,7 +532,12 @@ export class Generator {
     // py:226  [exp.OnCommitProperty, /* TODO lambda */],
     // py:229  [exp.OnProperty, /* TODO lambda */],
     // py:230  [exp.OnUpdateColumnConstraint, /* TODO lambda */],
-    // py:231  [exp.Operator, /* TODO lambda */],
+    // py:231 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4): reached by
+    // `pg_catalog`-style custom-operator corpus rows, which previously threw
+    // "Unsupported expression type Operator". `self.binary`'s own `node.args.operator`
+    // branch (already ported) is what actually renders `OPERATOR(...)` — the empty
+    // string here is upstream's own comment: "The operator is produced in `binary`".
+    [exp.Operator, (self, e) => self.binary(e, "")],
     // py:232  [exp.OutputModelProperty, /* TODO lambda */],
     // py:233  [exp.ExtendsLeft, /* TODO lambda */],
     // py:234  [exp.ExtendsRight, /* TODO lambda */],
@@ -546,7 +578,10 @@ export class Generator {
     // py:275  [exp.TransientProperty, /* TODO lambda */],
     // py:276  [exp.VirtualProperty, /* TODO lambda */],
     // py:277  [exp.TriggerExecute, /* TODO lambda */],
-    // py:278  [exp.Union, /* TODO lambda */],
+    // py:278 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4): a plain
+    // `WITH RECURSIVE ... UNION ...` corpus row reached `set_operations`/
+    // `set_operation` above, both real bodies now rather than `NotPorted` stubs.
+    [exp.Union, (self, e) => self.set_operations(e)],
     // py:279  [exp.UnloggedProperty, /* TODO lambda */],
     // py:280  [exp.UsingTemplateProperty, /* TODO lambda */],
     // py:281  [exp.UsingData, /* TODO lambda */],
@@ -554,7 +589,10 @@ export class Generator {
     // py:283  [exp.UtcDate, /* TODO lambda */],
     // py:284  [exp.UtcTime, /* TODO lambda */],
     // py:285  [exp.UtcTimestamp, /* TODO lambda */],
-    // py:288  [exp.Variadic, /* TODO lambda */],
+    // py:288 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4): reached by
+    // corpus rows like `MLEAST(VARIADIC ...)`, which previously threw "Unsupported
+    // expression type Variadic" (no dispatch entry at all, not even a wrong string).
+    [exp.Variadic, (self, e) => `VARIADIC ${self.sql(e, "this")}`],
     // py:289  [exp.VarMap, /* TODO lambda */],
     // py:290  [exp.ViewAttributeProperty, /* TODO lambda */],
     // py:291  [exp.VolatileProperty, /* TODO lambda */],
@@ -1921,7 +1959,15 @@ export class Generator {
     } else if (type_value === exp.DType.CHARACTER_SET) {
       return `CHAR CHARACTER SET ${this.sql(expression, "kind")}`;
     } else {
-      type_sql = is_dtype ? (cls.TYPE_MAPPING.get(type_value) ?? type_value.value) : type_value;
+      // py: `else: type_sql = type_value` — `type_value` here is an actual Expr (e.g.
+      // an `exp.Interval` DataType.this, for `INTERVAL DAY`), not a `DType` enum
+      // member. Upstream's later `f"{type_sql}{nested}{values}"` implicitly calls
+      // `Expression.__str__`, which is `self.sql()` (core.py:1237) — a bare JS
+      // template literal calls `.toString()` instead (this port's verbose debug repr),
+      // so this must be `this.sql(type_value)`, not the raw object. Found via a real
+      // Postgres `CAST('45 days' AS INTERVAL DAY)` corpus mismatch
+      // (PORT_PLAN.md, the Postgres generator step).
+      type_sql = is_dtype ? (cls.TYPE_MAPPING.get(type_value) ?? type_value.value) : this.sql(type_value);
     }
 
     if (interior) {
@@ -1965,13 +2011,81 @@ export class Generator {
   // py: sqlglot/generator.py:1829
   drop_sql(expression) { throw new NotPorted("drop_sql", "sqlglot/generator.py:1829"); }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:1854
-  set_operation(expression) { throw new NotPorted("set_operation", "sqlglot/generator.py:1854"); }
+  // py: sqlglot/generator.py:1854 — ported alongside `generators/postgres.js`
+  // (PORT_PLAN.md P4): `TRANSFORMS[exp.Union]` was a `TODO lambda` placeholder (no
+  // dispatch entry at all — `Unsupported expression type Union`, not merely wrong
+  // output), and a plain `WITH RECURSIVE ... UNION ...` corpus row reached it, so
+  // `set_operations` below needed this too.
+  set_operation(expression) {
+    const op_type = expression.constructor;
+    const op_name = op_type.key.toUpperCase();
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:1887
-  set_operations(expression) { throw new NotPorted("set_operations", "sqlglot/generator.py:1887"); }
+    let distinct = expression.args.distinct;
+    if (
+      distinct === false
+      && (op_type === exp.Except || op_type === exp.Intersect)
+      && !this.constructor.EXCEPT_INTERSECT_SUPPORT_ALL_CLAUSE
+    ) {
+      this.unsupported(`${op_name} ALL is not supported`);
+    }
+
+    const default_distinct = this.dialect.SET_OP_DISTINCT_BY_DEFAULT.get(op_type);
+
+    if (distinct === null || distinct === undefined) {
+      distinct = default_distinct;
+      if (distinct === null || distinct === undefined) {
+        this.unsupported(`${op_name} requires DISTINCT or ALL to be specified`);
+      }
+    }
+
+    const distinct_or_all = distinct === default_distinct ? "" : (distinct ? " DISTINCT" : " ALL");
+
+    let side_kind = [expression.side, expression.kind].filter(Boolean).join(" ");
+    side_kind = side_kind ? `${side_kind} ` : "";
+
+    const by_name = expression.args.by_name ? " BY NAME" : "";
+    let on = this.expressions(expression, "on", { flat: true });
+    on = on ? ` ON (${on})` : "";
+
+    return `${side_kind}${op_name}${distinct_or_all}${by_name}${on}`;
+  }
+
+  // py: sqlglot/generator.py:1887 — same caller as `set_operation` above.
+  set_operations(expression) {
+    if (!this.constructor.SET_OP_MODIFIERS) {
+      const limit = expression.args.limit;
+      const order = expression.args.order;
+
+      if (limit || order) {
+        let select = this._move_ctes_to_top_level(
+          exp.subquery(expression, "_l_0", { copy: false }).select("*", { copy: false }),
+        );
+
+        if (limit) select = select.limit(limit.pop(), { copy: false });
+        if (order) select = select.order_by(order.pop(), { copy: false });
+        return this.sql(select);
+      }
+    }
+
+    const sqls = [];
+    const stack = [expression];
+
+    while (stack.length) {
+      const node = stack.pop();
+
+      if (node instanceof exp.SetOperation) {
+        stack.push(node.expression);
+        stack.push(this.maybe_comment(this.set_operation(node), null, { comments: node.comments, separated: true }));
+        stack.push(node.this);
+      } else {
+        sqls.push(this.sql(node));
+      }
+    }
+
+    let this_ = sqls.join(this.sep());
+    this_ = this.query_modifiers(expression, this_);
+    return this.prepend_ctes(expression, this_);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1924
@@ -3186,9 +3300,45 @@ export class Generator {
   // py: sqlglot/generator.py:3472
   qualify_sql(expression) { throw new NotPorted("qualify_sql", "sqlglot/generator.py:3472"); }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:3476
-  unnest_sql(expression) { throw new NotPorted("unnest_sql", "sqlglot/generator.py:3476"); }
+  // py: sqlglot/generator.py:3476 — ported alongside `generators/postgres.js`'s own
+  // `unnest_sql` override (PORT_PLAN.md P4), which falls back to `super().unnest_sql()`
+  // for every UNNEST it does not special-case (multi-arg, non-array-of-json).
+  unnest_sql(expression) {
+    const args = this.expressions(expression, null, { flat: true });
+
+    let alias = expression.args.alias;
+    const offset = expression.args.offset;
+
+    if (this.constructor.UNNEST_WITH_ORDINALITY) {
+      if (alias && offset instanceof exp.Expr) {
+        alias.append("columns", offset);
+        expression.set("offset", null);
+      }
+    }
+
+    let alias_sql;
+    if (alias && this.dialect.UNNEST_COLUMN_ONLY) {
+      const columns = alias.columns;
+      alias_sql = columns.length ? this.sql(columns[0]) : "";
+    } else {
+      alias_sql = this.sql(alias);
+    }
+
+    alias_sql = alias_sql ? ` AS ${alias_sql}` : alias_sql;
+
+    let suffix;
+    if (this.constructor.UNNEST_WITH_ORDINALITY) {
+      suffix = offset ? ` WITH ORDINALITY${alias_sql}` : alias_sql;
+    } else if (offset instanceof exp.Expr) {
+      suffix = `${alias_sql} WITH OFFSET AS ${this.sql(offset)}`;
+    } else if (offset) {
+      suffix = `${alias_sql} WITH OFFSET`;
+    } else {
+      suffix = alias_sql;
+    }
+
+    return `UNNEST(${args})${suffix}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3506
@@ -3217,9 +3367,18 @@ export class Generator {
   // py: sqlglot/generator.py:3542
   windowspec_sql(expression) { throw new NotPorted("windowspec_sql", "sqlglot/generator.py:3542"); }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:3561
-  withingroup_sql(expression) { throw new NotPorted("withingroup_sql", "sqlglot/generator.py:3561"); }
+  // py: sqlglot/generator.py:3561 — ported alongside `generators/postgres.js`'s
+  // `TRANSFORMS[exp.PercentileCont]`/`[exp.PercentileDisc]` (via
+  // `transforms.add_within_group_for_percentiles`, PORT_PLAN.md P4), the first caller
+  // in this port to reach a plain (non-`super()`-guarded) `WithinGroup` node.
+  // `generators/snowflake.js`'s own `withingroup_sql` override already falls back to
+  // `super.withingroup_sql()` for everything but its MEDIAN special case, so this was
+  // reachable — just never reached — before this file existed.
+  withingroup_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const expression_sql = this.sql(expression, "expression").slice(1); // order has a leading space
+    return `${this_} WITHIN GROUP (${expression_sql})`;
+  }
 
   /**
    * py: sqlglot/generator.py:3566
@@ -4482,21 +4641,94 @@ export class Generator {
   // py: sqlglot/generator.py:4822
   kwarg_sql(expression) { throw new NotPorted("kwarg_sql", "sqlglot/generator.py:4822"); }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:4825
-  when_sql(expression) { throw new NotPorted("when_sql", "sqlglot/generator.py:4825"); }
+  // py: sqlglot/generator.py:4825 — ported alongside `generators/postgres.js`'s
+  // `TRANSFORMS[exp.Merge]` (`merge_without_target_sql`), the first TRANSFORMS entry
+  // in this port to reach `merge_sql` and, transitively, this and `whens_sql` below
+  // (PORT_PLAN.md "Generator chain surfaces base-Generator gaps" precedent).
+  when_sql(expression) {
+    const matched = expression.args.matched ? "MATCHED" : "NOT MATCHED";
+    const source = this.constructor.MATCHED_BY_SOURCE && expression.args.source ? " BY SOURCE" : "";
+    let condition = this.sql(expression, "condition");
+    condition = condition ? ` AND ${condition}` : "";
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:4855
-  whens_sql(expression) { throw new NotPorted("whens_sql", "sqlglot/generator.py:4855"); }
+    const then_expression = expression.args.then;
+    let then;
+    if (then_expression instanceof exp.Insert) {
+      let this_ = this.sql(then_expression, "this");
+      this_ = this_ ? `INSERT ${this_}` : "INSERT";
+      const then_sql = this.sql(then_expression, "expression");
+      then = then_sql ? `${this_} VALUES ${then_sql}` : this_;
+    } else if (then_expression instanceof exp.Update) {
+      if (then_expression.args.expressions instanceof exp.Star) {
+        then = `UPDATE ${this.sql(then_expression, "expressions")}`;
+      } else {
+        const expressions_sql = this.expressions(then_expression);
+        then = expressions_sql ? `UPDATE SET${this.sep()}${expressions_sql}` : "UPDATE";
+      }
+    } else {
+      then = this.sql(then_expression);
+    }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:4858
-  merge_sql(expression) { throw new NotPorted("merge_sql", "sqlglot/generator.py:4858"); }
+    if (then_expression instanceof exp.Insert || then_expression instanceof exp.Update) {
+      let where = this.sql(then_expression, "where");
+      if (where && !this.constructor.SUPPORTS_MERGE_WHERE) {
+        const kind = then_expression instanceof exp.Insert ? "INSERT" : "UPDATE";
+        this.unsupported(`WHERE clause in MERGE ${kind} is not supported`);
+        where = "";
+      }
+      then = `${then}${where}`;
+    }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:4890
-  tochar_sql(expression) { throw new NotPorted("tochar_sql", "sqlglot/generator.py:4890"); }
+    return `WHEN ${matched}${source}${condition} THEN ${then}`;
+  }
+
+  /** py: sqlglot/generator.py:4855 */
+  whens_sql(expression) {
+    return this.expressions(expression, null, { sep: " ", indent: false });
+  }
+
+  /** py: sqlglot/generator.py:4858 */
+  merge_sql(expression) {
+    const table = expression.this;
+    let table_alias = "";
+
+    const hints = table.args.hints;
+    if (hints && table.alias && hints[0] instanceof exp.WithTableHint) {
+      // T-SQL syntax is MERGE ... <target_table> [WITH (<merge_hint>)] [[AS] table_alias]
+      table_alias = ` AS ${this.sql(table.args.alias.pop())}`;
+    }
+
+    const this_ = this.sql(table);
+    const using = `USING ${this.sql(expression, "using")}`;
+    let whens = this.sql(expression, "whens");
+
+    let on = this.sql(expression, "on");
+    on = on ? `ON ${on}` : "";
+
+    if (!on) {
+      on = this.expressions(expression, "using_cond");
+      on = on ? `USING (${on})` : "";
+    }
+
+    const returning = this.sql(expression, "returning");
+    if (returning) {
+      whens = `${whens}${returning}`;
+    }
+
+    const sep = this.sep();
+
+    return this.prepend_ctes(
+      expression,
+      `MERGE INTO ${this_}${table_alias}${sep}${using}${sep}${on}${sep}${whens}`,
+    );
+  }
+
+  // py: sqlglot/generator.py:4889 `@unsupported_args("format") def tochar_sql(self, expression)`
+  // — the `this`-forwarding shim onto `_tochar_sql` below (module scope, after this
+  // class, same split as `generators/hive.js`'s `trunc_sql`/`_trunc_sql`, R27). Ported
+  // alongside `generators/postgres.js`'s `TRANSFORMS[exp.ToChar]` (PORT_PLAN.md P4),
+  // which calls this whenever the expression has no `format` arg.
+  tochar_sql(expression) { return _tochar_sql(this, expression); }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4894
@@ -4741,9 +4973,37 @@ export class Generator {
   // py: sqlglot/generator.py:5383
   _jsonpathsubscript_sql(expression) { throw new NotPorted("_jsonpathsubscript_sql", "sqlglot/generator.py:5383"); }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:5387
-  _simplify_unless_literal(expression) { throw new NotPorted("_simplify_unless_literal", "sqlglot/generator.py:5387"); }
+  // py: sqlglot/generator.py:5387 — the `isinstance(expression, exp.Literal)` guard is
+  // ported for real; the `sqlglot.optimizer.simplify.simplify` branch it guards stays a
+  // `NotPorted` throw for anything that could actually need folding (P6+, unported
+  // optimizer module — same status as `sequence_sql`'s identical call in
+  // `src/dialects/dialect.js`), EXCEPT one additional exact, provable no-op: an
+  // `exp.Interval` whose amount is already a bare `Literal`. `simplify()` only ever
+  // folds arithmetic *inside* a node; `Interval.arg_types` is `{this, unit}` and `unit`
+  // is never touched, so if `this` is already a `Literal` there is nothing left for
+  // `simplify()` to fold and it is a verified identity — checked directly against the
+  // pinned CPython (`simplify(parse_one("INTERVAL '1' day")) == parse_one("INTERVAL '1' day")`).
+  // A `Paren`/`Add`/etc. amount (e.g. `INTERVAL (1+2) day`) does NOT take this branch
+  // and still throws, because CPython's `simplify()` DOES fold that one (verified: it
+  // becomes `Literal(3)`) — approximating that case would be a silent-wrong risk, not
+  // an identity.
+  //
+  // Ported alongside `generators/postgres.js`'s `_date_add_sql`, which calls this
+  // UNCONDITIONALLY on every `DATE_ADD`/`DATE_SUB`/`TS_OR_DS_ADD` interval amount —
+  // before this fix the stub threw even for `DATE_ADD(x, INTERVAL '1' day)`, the most
+  // common shape there is.
+  _simplify_unless_literal(expression) {
+    if (
+      !(expression instanceof exp.Literal)
+      && !(expression instanceof exp.Interval && expression.this instanceof exp.Literal)
+    ) {
+      throw new NotPorted(
+        "_simplify_unless_literal (sqlglot.optimizer.simplify.simplify)",
+        "sqlglot/generator.py:5387",
+      );
+    }
+    return expression;
+  }
 
   /**
    * py: sqlglot/generator.py:5395
@@ -5231,6 +5491,11 @@ export class Generator {
   renameindex_sql(expression) { throw new NotPorted("renameindex_sql", "sqlglot/generator.py:6367"); }
 
 }
+
+/** py: sqlglot/generator.py:4889 `@unsupported_args("format") def tochar_sql(self, expression)` */
+const _tochar_sql = unsupported_args("format")(
+  (self, expression) => self.sql(exp.cast(expression.this, exp.DType.TEXT)),
+);
 
 /**
  * py: `Expression.sql()` -> `Dialect.get_or_raise(dialect).generate(self, **opts)`

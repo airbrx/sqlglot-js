@@ -48,14 +48,28 @@ test("the only gap versus CPython is the deliberately-unseeded TRANSFORMS", () =
   // it. This test states the gap as a NUMBER so it cannot be mistaken for done, and it
   // will fail the moment TRANSFORMS starts being filled — at which point whoever fills
   // it updates the expectation deliberately rather than discovering the drift later.
-  assert.equal(Generator.TRANSFORMS.size, 0, "TRANSFORMS is skeleton at the blocking step");
+  //
+  // +14, deliberately, from PORT_PLAN.md (the Postgres generator step,
+  // `src/generators/postgres.js`): `Adjacent`/`ArrayContainedBy`/`ArrayContainsAll`/
+  // `ArrayOverlaps`/`Except`/`Intersect`/`JSONBContainsAnyTopKeys`/
+  // `JSONBContainsAllTopKeys`/`JSONBContainsTopKey`/`JSONBDeleteAtPath`/
+  // `JSONBPathExists`/`Operator`/`Union`/`Variadic` were each still a `// TODO lambda`
+  // placeholder with NO dispatch entry at all — `PostgresGenerator.TRANSFORMS`
+  // inherits the base map as-is for every one of them (no Postgres-specific override),
+  // so real corpus rows against the real dialect either threw "Unsupported expression
+  // type X" or silently mismatched via `function_fallback_sql`'s
+  // class-name-to-SNAKE_CASE fallback, and each is a verified, faithful one-line port
+  // of its CPython lambda (`self.binary(e, "...")` or, for the three set-operation
+  // keys, `self.set_operations(e)` — see `Generator.prototype.set_operation`/
+  // `set_operations` below the dispatch table, also newly real).
+  assert.equal(Generator.TRANSFORMS.size, 14, "TRANSFORMS has 14 real entries after the Postgres generator step");
 
   const wantTransform = Object.entries(WANT).filter(([, h]) => h === "transform");
   assert.equal(wantTransform.length, 143);
 
   const got = _buildDispatch(Generator);
-  assert.equal(got.size, Object.keys(WANT).length - wantTransform.length);
-  assert.equal(got.size, 417);
+  assert.equal(got.size, Object.keys(WANT).length - wantTransform.length + Generator.TRANSFORMS.size);
+  assert.equal(got.size, 431);
 });
 
 test("TRANSFORMS beats a same-named *_sql method", () => {
@@ -323,7 +337,16 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // `anonymous_sql` for the unrecognized-function-name case; `ArrayContains`'s
   // `check_null` branch chains `if_sql` -> `case_sql` -> `arraysize_sql`), not
   // DuckDB-specific code itself.
-  assert.equal(bodied.length, 85, "exactly 85 *_sql methods have a real body");
+  // +6 from PORT_PLAN.md (the Postgres generator step, `src/generators/postgres.js`):
+  // `when_sql`/`whens_sql`/`merge_sql` (reached by `TRANSFORMS[exp.Merge]`'s
+  // `merge_without_target_sql`), `unnest_sql` (the base fallback this file's own
+  // `unnest_sql` override calls for every UNNEST it does not special-case),
+  // `tochar_sql` (reached by `TRANSFORMS[exp.ToChar]`), and `withingroup_sql` (reached
+  // by `TRANSFORMS[exp.PercentileCont]`/`[exp.PercentileDisc]` via
+  // `transforms.add_within_group_for_percentiles` — `generators/snowflake.js`'s own
+  // `withingroup_sql` override already fell back to `super.withingroup_sql()` for
+  // everything but its MEDIAN case, so this was reachable but never reached before).
+  assert.equal(bodied.length, 91, "exactly 91 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -333,7 +356,9 @@ test("the seeded skeleton's size is stated, not implied", () => {
       return e.name === "NotPorted";
     }
   });
-  assert.equal(432 - stubs.length, 84, "84 of those 85 also run without a resolved Dialect");
+  // +6 for the same six methods (none of them reads `this.dialect` or any other
+  // Dialect-hosted state, unlike `identifier_sql` below).
+  assert.equal(432 - stubs.length, 90, "90 of those 91 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],
