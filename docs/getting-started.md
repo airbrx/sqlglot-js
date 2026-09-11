@@ -1,19 +1,23 @@
 # Getting started
 
-> **Status:** this page describes the target public API — written ahead of the top-level
-> package wrapper. `import { parseOne } from "sqlglot-js"` does not work yet: there is no
-> package, no `index.js`, no dialect-by-name string lookup at this layer. But the machinery
-> underneath — a real `Dialect` class parsing AND generating SQL, for four dialects
-> (Databricks chain, Snowflake, DuckDB, Postgres) — **works today**, from a repo checkout,
-> via `Dialect.get_or_raise(name)` rather than the string-based wrapper shown below. See the
-> callouts throughout this page for exactly what that looks like. Check `PORT_PLAN.md` for
-> the current, measured status of every dialect and every phase.
+> **Status:** the top-level package wrapper described on this page is real —
+> `import { parseOne } from "sqlglot-js"` works, backed by the same `Dialect.get_or_raise(name)`
+> registry (`src/dialects/dialect.js`) this page used to describe as the only working entry
+> point. Not published to any registry yet: install it as a git dependency
+> (`github:airbrx/sqlglot-js#main`), or import `./index.js` directly from a repo checkout. Seven
+> dialect names resolve to a real `Dialect` class today — `snowflake`, `duckdb`, `postgres`,
+> and the Databricks chain (`hive`, `spark2`, `spark`, `databricks`) — everything else still
+> throws `Unknown dialect`. Check `PORT_PLAN.md` for the current, measured status of every
+> dialect and every phase.
 
 ## Install
 
 ```sh
-npm install sqlglot-js
+npm install github:airbrx/sqlglot-js#main
 ```
+
+Or, from a checkout of this repo, import `./index.js` directly (see the root
+[README](../README.md) for that form).
 
 ## Parse a query
 
@@ -27,15 +31,12 @@ const ast = parseOne("SELECT id, name FROM users WHERE active = TRUE", {
 console.log(ast.constructor.name); // "Select"
 ```
 
-> **This works today**, via the real entry point rather than the string-wrapper shown above:
-> `Dialect.get_or_raise("snowflake").parse(sql)` returns an array of statements (see `parse`
-> below); take the first element for the `parseOne` behavior. Try it from the repo root:
-> `node -e 'import("./src/dialects/dialect.js").then(async ({Dialect}) => { await
-> import("./src/dialects/snowflake.js"); console.log(Dialect.get_or_raise("snowflake")
-> .parse("SELECT id, name FROM users WHERE active = TRUE")[0].constructor.name); })'` prints
-> `Select`. Four dialects have a real class today: `snowflake`, `duckdb`, `postgres`, and the
-> Databricks chain (`hive`, `spark2`, `spark`, `databricks`) — import the matching
-> `src/dialects/<name>.js` file for its side effect before calling `get_or_raise`.
+**This works today.** Try it from the repo root: `node -e 'import("./index.js").then(({
+parseOne }) => { console.log(parseOne("SELECT id, name FROM users WHERE active = TRUE", {
+read: "snowflake" }).constructor.name); })'` prints `Select`. Seven dialect names have a real
+class today: `snowflake`, `duckdb`, `postgres`, and the Databricks chain (`hive`, `spark2`,
+`spark`, `databricks`) — `index.js` imports all seven eagerly for their registration side
+effect, so no separate import is needed to use any of them by name.
 
 `parseOne` mirrors upstream sqlglot's `parse_one`: it parses the SQL string under the given
 `read` dialect and returns a single expression tree — the root of the parsed statement, not a
@@ -71,15 +72,14 @@ all — the `exp` namespace exposes the builder functions upstream does (`select
 reserved word gets a trailing underscore (`from_`, `case_`, `delete_`), everything else keeps
 its name.
 
-> **This part works today, including `.sql()`.** `import * as exp from "sqlglot-js"` isn't
-> wired up as a package yet, but the underlying module (`src/expressions/index.js`) is real
-> and checked against 5,240 metadata assertions plus a full corpus AST round-trip — and as of
-> the base `Generator` and per-dialect `Generator`s landing, `.sql()` on a builder-constructed
-> tree really works too, through the default dialect as soon as any dialect module has been
-> imported for its side effect (see below), or through a specific dialect via `.sql({
-> dialect })`-style options once that option is wired at this package layer. Try it from the
-> repo root: `node -e 'import("./src/dialects/dialect.js").then(async () => { const exp =
-> await import("./src/expressions/index.js"); console.log(exp.select("id",
+> **This part works today, including `.sql()`.** `import * as exp from "sqlglot-js"` is real
+> (the underlying module, `src/expressions/index.js`, is checked against 5,240 metadata
+> assertions plus a full corpus AST round-trip). `.sql()` on a builder-constructed tree
+> generates through the default dialect as soon as any dialect module has been imported for
+> its side effect — `index.js` does that eagerly for seven dialects — or through a specific
+> dialect by passing its name as the first argument, `.sql("postgres")`, matching upstream's
+> own `expr.sql(dialect="postgres")` shape. Try it from the repo root: `node -e
+> 'import("./index.js").then(({ exp }) => { console.log(exp.select("id",
 > "name").from_("users").where(exp.column("active").eq(true)).sql()); })'` prints `SELECT id,
 > name FROM users WHERE active = TRUE`.
 
@@ -108,20 +108,17 @@ console.log(sql); // 'SELECT "id" FROM t'
 ```
 
 `transpile` parses under `read` and generates under `write` in one call — it's `parse` +
-`.sql({ dialect: write })` per statement, returned as an array of strings (one per parsed
+`.sql(write)` per statement, returned as an array of strings (one per parsed
 statement, same shape as `parse`'s return). Passing only `read` transpiles identity-style: SQL
 back out in the same dialect it went in, useful as a normalizer/formatter even without a
 target dialect.
 
-> **The underlying mechanism works today** for the four dialects with a real `Dialect` class
-> (Databricks chain, Snowflake, DuckDB, Postgres) — `transpile` itself is still the target
-> top-level wrapper, but calling the two `Dialect` methods directly does the same thing. Try
-> it: `node -e 'import("./src/dialects/dialect.js").then(async ({Dialect}) => { await
-> import("./src/dialects/databricks.js"); await import("./src/dialects/postgres.js"); const
-> [ast] = Dialect.get_or_raise("databricks").parse("SELECT \`id\` FROM t");
-> console.log(Dialect.get_or_raise("postgres").generate(ast)); })'` prints `SELECT "id" FROM
-> t` — Databricks' backtick-quoted identifier becomes Postgres' double-quoted one, a real
-> cross-dialect difference, not just round-tripping the same string back out.
+> **This works today** for the seven dialects with a real `Dialect` class (Databricks chain,
+> Snowflake, DuckDB, Postgres). Try it: `node -e 'import("./index.js").then(({ transpile }) =>
+> { console.log(transpile("SELECT \`id\` FROM t", { read: "databricks", write: "postgres"
+> })[0]); })'` prints `SELECT "id" FROM t` — Databricks' backtick-quoted identifier becomes
+> Postgres' double-quoted one, a real cross-dialect difference, not just round-tripping the
+> same string back out.
 
 ## Tokenize without parsing
 
@@ -136,13 +133,14 @@ for (const token of tokenize("SELECT 1", { read: "snowflake" })) {
 }
 ```
 
-> **The underlying `Dialect.get_or_raise(read).tokenize(sql)` works today** for the four real
-> dialects — same real-vs-target split as everywhere else on this page. Note the real
-> `Token` class (`src/tokens.js`) uses `token.token_type` (snake_case, a `TokenType` enum
-> number), not a camelCased `tokenType` — see [api.md](api.md) for why.
+> **This works today** for the seven real dialects. Note the real `Token` class
+> (`src/tokens.js`) uses `token.token_type` (snake_case, a `TokenType` enum number), not a
+> camelCased `tokenType` — see [api.md](api.md) for why.
 
 ## What's next
 
 - [`api.md`](api.md) — the full reference for every function and class shown above, plus the
   ones this page didn't cover (`Schema`, `diff`, error handling, pretty-printing).
+- [`consuming-from-cjs.md`](consuming-from-cjs.md) — using this package from a CommonJS
+  project via dynamic `import()`.
 - `PORT_PLAN.md` — the real, current, measured status of every piece described here.

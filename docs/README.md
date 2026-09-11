@@ -1,10 +1,12 @@
 # sqlglot-js docs
 
-These docs describe the public API this project is building toward, written ahead of the
-implementation — the same reason you write a test before the code it tests. A doc page is a
-target, not a status report: it shows the finished shape of a function or a workflow with
-real, working-looking examples, the same way `parseOne(sql).sql()` reads in upstream
-sqlglot's own docs.
+These docs describe the public API — `parse`, `parseOne`, `transpile`, `tokenize`, the `exp`
+namespace, `Dialect`, and the error classes are all real today, importable from the package
+root (`import { parseOne } from "sqlglot-js"`, or `./index.js` from a repo checkout). Dialect
+coverage is still partial (seven of 46 harvested dialects have a real `Dialect` class), and
+`Schema`/`diff` don't exist yet — each page says plainly which parts already work and which
+are still target design, written ahead of the implementation the way you'd write a test
+before the code it tests.
 
 **How to read these pages.** Each one opens with a status line telling you what's real today
 versus what's target design. Within a page, code that's marked "works today" runs against
@@ -17,6 +19,8 @@ number.
   build one programmatically, transpile between dialects.
 - **[api.md](api.md)** — full reference for the top-level functions (`parse`, `parseOne`,
   `transpile`, `tokenize`) and the `exp` expression-builder namespace.
+- **[consuming-from-cjs.md](consuming-from-cjs.md)** — how a CommonJS project (this package
+  is ESM-only) consumes it via dynamic `import()`.
 
 **Why write docs before the API exists.** A doc that has to describe a real function forces a
 decision about that function's shape *before* someone is deep in a 1,500-line parser file and
