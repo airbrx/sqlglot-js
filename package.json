@@ -1,0 +1,31 @@
+{
+  "name": "sqlglot-js",
+  "version": "0.0.1",
+  "description": "A zero-dependency JavaScript port of sqlglot (SQL parser, transpiler, and AST toolkit)",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./dialects/*": "./src/dialects/*.js",
+    "./dialects/*.js": "./src/dialects/*.js",
+    "./expressions/*": "./src/expressions/*.js",
+    "./expressions/*.js": "./src/expressions/*.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "src",
+    "README.md",
+    "LICENSE",
+    "LICENSE-sqlglot",
+    "NOTICE"
+  ],
+  "scripts": {
+    "test": "node --test $(find test -name '*.test.mjs' | sort)"
+  }
+}
