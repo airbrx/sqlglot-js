@@ -48,4 +48,6 @@ exp.select("id", "name").from_("users").where(exp.column("active").eq(true)).sql
 
 **Consuming from a CommonJS project:** see [docs/consuming-from-cjs.md](docs/consuming-from-cjs.md) — this package is ESM-only (`"type": "module"`), so a CJS consumer needs dynamic `import()`.
 
+**`contrib/`:** airbrx-specific application code built on top of the port, not part of it (no `py:` anchors, not tracked by PORT_PLAN.md's closure numbers). See [contrib/README.md](contrib/README.md) — currently `gatewaySqlMetadata.js`, a `Dialect.get_or_raise(...).parse(sql)`-based cache-key metadata extractor for `airbrx-gateway`'s regex-based `SqlParser.js`.
+
 **Docs:** [`docs/`](docs/) describes the public API — see [getting-started.md](docs/getting-started.md) and [api.md](docs/api.md) for what's real today and what's still target design (mainly: dialect coverage beyond the seven listed above, and `Schema`/`diff`).

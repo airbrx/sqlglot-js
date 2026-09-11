@@ -15,11 +15,14 @@
     "./dialects/*.js": "./src/dialects/*.js",
     "./expressions/*": "./src/expressions/*.js",
     "./expressions/*.js": "./src/expressions/*.js",
+    "./contrib/*": "./contrib/*.js",
+    "./contrib/*.js": "./contrib/*.js",
     "./package.json": "./package.json"
   },
   "files": [
     "index.js",
     "src",
+    "contrib",
     "README.md",
     "LICENSE",
     "LICENSE-sqlglot",
