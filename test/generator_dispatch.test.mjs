@@ -360,7 +360,11 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // `with_properties`) stays `NotPorted` and is deliberately not counted here; a
   // CREATE that carries `properties` throws `NotPorted` rather than silently dropping
   // them (see PORT_PLAN.md).
-  assert.equal(bodied.length, 101, "exactly 101 *_sql methods have a real body");
+  // +4 from the SET/USE step (gatewaySqlMetadata's session-state statement support):
+  // `setitem_sql`, `set_sql`, `command_sql`, `use_sql` — none reads `this.dialect` or
+  // any other Dialect-hosted state, so, like the DML/DDL keystone's ten, they run on a
+  // bare `new Generator()` too.
+  assert.equal(bodied.length, 105, "exactly 105 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -377,7 +381,8 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // type` fallback, etc.) or, for `values_sql`, return an empty-VALUES string without
   // throwing at all — but none of those outcomes is `NotPorted`, so, like the other
   // 90, they "run" on the stand-in in the sense this assertion checks.
-  assert.equal(432 - stubs.length, 100, "100 of those 101 also run without a resolved Dialect");
+  // +4 for the SET/USE step's four new bodies, for the same reason.
+  assert.equal(432 - stubs.length, 104, "104 of those 105 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],

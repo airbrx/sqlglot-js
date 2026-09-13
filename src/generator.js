@@ -3114,13 +3114,38 @@ export class Generator {
     return `${this_}${this.seg("OFFSET")} ${this.sql(value)}${expressions}`;
   }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:2958
+   * @param {exp.SetItem} expression
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:2958
-  setitem_sql(expression) { throw new NotPorted("setitem_sql", "sqlglot/generator.py:2958"); }
+  setitem_sql(expression) {
+    let kind = this.sql(expression, "kind");
+    if (!this.constructor.SET_ASSIGNMENT_REQUIRES_VARIABLE_KEYWORD && kind === "VARIABLE") {
+      kind = "";
+    } else {
+      kind = kind ? `${kind} ` : "";
+    }
+    const this_ = this.sql(expression, "this");
+    const expressions = this.expressions(expression);
+    let collate = this.sql(expression, "collate");
+    collate = collate ? ` COLLATE ${collate}` : "";
+    const global_ = expression.args["global_"] ? "GLOBAL " : "";
+    return `${global_}${kind}${this_}${expressions}${collate}`;
+  }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:2971
+   * @param {exp.Set} expression
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:2971
-  set_sql(expression) { throw new NotPorted("set_sql", "sqlglot/generator.py:2971"); }
+  set_sql(expression) {
+    const expressions = ` ${this.expressions(expression, null, { flat: true })}`;
+    const tag = expression.args["tag"] ? " TAG" : "";
+    return `${expression.args["unset"] ? "UNSET" : "SET"}${tag}${expressions}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2976
@@ -4316,9 +4341,15 @@ export class Generator {
   // py: sqlglot/generator.py:4164
   collate_sql(expression) { throw new NotPorted("collate_sql", "sqlglot/generator.py:4164"); }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:4169
+   * @param {exp.Command} expression
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:4169
-  command_sql(expression) { throw new NotPorted("command_sql", "sqlglot/generator.py:4169"); }
+  command_sql(expression) {
+    return `${this.sql(expression, "this")} ${pyStrip(expression.text("expression"))}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4172
@@ -4800,9 +4831,19 @@ export class Generator {
   // py: sqlglot/generator.py:4621
   log_sql(expression) { throw new NotPorted("log_sql", "sqlglot/generator.py:4621"); }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:4635
+   * @param {exp.Use} expression
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:4635
-  use_sql(expression) { throw new NotPorted("use_sql", "sqlglot/generator.py:4635"); }
+  use_sql(expression) {
+    let kind = this.sql(expression, "kind");
+    kind = kind ? ` ${kind}` : "";
+    let this_ = this.sql(expression, "this") || this.expressions(expression, null, { flat: true });
+    this_ = this_ ? ` ${this_}` : "";
+    return `USE${kind}${this_}`;
+  }
 
   /**
    * py: sqlglot/generator.py:4642
