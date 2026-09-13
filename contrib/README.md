@@ -143,27 +143,44 @@ reasoning.
 `standardizedSql` is produced by real AST regeneration
 (`dialect.generate(root)`) rather than the gateway's keyword-regex — see the
 top-level project memory's framing of this as cache-key normalization's "step
-1." Measured directly: regeneration currently **throws for most non-`SELECT`
-constructs** on Databricks/Snowflake — `SET`, `USE`, `ALTER`, `CREATE`,
-`TRUNCATE`, `DROP`, `Command` fallbacks (`OPTIMIZE`/`VACUUM`/etc.), and even
-a `$1`-style `Parameter` node, all hit `NotPorted` generator methods
-(`set_sql`, `use_sql`, `alter_sql`, `create_sql`, `command_sql`,
-`parameter_sql`, ...). Postgres fares much better (its generator is more
-complete — see the root README's per-dialect table). Plain `SELECT`-shaped
-read queries — the majority of what a caching proxy needs to normalize —
-regenerate correctly today on all three target dialects. This is a real,
+1." As of PORT_PLAN.md R35, `src/generator.js`'s base `delete_sql`/
+`drop_sql`/`update_sql`/`insert_sql`/`alter_sql`/`create_sql` are real, so
+plain `INSERT`/`UPDATE`/`DELETE`/`CREATE TABLE`/`DROP TABLE`/`ALTER TABLE`
+statements now regenerate `standardizedSql` correctly on all three target
+dialects (Databricks/Snowflake/Postgres), not just `SELECT`/`MERGE`.
+
+Two narrower gaps remain, both deliberate and both still hit `NotPorted`
+(not silently wrong output):
+
+- **`CREATE ... WITH (...)` / `TBLPROPERTIES (...)` / any other CREATE that
+  carries a `properties` clause.** `create_sql` only handles CREATE
+  statements with no `properties` arg — the full properties subsystem
+  (`locate_properties`/`properties`/`properties_sql`/`root_properties`/
+  `with_properties`) is still `NotPorted`. A plain
+  `CREATE TABLE t (a INT)` or `CREATE VIEW v AS SELECT ...` regenerates
+  fine; `CREATE TABLE t (a INT) USING DELTA LOCATION '...'` or
+  `CREATE TABLE t (a INT) WITH (format = 'parquet')` still throws.
+- **Other statement types not covered by this round**: `SET`, `USE`,
+  `TRUNCATE`, `Command` fallbacks (`OPTIMIZE`/`VACUUM`/etc.), and
+  constructs that hit an unrelated still-`NotPorted` method reached from
+  inside an otherwise-working statement (e.g. `CURRENT_DATE` hits
+  `currentdate_sql`, unrelated to the DML/DDL methods above).
+
+Postgres fares somewhat better still on the remaining gaps (its generator is
+more complete — see the root README's per-dialect table). This is a real,
 current limitation, not hidden behind a passing test: every affected case is
 covered in `test/gatewaySqlMetadata.test.mjs`, asserting `extractionError` is
 set and `standardizedSql` falls back to the raw original SQL (not the fully
 canonical form a working generator would produce — see "Error tolerance"
-above for why `null` would be a worse fallback). Closing it needs more of
-`src/generators/{databricks,snowflake}.js` (Snowflake's generator is
+above for why `null` would be a worse fallback). Closing the rest needs more
+of `src/generators/{databricks,snowflake}.js` (Snowflake's generator is
 otherwise fairly complete — see the root README — the specific gaps here are
 scattered `*_sql` methods for statement types the corpus under-samples, not a
 generator-file-level gap) and `src/generator.js`'s own remaining base
-methods, tracked as ordinary port work, not by this module. `insert_sql`/
-`update_sql`/`delete_sql`/`drop_sql`/`alter_sql`/`create_sql` specifically
-are in flight as of this writing (branch `generator-dml-ddl-keystone`).
+methods (including the CREATE properties subsystem), tracked as ordinary
+port work, not by this module. `insert_sql`/`update_sql`/`delete_sql`/
+`drop_sql`/`alter_sql`/`create_sql` specifically landed as of PORT_PLAN.md
+R35 (branch `generator-dml-ddl-keystone`).
 
 ### Explicitly out of scope
 

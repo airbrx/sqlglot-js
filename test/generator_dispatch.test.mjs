@@ -346,7 +346,21 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // `transforms.add_within_group_for_percentiles` — `generators/snowflake.js`'s own
   // `withingroup_sql` override already fell back to `super.withingroup_sql()` for
   // everything but its MEDIAN case, so this was reachable but never reached before).
-  assert.equal(bodied.length, 91, "exactly 91 *_sql methods have a real body");
+  // +10 from the DML/DDL keystone step (gatewaySqlMetadata's INSERT/UPDATE/DELETE/
+  // CREATE/DROP/ALTER support): `delete_sql`, `drop_sql`, `_update_from_joins_sql`,
+  // `update_sql`, `insert_sql`, `alter_sql`, `add_column_sql` (an `alter_sql`
+  // dependency), `createable_sql`, `create_sql`, `values_sql` (an `insert_sql`
+  // dependency for `INSERT ... VALUES`, ported once the gateway smoke test showed a
+  // real `INSERT INTO t VALUES (...)` still failed downstream of a correct
+  // `insert_sql` — R18's demand not to silently skip a stub a ported method calls
+  // into). `create_sql` only handles CREATE statements with no `properties` arg —
+  // every properties-location branch is gated on `properties_locs.get(...)`, which is
+  // empty for a property-less create, so the full properties subsystem
+  // (`locate_properties`/`properties`/`properties_sql`/`root_properties`/
+  // `with_properties`) stays `NotPorted` and is deliberately not counted here; a
+  // CREATE that carries `properties` throws `NotPorted` rather than silently dropping
+  // them (see PORT_PLAN.md).
+  assert.equal(bodied.length, 101, "exactly 101 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -358,7 +372,12 @@ test("the seeded skeleton's size is stated, not implied", () => {
   });
   // +6 for the same six methods (none of them reads `this.dialect` or any other
   // Dialect-hosted state, unlike `identifier_sql` below).
-  assert.equal(432 - stubs.length, 90, "90 of those 91 also run without a resolved Dialect");
+  // +10 for the DML/DDL keystone step's ten new bodies: they all throw on a bare
+  // `new exp.Expr({})` (missing args, `add_column_sql`'s `Unsupported expression
+  // type` fallback, etc.) or, for `values_sql`, return an empty-VALUES string without
+  // throwing at all — but none of those outcomes is `NotPorted`, so, like the other
+  // 90, they "run" on the stand-in in the sense this assertion checks.
+  assert.equal(432 - stubs.length, 100, "100 of those 101 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],

@@ -1713,13 +1713,168 @@ export class Generator {
   // py: sqlglot/generator.py:1298
   inoutcolumnconstraint_sql(expression) { throw new NotPorted("inoutcolumnconstraint_sql", "sqlglot/generator.py:1298"); }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:1316
+   * @param {exp.Create} expression
+   * @param {Map} locations
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:1316
-  createable_sql(expression, locations) { throw new NotPorted("createable_sql", "sqlglot/generator.py:1316"); }
+  createable_sql(expression, locations) { return this.sql(expression, "this"); }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:1319
+   *
+   * NOTE: this port only handles CREATE statements with no `properties` arg (the
+   * common case for cache-key/normalization purposes, e.g. plain `CREATE TABLE t (a
+   * INT)` / `CREATE VIEW v AS ...`). Every branch below that renders a properties
+   * location (`POST_SCHEMA`/`POST_WITH`/`POST_ALIAS`/`POST_INDEX`/`POST_CREATE`/
+   * `POST_EXPRESSION`) is gated on `properties_locs.get(...)`, which is empty when
+   * `expression.args.properties` is unset — so for a property-less create the
+   * still-`NotPorted` `locate_properties`/`properties`/`properties_sql`/
+   * `root_properties`/`with_properties` are never reached. A CREATE that DOES carry
+   * properties throws `NotPorted` from `locate_properties` rather than silently
+   * dropping them — see PORT_PLAN.md for the named follow-on.
+   * @param {exp.Create} expression
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:1319
-  create_sql(expression) { throw new NotPorted("create_sql", "sqlglot/generator.py:1319"); }
+  create_sql(expression) {
+    let kind = this.sql(expression, "kind");
+    kind = this.dialect.INVERSE_CREATABLE_KIND_MAPPING.get(kind) || kind;
+
+    const properties = expression.args.properties;
+
+    if (
+      kind === "TRIGGER" &&
+      properties &&
+      properties.expressions &&
+      properties.expressions[0] instanceof exp.TriggerProperties &&
+      properties.expressions[0].args.constraint
+    ) {
+      kind = `CONSTRAINT ${kind}`;
+    }
+
+    const properties_locs = properties ? this.locate_properties(properties) : new Map();
+
+    const this_ = this.createable_sql(expression, properties_locs);
+
+    let properties_sql = "";
+    if (
+      properties_locs.get(exp.Properties.Location.POST_SCHEMA) ||
+      properties_locs.get(exp.Properties.Location.POST_WITH)
+    ) {
+      const props_ast = new exp.Properties({
+        expressions: [
+          ...(properties_locs.get(exp.Properties.Location.POST_SCHEMA) || []),
+          ...(properties_locs.get(exp.Properties.Location.POST_WITH) || []),
+        ],
+      });
+      props_ast.parent = expression;
+      properties_sql = this.sql(props_ast);
+
+      if (properties_locs.get(exp.Properties.Location.POST_SCHEMA)) {
+        properties_sql = this.sep() + properties_sql;
+      } else if (!this.pretty) {
+        properties_sql = ` ${properties_sql}`;
+      }
+    }
+
+    const begin = expression.args.begin ? " BEGIN" : "";
+
+    let expression_sql = this.sql(expression, "expression");
+    if (expression_sql) {
+      expression_sql = `${begin}${this.sep()}${expression_sql}`;
+
+      if (
+        !(expression.expression instanceof exp.MacroOverloads) &&
+        (this.constructor.CREATE_FUNCTION_RETURN_AS || !(expression.expression instanceof exp.Return))
+      ) {
+        let postalias_props_sql = "";
+        if (properties_locs.get(exp.Properties.Location.POST_ALIAS)) {
+          postalias_props_sql = this.properties(
+            new exp.Properties({ expressions: properties_locs.get(exp.Properties.Location.POST_ALIAS) }),
+            "",
+            ", ",
+            "",
+            false,
+          );
+        }
+        postalias_props_sql = postalias_props_sql ? ` ${postalias_props_sql}` : "";
+        expression_sql = ` AS${postalias_props_sql}${expression_sql}`;
+      }
+    }
+
+    let postindex_props_sql = "";
+    if (properties_locs.get(exp.Properties.Location.POST_INDEX)) {
+      postindex_props_sql = this.properties(
+        new exp.Properties({ expressions: properties_locs.get(exp.Properties.Location.POST_INDEX) }),
+        " ",
+        ", ",
+        "",
+        false,
+      );
+    }
+
+    let indexes = this.expressions(expression, "indexes", { indent: false, sep: " " });
+    indexes = indexes ? ` ${indexes}` : "";
+    const index_sql = indexes + postindex_props_sql;
+
+    const replace = expression.args.replace ? " OR REPLACE" : "";
+    const refresh = expression.args.refresh ? " OR REFRESH" : "";
+    const unique = expression.args.unique ? " UNIQUE" : "";
+
+    const clustered = expression.args.clustered;
+    let clustered_sql;
+    if (clustered === null || clustered === undefined) {
+      clustered_sql = "";
+    } else if (clustered) {
+      clustered_sql = " CLUSTERED COLUMNSTORE";
+    } else {
+      clustered_sql = " NONCLUSTERED COLUMNSTORE";
+    }
+
+    let postcreate_props_sql = "";
+    if (properties_locs.get(exp.Properties.Location.POST_CREATE)) {
+      postcreate_props_sql = this.properties(
+        new exp.Properties({ expressions: properties_locs.get(exp.Properties.Location.POST_CREATE) }),
+        " ",
+        " ",
+        "",
+        false,
+      );
+    }
+
+    const modifiers = [clustered_sql, replace, refresh, unique, postcreate_props_sql].join("");
+
+    let postexpression_props_sql = "";
+    if (properties_locs.get(exp.Properties.Location.POST_EXPRESSION)) {
+      postexpression_props_sql = this.properties(
+        new exp.Properties({ expressions: properties_locs.get(exp.Properties.Location.POST_EXPRESSION) }),
+        " ",
+        " ",
+        "",
+        false,
+      );
+    }
+
+    const concurrently = expression.args.concurrently ? " CONCURRENTLY" : "";
+    const exists_sql = expression.args.exists ? " IF NOT EXISTS" : "";
+    const no_schema_binding = expression.args.no_schema_binding ? " WITH NO SCHEMA BINDING" : "";
+
+    let clone = this.sql(expression, "clone");
+    clone = clone ? ` ${clone}` : "";
+
+    let properties_expression;
+    if (this.constructor.EXPRESSION_PRECEDES_PROPERTIES_CREATABLES.has(kind)) {
+      properties_expression = `${expression_sql}${properties_sql}`;
+    } else {
+      properties_expression = `${properties_sql}${expression_sql}`;
+    }
+
+    expression_sql = `CREATE${modifiers} ${kind}${concurrently}${exists_sql} ${this_}${properties_expression}${postexpression_props_sql}${index_sql}${no_schema_binding}${clone}`;
+    return this.prepend_ctes(expression, expression_sql);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1440
@@ -2003,13 +2158,65 @@ export class Generator {
   // py: sqlglot/generator.py:1803
   directory_sql(expression) { throw new NotPorted("directory_sql", "sqlglot/generator.py:1803"); }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:1809
+   * @param {exp.Delete} expression
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:1809
-  delete_sql(expression) { throw new NotPorted("delete_sql", "sqlglot/generator.py:1809"); }
+  delete_sql(expression) {
+    const hint = this.sql(expression, "hint");
+    let this_ = this.sql(expression, "this");
+    this_ = this_ ? ` FROM ${this_}` : "";
+    let using = this.expressions(expression, "using");
+    using = using ? ` USING ${using}` : "";
+    let cluster = this.sql(expression, "cluster");
+    cluster = cluster ? ` ${cluster}` : "";
+    const where = this.sql(expression, "where");
+    const returning = this.sql(expression, "returning");
+    const order = this.sql(expression, "order");
+    const limit = this.sql(expression, "limit");
+    let tables = this.expressions(expression, "tables");
+    tables = tables ? ` ${tables}` : "";
+    let expression_sql;
+    if (this.constructor.RETURNING_END) {
+      expression_sql = `${this_}${using}${cluster}${where}${returning}${order}${limit}`;
+    } else {
+      expression_sql = `${returning}${this_}${using}${cluster}${where}${order}${limit}`;
+    }
+    return this.prepend_ctes(expression, `DELETE${hint}${tables}${expression_sql}`);
+  }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:1829
+   * @param {exp.Drop} expression
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:1829
-  drop_sql(expression) { throw new NotPorted("drop_sql", "sqlglot/generator.py:1829"); }
+  drop_sql(expression) {
+    const tables = this.expressions(expression, "tables", { flat: true });
+    let expressions = this.expressions(expression, null, { flat: true });
+    expressions = expressions ? ` (${expressions})` : "";
+    let kind = expression.args.kind;
+    kind = this.dialect.INVERSE_CREATABLE_KIND_MAPPING.get(kind) || kind;
+    const iceberg =
+      expression.args.iceberg && this.constructor.SUPPORTS_DROP_ALTER_ICEBERG_PROPERTY
+        ? " ICEBERG"
+        : "";
+    const exists_sql = expression.args.exists ? " IF EXISTS " : " ";
+    const concurrently_sql = expression.args.concurrently ? " CONCURRENTLY" : "";
+    let on_cluster = this.sql(expression, "cluster");
+    on_cluster = on_cluster ? ` ${on_cluster}` : "";
+    const temporary = expression.args.temporary ? " TEMPORARY" : "";
+    const materialized = expression.args.materialized ? " MATERIALIZED" : "";
+    const cascade = expression.args.cascade ? " CASCADE" : "";
+    const restrict = expression.args.restrict ? " RESTRICT" : "";
+    const constraints = expression.args.constraints ? " CONSTRAINTS" : "";
+    const purge = expression.args.purge ? " PURGE" : "";
+    const sync = expression.args.sync ? " SYNC" : "";
+    const force = expression.args.force ? " FORCE" : "";
+    return `DROP${temporary}${materialized}${iceberg} ${kind}${concurrently_sql}${exists_sql}${tables}${on_cluster}${expressions}${cascade}${restrict}${constraints}${purge}${sync}${force}`;
+  }
 
   // py: sqlglot/generator.py:1854 — ported alongside `generators/postgres.js`
   // (PORT_PLAN.md P4): `TRANSFORMS[exp.Union]` was a `TODO lambda` placeholder (no
@@ -2301,9 +2508,61 @@ export class Generator {
   // py: sqlglot/generator.py:2267
   withsystemversioningproperty_sql(expression) { throw new NotPorted("withsystemversioningproperty_sql", "sqlglot/generator.py:2267"); }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:2288
+   * @param {exp.Insert} expression
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:2288
-  insert_sql(expression) { throw new NotPorted("insert_sql", "sqlglot/generator.py:2288"); }
+  insert_sql(expression) {
+    const hint = this.sql(expression, "hint");
+    const overwrite = expression.args.overwrite;
+
+    let this_;
+    if (expression.this instanceof exp.Directory) {
+      this_ = overwrite ? " OVERWRITE" : " INTO";
+    } else {
+      this_ = overwrite ? this.constructor.INSERT_OVERWRITE : " INTO";
+    }
+
+    let stored = this.sql(expression, "stored");
+    stored = stored ? ` ${stored}` : "";
+    let alternative = expression.args.alternative;
+    alternative = alternative ? ` OR ${alternative}` : "";
+    const ignore = expression.args.ignore ? " IGNORE" : "";
+    const is_function = expression.args.is_function;
+    if (is_function) this_ = `${this_} FUNCTION`;
+    this_ = `${this_} ${this.sql(expression, "this")}`;
+
+    const exists = expression.args.exists ? " IF EXISTS" : "";
+    let where = this.sql(expression, "where");
+    where = where ? `${this.sep()}REPLACE WHERE ${where}` : "";
+    let using = this.expressions(expression, "using", { flat: true });
+    using = using ? `${this.sep()}REPLACE USING (${using})` : "";
+    let expression_sql = `${this.sep()}${this.sql(expression, "expression")}`;
+    let on_conflict = this.sql(expression, "conflict");
+    on_conflict = on_conflict ? ` ${on_conflict}` : "";
+    const by_name = expression.args.by_name ? " BY NAME" : "";
+    const default_values = expression.args.default ? "DEFAULT VALUES" : "";
+    const returning = this.sql(expression, "returning");
+
+    if (this.constructor.RETURNING_END) {
+      expression_sql = `${expression_sql}${on_conflict}${default_values}${returning}`;
+    } else {
+      expression_sql = `${returning}${expression_sql}${on_conflict}`;
+    }
+
+    let partition_by = this.sql(expression, "partition");
+    partition_by = partition_by ? ` ${partition_by}` : "";
+    let settings = this.sql(expression, "settings");
+    settings = settings ? ` ${settings}` : "";
+
+    let source = this.sql(expression, "source");
+    source = source ? `TABLE ${source}` : "";
+
+    const sql = `INSERT${hint}${alternative}${ignore}${this_}${stored}${by_name}${exists}${partition_by}${settings}${where}${using}${expression_sql}${source}`;
+    return this.prepend_ctes(expression, sql);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2335
@@ -2476,17 +2735,119 @@ export class Generator {
     return `(${this.expressions(expression, null, { dynamic: true, new_line: true, skip_first: true, skip_last: true })})`;
   }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:2659
+   *
+   * Returns [join_sql, from_sql] for UPDATE statements.
+   * - join_sql: placed after UPDATE table, before SET
+   * - from_sql: placed after SET clause (standard position)
+   * Dialects like MySQL need to convert FROM to JOIN syntax.
+   * @param {exp.Update} expression
+   * @returns {[string, string]}
+   */
   // py: sqlglot/generator.py:2659
-  _update_from_joins_sql(expression) { throw new NotPorted("_update_from_joins_sql", "sqlglot/generator.py:2659"); }
+  _update_from_joins_sql(expression) {
+    const from_expr = expression.args.from_;
+    if (this.constructor.UPDATE_STATEMENT_SUPPORTS_FROM || !from_expr) {
+      return ["", this.sql(expression, "from_")];
+    }
 
-  /** @returns {*} */
+    const target_table = expression.this;
+    if (target_table instanceof exp.Table) {
+      const target_name = exp.toIdentifier(target_table.aliasOrName);
+      for (const eq of expression.expressions) {
+        const col = eq.this;
+        if (col instanceof exp.Column && !col.table) {
+          col.set("table", target_name);
+        }
+      }
+    }
+
+    const table = from_expr.this;
+    const nested_joins = table.args.joins || [];
+    if (nested_joins.length) table.set("joins", null);
+
+    let join_sql = this.sql(new exp.Join({ this: table, on: exp.true() }));
+    for (const nested of nested_joins) {
+      if (!nested.args.on && !nested.args.using) nested.set("on", exp.true());
+      join_sql += this.sql(nested);
+    }
+
+    return [join_sql, ""];
+  }
+
+  /**
+   * py: sqlglot/generator.py:2691
+   * @param {exp.Update} expression
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:2691
-  update_sql(expression) { throw new NotPorted("update_sql", "sqlglot/generator.py:2691"); }
+  update_sql(expression) {
+    const hint = this.sql(expression, "hint");
+    const this_ = this.sql(expression, "this");
+    const [join_sql, from_sql] = this._update_from_joins_sql(expression);
+    const set_sql = this.expressions(expression, null, { flat: true });
+    const where_sql = this.sql(expression, "where");
+    const returning = this.sql(expression, "returning");
+    const order = this.sql(expression, "order");
+    const limit = this.sql(expression, "limit");
+    let expression_sql;
+    if (this.constructor.RETURNING_END) {
+      expression_sql = `${from_sql}${where_sql}${returning}`;
+    } else {
+      expression_sql = `${returning}${from_sql}${where_sql}`;
+    }
+    let options = this.expressions(expression, "options");
+    options = options ? ` OPTION(${options})` : "";
+    const sql = `UPDATE${hint} ${this_}${join_sql} SET ${set_sql}${expression_sql}${order}${limit}${options}`;
+    return this.prepend_ctes(expression, sql);
+  }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:2709
+   * @param {exp.Values} expression
+   * @param {boolean} [values_as_table]
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:2709
-  values_sql(expression, values_as_table) { throw new NotPorted("values_sql", "sqlglot/generator.py:2709"); }
+  values_sql(expression, values_as_table = true) {
+    values_as_table = values_as_table && this.constructor.VALUES_AS_TABLE;
+
+    if (values_as_table || !expression.findAncestor(exp.From, exp.Join)) {
+      const args = this.expressions(expression);
+      const alias = this.sql(expression, "alias");
+      let values = `VALUES${this.seg("")}${args}`;
+      values =
+        this.constructor.WRAP_DERIVED_VALUES &&
+        (alias || expression.parent instanceof exp.From || expression.parent instanceof exp.Table)
+          ? `(${values})`
+          : values;
+      values = this.query_modifiers(expression, values);
+      return alias ? `${values} AS ${alias}` : values;
+    }
+
+    const alias_node = expression.args.alias;
+    const column_names = alias_node && alias_node.columns;
+
+    const selects = [];
+    for (let i = 0; i < expression.expressions.length; i++) {
+      const tup = expression.expressions[i];
+      let row = tup.expressions;
+      if (i === 0 && column_names) {
+        row = row.map((value, j) => exp.alias_(value, column_names[j]));
+      }
+      selects.push(new exp.Select({ expressions: row }));
+    }
+
+    if (this.pretty) {
+      const query = selects.reduce((x, y) => x.union(y, { distinct: false, copy: false }));
+      return this.subquery_sql(query.subquery(alias_node && alias_node.this, { copy: false }));
+    }
+
+    const alias = alias_node ? ` AS ${this.sql(alias_node, "this")}` : "";
+    const unions = selects.map((select) => this.sql(select)).join(" UNION ALL ");
+    return `(${unions})${alias}`;
+  }
 
   /**
    * py: sqlglot/generator.py:2753
@@ -4094,17 +4455,76 @@ export class Generator {
   // py: sqlglot/generator.py:4326
   alterset_sql(expression) { throw new NotPorted("alterset_sql", "sqlglot/generator.py:4326"); }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:4333
+   * @param {exp.Alter} expression
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:4333
-  alter_sql(expression) { throw new NotPorted("alter_sql", "sqlglot/generator.py:4333"); }
+  alter_sql(expression) {
+    const actions = expression.args.actions;
+
+    let actions_sql;
+    if (!this.dialect.ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN && actions[0] instanceof exp.ColumnDef) {
+      actions_sql = `ADD ${this.expressions(expression, "actions", { flat: true })}`;
+    } else {
+      const actions_list = [];
+      for (const action of actions) {
+        let action_sql;
+        if (action instanceof exp.ColumnDef || action instanceof exp.Schema) {
+          action_sql = this.add_column_sql(action);
+        } else {
+          action_sql = this.sql(action);
+          if (action instanceof exp.Query) action_sql = `AS ${action_sql}`;
+        }
+        actions_list.push(action_sql);
+      }
+      actions_sql = pyLstrip(this.format_args(...actions_list), "\n");
+    }
+
+    const iceberg =
+      expression.args.iceberg && this.constructor.SUPPORTS_DROP_ALTER_ICEBERG_PROPERTY
+        ? "ICEBERG "
+        : "";
+    const exists = expression.args.exists ? " IF EXISTS" : "";
+    let on_cluster = this.sql(expression, "cluster");
+    on_cluster = on_cluster ? ` ${on_cluster}` : "";
+    const only = expression.args.only ? " ONLY" : "";
+    let options = this.expressions(expression, "options");
+    options = options ? `, ${options}` : "";
+    const kind = this.sql(expression, "kind");
+    const not_valid = expression.args.not_valid ? " NOT VALID" : "";
+    const check = expression.args.check ? " WITH CHECK" : "";
+    const cascade =
+      expression.args.cascade && this.dialect.ALTER_TABLE_SUPPORTS_CASCADE ? " CASCADE" : "";
+    let this_ = this.sql(expression, "this");
+    this_ = this_ ? ` ${this_}` : "";
+
+    return `ALTER ${iceberg}${kind}${exists}${only}${this_}${on_cluster}${check}${this.sep()}${actions_sql}${not_valid}${options}${cascade}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4379
   altersession_sql(expression) { throw new NotPorted("altersession_sql", "sqlglot/generator.py:4379"); }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:4384
+   * @param {exp.Expr} expression
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:4384
-  add_column_sql(expression) { throw new NotPorted("add_column_sql", "sqlglot/generator.py:4384"); }
+  add_column_sql(expression) {
+    const sql = this.sql(expression);
+    let column_text;
+    if (expression instanceof exp.Schema) {
+      column_text = " COLUMNS";
+    } else if (expression instanceof exp.ColumnDef && this.constructor.ALTER_TABLE_INCLUDE_COLUMN_KEYWORD) {
+      column_text = " COLUMN";
+    } else {
+      column_text = "";
+    }
+    return `ADD${column_text} ${sql}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4395
