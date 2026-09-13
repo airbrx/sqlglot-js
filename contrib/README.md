@@ -50,9 +50,15 @@ in `extractionError` (`string | null`), never swallowed silently.
 `standardizedSql` gets its own inner try/catch, separate from the rest of the
 extraction: generator coverage gaps (see below) can make regeneration fail
 for a query whose tables/session-state/parameters/etc. are all extracted
-correctly. A generator gap degrades only `standardizedSql` to `null`
-(`extractionError` explains why); everything else in the result stays
-populated and trustworthy.
+correctly. On failure — whether a generator gap or a total parse failure
+(`safeDefaultResult`) — `standardizedSql` falls back to the raw original SQL
+text rather than `null` (`extractionError` explains why). This field's whole
+purpose is to feed a cache key: `null` would be a *worse* cache-key input
+than the query's own text, since every currently-unsupported statement would
+collide on the same `null` key instead of each keying on its own SQL. The
+fallback only ever gets more precise as generator coverage grows; it never
+regresses an existing cache key's stability once a given shape starts
+regenerating for real.
 
 ### Verified deviations from the gateway's regex behavior
 
@@ -147,13 +153,17 @@ complete — see the root README's per-dialect table). Plain `SELECT`-shaped
 read queries — the majority of what a caching proxy needs to normalize —
 regenerate correctly today on all three target dialects. This is a real,
 current limitation, not hidden behind a passing test: every affected case is
-covered in `test/gatewaySqlMetadata.test.mjs` with `standardizedSql: null`
-and `extractionError` asserted explicitly. Closing it needs more of
+covered in `test/gatewaySqlMetadata.test.mjs`, asserting `extractionError` is
+set and `standardizedSql` falls back to the raw original SQL (not the fully
+canonical form a working generator would produce — see "Error tolerance"
+above for why `null` would be a worse fallback). Closing it needs more of
 `src/generators/{databricks,snowflake}.js` (Snowflake's generator is
 otherwise fairly complete — see the root README — the specific gaps here are
 scattered `*_sql` methods for statement types the corpus under-samples, not a
 generator-file-level gap) and `src/generator.js`'s own remaining base
-methods, tracked as ordinary port work, not by this module.
+methods, tracked as ordinary port work, not by this module. `insert_sql`/
+`update_sql`/`delete_sql`/`drop_sql`/`alter_sql`/`create_sql` specifically
+are in flight as of this writing (branch `generator-dml-ddl-keystone`).
 
 ### Explicitly out of scope
 

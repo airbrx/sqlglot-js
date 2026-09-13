@@ -117,7 +117,18 @@ export function extractSqlMetadata(sql, options = {}) {
     // dialect — see contrib/README.md), which is unrelated to whether the
     // rest of this metadata is trustworthy. A generator gap degrades only
     // this one field instead of the whole result.
-    let standardizedSql = null;
+    //
+    // On failure, fall back to the raw original SQL rather than `null`.
+    // This field's whole purpose is to feed a cache key: `null` is a worse
+    // cache-key input than the query's own text, because two differently-
+    // cased/whitespaced copies of the SAME unfixable-today query would both
+    // key on `null` and collide with EVERY OTHER currently-unsupported
+    // statement, not just each other. Falling back to `sql` at least keeps
+    // cache-key uniqueness for the (common) case where the same client
+    // resends byte-identical SQL, and it can only ever get MORE precise as
+    // generator coverage grows — never regress an existing cache key's
+    // stability once the fallback path stops firing for a given shape.
+    let standardizedSql = sql;
     let extractionError = null;
     try {
       standardizedSql = Dialect.get_or_raise(dialect).generate(root, { pretty: false });
@@ -203,7 +214,12 @@ function emptyResult(originalSql, cacheOverride) {
 // a real parser throws where the gateway's regex parser degrades silently.
 // On any parse/extraction failure we err toward NOT caching — non-read-only,
 // DDL-shaped, data-changing — rather than risk caching something we could
-// not understand.
+// not understand. `standardizedSql` still falls back to the raw `sql` (not
+// `null`) for the same cache-key-stability reason as the generator-gap path
+// above: a statement sqlglot-js can't parse AT ALL today (e.g. Databricks'
+// `RESTORE TABLE ... TO VERSION AS OF ...`) still has a stable string a
+// cache key can be built from, and `sql` is guaranteed non-empty here since
+// this path only runs after `emptyResult`'s own empty/absent-SQL check.
 function safeDefaultResult(sql, cacheOverride, extractionError) {
   return {
     statementType: "UNKNOWN",
@@ -220,7 +236,7 @@ function safeDefaultResult(sql, cacheOverride, extractionError) {
     tableCount: 0,
     catalogs: [],
     schemas: [],
-    standardizedSql: null,
+    standardizedSql: sql,
     originalSql: sql,
     hasParameters: false,
     parameterNames: [],

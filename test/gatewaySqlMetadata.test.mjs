@@ -643,18 +643,36 @@ test("standardizedSql: whitespace-collapsing, keyword-normalizing regeneration f
   assert.equal(r.extractionError, null);
 });
 
-test("standardizedSql: null with extractionError set when the generator can't render this construct yet, other fields stay populated", () => {
+test("standardizedSql: falls back to the raw original SQL (not null) with extractionError set when the generator can't render this construct yet, other fields stay populated", () => {
   // Deviation / known gap: `currentdate_sql` is not yet ported in this
   // port's base Generator (verified — a real NotPorted throw, not silently
   // wrong output), so any query containing CURRENT_DATE cannot regenerate
   // standardizedSql on Databricks or Snowflake today. This degrades ONLY
   // standardizedSql; tables/nonDeterministic/etc. are computed before
   // generation is attempted and are unaffected. See contrib/README.md.
+  //
+  // standardizedSql falls back to the raw sql text rather than null: this
+  // field feeds a cache key, and null is a WORSE cache-key input than the
+  // query's own text — every currently-unfixable query would otherwise
+  // collide on the same null key instead of keying on their own SQL.
   const r = extractSqlMetadata("SELECT * FROM orders WHERE order_date = CURRENT_DATE", { dialect: "databricks" });
-  assert.equal(r.standardizedSql, null);
+  assert.equal(r.standardizedSql, "SELECT * FROM orders WHERE order_date = CURRENT_DATE");
   assert.match(r.extractionError, /standardizedSql generation failed/);
   assert.deepEqual(r.tables, [{ catalog: null, schema: null, table: "orders", fullyQualifiedName: "orders", operation: "SELECT" }]);
   assert.equal(r.nonDeterministic.hasNonDeterministicFunctions, true);
+});
+
+test("standardizedSql: falls back to the raw original SQL (not null) when the statement fails to parse at all", () => {
+  // RESTORE TABLE ... TO VERSION AS OF ... throws a hard ParseError today
+  // (verified, PORT_PLAN.md/contrib/README.md) — this is the total-failure
+  // path (safeDefaultResult), one level more severe than a generator gap,
+  // but the same cache-key-stability argument applies: fall back to the
+  // statement's own text rather than null.
+  const r = extractSqlMetadata("RESTORE TABLE my_table TO VERSION AS OF 5", { dialect: "databricks" });
+  assert.equal(r.standardizedSql, "RESTORE TABLE my_table TO VERSION AS OF 5");
+  assert.ok(r.extractionError);
+  assert.equal(r.isDataChange, true);
+  assert.equal(r.isDDL, true);
 });
 
 // ---------------------------------------------------------------------------
