@@ -147,7 +147,15 @@ top-level project memory's framing of this as cache-key normalization's "step
 `drop_sql`/`update_sql`/`insert_sql`/`alter_sql`/`create_sql` are real, so
 plain `INSERT`/`UPDATE`/`DELETE`/`CREATE TABLE`/`DROP TABLE`/`ALTER TABLE`
 statements now regenerate `standardizedSql` correctly on all three target
-dialects (Databricks/Snowflake/Postgres), not just `SELECT`/`MERGE`.
+dialects (Databricks/Snowflake/Postgres), not just `SELECT`/`MERGE`. As of
+PORT_PLAN.md R36, base `setitem_sql`/`set_sql`/`command_sql`/`use_sql` are
+also real, so `SET key = value` / bare `SET` (list-all) and every `USE
+CATALOG`/`USE SCHEMA`/`USE DATABASE`/`USE <db>[.<schema>]` form —
+session-state statements airbrx-gateway's own tracking cares about most —
+now regenerate too, on all three target dialects. These are exactly the
+statement types `test/gatewaySqlMetadata.test.mjs`'s "Session state" tests
+already exercise for `sessionStateChange` extraction; `standardizedSql` was
+the still-missing half.
 
 Two narrower gaps remain, both deliberate and both still hit `NotPorted`
 (not silently wrong output):
@@ -160,11 +168,17 @@ Two narrower gaps remain, both deliberate and both still hit `NotPorted`
   `CREATE TABLE t (a INT)` or `CREATE VIEW v AS SELECT ...` regenerates
   fine; `CREATE TABLE t (a INT) USING DELTA LOCATION '...'` or
   `CREATE TABLE t (a INT) WITH (format = 'parquet')` still throws.
-- **Other statement types not covered by this round**: `SET`, `USE`,
-  `TRUNCATE`, `Command` fallbacks (`OPTIMIZE`/`VACUUM`/etc.), and
-  constructs that hit an unrelated still-`NotPorted` method reached from
-  inside an otherwise-working statement (e.g. `CURRENT_DATE` hits
-  `currentdate_sql`, unrelated to the DML/DDL methods above).
+- **Other statement types not covered by this round**: `ALTER SESSION SET
+  ...` (Snowflake) is `exp.Alter` with an `exp.AlterSession` action, whose
+  `altersession_sql` is a separate, still-`NotPorted` method — unrelated to
+  the base `set_sql`/`use_sql` landed here, so it does not benefit from this
+  round despite looking session-state-shaped. `TRUNCATE`, `Command`
+  fallbacks (`OPTIMIZE`/`VACUUM`/etc., and the `SET key value`/bare `SET
+  key` forms that never produce a real `Set` node — see "SET fallback
+  forms" above), and constructs that hit an unrelated still-`NotPorted`
+  method reached from inside an otherwise-working statement (e.g.
+  `CURRENT_DATE` hits `currentdate_sql`, unrelated to the DML/DDL/SET/USE
+  methods above) also remain.
 
 Postgres fares somewhat better still on the remaining gaps (its generator is
 more complete — see the root README's per-dialect table). This is a real,
@@ -177,10 +191,12 @@ of `src/generators/{databricks,snowflake}.js` (Snowflake's generator is
 otherwise fairly complete — see the root README — the specific gaps here are
 scattered `*_sql` methods for statement types the corpus under-samples, not a
 generator-file-level gap) and `src/generator.js`'s own remaining base
-methods (including the CREATE properties subsystem), tracked as ordinary
-port work, not by this module. `insert_sql`/`update_sql`/`delete_sql`/
-`drop_sql`/`alter_sql`/`create_sql` specifically landed as of PORT_PLAN.md
-R35 (branch `generator-dml-ddl-keystone`).
+methods (including the CREATE properties subsystem and `altersession_sql`),
+tracked as ordinary port work, not by this module. `insert_sql`/
+`update_sql`/`delete_sql`/`drop_sql`/`alter_sql`/`create_sql` specifically
+landed as of PORT_PLAN.md R35 (branch `generator-dml-ddl-keystone`);
+`setitem_sql`/`set_sql`/`command_sql`/`use_sql` as of R36 (branch
+`generator-set-use-command`).
 
 ### Explicitly out of scope
 
