@@ -361,7 +361,15 @@ function extractCommandTables(root, statementType) {
   const rawExpression = root.args.expression;
   const raw = typeof rawExpression === "string" ? rawExpression : identText(rawExpression);
   if (!raw) return [];
-  const m = String(raw).trim().match(/^([A-Za-z_][A-Za-z0-9_.`"]*)/);
+  // The first character must also allow a backtick/double-quote: a
+  // backtick- or double-quoted target (`OPTIMIZE \`main\`.\`sales\`.\`orders\``)
+  // starts with the quote character itself, not a letter/underscore, so a
+  // first-char class of only `[A-Za-z_]` never matched a quoted identifier
+  // at all -- the regex returned no match and this function silently
+  // returned `[]`, breaking table-scoped cache invalidation for any quoted
+  // OPTIMIZE/VACUUM target. Verified: `OPTIMIZE \`main\`.\`sales\`.\`orders\``
+  // returned `tables: []` before this fix.
+  const m = String(raw).trim().match(/^([A-Za-z_`"][A-Za-z0-9_.`"]*)/);
   if (!m) return [];
   const parts = m[1].replace(/[`"]/g, "").split(".");
   let catalog = null;
