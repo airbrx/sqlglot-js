@@ -547,6 +547,25 @@ test("delta ops: VACUUM falls back to Command in this port; table extracted from
   assert.deepEqual(r.tables, [{ catalog: null, schema: null, table: "t1", fullyQualifiedName: "t1", operation: "VACUUM" }]);
 });
 
+test("delta ops: OPTIMIZE with a backtick-quoted target still extracts the table (regression: the raw-text regex's first-char class used to exclude the opening backtick, silently returning tables: [])", () => {
+  const r = extractSqlMetadata("OPTIMIZE `main`.`sales`.`orders`", { dialect: "databricks" });
+  assert.deepEqual(r.tables, [
+    { catalog: "main", schema: "sales", table: "orders", fullyQualifiedName: "main.sales.orders", operation: "OPTIMIZE" },
+  ]);
+});
+
+test("delta ops: OPTIMIZE with a double-quoted target still extracts the table", () => {
+  const r = extractSqlMetadata('OPTIMIZE "main"."sales"."orders"', { dialect: "databricks" });
+  assert.deepEqual(r.tables, [
+    { catalog: "main", schema: "sales", table: "orders", fullyQualifiedName: "main.sales.orders", operation: "OPTIMIZE" },
+  ]);
+});
+
+test("delta ops: VACUUM with a backtick-quoted target still extracts the table", () => {
+  const r = extractSqlMetadata("VACUUM `t1`", { dialect: "databricks" });
+  assert.deepEqual(r.tables, [{ catalog: null, schema: null, table: "t1", fullyQualifiedName: "t1", operation: "VACUUM" }]);
+});
+
 test("delta ops: a plain MERGE is classified isDeltaOperation, matching the gateway's own list", () => {
   const r = extractSqlMetadata("MERGE INTO t1 USING t2 ON t1.id = t2.id WHEN MATCHED THEN UPDATE SET x = 1", {
     dialect: "databricks",
