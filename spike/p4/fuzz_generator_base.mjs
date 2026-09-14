@@ -62,7 +62,12 @@ const DEFERRED_TABLES = new Set([]);
 // `src/generators/postgres.js`): 14 upstream `// TODO lambda` placeholders that a real
 // Postgres corpus row reached — either "Unsupported expression type X" (no dispatch
 // entry at all) or a `function_fallback_sql` mismatch — are real now, each a verified
-// one-line port of its CPython lambda. The other 129 of the 143 upstream keys stay
+// one-line port of its CPython lambda. +64 from the properties-dispatch step
+// (PORT_PLAN.md): every class that is both in `PROPERTIES_LOCATION` and was still a
+// `// TODO lambda` placeholder — the exact intersection that `locate_properties`/
+// `properties_sql`/`property_sql`'s generic fallback can now actually reach, verified
+// against real property-bearing CREATE rows across snowflake/postgres/databricks/base
+// (`spike/p5/fuzz_dialect_generate.mjs`). The other 65 of the 143 upstream keys stay
 // unseeded (still nobody's caller). Same reason this table gets its own entry here as
 // `AFTER_HAVING_MODIFIER_TRANSFORMS` below: neither `DEFERRED_TABLES` (demands exactly
 // 0) nor a full-map comparison (demands the full 143-key set) fits "correctly SOME".
@@ -71,10 +76,26 @@ const PARTIALLY_SEEDED_MAP_KEYS = new Map([
   [
     "TRANSFORMS",
     [
-      "exp.Adjacent", "exp.ArrayContainedBy", "exp.ArrayContainsAll", "exp.ArrayOverlaps",
-      "exp.Except", "exp.Intersect", "exp.JSONBContainsAnyTopKeys", "exp.JSONBContainsAllTopKeys",
-      "exp.JSONBContainsTopKey", "exp.JSONBDeleteAtPath", "exp.JSONBPathExists", "exp.Operator",
-      "exp.Union", "exp.Variadic",
+      "exp.Adjacent", "exp.AllowedValuesProperty", "exp.ArrayContainedBy", "exp.ArrayContainsAll",
+      "exp.ArrayOverlaps", "exp.AutoRefreshProperty", "exp.BackupProperty", "exp.CalledOnNullInputProperty",
+      "exp.CharacterSetProperty", "exp.CopyGrantsProperty", "exp.CredentialsProperty", "exp.ApiProperty",
+      "exp.ApplicationProperty", "exp.CatalogProperty", "exp.ComputeProperty", "exp.DatabaseProperty",
+      "exp.DynamicProperty", "exp.EmptyProperty", "exp.EnviromentProperty", "exp.HandlerProperty",
+      "exp.ParameterStyleProperty", "exp.ExecuteAsProperty", "exp.Except", "exp.ExternalProperty",
+      "exp.GlobalProperty", "exp.HeapProperty", "exp.HybridProperty", "exp.IcebergProperty",
+      "exp.InheritsProperty", "exp.InputModelProperty", "exp.Intersect", "exp.JSONBContainsAnyTopKeys",
+      "exp.JSONBContainsAllTopKeys", "exp.JSONBContainsTopKey", "exp.JSONBDeleteAtPath", "exp.JSONBPathExists",
+      "exp.LanguageProperty", "exp.LocationProperty", "exp.LogProperty", "exp.MaskingProperty",
+      "exp.MaterializedProperty", "exp.NetworkProperty", "exp.NoPrimaryIndexProperty", "exp.OnCommitProperty",
+      "exp.OnProperty", "exp.Operator", "exp.OutputModelProperty", "exp.RemoteWithConnectionModelProperty",
+      "exp.ReturnsProperty", "exp.RowAccessProperty", "exp.SampleProperty", "exp.SecureProperty",
+      "exp.SecurityIntegrationProperty", "exp.SetConfigProperty", "exp.SetProperty", "exp.SettingsProperty",
+      "exp.SharingProperty", "exp.SqlReadWriteProperty", "exp.SqlSecurityProperty", "exp.StabilityProperty",
+      "exp.StreamingTableProperty", "exp.StrictProperty", "exp.Tags", "exp.TemporaryProperty",
+      "exp.ToTableProperty", "exp.TransformModelProperty", "exp.TransientProperty", "exp.VirtualProperty",
+      "exp.Union", "exp.UnloggedProperty", "exp.UsingTemplateProperty", "exp.Variadic",
+      "exp.ViewAttributeProperty", "exp.VolatileProperty", "exp.WithJournalTableProperty", "exp.WithProcedureOptions",
+      "exp.WithSchemaBindingProperty", "exp.ForceProperty",
     ],
   ],
 ]);

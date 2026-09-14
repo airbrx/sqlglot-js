@@ -770,10 +770,18 @@ export class SnowflakeGenerator extends Generator {
 
   /** py:892 */
   generatedasidentitycolumnconstraint_sql(expression) {
+    // Implicit-str site missed by corpus/deny/implicit_str.json's automated census
+    // (sqlglot/generators/snowflake.py:895-898): `f" START {start}"`/
+    // `f" INCREMENT {increment}"` implicitly call `Expression.__str__` -> `self.sql()`
+    // on the raw arg Expr; a bare JS template-literal interpolation instead reaches
+    // the default (non-`self.sql()`) toString, so this must go through `this.sql(...)`.
+    // Verified against the real oracle (snowflake AUTOINCREMENT START/INCREMENT rows,
+    // spike/p5/fuzz_dialect_generate.mjs) — was rendering literal `Literal(this=10,
+    // is_string=False)` into the output SQL before this fix.
     const start_val = expression.args.start;
-    const start = start_val ? ` START ${start_val}` : "";
+    const start = start_val ? ` START ${this.sql(expression, "start")}` : "";
     const increment_val = expression.args.increment;
-    const increment = increment_val ? ` INCREMENT ${increment_val}` : "";
+    const increment = increment_val ? ` INCREMENT ${this.sql(expression, "increment")}` : "";
 
     const order = expression.args.order;
     let order_clause = "";
