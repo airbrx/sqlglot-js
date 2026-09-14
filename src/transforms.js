@@ -25,11 +25,11 @@
 // `Generator` subclass (`src/generators/` — absent) and/or `dialect:<name>` resolution
 // for generation, neither of which this branch touches. See PORT_PLAN.md R26.
 //
-// This file deliberately ports only 4 of upstream's ~30 top-level functions (see
-// tools/lint_deny.mjs's `isPortedSite`, which otherwise treats a hand-written file with
-// no seeded `// py:` skeleton as fully ported and flags every deny-list site in the
-// REST of transforms.py as an unacknowledged one):
-// @ported-ranges sqlglot/transforms.py 19-71 144-200 201-264 555-567 570-579 615-631 131-141 297-399 732-738 741-1084
+// This file deliberately ports only a subset of upstream's ~30 top-level functions
+// (see tools/lint_deny.mjs's `isPortedSite`, which otherwise treats a hand-written file
+// with no seeded `// py:` skeleton as fully ported and flags every deny-list site in
+// the REST of transforms.py as an unacknowledged one):
+// @ported-ranges sqlglot/transforms.py 19-71 72-128 144-200 201-264 278-294 555-567 570-579 615-631 131-141 297-399 732-738 741-1084
 //
 // The added ranges (Databricks-chain generator step, PORT_PLAN.md) cover
 // `unnest_generate_series`, `unnest_to_explode`, `unqualify_columns`,
@@ -38,15 +38,22 @@
 // `move_partitioned_by_to_schema_columns`, `any_to_exists`, and
 // `inherit_struct_field_names` — every `transforms.py` function
 // `generators/{hive,spark2,spark,databricks}.py` import, in upstream source order.
-// `struct_kv_to_alias` (839), `eliminate_join_marks` (853), `eliminate_window_clause`
-// (1001), and everything else inside 741-1084 that none of the four dialects reference
-// stay unported — the range still ends at 1084 because `lint_deny.mjs`'s ranges gate
-// deny-listed SITES, not "every function must exist"; an unported function has no site
-// to flag.
+// `struct_kv_to_alias` (839) and `eliminate_join_marks` (853) stay unported — the
+// range still ends at 1084 because `lint_deny.mjs`'s ranges gate deny-listed SITES,
+// not "every function must exist"; an unported function has no site to flag.
+//
+// Redshift generator step (PORT_PLAN.md) added three more, in upstream source order:
+// `unnest_generate_date_array_using_recursive_cte` (72, new range above),
+// `unqualify_unnest` (278, new range above — its `find_all_in_scope` call is now real,
+// via `optimizer/scope.js`'s Tier A `findAllInScope`, not a `NotPorted` stub), and
+// `eliminate_window_clause` (1001, no new range needed — already inside 741-1084, whose
+// own note above already covers "a function landing later just needs the range to
+// already include its lines," which it did).
 
 import { findNewName, seqGet } from "./helper.js";
 import { UnsupportedError } from "./errors.js";
 import * as exp from "./expressions/index.js";
+import { findAllInScope } from "./optimizer/scope.js";
 
 /**
  * py: sqlglot/transforms.py:19 `preprocess(transforms, generator=None)`
@@ -95,6 +102,73 @@ export function preprocess(transforms, generator = null) {
 
     throw new Error(`Unsupported expression type ${expression.constructor.name}.`);
   };
+}
+
+/**
+ * py: sqlglot/transforms.py:72 `unnest_generate_date_array_using_recursive_cte(expression)`
+ *
+ * Added for `generators/redshift.js`'s `TRANSFORMS[exp.Select]` (Redshift port).
+ *
+ * @param {exp.Expr} expression
+ * @returns {exp.Expr}
+ */
+export function unnest_generate_date_array_using_recursive_cte(expression) {
+  if (expression instanceof exp.Select) {
+    let count = 0;
+    const recursive_ctes = [];
+
+    for (const unnest of [...expression.findAll(exp.Unnest)]) {
+      if (
+        !(unnest.parent instanceof exp.From || unnest.parent instanceof exp.Join)
+        || unnest.expressions.length !== 1
+        || !(unnest.expressions[0] instanceof exp.GenerateDateArray)
+      ) {
+        continue;
+      }
+
+      const generate_date_array = unnest.expressions[0];
+      let start = generate_date_array.args.start;
+      const end = generate_date_array.args.end;
+      const step = generate_date_array.args.step;
+
+      if (!start || !end || !(step instanceof exp.Interval)) continue;
+
+      const alias = unnest.args.alias;
+      const column_name = alias instanceof exp.TableAlias ? alias.columns[0] : "date_value";
+
+      start = exp.cast(start, "date");
+      const date_add = exp.func("date_add", column_name, exp.Literal.number(step.name), step.args.unit);
+      const cast_date_add = exp.cast(date_add, "date");
+
+      const cte_name = "_generated_dates" + (count ? `_${count}` : "");
+
+      const base_query = exp.select(start.as_(column_name));
+      const recursive_query = exp
+        .select(cast_date_add)
+        .from_(cte_name)
+        // deny:operators sqlglot/transforms.py:110 — Python `<=` on an Expr
+        // (`__le__`) builds `exp.LTE`; `.lte()` is this port's `_binop` equivalent.
+        .where(cast_date_add.lte(exp.cast(end, "date")));
+      const cte_query = base_query.union(recursive_query, { distinct: false });
+
+      const generate_dates_query = exp.select(column_name).from_(cte_name);
+      unnest.replace(generate_dates_query.subquery(cte_name));
+
+      recursive_ctes.push(
+        exp.alias_(new exp.CTE({ this: cte_query }), cte_name, { table: [column_name] }),
+      );
+      count += 1;
+    }
+
+    if (recursive_ctes.length) {
+      const with_expression = expression.args.with_ || new exp.With({});
+      with_expression.set("recursive", true);
+      with_expression.set("expressions", [...recursive_ctes, ...(with_expression.expressions || [])]);
+      expression.set("with_", with_expression);
+    }
+  }
+
+  return expression;
 }
 
 /**
@@ -232,6 +306,37 @@ export function eliminate_qualify(expression) {
     return outerSelects
       .from_(expression.subquery("_t", { copy: false }), { copy: false })
       .where(qualifyFilters, { copy: false });
+  }
+
+  return expression;
+}
+
+/**
+ * py: sqlglot/transforms.py:278 `unqualify_unnest(expression)`
+ *
+ * Remove references to unnest table aliases, added by the optimizer's qualify_columns
+ * step. Added for `generators/redshift.js`'s `TRANSFORMS[exp.Select]` (Redshift port).
+ *
+ * @param {exp.Expr} expression
+ * @returns {exp.Expr}
+ */
+export function unqualify_unnest(expression) {
+  if (expression instanceof exp.Select) {
+    const unnest_aliases = new Set();
+    for (const unnest of findAllInScope(expression, exp.Unnest)) {
+      if (unnest.parent instanceof exp.From || unnest.parent instanceof exp.Join) {
+        unnest_aliases.add(unnest.alias);
+      }
+    }
+
+    if (unnest_aliases.size) {
+      for (const column of [...expression.findAll(exp.Column)]) {
+        const leftmost_part = column.parts[0];
+        if (leftmost_part.argKey !== "this" && unnest_aliases.has(leftmost_part.this)) {
+          leftmost_part.pop();
+        }
+      }
+    }
   }
 
   return expression;
@@ -625,6 +730,49 @@ export function any_to_exists(expression) {
  * precedent as `generators/snowflake.js`'s own local copy.
  */
 const PERCENTILES = [exp.PercentileCont, exp.PercentileDisc];
+
+/**
+ * py: sqlglot/transforms.py:1001 `eliminate_window_clause(expression)`
+ *
+ * Eliminates the `WINDOW` query clause by inlining each named window. Added for
+ * `generators/redshift.js`'s `TRANSFORMS[exp.Select]` (Redshift port) — already inside
+ * this file's declared `741-1084` range (see the header note on why that range's own
+ * "stays unported" callout for this function does not need updating: an unported
+ * function has no site, but a now-ported one is simply covered by the same range).
+ *
+ * @param {exp.Expr} expression
+ * @returns {exp.Expr}
+ */
+export function eliminate_window_clause(expression) {
+  const windows = expression.args.windows;
+  if (expression instanceof exp.Select && windows !== null && windows !== undefined) {
+    expression.set("windows", null);
+
+    const window_expression = new Map();
+
+    const _inline_inherited_window = (window) => {
+      const inherited_window = window_expression.get(window.alias.toLowerCase());
+      if (!inherited_window) return;
+
+      window.set("alias", null);
+      for (const key of ["partition_by", "order", "spec"]) {
+        const arg = inherited_window.args[key];
+        if (arg !== null && arg !== undefined) window.set(key, arg.copy());
+      }
+    };
+
+    for (const window of windows) {
+      _inline_inherited_window(window);
+      window_expression.set(window.name.toLowerCase(), window);
+    }
+
+    for (const window of findAllInScope(expression, exp.Window)) {
+      _inline_inherited_window(window);
+    }
+  }
+
+  return expression;
+}
 
 /**
  * py: sqlglot/transforms.py:1032 `inherit_struct_field_names(expression)`
