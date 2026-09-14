@@ -77,7 +77,7 @@
 // ---------------------------------------------------------------------------------
 
 import { ErrorLevel, NotPorted, UnsupportedError, concatMessages } from "./errors.js";
-import { PyValueError } from "./_py/errors.js";
+import { PyValueError, PyKeyError } from "./_py/errors.js";
 import { PyDecimal } from "./_py/num.js";
 import { csv, nameSequence } from "./helper.js";
 import { logger } from "./logging.js";
@@ -434,7 +434,7 @@ export class Generator {
     // corpus rows like `NUMRANGE(...) -|- NUMRANGE(...)`, which previously threw
     // "Unsupported expression type Adjacent" (no dispatch entry at all).
     [exp.Adjacent, (self, e) => self.binary(e, "-|-")],
-    // py:139  [exp.AllowedValuesProperty, /* TODO lambda */],
+    [exp.AllowedValuesProperty, (self, e) => `ALLOWED_VALUES ${self.expressions(e, null, { flat: true })}`], // py:139
     // py:142  [exp.AnalyzeColumns, /* TODO lambda */],
     // py:143  [exp.AnalyzeWith, /* TODO lambda */],
     // py:144-146 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4), whose
@@ -447,52 +447,52 @@ export class Generator {
     [exp.ArrayContainsAll, (self, e) => self.binary(e, "@>")],
     [exp.ArrayOverlaps, (self, e) => self.binary(e, "&&")],
     // py:147  [exp.AssumeColumnConstraint, /* TODO lambda */],
-    // py:148  [exp.AutoRefreshProperty, /* TODO lambda */],
-    // py:149  [exp.BackupProperty, /* TODO lambda */],
+    [exp.AutoRefreshProperty, (self, e) => `AUTO REFRESH ${self.sql(e, "this")}`], // py:148
+    [exp.BackupProperty, (self, e) => `BACKUP ${self.sql(e, "this")}`], // py:149
     // py:150  [exp.CaseSpecificColumnConstraint, /* TODO lambda */],
-    // py:153  [exp.CalledOnNullInputProperty, /* TODO lambda */],
+    [exp.CalledOnNullInputProperty, () => "CALLED ON NULL INPUT"], // py:153
     // py:154  [exp.Ceil, /* TODO lambda */],
     // py:155  [exp.CharacterSetColumnConstraint, /* TODO lambda */],
-    // py:156  [exp.CharacterSetProperty, /* TODO lambda */],
+    [exp.CharacterSetProperty, (self, e) => `${e.args.default ? "DEFAULT " : ""}CHARACTER SET=${self.sql(e, "this")}`], // py:156
     // py:159  [exp.ClusteredColumnConstraint, /* TODO lambda */],
     // py:162  [exp.CollateColumnConstraint, /* TODO lambda */],
     // py:163  [exp.CommentColumnConstraint, /* TODO lambda */],
     // py:164  [exp.ConnectByRoot, /* TODO lambda */],
     // py:165  [exp.ConvertToCharset, /* TODO lambda */],
-    // py:168  [exp.CopyGrantsProperty, /* TODO lambda */],
-    // py:169  [exp.CredentialsProperty, /* TODO lambda */],
+    [exp.CopyGrantsProperty, () => "COPY GRANTS"], // py:168
+    [exp.CredentialsProperty, (self, e) => `CREDENTIALS=(${self.expressions(e, "expressions", { sep: " " })})`], // py:169
     // py:172  [exp.CurrentCatalog, /* TODO lambda */],
     // py:173  [exp.SessionUser, /* TODO lambda */],
     // py:174  [exp.DateFormatColumnConstraint, /* TODO lambda */],
     // py:175  [exp.DefaultColumnConstraint, /* TODO lambda */],
-    // py:176  [exp.ApiProperty, /* TODO lambda */],
-    // py:177  [exp.ApplicationProperty, /* TODO lambda */],
-    // py:178  [exp.CatalogProperty, /* TODO lambda */],
-    // py:179  [exp.ComputeProperty, /* TODO lambda */],
-    // py:180  [exp.DatabaseProperty, /* TODO lambda */],
-    // py:181  [exp.DynamicProperty, /* TODO lambda */],
-    // py:182  [exp.EmptyProperty, /* TODO lambda */],
+    [exp.ApiProperty, () => "API"], // py:176
+    [exp.ApplicationProperty, () => "APPLICATION"], // py:177
+    [exp.CatalogProperty, () => "CATALOG"], // py:178
+    [exp.ComputeProperty, () => "COMPUTE"], // py:179
+    [exp.DatabaseProperty, () => "DATABASE"], // py:180
+    [exp.DynamicProperty, () => "DYNAMIC"], // py:181
+    [exp.EmptyProperty, () => "EMPTY"], // py:182
     // py:183  [exp.EncodeColumnConstraint, /* TODO lambda */],
     // py:184  [exp.EndStatement, /* TODO lambda */],
-    // py:185  [exp.EnviromentProperty, /* TODO lambda */],
-    // py:186  [exp.HandlerProperty, /* TODO lambda */],
-    // py:187  [exp.ParameterStyleProperty, /* TODO lambda */],
+    [exp.EnviromentProperty, (self, e) => `ENVIRONMENT (${self.expressions(e, null, { flat: true })})`], // py:185
+    [exp.HandlerProperty, (self, e) => `HANDLER ${self.sql(e, "this")}`], // py:186
+    [exp.ParameterStyleProperty, (self, e) => `PARAMETER STYLE ${self.sql(e, "this")}`], // py:187
     // py:188  [exp.EphemeralColumnConstraint, /* TODO lambda */],
     // py:191  [exp.ExcludeColumnConstraint, /* TODO lambda */],
-    // py:192  [exp.ExecuteAsProperty, /* TODO lambda */],
+    [exp.ExecuteAsProperty, (self, e) => self.naked_property(e)], // py:192
     // py:193 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4), same
     // `set_operations` wiring as `exp.Intersect`/`exp.Union` below.
     [exp.Except, (self, e) => self.set_operations(e)],
-    // py:194  [exp.ExternalProperty, /* TODO lambda */],
+    [exp.ExternalProperty, () => "EXTERNAL"], // py:194
     // py:195  [exp.Floor, /* TODO lambda */],
     // py:196  [exp.Get, /* TODO lambda */],
-    // py:197  [exp.GlobalProperty, /* TODO lambda */],
-    // py:198  [exp.HeapProperty, /* TODO lambda */],
-    // py:199  [exp.HybridProperty, /* TODO lambda */],
-    // py:200  [exp.IcebergProperty, /* TODO lambda */],
-    // py:201  [exp.InheritsProperty, /* TODO lambda */],
+    [exp.GlobalProperty, () => "GLOBAL"], // py:197
+    [exp.HeapProperty, () => "HEAP"], // py:198
+    [exp.HybridProperty, () => "HYBRID"], // py:199
+    [exp.IcebergProperty, () => "ICEBERG"], // py:200
+    [exp.InheritsProperty, (self, e) => `INHERITS (${self.expressions(e, null, { flat: true })})`], // py:201
     // py:202  [exp.InlineLengthColumnConstraint, /* TODO lambda */],
-    // py:203  [exp.InputModelProperty, /* TODO lambda */],
+    [exp.InputModelProperty, (self, e) => `INPUT${self.sql(e, "this")}`], // py:203
     // py:204 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4), same
     // `set_operations` wiring as `exp.Except`/`exp.Union`.
     [exp.Intersect, (self, e) => self.set_operations(e)],
@@ -519,18 +519,18 @@ export class Generator {
     [exp.JSONBPathExists, (self, e) => self.binary(e, "@?")],
     // py:212  [exp.JSONObject, /* TODO lambda */],
     // py:213  [exp.JSONObjectAgg, /* TODO lambda */],
-    // py:214  [exp.LanguageProperty, /* TODO lambda */],
-    // py:215  [exp.LocationProperty, /* TODO lambda */],
-    // py:216  [exp.LogProperty, /* TODO lambda */],
-    // py:217  [exp.MaskingProperty, /* TODO lambda */],
-    // py:218  [exp.MaterializedProperty, /* TODO lambda */],
+    [exp.LanguageProperty, (self, e) => self.naked_property(e)], // py:214
+    [exp.LocationProperty, (self, e) => self.naked_property(e)], // py:215
+    [exp.LogProperty, (_, e) => `${e.args.no ? "NO " : ""}LOG`], // py:216
+    [exp.MaskingProperty, () => "MASKING"], // py:217
+    [exp.MaterializedProperty, () => "MATERIALIZED"], // py:218
     // py:219  [exp.NetFunc, /* TODO lambda */],
-    // py:220  [exp.NetworkProperty, /* TODO lambda */],
+    [exp.NetworkProperty, () => "NETWORK"], // py:220
     // py:221  [exp.NonClusteredColumnConstraint, /* TODO lambda */],
-    // py:224  [exp.NoPrimaryIndexProperty, /* TODO lambda */],
+    [exp.NoPrimaryIndexProperty, () => "NO PRIMARY INDEX"], // py:224
     // py:225  [exp.NotForReplicationColumnConstraint, /* TODO lambda */],
-    // py:226  [exp.OnCommitProperty, /* TODO lambda */],
-    // py:229  [exp.OnProperty, /* TODO lambda */],
+    [exp.OnCommitProperty, (_, e) => `ON COMMIT ${e.args.delete ? "DELETE" : "PRESERVE"} ROWS`], // py:226
+    [exp.OnProperty, (self, e) => `ON ${self.sql(e, "this")}`], // py:229
     // py:230  [exp.OnUpdateColumnConstraint, /* TODO lambda */],
     // py:231 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4): reached by
     // `pg_catalog`-style custom-operator corpus rows, which previously threw
@@ -538,7 +538,7 @@ export class Generator {
     // branch (already ported) is what actually renders `OPERATOR(...)` — the empty
     // string here is upstream's own comment: "The operator is produced in `binary`".
     [exp.Operator, (self, e) => self.binary(e, "")],
-    // py:232  [exp.OutputModelProperty, /* TODO lambda */],
+    [exp.OutputModelProperty, (self, e) => `OUTPUT${self.sql(e, "this")}`], // py:232
     // py:233  [exp.ExtendsLeft, /* TODO lambda */],
     // py:234  [exp.ExtendsRight, /* TODO lambda */],
     // py:235  [exp.PathColumnConstraint, /* TODO lambda */],
@@ -550,40 +550,40 @@ export class Generator {
     // py:243  [exp.InvisibleColumnConstraint, /* TODO lambda */],
     // py:244  [exp.ZeroFillColumnConstraint, /* TODO lambda */],
     // py:245  [exp.Put, /* TODO lambda */],
-    // py:246  [exp.RemoteWithConnectionModelProperty, /* TODO lambda */],
-    // py:249  [exp.ReturnsProperty, /* TODO lambda */],
-    // py:252  [exp.RowAccessProperty, /* TODO lambda */],
+    [exp.RemoteWithConnectionModelProperty, (self, e) => `REMOTE WITH CONNECTION ${self.sql(e, "this")}`], // py:246
+    [exp.ReturnsProperty, (self, e) => (e.args.null ? "RETURNS NULL ON NULL INPUT" : self.naked_property(e))], // py:249
+    [exp.RowAccessProperty, () => "ROW ACCESS"], // py:252
     // py:253  [exp.SafeFunc, /* TODO lambda */],
-    // py:254  [exp.SampleProperty, /* TODO lambda */],
-    // py:255  [exp.SecureProperty, /* TODO lambda */],
-    // py:256  [exp.SecurityIntegrationProperty, /* TODO lambda */],
-    // py:257  [exp.SetConfigProperty, /* TODO lambda */],
-    // py:258  [exp.SetProperty, /* TODO lambda */],
-    // py:259  [exp.SettingsProperty, /* TODO lambda */],
-    // py:260  [exp.SharingProperty, /* TODO lambda */],
-    // py:261  [exp.SqlReadWriteProperty, /* TODO lambda */],
-    // py:262  [exp.SqlSecurityProperty, /* TODO lambda */],
-    // py:263  [exp.StabilityProperty, /* TODO lambda */],
+    [exp.SampleProperty, (self, e) => `SAMPLE BY ${self.sql(e, "this")}`], // py:254
+    [exp.SecureProperty, () => "SECURE"], // py:255
+    [exp.SecurityIntegrationProperty, () => "SECURITY"], // py:256
+    [exp.SetConfigProperty, (self, e) => self.sql(e, "this")], // py:257
+    [exp.SetProperty, (_, e) => `${e.args.multi ? "MULTI" : ""}SET`], // py:258
+    [exp.SettingsProperty, (self, e) => `SETTINGS${self.seg("")}${self.expressions(e)}`], // py:259
+    [exp.SharingProperty, (self, e) => `SHARING=${self.sql(e, "this")}`], // py:260
+    [exp.SqlReadWriteProperty, (_, e) => e.name], // py:261
+    [exp.SqlSecurityProperty, (self, e) => `SQL SECURITY ${self.sql(e, "this")}`], // py:262
+    [exp.StabilityProperty, (_, e) => e.name], // py:263
     // py:264  [exp.Stream, /* TODO lambda */],
-    // py:265  [exp.StreamingTableProperty, /* TODO lambda */],
-    // py:266  [exp.StrictProperty, /* TODO lambda */],
+    [exp.StreamingTableProperty, () => "STREAMING"], // py:265
+    [exp.StrictProperty, () => "STRICT"], // py:266
     // py:267  [exp.SwapTable, /* TODO lambda */],
     // py:268  [exp.TableColumn, /* TODO lambda */],
-    // py:269  [exp.Tags, /* TODO lambda */],
-    // py:270  [exp.TemporaryProperty, /* TODO lambda */],
+    [exp.Tags, (self, e) => `TAG (${self.expressions(e, null, { flat: true })})`], // py:269
+    [exp.TemporaryProperty, () => "TEMPORARY"], // py:270
     // py:271  [exp.TitleColumnConstraint, /* TODO lambda */],
     // py:272  [exp.ToMap, /* TODO lambda */],
-    // py:273  [exp.ToTableProperty, /* TODO lambda */],
-    // py:274  [exp.TransformModelProperty, /* TODO lambda */],
-    // py:275  [exp.TransientProperty, /* TODO lambda */],
-    // py:276  [exp.VirtualProperty, /* TODO lambda */],
+    [exp.ToTableProperty, (self, e) => `TO ${self.sql(e.this)}`], // py:273
+    [exp.TransformModelProperty, (self, e) => self.func("TRANSFORM", ...e.expressions)], // py:274
+    [exp.TransientProperty, () => "TRANSIENT"], // py:275
+    [exp.VirtualProperty, () => "VIRTUAL"], // py:276
     // py:277  [exp.TriggerExecute, /* TODO lambda */],
     // py:278 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4): a plain
     // `WITH RECURSIVE ... UNION ...` corpus row reached `set_operations`/
     // `set_operation` above, both real bodies now rather than `NotPorted` stubs.
     [exp.Union, (self, e) => self.set_operations(e)],
-    // py:279  [exp.UnloggedProperty, /* TODO lambda */],
-    // py:280  [exp.UsingTemplateProperty, /* TODO lambda */],
+    [exp.UnloggedProperty, () => "UNLOGGED"], // py:279
+    [exp.UsingTemplateProperty, (self, e) => `USING TEMPLATE ${self.sql(e, "this")}`], // py:280
     // py:281  [exp.UsingData, /* TODO lambda */],
     // py:282  [exp.UppercaseColumnConstraint, /* TODO lambda */],
     // py:283  [exp.UtcDate, /* TODO lambda */],
@@ -594,13 +594,13 @@ export class Generator {
     // expression type Variadic" (no dispatch entry at all, not even a wrong string).
     [exp.Variadic, (self, e) => `VARIADIC ${self.sql(e, "this")}`],
     // py:289  [exp.VarMap, /* TODO lambda */],
-    // py:290  [exp.ViewAttributeProperty, /* TODO lambda */],
-    // py:291  [exp.VolatileProperty, /* TODO lambda */],
-    // py:292  [exp.WithJournalTableProperty, /* TODO lambda */],
-    // py:293  [exp.WithProcedureOptions, /* TODO lambda */],
-    // py:294  [exp.WithSchemaBindingProperty, /* TODO lambda */],
+    [exp.ViewAttributeProperty, (self, e) => `WITH ${self.sql(e, "this")}`], // py:290
+    [exp.VolatileProperty, () => "VOLATILE"], // py:291
+    [exp.WithJournalTableProperty, (self, e) => `WITH JOURNAL TABLE=${self.sql(e, "this")}`], // py:292
+    [exp.WithProcedureOptions, (self, e) => `WITH ${self.expressions(e, null, { flat: true })}`], // py:293
+    [exp.WithSchemaBindingProperty, (self, e) => `WITH SCHEMA ${self.sql(e, "this")}`], // py:294
     // py:295  [exp.WithOperator, /* TODO lambda */],
-    // py:296  [exp.ForceProperty, /* TODO lambda */],
+    [exp.ForceProperty, () => "FORCE"], // py:296
   ]);
 
   /** py: sqlglot/generator.py:302 */
@@ -1669,9 +1669,17 @@ export class Generator {
     return `${exists}${column}${kind}${constraints_}${position}`;
   }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:1203
+   * @param {exp.ColumnConstraint} expression
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:1203
-  columnconstraint_sql(expression) { throw new NotPorted("columnconstraint_sql", "sqlglot/generator.py:1203"); }
+  columnconstraint_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const kind_sql = pyStrip(this.sql(expression, "kind"));
+    return this_ ? `CONSTRAINT ${this_} ${kind_sql}` : kind_sql;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1208
@@ -1724,17 +1732,6 @@ export class Generator {
 
   /**
    * py: sqlglot/generator.py:1319
-   *
-   * NOTE: this port only handles CREATE statements with no `properties` arg (the
-   * common case for cache-key/normalization purposes, e.g. plain `CREATE TABLE t (a
-   * INT)` / `CREATE VIEW v AS ...`). Every branch below that renders a properties
-   * location (`POST_SCHEMA`/`POST_WITH`/`POST_ALIAS`/`POST_INDEX`/`POST_CREATE`/
-   * `POST_EXPRESSION`) is gated on `properties_locs.get(...)`, which is empty when
-   * `expression.args.properties` is unset — so for a property-less create the
-   * still-`NotPorted` `locate_properties`/`properties`/`properties_sql`/
-   * `root_properties`/`with_properties` are never reached. A CREATE that DOES carry
-   * properties throws `NotPorted` from `locate_properties` rather than silently
-   * dropping them — see PORT_PLAN.md for the named follow-on.
    * @param {exp.Create} expression
    * @returns {string}
    */
@@ -1756,14 +1753,18 @@ export class Generator {
     }
 
     const properties_locs = properties ? this.locate_properties(properties) : new Map();
+    // py: `properties_locs.get(loc)` — a Python `list`, where EMPTY is falsy. A dialect
+    // override (e.g. `SnowflakeGenerator.createable_sql`'s in-place `.splice()` of a
+    // matched property out of its location bucket) can leave a present-but-empty array
+    // in the Map; a bare JS truthiness check on that array would misfire (arrays are
+    // always truthy), so every one of this function's location checks goes through
+    // this helper instead.
+    const locHas = (loc) => (properties_locs.get(loc) || []).length > 0;
 
     const this_ = this.createable_sql(expression, properties_locs);
 
     let properties_sql = "";
-    if (
-      properties_locs.get(exp.Properties.Location.POST_SCHEMA) ||
-      properties_locs.get(exp.Properties.Location.POST_WITH)
-    ) {
+    if (locHas(exp.Properties.Location.POST_SCHEMA) || locHas(exp.Properties.Location.POST_WITH)) {
       const props_ast = new exp.Properties({
         expressions: [
           ...(properties_locs.get(exp.Properties.Location.POST_SCHEMA) || []),
@@ -1773,7 +1774,7 @@ export class Generator {
       props_ast.parent = expression;
       properties_sql = this.sql(props_ast);
 
-      if (properties_locs.get(exp.Properties.Location.POST_SCHEMA)) {
+      if (locHas(exp.Properties.Location.POST_SCHEMA)) {
         properties_sql = this.sep() + properties_sql;
       } else if (!this.pretty) {
         properties_sql = ` ${properties_sql}`;
@@ -1791,7 +1792,7 @@ export class Generator {
         (this.constructor.CREATE_FUNCTION_RETURN_AS || !(expression.expression instanceof exp.Return))
       ) {
         let postalias_props_sql = "";
-        if (properties_locs.get(exp.Properties.Location.POST_ALIAS)) {
+        if (locHas(exp.Properties.Location.POST_ALIAS)) {
           postalias_props_sql = this.properties(
             new exp.Properties({ expressions: properties_locs.get(exp.Properties.Location.POST_ALIAS) }),
             "",
@@ -1806,7 +1807,7 @@ export class Generator {
     }
 
     let postindex_props_sql = "";
-    if (properties_locs.get(exp.Properties.Location.POST_INDEX)) {
+    if (locHas(exp.Properties.Location.POST_INDEX)) {
       postindex_props_sql = this.properties(
         new exp.Properties({ expressions: properties_locs.get(exp.Properties.Location.POST_INDEX) }),
         " ",
@@ -1835,7 +1836,7 @@ export class Generator {
     }
 
     let postcreate_props_sql = "";
-    if (properties_locs.get(exp.Properties.Location.POST_CREATE)) {
+    if (locHas(exp.Properties.Location.POST_CREATE)) {
       postcreate_props_sql = this.properties(
         new exp.Properties({ expressions: properties_locs.get(exp.Properties.Location.POST_CREATE) }),
         " ",
@@ -1848,7 +1849,7 @@ export class Generator {
     const modifiers = [clustered_sql, replace, refresh, unique, postcreate_props_sql].join("");
 
     let postexpression_props_sql = "";
-    if (properties_locs.get(exp.Properties.Location.POST_EXPRESSION)) {
+    if (locHas(exp.Properties.Location.POST_EXPRESSION)) {
       postexpression_props_sql = this.properties(
         new exp.Properties({ expressions: properties_locs.get(exp.Properties.Location.POST_EXPRESSION) }),
         " ",
@@ -2014,7 +2015,12 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1693
-  datatypeparam_sql(expression) { throw new NotPorted("datatypeparam_sql", "sqlglot/generator.py:1693"); }
+  datatypeparam_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    let specifier = this.sql(expression, "expression");
+    specifier = specifier && this.constructor.DATA_TYPE_SPECIFIERS_ALLOWED ? ` ${specifier}` : "";
+    return `${this_}${specifier}`;
+  }
 
   /**
    * py: sqlglot/generator.py:1699
@@ -2394,25 +2400,104 @@ export class Generator {
   // py: sqlglot/generator.py:2042
   partition_sql(expression) { throw new NotPorted("partition_sql", "sqlglot/generator.py:2042"); }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:2046
+   * @param {exp.Properties} expression
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:2046
-  properties_sql(expression) { throw new NotPorted("properties_sql", "sqlglot/generator.py:2046"); }
+  properties_sql(expression) {
+    const root_properties = [];
+    const with_properties = [];
 
-  /** @returns {*} */
+    for (const p of expression.expressions) {
+      const p_loc = this.constructor.PROPERTIES_LOCATION.get(p.constructor);
+      if (p_loc === undefined) throw new PyKeyError(p.constructor.name);
+      if (p_loc === exp.Properties.Location.POST_WITH) {
+        with_properties.push(p);
+      } else if (p_loc === exp.Properties.Location.POST_SCHEMA) {
+        root_properties.push(p);
+      }
+    }
+
+    const root_props_ast = new exp.Properties({ expressions: root_properties });
+    root_props_ast.parent = expression.parent;
+
+    const with_props_ast = new exp.Properties({ expressions: with_properties });
+    with_props_ast.parent = expression.parent;
+
+    const root_props = this.root_properties(root_props_ast);
+    let with_props = this.with_properties(with_props_ast);
+
+    if (root_props && with_props && !this.pretty) with_props = " " + with_props;
+
+    return root_props + with_props;
+  }
+
+  /**
+   * py: sqlglot/generator.py:2071
+   * @param {exp.Properties} properties
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:2071
-  root_properties(properties) { throw new NotPorted("root_properties", "sqlglot/generator.py:2071"); }
+  root_properties(properties) {
+    if (properties.expressions.length) {
+      return this.expressions(properties, null, { indent: false, sep: " " });
+    }
+    return "";
+  }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:2076 `properties(properties, prefix="", sep=", ", suffix="", wrapped=True)`
+   * @param {exp.Properties} properties
+   * @param {string} [prefix]
+   * @param {string} [sep]
+   * @param {string} [suffix]
+   * @param {boolean} [wrapped]
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:2076
-  properties(properties, prefix, sep, suffix, wrapped) { throw new NotPorted("properties", "sqlglot/generator.py:2076"); }
+  properties(properties, prefix = "", sep = ", ", suffix = "", wrapped = true) {
+    if (properties.expressions.length) {
+      let expressions = this.expressions(properties, null, { sep, indent: false });
+      if (expressions) {
+        expressions = wrapped ? this.wrap(expressions) : expressions;
+        return `${prefix}${pyStrip(prefix) ? " " : ""}${expressions}${suffix}`;
+      }
+    }
+    return "";
+  }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:2091
+   * @param {exp.Properties} properties
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:2091
-  with_properties(properties) { throw new NotPorted("with_properties", "sqlglot/generator.py:2091"); }
+  with_properties(properties) {
+    return this.properties(properties, this.seg(this.constructor.WITH_PROPERTIES_PREFIX, ""));
+  }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:2094
+   * @param {exp.Properties} properties
+   * @returns {Map}
+   */
   // py: sqlglot/generator.py:2094
-  locate_properties(properties) { throw new NotPorted("locate_properties", "sqlglot/generator.py:2094"); }
+  locate_properties(properties) {
+    const properties_locs = new Map();
+    for (const p of properties.expressions) {
+      const p_loc = this.constructor.PROPERTIES_LOCATION.get(p.constructor);
+      if (p_loc === undefined) throw new PyKeyError(p.constructor.name);
+      if (p_loc !== exp.Properties.Location.UNSUPPORTED) {
+        if (!properties_locs.has(p_loc)) properties_locs.set(p_loc, []);
+        properties_locs.get(p_loc).push(p);
+      } else {
+        this.unsupported(`Unsupported property ${p.key}`);
+      }
+    }
+    return properties_locs;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2105

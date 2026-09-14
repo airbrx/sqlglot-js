@@ -157,17 +157,34 @@ statement types `test/gatewaySqlMetadata.test.mjs`'s "Session state" tests
 already exercise for `sessionStateChange` extraction; `standardizedSql` was
 the still-missing half.
 
-Two narrower gaps remain, both deliberate and both still hit `NotPorted`
-(not silently wrong output):
+As of the properties-dispatch step (PORT_PLAN.md, branch
+`generator-create-properties`), `create_sql`'s properties subsystem
+(`locate_properties`/`properties`/`properties_sql`/`root_properties`/
+`with_properties`) is real, so property-bearing CREATE statements
+regenerate too on all three target dialects:
+`CREATE TABLE t (a INT) USING DELTA LOCATION '...'` (Databricks),
+`CREATE TABLE t (a INT) WITH (fillfactor = 70)` (Postgres),
+`CREATE TEMPORARY TABLE t (a INT)` / `CREATE OR REPLACE TRANSIENT TABLE a
+(id INT)` / `CREATE SECURE VIEW ...` (Snowflake/base) all now produce real
+regenerated SQL instead of throwing. This also required filling in ~64
+`Generator.TRANSFORMS` entries for individual property classes (e.g.
+`TemporaryProperty`, `LocationProperty`) that `locate_properties` newly
+routes to — without them, `property_sql`'s generic fallback either dropped
+the property with an `unsupported()` warning or rendered the wrong
+`NAME=value` shape instead of `naked_property`'s `NAME value`.
 
-- **`CREATE ... WITH (...)` / `TBLPROPERTIES (...)` / any other CREATE that
-  carries a `properties` clause.** `create_sql` only handles CREATE
-  statements with no `properties` arg — the full properties subsystem
-  (`locate_properties`/`properties`/`properties_sql`/`root_properties`/
-  `with_properties`) is still `NotPorted`. A plain
-  `CREATE TABLE t (a INT)` or `CREATE VIEW v AS SELECT ...` regenerates
-  fine; `CREATE TABLE t (a INT) USING DELTA LOCATION '...'` or
-  `CREATE TABLE t (a INT) WITH (format = 'parquet')` still throws.
+One narrower gap remains, deliberate and still hitting `NotPorted` (not
+silently wrong output):
+
+- **Properties with no dedicated `*_sql` method of their own.** A property
+  class that is in `PROPERTIES_LOCATION` but still routes to a dedicated,
+  still-`NotPorted` method (rather than through `TRANSFORMS` or the generic
+  `property_sql`/`naked_property` fallback) still throws — e.g.
+  `CLUSTER BY (...)` (`clusterproperty_sql`), or DuckDB's own
+  `PROPERTIES_LOCATION` override (DuckDB is not one of this module's three
+  target dialects). This is a long tail of ~30 individually-small, mostly
+  rare/dialect-specific methods, not a structural gap in the dispatch
+  itself — see PORT_PLAN.md for the named follow-on.
 - **Other statement types not covered by this round**: `ALTER SESSION SET
   ...` (Snowflake) is `exp.Alter` with an `exp.AlterSession` action, whose
   `altersession_sql` is a separate, still-`NotPorted` method — unrelated to
@@ -191,12 +208,14 @@ of `src/generators/{databricks,snowflake}.js` (Snowflake's generator is
 otherwise fairly complete — see the root README — the specific gaps here are
 scattered `*_sql` methods for statement types the corpus under-samples, not a
 generator-file-level gap) and `src/generator.js`'s own remaining base
-methods (including the CREATE properties subsystem and `altersession_sql`),
-tracked as ordinary port work, not by this module. `insert_sql`/
-`update_sql`/`delete_sql`/`drop_sql`/`alter_sql`/`create_sql` specifically
-landed as of PORT_PLAN.md R35 (branch `generator-dml-ddl-keystone`);
-`setitem_sql`/`set_sql`/`command_sql`/`use_sql` as of R36 (branch
-`generator-set-use-command`).
+methods (including `altersession_sql` and the ~30-method tail of dedicated
+property `*_sql` methods noted above), tracked as ordinary port work, not by
+this module. `insert_sql`/`update_sql`/`delete_sql`/`drop_sql`/`alter_sql`/
+`create_sql` specifically landed as of PORT_PLAN.md R35 (branch
+`generator-dml-ddl-keystone`); `setitem_sql`/`set_sql`/`command_sql`/
+`use_sql` as of R36 (branch `generator-set-use-command`); the CREATE
+properties subsystem as of the properties-dispatch step (branch
+`generator-create-properties`).
 
 ### Explicitly out of scope
 

@@ -62,14 +62,27 @@ test("the only gap versus CPython is the deliberately-unseeded TRANSFORMS", () =
   // of its CPython lambda (`self.binary(e, "...")` or, for the three set-operation
   // keys, `self.set_operations(e)` — see `Generator.prototype.set_operation`/
   // `set_operations` below the dispatch table, also newly real).
-  assert.equal(Generator.TRANSFORMS.size, 14, "TRANSFORMS has 14 real entries after the Postgres generator step");
+  //
+  // +64 from the properties-dispatch step (PORT_PLAN.md): every class that appears
+  // both in `PROPERTIES_LOCATION` (so `locate_properties`/`properties_sql` can route
+  // it) and as a `// TODO lambda` placeholder here — the exact intersection computed
+  // by diffing those two class lists, not a guess. Before this step, a property-
+  // bearing CREATE (e.g. `CREATE TABLE t (a INT) USING DELTA LOCATION '/x'` on
+  // Databricks) reached the real `properties_sql`/`properties`/`naked_property`
+  // methods but every one of these 64 property classes fell through to
+  // `property_sql`'s generic `Unsupported property X` fallback (or, for the ones in
+  // `PROPERTY_TO_NAME` like `LocationProperty`, the wrong `NAME=value` shape instead
+  // of `naked_property`'s `NAME value`) — each entry here is a verified, faithful
+  // one-line port of its CPython lambda (a literal keyword, `self.sql(e, "this")`,
+  // `self.naked_property(e)`, or `self.expressions(...)`).
+  assert.equal(Generator.TRANSFORMS.size, 78, "TRANSFORMS has 78 real entries after the properties-dispatch step");
 
   const wantTransform = Object.entries(WANT).filter(([, h]) => h === "transform");
   assert.equal(wantTransform.length, 143);
 
   const got = _buildDispatch(Generator);
   assert.equal(got.size, Object.keys(WANT).length - wantTransform.length + Generator.TRANSFORMS.size);
-  assert.equal(got.size, 431);
+  assert.equal(got.size, 495);
 });
 
 test("TRANSFORMS beats a same-named *_sql method", () => {
@@ -364,7 +377,12 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // `setitem_sql`, `set_sql`, `command_sql`, `use_sql` — none reads `this.dialect` or
   // any other Dialect-hosted state, so, like the DML/DDL keystone's ten, they run on a
   // bare `new Generator()` too.
-  assert.equal(bodied.length, 105, "exactly 105 *_sql methods have a real body");
+  // +3 from the properties-dispatch step: `columnconstraint_sql`, `datatypeparam_sql`,
+  // `properties_sql` — the latter closes the gap the DML/DDL keystone step's comment
+  // above named (`create_sql`'s properties-location branches now really dispatch).
+  // `root_properties`/`properties`/`with_properties`/`locate_properties`, ported in the
+  // same step, are not `*_sql`-suffixed and so not counted here either.
+  assert.equal(bodied.length, 108, "exactly 108 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -382,7 +400,8 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // throwing at all — but none of those outcomes is `NotPorted`, so, like the other
   // 90, they "run" on the stand-in in the sense this assertion checks.
   // +4 for the SET/USE step's four new bodies, for the same reason.
-  assert.equal(432 - stubs.length, 104, "104 of those 105 also run without a resolved Dialect");
+  // +3 for the properties-dispatch step's three new bodies, for the same reason.
+  assert.equal(432 - stubs.length, 107, "107 of those 108 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],

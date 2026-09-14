@@ -10,13 +10,13 @@ This is a derivative work of sqlglot (MIT License, Copyright (c) 2026 Toby Mao).
 
 | dialect | parse (real path) | generate (real path) |
 |---|---|---|
-| Databricks chain — Hive | 489 / 491 reached (99.6%) | 274 / 274 reached (**100%**) |
+| Databricks chain — Hive | 489 / 491 reached (99.6%) | 298 / 298 reached (**100%**) |
 | Databricks chain — Spark2 | 41 / 41 reached (**100%**) | 38 / 38 reached (**100%**) |
-| Databricks chain — Spark | 667 / 671 reached (99.4%) | 357 / 357 reached (**100%**) |
-| Databricks chain — Databricks | 319 / 321 reached (99.4%) | 173 / 173 reached (**100%**) |
-| Snowflake | 2,397 / 2,427 reached (98.8%) | 1,066 / 1,096 reached (97.3%) |
-| DuckDB | 999 / 1,017 reached (98.2%) | 225 / 354 reached (63.6% — deliberately scoped subset, see PORT_PLAN.md R32) |
-| Postgres | 919 / 930 reached (98.8%) | 266 / 267 reached (99.6%) |
+| Databricks chain — Spark | 667 / 671 reached (99.4%) | 383 / 383 reached (**100%**) |
+| Databricks chain — Databricks | 319 / 321 reached (99.4%) | 192 / 192 reached (**100%**) |
+| Snowflake | 2,397 / 2,427 reached (98.8%) | 1,154 / 1,158 reached (99.7%) |
+| DuckDB | 999 / 1,017 reached (98.2%) | 258 / 395 reached (65.3% — deliberately scoped subset, see PORT_PLAN.md R32) |
+| Postgres | 919 / 930 reached (98.8%) | 284 / 285 reached (99.6%) |
 
 — **10,879 of 15,478 rows exact across all 46 dialects** overall on the parse side (base-grammar coverage benefits every dialect, not just the seven above). Every number is machine-checked against a pinned CPython `sqlglot` install via `node spike/p3/fuzz_ast_coverage.mjs`, `spike/p5/fuzz_dialect_parse.mjs`, and `spike/p5/fuzz_dialect_generate.mjs` — not asserted by hand; `PORT_PLAN.md`'s 35 R-series findings are the record of what that checking has caught so far.
 
