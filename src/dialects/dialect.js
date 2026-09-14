@@ -12,11 +12,12 @@
 //
 // Members are added here strictly on demand, one per importing parser: `snowflake.js`
 // established the first set; `hive.js` adds `build_regexp_extract`, `spark2.js` adds
-// `pivot_column_names`, `spark.js`/`databricks.js` add `build_date_delta`, and
-// `postgres.js` adds `build_json_extract_path` and `build_timestamp_trunc`. A
-// helper that is genuinely specific to ONE dialect belongs in that dialect's own file
-// instead — all of these are in upstream's shared `dialects/dialect.py`, imported
-// by several dialects each, so they belong here.
+// `pivot_column_names`, `spark.js`/`databricks.js` add `build_date_delta`,
+// `postgres.js` adds `build_json_extract_path` and `build_timestamp_trunc`, and
+// `bigquery.js` adds `build_date_delta_with_interval`. A helper that is genuinely
+// specific to ONE dialect belongs in that dialect's own file instead — all of these
+// are in upstream's shared `dialects/dialect.py`, imported by several dialects each,
+// so they belong here.
 //
 // Nothing here resolves a dialect by NAME (CONTRACTS.md §8). Every function that needs
 // dialect state takes an already-resolved dialect object, exactly as upstream's
@@ -26,7 +27,7 @@
 // for a missing dialect, it is the documented default, and it is reproduced by
 // consulting the base `DATE_PART_MAPPING` literal below rather than by any lookup.
 //
-// @ported-ranges sqlglot/dialects/dialect.py 858-953 1297-1299 1314-1316 1330-1332 1438-1454 1610-1637 1654-1674 1700-1706 1830-1837 1892-1914 1916-1920 1921-1922 1925-1963 1966-1967 1970-1973 2167-2176 2179-2184 2187-2220 2223-2265 2268-2295 2298-2302 2305-2323 2384-2394 2406-2407 2410-2411 2462-2474 2477-2497 2604-2617 2620-2625 2628-2641 2654-2672
+// @ported-ranges sqlglot/dialects/dialect.py 858-953 1297-1299 1314-1316 1330-1332 1438-1454 1610-1637 1654-1674 1676-1697 1700-1706 1830-1837 1892-1914 1916-1920 1921-1922 1925-1963 1966-1967 1970-1973 2167-2176 2179-2184 2187-2220 2223-2265 2268-2295 2298-2302 2305-2323 2384-2394 2406-2407 2410-2411 2462-2474 2477-2497 2604-2617 2620-2625 2628-2641 2654-2672
 //
 // One range per member ported, so `tools/lint_deny.mjs` measures this file against
 // what it actually claims rather than against all 2,600 lines of `dialects/dialect.py`
@@ -187,6 +188,43 @@ export function build_date_delta(
     const expression = new exp_class({ this: this_, expression: seqGet(args, 1), unit });
     if (supports_timezone && has_timezone) expression.set("zone", args[args.length - 1]);
     return expression;
+  };
+}
+
+/**
+ * py: sqlglot/dialects/dialect.py:1676
+ * `build_date_delta_with_interval(expression_class, default_unit=None)`
+ *
+ * Unlike `build_date_delta` above (unit-token form: `DATE_ADD(d, 1, DAY)`), this is the
+ * INTERVAL-literal form: `DATE_ADD(d, INTERVAL 1 DAY)`. `args[1]` is required to be an
+ * `exp.Interval`; a non-Interval second argument either falls back to `default_unit`
+ * (when the caller supplied one) or raises. The `${interval}` interpolation below
+ * mirrors Python's implicit `f"...{interval}..."` -> `Expression.__str__` -> `.sql()`
+ * (not deny-listed: this line falls in the gap between the previous two ranges, and
+ * `Expr.prototype.toString` at core.js:374 already reproduces that `__str__`).
+ */
+export function build_date_delta_with_interval(expression_class, default_unit = null) {
+  return function _builder(args) {
+    if (args.length < 2) return null;
+
+    const interval = args[1];
+
+    if (!(interval instanceof exp.Interval)) {
+      if (default_unit === null) {
+        throw new ParseError(`INTERVAL expression expected but got '${interval}'`);
+      }
+      return new expression_class({
+        this: args[0],
+        expression: interval,
+        unit: exp.Literal.string(default_unit),
+      });
+    }
+
+    return new expression_class({
+      this: args[0],
+      expression: interval.this,
+      unit: unit_to_str(interval),
+    });
   };
 }
 
