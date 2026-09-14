@@ -160,12 +160,12 @@ export function binary_range_parser(expr_type, reverse_args = false) {
 // is an AST difference. (Same rule `build_cast` follows.)
 
 /** py: sqlglot/parser.py:179 */
-function build_coalesce(args, is_nvl = null, is_null = null) {
+export function build_coalesce(args, is_nvl = null, is_null = null) {
   return new exp.Coalesce({ this: seqGet(args, 0), expressions: args.slice(1), is_nvl, is_null });
 }
 
 /** py: sqlglot/parser.py:158 */
-function build_convert_timezone(args, default_source_tz = null) {
+export function build_convert_timezone(args, default_source_tz = null) {
   if (args.length === 2) {
     const source_tz = default_source_tz ? exp.Literal.string(default_source_tz) : null;
     return new exp.ConvertTimezone({ source_tz, target_tz: seqGet(args, 0), timestamp: seqGet(args, 1) });
@@ -3249,9 +3249,15 @@ export class Parser {
   // py: sqlglot/parser.py:3462
   _parse_reads_property() { throw new NotPorted("_parse_reads_property", "sqlglot/parser.py:3462"); }
 
-  /** @returns {*} */
-  // py: sqlglot/parser.py:3467
-  _parse_distkey() { return this.expression(new exp.DistKeyProperty({ this: this._parse_wrapped_id_vars() })); }
+  /**
+   * @returns {*}
+   *
+   * py: sqlglot/parser.py:3467 `this=self._parse_wrapped(self._parse_id_var)` — a
+   * SINGLE wrapped id var, not the csv-returning `_parse_wrapped_id_vars()` the prior
+   * transliteration called; that produced a one-element ARRAY for `this` instead of a
+   * bare `Identifier`.
+   */
+  _parse_distkey() { return this.expression(new exp.DistKeyProperty({ this: this._parse_wrapped(() => this._parse_id_var()) })); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3470
@@ -5736,9 +5742,15 @@ export class Parser {
     let value=parse_method(),items=value!==null&&value!==undefined?[value]:[];while(this._match(sep)){if(value instanceof exp.Expr)this._add_comments(value);value=parse_method();if(value!==null&&value!==undefined)items.push(value);}return items;
   }
 
-  /** @returns {*} */
-  // py: sqlglot/parser.py:8933
-  _parse_wrapped_id_vars(optional = false) { return this._parse_wrapped_csv(() => this._parse_id_var(), optional); }
+  /**
+   * @returns {*}
+   *
+   * py: sqlglot/parser.py:8933 `self._parse_wrapped_csv(self._parse_id_var,
+   * optional=optional)` passes `optional` as a KEYWORD, skipping `sep`. The prior
+   * transliteration passed it positionally, landing in `sep` instead and silently
+   * breaking comma-separated lists (PORT_PLAN.md R18's defect class).
+   */
+  _parse_wrapped_id_vars(optional = false) { return this._parse_wrapped_csv(() => this._parse_id_var(), TokenType.COMMA, optional); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8936
@@ -5880,17 +5892,21 @@ export class Parser {
     this._match(TokenType.COLUMN);
     const exists = this._parse_exists();
     const column = this._parse_field(true);
-    const opts = { this: column, exists: exists || null };
-    if (this._match_pair(TokenType.DROP, TokenType.DEFAULT)) return this.expression(new exp.AlterColumn({ ...opts, drop: true }));
-    if (this._match_pair(TokenType.SET, TokenType.DEFAULT)) return this.expression(new exp.AlterColumn({ ...opts, default: this._parse_disjunction() }));
-    if (this._match(TokenType.COMMENT)) return this.expression(new exp.AlterColumn({ ...opts, comment: this._parse_string() }));
-    if (this._match_text_seq("DROP", "NOT", "NULL")) return this.expression(new exp.AlterColumn({ ...opts, drop: true, allow_null: true }));
-    if (this._match_text_seq("SET", "NOT", "NULL")) return this.expression(new exp.AlterColumn({ ...opts, allow_null: false }));
-    if (this._match_text_seq("SET", "VISIBLE")) return this.expression(new exp.AlterColumn({ ...opts, visible: "VISIBLE" }));
-    if (this._match_text_seq("SET", "INVISIBLE")) return this.expression(new exp.AlterColumn({ ...opts, visible: "INVISIBLE" }));
+    // py:9104-9151 -- `exists=exists or None` is the LAST kwarg in every branch
+    // upstream, so it is appended last here too rather than spread in right after
+    // `this`: astDump compares field INSERTION order, and TSQL's own
+    // `_parse_alter_table_alter` override (tsql.js) calls `.set("allow_null", ...)`
+    // afterward, which only lands after `exists` if `exists` was already last.
+    if (this._match_pair(TokenType.DROP, TokenType.DEFAULT)) return this.expression(new exp.AlterColumn({ this: column, drop: true, exists: exists || null }));
+    if (this._match_pair(TokenType.SET, TokenType.DEFAULT)) return this.expression(new exp.AlterColumn({ this: column, default: this._parse_disjunction(), exists: exists || null }));
+    if (this._match(TokenType.COMMENT)) return this.expression(new exp.AlterColumn({ this: column, comment: this._parse_string(), exists: exists || null }));
+    if (this._match_text_seq("DROP", "NOT", "NULL")) return this.expression(new exp.AlterColumn({ this: column, drop: true, allow_null: true, exists: exists || null }));
+    if (this._match_text_seq("SET", "NOT", "NULL")) return this.expression(new exp.AlterColumn({ this: column, allow_null: false, exists: exists || null }));
+    if (this._match_text_seq("SET", "VISIBLE")) return this.expression(new exp.AlterColumn({ this: column, visible: "VISIBLE", exists: exists || null }));
+    if (this._match_text_seq("SET", "INVISIBLE")) return this.expression(new exp.AlterColumn({ this: column, visible: "INVISIBLE", exists: exists || null }));
     this._match_text_seq("SET", "DATA");
     this._match_text_seq("TYPE");
-    return this.expression(new exp.AlterColumn({ ...opts, dtype: this._parse_types(), collate: this._match(TokenType.COLLATE) && this._parse_term(), using: this._match(TokenType.USING) && this._parse_disjunction() }));
+    return this.expression(new exp.AlterColumn({ this: column, dtype: this._parse_types(), collate: this._match(TokenType.COLLATE) && this._parse_term(), using: this._match(TokenType.USING) && this._parse_disjunction(), exists: exists || null }));
   }
 
   /** @returns {*} */

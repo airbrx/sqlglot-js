@@ -85,6 +85,15 @@ import "../../src/dialects/postgres.js";
 // `registerDialect` call at module load — same chain-import shape
 // `src/parsers/databricks.js` already relies on for `DatabricksParser`.
 import "../../src/dialects/databricks.js";
+// Same wiring for `src/dialects/redshift.js` (P5) — `Redshift(Postgres)`, the single-
+// link extension of the already-real `Postgres` at every layer. Its `Parser` sets
+// `SUPPORTS_IMPLICIT_UNNEST = true` (faithful to upstream), which routes every SELECT
+// with a FROM clause through `_parse_query_modifiers`'s call to
+// `_implicit_unnests_to_explicit` — still a `NotPorted` stub in the base `Parser` — so
+// the REDSHIFT row below counts heavily into `stub` rather than `exact`/`mismatch`, and
+// is deliberately NOT added to the unguarded `SELECT * FROM t WHERE x = 1` assertion
+// loop further down, which would otherwise throw instead of reporting a percentage.
+import "../../src/dialects/redshift.js";
 
 const atoms = new Map();
 for (const line of readFileSync("corpus/atoms.jsonl", "utf8").split("\n")) {
@@ -140,6 +149,7 @@ for (const [label, name, file, claim] of [
   ["SPARK2   ", "spark2", "corpus/ast/spark2.jsonl", "src/ only — real Spark2 class: own Tokenizer subclass + own settings"],
   ["SPARK    ", "spark", "corpus/ast/spark.jsonl", "src/ only — real Spark class: own Tokenizer subclass + own settings"],
   ["DATABRICKS", "databricks", "corpus/ast/databricks.jsonl", "src/ only — real Databricks class: own Tokenizer subclass + own settings"],
+  ["REDSHIFT ", "redshift", "corpus/ast/redshift.jsonl", "src/ only — real Redshift class: own Tokenizer subclass + own settings (SUPPORTS_IMPLICIT_UNNEST stub inflates `stub`, see import comment above)"],
 ]) {
   const { b, samples } = run(name, file);
   const total = b.exact + b.mismatch + b.stub + b.error;

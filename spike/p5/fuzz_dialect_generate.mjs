@@ -68,6 +68,11 @@ import "../../src/dialects/duckdb.js";
 // `PostgresGenerator` (PORT_PLAN.md, the Postgres generator step — full TRANSFORMS +
 // settings + *_sql overrides, ported whole like SNOWFLAKE, not scoped like DUCKDB).
 import "../../src/dialects/postgres.js";
+// `redshift.js` registers a seventh, single-file population: the real
+// `RedshiftGenerator` (PORT_PLAN.md, the Redshift generator step — extends the already-
+// real `PostgresGenerator` at a single link, full TRANSFORMS + settings + *_sql
+// overrides, ported whole like POSTGRES/SNOWFLAKE, not scoped like DUCKDB).
+import "../../src/dialects/redshift.js";
 
 const VERBOSE = process.argv.includes("--verbose");
 
@@ -156,6 +161,7 @@ const CHAIN_AST_POOL = ["hive", "spark2", "spark", "spark, version=3.0.0", "spar
 let snowflakeExact = 0;
 let duckdbExact = 0;
 let postgresExact = 0;
+let redshiftExact = 0;
 const chainExact = {};
 for (const [label, name, genStem, astStems, claim] of [
   ["DEFAULT   ", null, "_default", ["_default"], "src/ only — base Generator, no dialect-specific settings on this path"],
@@ -166,6 +172,7 @@ for (const [label, name, genStem, astStems, claim] of [
   ["DATABRICKS", "databricks", "databricks", CHAIN_AST_POOL, "src/ only — real DatabricksGenerator extends SparkGenerator"],
   ["DUCKDB    ", "duckdb", "duckdb", ["duckdb"], "src/ only — real DuckDBGenerator, a SCOPED subset (PORT_PLAN.md R32), not full TRANSFORMS/*_sql coverage"],
   ["POSTGRES  ", "postgres", "postgres", ["postgres"], "src/ only — real PostgresGenerator: own TRANSFORMS + own settings + own *_sql overrides"],
+  ["REDSHIFT  ", "redshift", "redshift", ["redshift"], "src/ only — real RedshiftGenerator extends PostgresGenerator: own TRANSFORMS + own settings + own *_sql overrides"],
 ]) {
   const { b, samples } = run(name, genStem, astStems);
   const total = b.exact + b.mismatch + b.stub + b.error;
@@ -174,6 +181,7 @@ for (const [label, name, genStem, astStems, claim] of [
   if (name === "snowflake") snowflakeExact = b.exact;
   if (name === "duckdb") duckdbExact = b.exact;
   if (name === "postgres") postgresExact = b.exact;
+  if (name === "redshift") redshiftExact = b.exact;
   if (name && ["hive", "spark2", "spark", "databricks"].includes(name)) chainExact[name] = b.exact;
   console.log(
     `    ${label}  ${b.exact}/${reached} of REACHED rows exact (${pct}%)  ` +
@@ -187,7 +195,7 @@ for (const [label, name, genStem, astStems, claim] of [
 // merely counted, mirroring `fuzz_dialect_parse.mjs`'s closing check.
 console.log();
 const AST = { c: "Select", a: [["expressions", [{ c: "Column", a: [["this", { c: "Identifier", a: [["this", "a"], ["quoted", false]] }]] }]]] };
-for (const name of [null, "snowflake", "hive", "spark2", "spark", "databricks", "duckdb", "postgres"]) {
+for (const name of [null, "snowflake", "hive", "spark2", "spark", "databricks", "duckdb", "postgres", "redshift"]) {
   const got = Dialect.get_or_raise(name).generate(astLoad(AST));
   const generatorName = Dialect.get_or_raise(name).constructor.generator_class.name;
   console.log(`    get_or_raise(${JSON.stringify(name)}).generate(SELECT a)  via ${generatorName}  -> ${JSON.stringify(got)}`);
@@ -197,6 +205,7 @@ const failures = [];
 if (!snowflakeExact) failures.push("the snowflake dialect generated nothing exactly");
 if (!duckdbExact) failures.push("the duckdb dialect generated nothing exactly");
 if (!postgresExact) failures.push("the postgres dialect generated nothing exactly");
+if (!redshiftExact) failures.push("the redshift dialect generated nothing exactly");
 for (const name of ["hive", "spark2", "spark", "databricks"]) {
   if (!chainExact[name]) failures.push(`the ${name} dialect generated nothing exactly`);
 }
