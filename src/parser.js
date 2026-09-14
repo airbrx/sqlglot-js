@@ -165,7 +165,7 @@ export function build_coalesce(args, is_nvl = null, is_null = null) {
 }
 
 /** py: sqlglot/parser.py:158 */
-function build_convert_timezone(args, default_source_tz = null) {
+export function build_convert_timezone(args, default_source_tz = null) {
   if (args.length === 2) {
     const source_tz = default_source_tz ? exp.Literal.string(default_source_tz) : null;
     return new exp.ConvertTimezone({ source_tz, target_tz: seqGet(args, 0), timestamp: seqGet(args, 1) });
@@ -3249,9 +3249,15 @@ export class Parser {
   // py: sqlglot/parser.py:3462
   _parse_reads_property() { throw new NotPorted("_parse_reads_property", "sqlglot/parser.py:3462"); }
 
-  /** @returns {*} */
-  // py: sqlglot/parser.py:3467
-  _parse_distkey() { return this.expression(new exp.DistKeyProperty({ this: this._parse_wrapped_id_vars() })); }
+  /**
+   * @returns {*}
+   *
+   * py: sqlglot/parser.py:3467 `this=self._parse_wrapped(self._parse_id_var)` — a
+   * SINGLE wrapped id var, not the csv-returning `_parse_wrapped_id_vars()` the prior
+   * transliteration called; that produced a one-element ARRAY for `this` instead of a
+   * bare `Identifier`.
+   */
+  _parse_distkey() { return this.expression(new exp.DistKeyProperty({ this: this._parse_wrapped(() => this._parse_id_var()) })); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3470
@@ -5736,9 +5742,15 @@ export class Parser {
     let value=parse_method(),items=value!==null&&value!==undefined?[value]:[];while(this._match(sep)){if(value instanceof exp.Expr)this._add_comments(value);value=parse_method();if(value!==null&&value!==undefined)items.push(value);}return items;
   }
 
-  /** @returns {*} */
-  // py: sqlglot/parser.py:8933
-  _parse_wrapped_id_vars(optional = false) { return this._parse_wrapped_csv(() => this._parse_id_var(), optional); }
+  /**
+   * @returns {*}
+   *
+   * py: sqlglot/parser.py:8933 `self._parse_wrapped_csv(self._parse_id_var,
+   * optional=optional)` passes `optional` as a KEYWORD, skipping `sep`. The prior
+   * transliteration passed it positionally, landing in `sep` instead and silently
+   * breaking comma-separated lists (PORT_PLAN.md R18's defect class).
+   */
+  _parse_wrapped_id_vars(optional = false) { return this._parse_wrapped_csv(() => this._parse_id_var(), TokenType.COMMA, optional); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8936
