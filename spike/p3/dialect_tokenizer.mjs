@@ -27,6 +27,7 @@ import { SparkParser } from "../../src/parsers/spark.js";
 import { DatabricksParser } from "../../src/parsers/databricks.js";
 import { PostgresParser } from "../../src/parsers/postgres.js";
 import { DuckDBParser } from "../../src/parsers/duckdb.js";
+import { TSQLParser } from "../../src/parsers/tsql.js";
 import { RedshiftParser } from "../../src/parsers/redshift.js";
 
 const snapshot = JSON.parse(readFileSync("corpus/tokens/settings.json", "utf8"));
@@ -258,6 +259,7 @@ const PARSER_CLASSES = new Map([
   ["databricks", DatabricksParser],
   ["postgres", PostgresParser],
   ["duckdb", DuckDBParser],
+  ["tsql", TSQLParser],
   ["redshift", RedshiftParser],
 ]);
 
