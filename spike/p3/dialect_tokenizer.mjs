@@ -27,6 +27,7 @@ import { SparkParser } from "../../src/parsers/spark.js";
 import { DatabricksParser } from "../../src/parsers/databricks.js";
 import { PostgresParser } from "../../src/parsers/postgres.js";
 import { DuckDBParser } from "../../src/parsers/duckdb.js";
+import { BigQueryParser } from "../../src/parsers/bigquery.js";
 import { TSQLParser } from "../../src/parsers/tsql.js";
 import { RedshiftParser } from "../../src/parsers/redshift.js";
 
@@ -259,6 +260,7 @@ const PARSER_CLASSES = new Map([
   ["databricks", DatabricksParser],
   ["postgres", PostgresParser],
   ["duckdb", DuckDBParser],
+  ["bigquery", BigQueryParser],
   ["tsql", TSQLParser],
   ["redshift", RedshiftParser],
 ]);
