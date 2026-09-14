@@ -1136,6 +1136,12 @@ export function no_paren_current_date_sql(self, expression) {
   return zone ? `CURRENT_DATE AT TIME ZONE ${zone}` : "CURRENT_DATE";
 }
 
+/** py: sqlglot/dialects/dialect.py:1309 */
+export function no_tablesample_sql(self, expression) {
+  self.unsupported("TABLESAMPLE unsupported");
+  return self.sql(expression, "this");
+}
+
 /** py: sqlglot/dialects/dialect.py:1314 */
 export function no_pivot_sql(self, expression) {
   self.unsupported("PIVOT unsupported");
@@ -1177,9 +1183,34 @@ export function count_if_to_sum(self, expression) {
   return self.func("sum", exp.func("if", cond, 1, 0));
 }
 
+/** py: sqlglot/dialects/dialect.py:1858 */
+export function concat_to_dpipe_sql(self, expression) {
+  return self.sql(expression.expressions.reduce((x, y) => new exp.DPipe({ this: x, expression: y })));
+}
+
+/** py: sqlglot/dialects/dialect.py:1862 */
+export function concat_ws_to_dpipe_sql(self, expression) {
+  const [delim, ...rest_args] = expression.expressions;
+  return self.sql(
+    rest_args.reduce((x, y) => new exp.DPipe({ this: x, expression: new exp.DPipe({ this: delim, expression: y }) })),
+  );
+}
+
 /** py: sqlglot/dialects/dialect.py:1966 */
 export function any_value_to_max_sql(self, expression) {
   return self.func("MAX", expression.this);
+}
+
+/**
+ * py: sqlglot/dialects/dialect.py:1986
+ *
+ * `self.sql(expression, "start") or "1"` — Python `or` on a possibly-empty STRING, not
+ * a boolean guard; an empty string from `self.sql` falls through to the "1" default.
+ */
+export function generatedasidentitycolumnconstraint_sql(self, expression) {
+  const start = self.sql(expression, "start") || "1";
+  const increment = self.sql(expression, "increment") || "1";
+  return `IDENTITY(${start}, ${increment})`;
 }
 
 /** py: sqlglot/dialects/dialect.py:1970 */

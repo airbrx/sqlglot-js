@@ -85,6 +85,7 @@ import { cpAt, cpLen, cpSlice, pyIsDigit, pyIsSpace, pyLower, pyLstrip, pyStrip,
 import * as exp from "./expressions/index.js";
 import { registerGenerator } from "./expressions/core.js";
 import { formatTime } from "./time.js";
+import { pyTruthy } from "./_py/truthy.js";
 
 /**
  * py: sqlglot/generator.py:65 `AFTER_HAVING_MODIFIER_TRANSFORMS`
@@ -3633,9 +3634,14 @@ export class Generator {
     let operation_modifiers = this.expressions(expression, "operation_modifiers", { sep: " " });
     operation_modifiers = operation_modifiers ? `${this.sep()}${operation_modifiers}` : "";
 
+    // py:3382 `if not self.STAR_EXCLUDE_REQUIRES_DERIVED_TABLE and exclude:` — `exclude`
+    // is a plain list (`RedshiftParser._parse_projections` sets it to `[]`, not `None`,
+    // when there is no EXCLUDE clause), and an EMPTY Python list is falsy where JS's
+    // `[]` is not; `pyTruthy` closes that gap rather than emitting a spurious
+    // `EXCLUDE ()` for every SELECT.
     const exclude = expression.args.exclude;
 
-    if (!cls.STAR_EXCLUDE_REQUIRES_DERIVED_TABLE && exclude) {
+    if (!cls.STAR_EXCLUDE_REQUIRES_DERIVED_TABLE && pyTruthy(exclude)) {
       const exclude_sql = this.expressions(null, null, { sqls: exclude, flat: true });
       expressions = `${expressions}${this.seg("EXCLUDE")} (${exclude_sql})`;
     }
@@ -3661,7 +3667,7 @@ export class Generator {
 
     sql = this.prepend_ctes(expression, sql);
 
-    if (cls.STAR_EXCLUDE_REQUIRES_DERIVED_TABLE && exclude) {
+    if (cls.STAR_EXCLUDE_REQUIRES_DERIVED_TABLE && pyTruthy(exclude)) {
       expression.set("exclude", null);
       const subquery = expression.subquery(null, { copy: false });
       const star = new exp.Star({ except_: exclude });
