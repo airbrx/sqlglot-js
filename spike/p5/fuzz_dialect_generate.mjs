@@ -79,6 +79,13 @@ import "../../src/dialects/redshift.js";
 // scoped like DUCKDB — with one narrow documented exception, see the file's own header:
 // `explode_projection_to_unnest` is omitted from the `exp.Select` TRANSFORMS chain).
 import "../../src/dialects/bigquery.js";
+// `tsql.js` registers a ninth, single-file population: the real `TSQLGenerator`
+// (PORT_PLAN.md, TSQL dialect+generator round — standalone, extends `Generator`
+// directly, no chain). Full TRANSFORMS + settings + *_sql overrides ported, like
+// SNOWFLAKE/POSTGRES/REDSHIFT, not scoped like DUCKDB, minus two upstream TRANSFORMS
+// entries (`exp.CTE`/`exp.Subquery`) still blocked on the unported
+// `optimizer/qualify_columns.py` — see that file's own header.
+import "../../src/dialects/tsql.js";
 
 const VERBOSE = process.argv.includes("--verbose");
 
@@ -169,6 +176,7 @@ let duckdbExact = 0;
 let postgresExact = 0;
 let redshiftExact = 0;
 let bigqueryExact = 0;
+let tsqlExact = 0;
 const chainExact = {};
 for (const [label, name, genStem, astStems, claim] of [
   ["DEFAULT   ", null, "_default", ["_default"], "src/ only — base Generator, no dialect-specific settings on this path"],
@@ -181,6 +189,7 @@ for (const [label, name, genStem, astStems, claim] of [
   ["POSTGRES  ", "postgres", "postgres", ["postgres"], "src/ only — real PostgresGenerator: own TRANSFORMS + own settings + own *_sql overrides"],
   ["REDSHIFT  ", "redshift", "redshift", ["redshift"], "src/ only — real RedshiftGenerator extends PostgresGenerator: own TRANSFORMS + own settings + own *_sql overrides"],
   ["BIGQUERY  ", "bigquery", "bigquery", ["bigquery"], "src/ only — real BigQueryGenerator: own TRANSFORMS + own settings + own *_sql overrides"],
+  ["TSQL      ", "tsql", "tsql", ["tsql"], "src/ only — real TSQLGenerator: own TRANSFORMS + own settings + own *_sql overrides (exp.CTE/exp.Subquery still blocked on unported optimizer/qualify_columns.py)"],
 ]) {
   const { b, samples } = run(name, genStem, astStems);
   const total = b.exact + b.mismatch + b.stub + b.error;
@@ -191,6 +200,7 @@ for (const [label, name, genStem, astStems, claim] of [
   if (name === "postgres") postgresExact = b.exact;
   if (name === "redshift") redshiftExact = b.exact;
   if (name === "bigquery") bigqueryExact = b.exact;
+  if (name === "tsql") tsqlExact = b.exact;
   if (name && ["hive", "spark2", "spark", "databricks"].includes(name)) chainExact[name] = b.exact;
   console.log(
     `    ${label}  ${b.exact}/${reached} of REACHED rows exact (${pct}%)  ` +
@@ -204,7 +214,7 @@ for (const [label, name, genStem, astStems, claim] of [
 // merely counted, mirroring `fuzz_dialect_parse.mjs`'s closing check.
 console.log();
 const AST = { c: "Select", a: [["expressions", [{ c: "Column", a: [["this", { c: "Identifier", a: [["this", "a"], ["quoted", false]] }]] }]]] };
-for (const name of [null, "snowflake", "hive", "spark2", "spark", "databricks", "duckdb", "postgres", "redshift", "bigquery"]) {
+for (const name of [null, "snowflake", "hive", "spark2", "spark", "databricks", "duckdb", "postgres", "redshift", "bigquery", "tsql"]) {
   const got = Dialect.get_or_raise(name).generate(astLoad(AST));
   const generatorName = Dialect.get_or_raise(name).constructor.generator_class.name;
   console.log(`    get_or_raise(${JSON.stringify(name)}).generate(SELECT a)  via ${generatorName}  -> ${JSON.stringify(got)}`);
@@ -216,6 +226,7 @@ if (!duckdbExact) failures.push("the duckdb dialect generated nothing exactly");
 if (!postgresExact) failures.push("the postgres dialect generated nothing exactly");
 if (!redshiftExact) failures.push("the redshift dialect generated nothing exactly");
 if (!bigqueryExact) failures.push("the bigquery dialect generated nothing exactly");
+if (!tsqlExact) failures.push("the tsql dialect generated nothing exactly");
 for (const name of ["hive", "spark2", "spark", "databricks"]) {
   if (!chainExact[name]) failures.push(`the ${name} dialect generated nothing exactly`);
 }

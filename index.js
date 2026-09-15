@@ -27,6 +27,7 @@ import "./src/dialects/duckdb.js";
 import "./src/dialects/postgres.js";
 import "./src/dialects/redshift.js";
 import "./src/dialects/bigquery.js";
+import "./src/dialects/tsql.js";
 
 import { Dialect, parseOne } from "./src/dialects/dialect.js";
 import { ErrorLevel, ParseError, TokenError, UnsupportedError } from "./src/errors.js";

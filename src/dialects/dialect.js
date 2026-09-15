@@ -851,6 +851,31 @@ export function ts_or_ds_add_cast(expression) {
   return expression;
 }
 
+/**
+ * py: sqlglot/dialects/dialect.py:2015 `remove_ts_or_ds_to_date(to_sql=None, args=("this",))`
+ *
+ * Added for `src/generators/tsql.js`'s `exp.Day`/`exp.Month`/`exp.Year` TRANSFORMS
+ * entries (PORT_PLAN.md, TSQL Generator round) — no earlier ported generator reached
+ * this helper. `to_sql` defaults to `null`, matching upstream's `None`, so the
+ * fallback path below (`function_fallback_sql`) is what every TSQL caller actually
+ * exercises; a future dialect passing a real `to_sql` would use the other branch.
+ */
+export function remove_ts_or_ds_to_date(to_sql = null, args = ["this"]) {
+  return function func(self, expression) {
+    for (const arg_key of args) {
+      const arg = expression.args[arg_key];
+      if (
+        (arg instanceof exp.TsOrDsToDate || arg instanceof exp.TsOrDsToTimestamp)
+        && !arg.args.format
+      ) {
+        expression.set(arg_key, arg.this);
+      }
+    }
+
+    return to_sql ? to_sql(self, expression) : self.function_fallback_sql(expression);
+  };
+}
+
 /** py: sqlglot/dialects/dialect.py:2032 `date_delta_sql(name, cast=False)` */
 export function date_delta_sql(name, cast = false) {
   return function _delta_sql(self, expression) {
