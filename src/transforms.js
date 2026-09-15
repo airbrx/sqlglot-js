@@ -29,7 +29,7 @@
 // (see tools/lint_deny.mjs's `isPortedSite`, which otherwise treats a hand-written file
 // with no seeded `// py:` skeleton as fully ported and flags every deny-list site in
 // the REST of transforms.py as an unacknowledged one):
-// @ported-ranges sqlglot/transforms.py 19-71 72-128 144-200 201-264 278-294 555-567 570-579 615-631 131-141 297-399 732-738 741-1084
+// @ported-ranges sqlglot/transforms.py 19-71 72-128 144-200 201-264 265-275 278-294 555-567 570-579 615-631 131-141 297-399 732-738 741-1084
 //
 // The added ranges (Databricks-chain generator step, PORT_PLAN.md) cover
 // `unnest_generate_series`, `unnest_to_explode`, `unqualify_columns`,
@@ -49,6 +49,14 @@
 // `eliminate_window_clause` (1001, no new range needed — already inside 741-1084, whose
 // own note above already covers "a function landing later just needs the range to
 // already include its lines," which it did).
+//
+// BigQuery generator step (PORT_PLAN.md) added one more: `remove_precision_
+// parameterized_types` (265, new range above), for `generators/bigquery.js`'s
+// `TRANSFORMS[exp.Cast]`. `explode_projection_to_unnest` (402) stays unported — its
+// `Scope(expression).references` needs the full `Scope` CLASS (references, sources),
+// not the Tier-A `walkInScope`/`findAllInScope`/`findInScope` functions `unqualify_unnest`
+// above already gets by with; `generators/bigquery.js`'s own `TRANSFORMS[exp.Select]`
+// documents the resulting gap where it applies the entry.
 
 import { findNewName, seqGet } from "./helper.js";
 import { UnsupportedError } from "./errors.js";
@@ -306,6 +314,25 @@ export function eliminate_qualify(expression) {
     return outerSelects
       .from_(expression.subquery("_t", { copy: false }), { copy: false })
       .where(qualifyFilters, { copy: false });
+  }
+
+  return expression;
+}
+
+/**
+ * py: sqlglot/transforms.py:265 `remove_precision_parameterized_types(expression)`
+ *
+ * Some dialects only allow the precision for parameterized types to be defined in the
+ * DDL and not in other expressions. This transform removes the precision from
+ * parameterized types in expressions. Added for `generators/bigquery.js`'s
+ * `TRANSFORMS[exp.Cast]` (BigQuery port).
+ *
+ * @param {exp.Expr} expression
+ * @returns {exp.Expr}
+ */
+export function remove_precision_parameterized_types(expression) {
+  for (const node of expression.findAll(exp.DataType)) {
+    node.set("expressions", node.expressions.filter((e) => !(e instanceof exp.DataTypeParam)));
   }
 
   return expression;

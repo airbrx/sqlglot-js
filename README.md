@@ -17,8 +17,9 @@ This is a derivative work of sqlglot (MIT License, Copyright (c) 2026 Toby Mao).
 | Snowflake | 2,397 / 2,427 reached (98.8%) | 1,154 / 1,158 reached (99.7%) |
 | DuckDB | 999 / 1,017 reached (98.2%) | 258 / 395 reached (65.3% — deliberately scoped subset, see PORT_PLAN.md R32) |
 | Postgres | 919 / 930 reached (98.8%) | 284 / 285 reached (99.6%) |
+| BigQuery | 1,282 / 1,298 reached (98.8%) | 462 / 464 reached (99.6%) |
 
-— **10,879 of 15,478 rows exact across all 46 dialects** overall on the parse side (base-grammar coverage benefits every dialect, not just the seven above). Every number is machine-checked against a pinned CPython `sqlglot` install via `node spike/p3/fuzz_ast_coverage.mjs`, `spike/p5/fuzz_dialect_parse.mjs`, and `spike/p5/fuzz_dialect_generate.mjs` — not asserted by hand; `PORT_PLAN.md`'s 35 R-series findings are the record of what that checking has caught so far.
+— **12,259 of 15,478 rows exact across all 46 dialects** overall on the parse side (base-grammar coverage benefits every dialect, not just the eight above). Every number is machine-checked against a pinned CPython `sqlglot` install via `node spike/p3/fuzz_ast_coverage.mjs`, `spike/p5/fuzz_dialect_parse.mjs`, and `spike/p5/fuzz_dialect_generate.mjs` — not asserted by hand; `PORT_PLAN.md`'s R-series findings are the record of what that checking has caught so far.
 
 ```js
 import { parseOne, transpile } from "sqlglot-js"; // or "./index.js" from a repo checkout
@@ -39,7 +40,7 @@ exp.select("id", "name").from_("users").where(exp.column("active").eq(true)).sql
 ```
 
 **What doesn't exist yet:**
-- **Most dialects have no real `Dialect` class at all.** The base `Generator` (`src/generator.js`) and all four originally-prioritized dialects' own `Parser`/`Dialect`/`Generator` are real, but the other ~42 of the 46 harvested dialects aren't registered — `Dialect.get_or_raise("bigquery")` throws `Unknown dialect` before you'd even get to calling `.parse()` or `.generate()` on it.
+- **Most dialects have no real `Dialect` class at all.** The base `Generator` (`src/generator.js`) and the dialects listed in the table above have their own real `Parser`/`Dialect`/`Generator`, but most of the other ~40 of the 46 harvested dialects aren't registered — `Dialect.get_or_raise("tsql")` throws `Unknown dialect` before you'd even get to calling `.parse()` or `.generate()` on it.
 - **DuckDB's generator is intentionally partial.** 70 of 147 `TRANSFORMS` entries and 33 settings are ported (the marginal-value subset a closure-tool analysis identified, not upstream line order) — the rest is a named follow-on, not a silent gap; see PORT_PLAN.md R32 for exactly what's in vs. out.
 - **Not published to any registry.** `package.json` and `index.js` are real (`"name": "sqlglot-js"`, `"type": "module"`), but there's no npm publish yet — consume it as a git dependency (`github:airbrx/sqlglot-js#main`) from another project, or import `./index.js` directly from a repo checkout.
 - **`Schema`/`MappingSchema` and `diff`** — no target doc, no code (see docs/api.md's "Not yet designed" section).

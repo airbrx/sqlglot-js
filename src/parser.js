@@ -55,6 +55,7 @@ import { pyFalsy, pyTruthy } from "./_py/truthy.js";
 import { kernelSql } from "./generator_kernel.js";
 import * as exp from "./expressions/index.js";
 import { findInScope } from "./optimizer/scope.js";
+import { normalize_identifiers } from "./optimizer/normalize_identifiers.js";
 
 /**
  * py: parser.py:334 `SENTINEL_NONE: Token = Token(TokenType.SENTINEL, "SENTINEL")`
@@ -3774,10 +3775,45 @@ export class Parser {
     }));
   }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/parser.py:4317 `_implicit_unnests_to_explicit(self, this)`.
+   *
+   * First real caller: `parsers/bigquery.js`'s `SUPPORTS_IMPLICIT_UNNEST = true` makes
+   * `_parse_query_modifiers` below call this for every query with a FROM clause.
+   * Blocked until `optimizer/normalize_identifiers.js` existed (P5, this round).
+   *
+   * note: param `this` renamed to `this_` (JS reserved word)
+   */
   // py: sqlglot/parser.py:4317
-  // note: param `this` renamed to `this_` (JS reserved word)
-  _implicit_unnests_to_explicit(this_) { throw new NotPorted("_implicit_unnests_to_explicit", "sqlglot/parser.py:4317"); }
+  _implicit_unnests_to_explicit(this_) {
+    const refs = new Set([normalize_identifiers(this_.args.from_.this.copy(), this.dialect).aliasOrName]);
+    for (const join of this_.args.joins || []) {
+      const table = join.this;
+      let normalized_table = table.copy();
+      normalized_table.meta.maybe_column = true;
+      normalized_table = normalize_identifiers(normalized_table, this.dialect);
+
+      if (table instanceof exp.Table && !join.args.on) {
+        if (normalized_table.parts.length > 1 && refs.has(normalized_table.parts[0].name)) {
+          const table_as_column = table.to_column();
+          const unnest = new exp.Unnest({ expressions: [table_as_column] });
+
+          // Table.to_column creates a parent Alias node that we want to convert to
+          // a TableAlias and attach to the Unnest, so it matches the parser's output
+          if (table.args.alias instanceof exp.TableAlias) {
+            table_as_column.replace(table_as_column.this);
+            exp.alias_(unnest, null, { table: [table.args.alias.this], copy: false });
+          }
+
+          table.replace(unnest);
+        }
+      }
+
+      refs.add(normalized_table.aliasOrName);
+    }
+
+    return this_;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4350
