@@ -15,21 +15,27 @@
 // `generators/hive.py:337-338`, `generators/snowflake.py:550-552`). Base
 // `Generator.TRANSFORMS` (src/generator.js `static TRANSFORMS`) does not map any class
 // to these functions, upstream or in this port, and wiring them there anyway would be
-// an invented behavior this port does not want. The only two transforms.py calls base
-// `Generator` makes on its own — `ensure_bools` and `move_ctes_to_top_level`, from
-// `preprocess()`/`_move_ctes_to_top_level()` in src/generator.js — are gated on
-// `ENSURE_BOOLS`/`EXPRESSIONS_WITHOUT_NESTED_CTES`, both empty at the base-class level,
-// so those two guarded `NotPorted` throws stay correctly unreachable and are not
-// revisited here. Net effect, confirmed with `--brief` on all three: real marginal is
-// 0 rows today, because every consuming corpus row also needs a dialect's own
-// `Generator` subclass (`src/generators/` — absent) and/or `dialect:<name>` resolution
-// for generation, neither of which this branch touches. See PORT_PLAN.md R26.
+// an invented behavior this port does not want. Net effect at the time, confirmed with
+// `--brief`: real marginal was 0 rows, because every consuming corpus row also needed a
+// dialect's own `Generator` subclass (`src/generators/` — absent) and/or `dialect:<name>`
+// resolution for generation, neither of which that branch touched. See PORT_PLAN.md R26.
+//
+// The two transforms.py calls base `Generator` makes on its own — `ensure_bools` and
+// `move_ctes_to_top_level`, from `preprocess()`/`_move_ctes_to_top_level()` in
+// src/generator.js — WERE gated on `ENSURE_BOOLS`/`EXPRESSIONS_WITHOUT_NESTED_CTES`,
+// both empty at the base-class level, so those two guarded `NotPorted` throws stayed
+// unreachable. `src/generators/tsql.js` is the first generator in this port to set
+// either flag (both, in fact — `ENSURE_BOOLS = true` unconditionally on every
+// `.generate()` call via `preprocess()`, `EXPRESSIONS_WITHOUT_NESTED_CTES` non-empty
+// for the narrower nested-CTE-bubbling case), so both are ported now, alongside their
+// TSQL caller, rather than left throwing for a caller that would hit them on nearly
+// every statement.
 //
 // This file deliberately ports only a subset of upstream's ~30 top-level functions
 // (see tools/lint_deny.mjs's `isPortedSite`, which otherwise treats a hand-written file
 // with no seeded `// py:` skeleton as fully ported and flags every deny-list site in
 // the REST of transforms.py as an unacknowledged one):
-// @ported-ranges sqlglot/transforms.py 19-71 72-128 144-200 201-264 278-294 555-567 570-579 615-631 131-141 297-399 732-738 741-1084
+// @ported-ranges sqlglot/transforms.py 19-71 72-128 144-200 201-264 278-294 555-567 570-579 615-631 131-141 297-399 672-729 732-738 741-1084
 //
 // The added ranges (Databricks-chain generator step, PORT_PLAN.md) cover
 // `unnest_generate_series`, `unnest_to_explode`, `unqualify_columns`,
@@ -54,6 +60,7 @@ import { findNewName, seqGet } from "./helper.js";
 import { UnsupportedError } from "./errors.js";
 import * as exp from "./expressions/index.js";
 import { findAllInScope } from "./optimizer/scope.js";
+import { ensure_bools as canonicalizeEnsureBools } from "./optimizer/canonicalize.js";
 
 /**
  * py: sqlglot/transforms.py:19 `preprocess(transforms, generator=None)`
@@ -552,6 +559,81 @@ export function remove_within_group_for_percentiles(expression) {
     const input_value = expression.find(exp.Ordered).this;
     return expression.replace(new exp.ApproxQuantile({ this: input_value, quantile }));
   }
+
+  return expression;
+}
+
+/**
+ * py: sqlglot/transforms.py:672 `move_ctes_to_top_level(expression)`
+ *
+ * Some dialects (e.g. Hive, T-SQL, Spark prior to version 3) only allow CTEs to be
+ * defined at the top level, so for example queries like
+ * `SELECT * FROM (WITH t(c) AS (SELECT 1) SELECT * FROM t) AS subq` are invalid in
+ * those dialects. This transformation moves every CTE to the top level so the final
+ * SQL is syntactically valid.
+ *
+ * Added for `src/generator.js`'s `_move_ctes_to_top_level` (py:987), whose own guard
+ * — a non-empty `EXPRESSIONS_WITHOUT_NESTED_CTES` — was unreachable until
+ * `src/generators/tsql.js` became the first generator in this port to populate it.
+ *
+ * TODO (upstream's own, py:682): handle name clashes whilst moving CTEs.
+ *
+ * @param {exp.Expr} expression
+ * @returns {exp.Expr}
+ */
+export function move_ctes_to_top_level(expression) {
+  let top_level_with = expression.args.with_;
+  for (const inner_with of [...expression.findAll(exp.With)]) {
+    if (inner_with.parent === expression) continue;
+
+    if (!top_level_with) {
+      top_level_with = inner_with.pop();
+      expression.set("with_", top_level_with);
+    } else {
+      if (inner_with.recursive) top_level_with.set("recursive", true);
+
+      const parent_cte = inner_with.findAncestor(exp.CTE);
+      inner_with.pop();
+
+      if (parent_cte) {
+        const exprs = top_level_with.expressions;
+        const i = exprs.indexOf(parent_cte);
+        exprs.splice(i, 0, ...inner_with.expressions);
+        top_level_with.set("expressions", exprs);
+      } else {
+        top_level_with.set("expressions", [...top_level_with.expressions, ...inner_with.expressions]);
+      }
+    }
+  }
+
+  return expression;
+}
+
+/**
+ * py: sqlglot/transforms.py:711 `ensure_bools(expression)`
+ *
+ * Converts numeric values used in boolean-predicate positions into explicit boolean
+ * expressions (`x` -> `x <> 0`). Added alongside `move_ctes_to_top_level` above, for
+ * the same reason: `src/generator.js`'s `preprocess()` gates this on `ENSURE_BOOLS`,
+ * unreachable until `src/generators/tsql.js` set it `true`. The real per-node check
+ * (`optimizer/canonicalize.py`'s own, differently-shaped `ensure_bools`) lives in
+ * `src/optimizer/canonicalize.js`, a Tier A single-function port.
+ *
+ * @param {exp.Expr} expression
+ * @returns {exp.Expr}
+ */
+export function ensure_bools(expression) {
+  function _ensure_bool(node) {
+    if (
+      node.is_number
+      || (!(node instanceof exp.SubqueryPredicate) && node.isType(exp.DType.UNKNOWN, ...exp.DataType.NUMERIC_TYPES))
+      || (node instanceof exp.Column && !node.type)
+    ) {
+      node.replace(node.neq(0));
+    }
+  }
+
+  for (const node of expression.walk()) canonicalizeEnsureBools(node, _ensure_bool);
 
   return expression;
 }

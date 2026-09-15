@@ -19,6 +19,14 @@ import "./src/dialects/databricks.js";
 import "./src/dialects/snowflake.js";
 import "./src/dialects/duckdb.js";
 import "./src/dialects/postgres.js";
+// `redshift.js` (PORT_PLAN.md R38) and `tsql.js` (PORT_PLAN.md, TSQL dialect+generator
+// round) both landed with real classes before this file was updated for them — the
+// same "wire it here or the public entry point never sees it" gap this header already
+// warns about, just missed for both at merge time. Found while verifying TSQL's own
+// wiring end to end through `contrib/gatewaySqlMetadata.js`, which imports `Dialect`
+// from this file, not from `src/dialects/dialect.js` directly.
+import "./src/dialects/redshift.js";
+import "./src/dialects/tsql.js";
 
 import { Dialect, parseOne } from "./src/dialects/dialect.js";
 import { ErrorLevel, ParseError, TokenError, UnsupportedError } from "./src/errors.js";

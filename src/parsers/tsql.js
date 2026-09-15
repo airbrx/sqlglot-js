@@ -4,21 +4,19 @@
 // grammar. Fourth in PORT_PLAN.md §10's dialect priority order (after Snowflake,
 // Postgres, DuckDB), and self-contained the same way: it extends the base `Parser`
 // directly rather than sitting in a subclass chain. `sqlglot/dialects/tsql.py` (the
-// `TSQL(Dialect)` SETTINGS class) and `sqlglot/generators/tsql.py` stay P5/P7,
-// deferred to follow-up sessions — the same phased split every prior dialect port
-// used (Snowflake PR #24, Postgres PR #28, DuckDB PR #31).
+// `TSQL(Dialect)` SETTINGS class, `src/dialects/tsql.js`) and `sqlglot/generators/tsql.py`
+// (`src/generators/tsql.js`) landed in a later session — the same phased split every
+// prior dialect port used (Snowflake PR #24 then #27, Postgres PR #28, DuckDB PR #31).
 //
-// Two real forward-dependency gaps fall out of that split, both handled the way
-// `annotate_types`/`_to_interval` are handled in postgres.js — a file-local stub
-// that throws `NotPorted` rather than fabricating or duplicating data that belongs
-// to a not-yet-ported component:
-//
-//   * `_build_formatted_time` and `_build_format` (upstream :133, :166) both do
-//     `from sqlglot.dialects.tsql import TSQL` INSIDE their own function body — a
-//     REAL circular-import workaround upstream (`dialects/tsql.py` imports
-//     `TSQLParser` FROM this file, so this file cannot import `TSQL` back at module
-//     level), not merely a phasing artifact. `_tsqlSettings()` below reproduces that
-//     unavailability honestly until `src/dialects/tsql.js` exists.
+// `_build_formatted_time` and `_build_format` (upstream :133, :166) both do
+// `from sqlglot.dialects.tsql import TSQL` INSIDE their own function body — a REAL
+// circular-import workaround upstream (`dialects/tsql.py` imports `TSQLParser` FROM
+// this file at module level, so that file cannot import `TSQL` back the same way).
+// `_tsqlSettings()` below resolves the same class via `Dialect.get_or_raise("tsql")`
+// — a runtime registry lookup rather than a module import — which sidesteps the ES
+// module cycle a top-level `import { TSQL } from "../dialects/tsql.js"` would
+// recreate here (see that function's own comment for why the cycle bites in JS even
+// though Python's late-import trick works, and does so asymmetrically).
 //
 // The two static-field rules `snowflake.js`/`postgres.js` document apply here
 // unchanged: a subclass's STATIC FIELD INITIALIZER names its parent explicitly, and
@@ -44,9 +42,8 @@ import { Parser, build_coalesce, build_extract_json_with_path, setDiff, setUnion
 import { TokenType } from "../tokens.js";
 import { seqGet } from "../helper.js";
 import { pyLower, pyUpper, cpLen, pyZfill } from "../_py/str.js";
-import { NotPorted } from "../errors.js";
 import * as exp from "../expressions/index.js";
-import { build_date_delta, map_date_part } from "../dialects/dialect.js";
+import { Dialect, build_date_delta, map_date_part } from "../dialects/dialect.js";
 import { formatTime } from "../time.js";
 
 /** py: sqlglot/parsers/tsql.py:22 */
@@ -148,19 +145,28 @@ const FOR_JSON_OPTIONS = new Map(
 export const OPTIONS_THAT_REQUIRE_EQUAL = new Set(["MAX_GRANT_PERCENT", "MIN_GRANT_PERCENT", "LABEL"]);
 
 /**
- * py: sqlglot/parsers/tsql.py:133, :166
+ * py: sqlglot/parsers/tsql.py:133, :166 both do
+ * `from sqlglot.dialects.tsql import TSQL` INSIDE the function body -- a real
+ * circular-import workaround, since `dialects/tsql.py` imports `TSQLParser` FROM
+ * this file at module level. A plain top-level `import { TSQL } from
+ * "../dialects/tsql.js"` here would recreate the same cycle in ES modules, but
+ * with a sharper failure mode than Python's: `class TSQL extends Dialect { static
+ * Parser = TSQLParser; ... }` reads `TSQLParser` synchronously while evaluating its
+ * own class body, so whichever of the two modules is NOT the graph's entry point
+ * hits that read while the other is still mid-evaluation and its export is in the
+ * temporal dead zone -- a `ReferenceError`, not Python's `undefined`-free success.
+ * `spike/p3/dialect_tokenizer.mjs` imports `TSQLParser` directly (bypassing
+ * `dialects/tsql.js` entirely), so that failure mode is reachable, not theoretical.
  *
- * See the file header: both `_build_formatted_time` and `_build_format` read
- * `TSQL.TIME_MAPPING` / `TSQL.FORMAT_TIME_MAPPING` off the not-yet-ported
- * `src/dialects/tsql.js` settings class. Throwing here -- rather than copying the
- * two mapping tables into this file as a second source of truth that would drift
- * from the real ones once the Dialect-settings session lands them -- is deliberate.
+ * `Dialect.get_or_raise("tsql")` sidesteps it: it is a RUNTIME registry lookup
+ * (`src/dialects/dialect.js`'s `DIALECT_CLASSES` map), not a module import, so it
+ * carries no load-order dependency at all. It resolves once `src/dialects/tsql.js`
+ * has registered itself with `registerDialect` -- which is required anyway for
+ * `Dialect.get_or_raise("tsql").parse()` (this function's only real caller) to have
+ * reached this code in the first place.
  */
 function _tsqlSettings() {
-  throw new NotPorted(
-    "TSQL dialect settings (TIME_MAPPING / FORMAT_TIME_MAPPING)",
-    "sqlglot/dialects/tsql.py",
-  );
+  return Dialect.get_or_raise("tsql");
 }
 
 /** py: sqlglot/parsers/tsql.py:127 */

@@ -86,6 +86,7 @@ import * as exp from "./expressions/index.js";
 import { registerGenerator } from "./expressions/core.js";
 import { formatTime } from "./time.js";
 import { pyTruthy } from "./_py/truthy.js";
+import { ensure_bools, move_ctes_to_top_level } from "./transforms.js";
 
 /**
  * py: sqlglot/generator.py:65 `AFTER_HAVING_MODIFIER_TRANSFORMS`
@@ -1326,11 +1327,9 @@ export class Generator {
 
     if (this.constructor.ENSURE_BOOLS) {
       // py: `import sqlglot.transforms; expression = ensure_bools(expression)`.
-      // transforms.js is P4 stub-queue scope, deliberately not ported here. Base
-      // `Generator.ENSURE_BOOLS` is False, so this branch is unreachable for the base
-      // class and only a dialect that flips it can hit this throw — loudly, rather
-      // than silently skipping a transform that changes output SQL.
-      throw new NotPorted("preprocess/ensure_bools", "sqlglot/generator.py:981");
+      // `transforms.js`'s own `ensure_bools` (PORT_PLAN.md, TSQL generator round —
+      // the first generator in this port to set `ENSURE_BOOLS = true`).
+      expression = ensure_bools(expression);
     }
 
     return expression;
@@ -1348,9 +1347,11 @@ export class Generator {
       this.constructor.EXPRESSIONS_WITHOUT_NESTED_CTES.has(expression.constructor) &&
       [...expression.findAll(exp.With)].some((node) => node.parent !== expression)
     ) {
-      // Same reasoning as `preprocess` above: base `EXPRESSIONS_WITHOUT_NESTED_CTES` is
-      // an empty set, so only a dialect that populates it reaches this.
-      throw new NotPorted("_move_ctes_to_top_level", "sqlglot/generator.py:994");
+      // py: `import sqlglot.transforms; expression = sqlglot.transforms.move_ctes_to_top_level(expression)`.
+      // `transforms.js`'s own `move_ctes_to_top_level` (PORT_PLAN.md, TSQL generator
+      // round — the first generator in this port to populate
+      // `EXPRESSIONS_WITHOUT_NESTED_CTES`).
+      expression = move_ctes_to_top_level(expression);
     }
     return expression;
   }

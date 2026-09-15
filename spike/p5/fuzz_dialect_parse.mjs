@@ -94,6 +94,13 @@ import "../../src/dialects/databricks.js";
 // is deliberately NOT added to the unguarded `SELECT * FROM t WHERE x = 1` assertion
 // loop further down, which would otherwise throw instead of reporting a percentage.
 import "../../src/dialects/redshift.js";
+// Same wiring for `src/dialects/tsql.js` (P5, PORT_PLAN.md TSQL dialect+generator
+// round) — a standalone dialect (extends `Dialect` directly, no chain), same shape as
+// SNOWFLAKE/DUCKDB/POSTGRES above. Before this file existed,
+// `spike/p3/dialect_tokenizer.mjs`'s harvested-settings stand-in was the only way to
+// resolve "tsql" through anything other than a direct `TSQLParser` import; the real
+// production path had no TSQL settings class or `Tokenizer` subclass at all.
+import "../../src/dialects/tsql.js";
 
 const atoms = new Map();
 for (const line of readFileSync("corpus/atoms.jsonl", "utf8").split("\n")) {
@@ -150,6 +157,7 @@ for (const [label, name, file, claim] of [
   ["SPARK    ", "spark", "corpus/ast/spark.jsonl", "src/ only — real Spark class: own Tokenizer subclass + own settings"],
   ["DATABRICKS", "databricks", "corpus/ast/databricks.jsonl", "src/ only — real Databricks class: own Tokenizer subclass + own settings"],
   ["REDSHIFT ", "redshift", "corpus/ast/redshift.jsonl", "src/ only — real Redshift class: own Tokenizer subclass + own settings (SUPPORTS_IMPLICIT_UNNEST stub inflates `stub`, see import comment above)"],
+  ["TSQL     ", "tsql", "corpus/ast/tsql.jsonl", "src/ only — real TSQL class: own Tokenizer subclass + own settings, standalone (no chain)"],
 ]) {
   const { b, samples } = run(name, file);
   const total = b.exact + b.mismatch + b.stub + b.error;
