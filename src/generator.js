@@ -78,7 +78,7 @@
 
 import { ErrorLevel, NotPorted, UnsupportedError, concatMessages } from "./errors.js";
 import { PyValueError, PyKeyError } from "./_py/errors.js";
-import { PyDecimal } from "./_py/num.js";
+import { PyDecimal, pyIntFromStrBase } from "./_py/num.js";
 import { csv, nameSequence } from "./helper.js";
 import { logger } from "./logging.js";
 import { cpAt, cpLen, cpSlice, pyIsDigit, pyIsSpace, pyLower, pyLstrip, pyStrip, pyRstrip, pyUpper } from "./_py/str.js";
@@ -525,7 +525,7 @@ export class Generator {
     [exp.LogProperty, (_, e) => `${e.args.no ? "NO " : ""}LOG`], // py:216
     [exp.MaskingProperty, () => "MASKING"], // py:217
     [exp.MaterializedProperty, () => "MATERIALIZED"], // py:218
-    // py:219  [exp.NetFunc, /* TODO lambda */],
+    [exp.NetFunc, (self, e) => `NET.${self.sql(e, "this")}`], // py:219
     [exp.NetworkProperty, () => "NETWORK"], // py:220
     // py:221  [exp.NonClusteredColumnConstraint, /* TODO lambda */],
     [exp.NoPrimaryIndexProperty, () => "NO PRIMARY INDEX"], // py:224
@@ -554,7 +554,7 @@ export class Generator {
     [exp.RemoteWithConnectionModelProperty, (self, e) => `REMOTE WITH CONNECTION ${self.sql(e, "this")}`], // py:246
     [exp.ReturnsProperty, (self, e) => (e.args.null ? "RETURNS NULL ON NULL INPUT" : self.naked_property(e))], // py:249
     [exp.RowAccessProperty, () => "ROW ACCESS"], // py:252
-    // py:253  [exp.SafeFunc, /* TODO lambda */],
+    [exp.SafeFunc, (self, e) => `SAFE.${self.sql(e, "this")}`], // py:253
     [exp.SampleProperty, (self, e) => `SAMPLE BY ${self.sql(e, "this")}`], // py:254
     [exp.SecureProperty, () => "SECURE"], // py:255
     [exp.SecurityIntegrationProperty, () => "SECURITY"], // py:256
@@ -1998,9 +1998,36 @@ export class Generator {
   // py: sqlglot/generator.py:1592
   bitstring_sql(expression) { throw new NotPorted("bitstring_sql", "sqlglot/generator.py:1592"); }
 
-  /** @returns {*} */
+  /**
+   * `hexstring_sql(expression, binary_function_repr=None)`.
+   *
+   * First real caller is `generators/bigquery.js`'s `TRANSFORMS[exp.HexString]`
+   * (`self.hexstring_sql(e, binary_function_repr="FROM_HEX")`), which is why this was a
+   * stub until P5's BigQuery generator round.
+   */
   // py: sqlglot/generator.py:1598
-  hexstring_sql(expression, binary_function_repr) { throw new NotPorted("hexstring_sql", "sqlglot/generator.py:1598"); }
+  hexstring_sql(expression, binary_function_repr = null) {
+    const this_ = this.sql(expression, "this");
+    const is_integer_type = expression.args.is_integer;
+
+    if (
+      (is_integer_type && !this.dialect.HEX_STRING_IS_INTEGER_TYPE)
+      || (!this.dialect.HEX_START && !binary_function_repr)
+    ) {
+      return String(pyIntFromStrBase(this_, 16));
+    }
+
+    if (!is_integer_type) {
+      if (binary_function_repr) {
+        return this.func(binary_function_repr, exp.Literal.string(this_));
+      }
+      if (this.dialect.HEX_STRING_IS_INTEGER_TYPE) {
+        this.unsupported("Unsupported transpilation from BINARY/BLOB hex string");
+      }
+    }
+
+    return `${this.dialect.HEX_START}${this_}${this.dialect.HEX_END}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1623

@@ -10,8 +10,14 @@
 // string: `Dialect.get_or_raise` is synchronous (it's called from `Tokenizer`'s
 // constructor, which cannot await — see dialect.js's own note on this), so every
 // dialect with a real class today is imported here, once, for its registration side
-// effect. Anything else stays what it is upstream: `Dialect.get_or_raise("bigquery")`
-// throws "Unknown dialect".
+// effect. Anything else stays what it is upstream: `Dialect.get_or_raise("clickhouse")`
+// throws "Unknown dialect". This list must be updated every time a new dialect's real
+// `Dialect` settings class lands — it is NOT auto-discovered from `src/dialects/`, so a
+// dialect can be fully real (parser + settings + generator, verified against the real
+// per-dialect oracles) and still be unreachable from this package's own top-level
+// entry point if this list isn't updated in the same round. Found stale 2026-09-15:
+// `redshift.js` (merged PR #56) and `bigquery.js`/`tsql.js` (landing alongside this
+// fix) were all missing here despite being fully real.
 import "./src/dialects/hive.js";
 import "./src/dialects/spark2.js";
 import "./src/dialects/spark.js";
@@ -19,6 +25,8 @@ import "./src/dialects/databricks.js";
 import "./src/dialects/snowflake.js";
 import "./src/dialects/duckdb.js";
 import "./src/dialects/postgres.js";
+import "./src/dialects/redshift.js";
+import "./src/dialects/bigquery.js";
 
 import { Dialect, parseOne } from "./src/dialects/dialect.js";
 import { ErrorLevel, ParseError, TokenError, UnsupportedError } from "./src/errors.js";

@@ -94,6 +94,14 @@ import "../../src/dialects/databricks.js";
 // is deliberately NOT added to the unguarded `SELECT * FROM t WHERE x = 1` assertion
 // loop further down, which would otherwise throw instead of reporting a percentage.
 import "../../src/dialects/redshift.js";
+// Same wiring for `src/dialects/bigquery.js` (P5) — standalone (extends `Dialect`
+// directly, like Snowflake/DuckDB/Postgres, not a chain link). Unlike Redshift's row
+// above, BigQuery's `SUPPORTS_IMPLICIT_UNNEST = true` does NOT inflate `stub`:
+// `src/parser.js`'s `_implicit_unnests_to_explicit` (py:4317) and its one dependency,
+// `optimizer/normalize_identifiers.js`, both landed in this same round specifically to
+// unblock this row — before they existed, EVERY BigQuery SELECT with a FROM clause hit
+// that stub, which would have made this row look the way Redshift's still does.
+import "../../src/dialects/bigquery.js";
 
 const atoms = new Map();
 for (const line of readFileSync("corpus/atoms.jsonl", "utf8").split("\n")) {
@@ -150,6 +158,7 @@ for (const [label, name, file, claim] of [
   ["SPARK    ", "spark", "corpus/ast/spark.jsonl", "src/ only — real Spark class: own Tokenizer subclass + own settings"],
   ["DATABRICKS", "databricks", "corpus/ast/databricks.jsonl", "src/ only — real Databricks class: own Tokenizer subclass + own settings"],
   ["REDSHIFT ", "redshift", "corpus/ast/redshift.jsonl", "src/ only — real Redshift class: own Tokenizer subclass + own settings (SUPPORTS_IMPLICIT_UNNEST stub inflates `stub`, see import comment above)"],
+  ["BIGQUERY ", "bigquery", "corpus/ast/bigquery.jsonl", "src/ only — real BigQuery class: own Tokenizer subclass + own settings + normalize_identifier override"],
 ]) {
   const { b, samples } = run(name, file);
   const total = b.exact + b.mismatch + b.stub + b.error;
@@ -169,7 +178,7 @@ for (const [label, name, file, claim] of [
 // instead of moving a percentage by a fraction.
 console.log();
 const SQL = "SELECT * FROM t WHERE x = 1";
-for (const name of [null, "snowflake", "duckdb", "postgres", "hive", "spark2", "spark", "databricks"]) {
+for (const name of [null, "snowflake", "duckdb", "postgres", "hive", "spark2", "spark", "databricks", "bigquery"]) {
   const got = Dialect.get_or_raise(name).parse(SQL)[0];
   const shape = toS(got).split("\n").join(" ").replace(/\s+/g, " ");
   const parserName = Dialect.get_or_raise(name).constructor.parser_class.name;
