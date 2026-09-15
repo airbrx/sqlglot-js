@@ -284,7 +284,15 @@ export function dictDepth(d) {
 
 function dictValues(d) {
   if (d instanceof Map) return d.values();
-  if (d !== null && typeof d === "object" && !Array.isArray(d)) {
+  // py: `d.values()` only exists for an actual `dict` -- anything else (including a
+  // class instance such as `exp.Expr`) raises AttributeError, caught above to mean
+  // "not a dict" (depth 0). `typeof d === "object"` alone is true for EVERY object,
+  // so it wrongly recursed into e.g. a DataType leaf value's own internal fields
+  // (args/parent/comments/...) and reported a bogus inflated depth -- found via
+  // `src/schema.js`'s `getColumnType`, whose column-mapping values are legitimately
+  // `exp.DataType` instances, not strings. `constructor === Object` is this
+  // codebase's established plain-dict test (expressions/core.js, builders.js).
+  if (d !== null && typeof d === "object" && d.constructor === Object) {
     return Object.values(d)[Symbol.iterator]();
   }
   return null;
