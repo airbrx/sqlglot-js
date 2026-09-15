@@ -75,14 +75,21 @@ test("the only gap versus CPython is the deliberately-unseeded TRANSFORMS", () =
   // of `naked_property`'s `NAME value`) — each entry here is a verified, faithful
   // one-line port of its CPython lambda (a literal keyword, `self.sql(e, "this")`,
   // `self.naked_property(e)`, or `self.expressions(...)`).
-  assert.equal(Generator.TRANSFORMS.size, 78, "TRANSFORMS has 78 real entries after the properties-dispatch step");
+  // +2 from the BigQuery dialect+generator round (PORT_PLAN.md): `exp.NetFunc` and
+  // `exp.SafeFunc` (py:219/253, `f"NET.{...}"` / `f"SAFE.{...}"`) were each still a
+  // `// TODO lambda` placeholder — real corpus rows through the real `BigQuery`
+  // dialect either threw ("Unsupported expression type NetFunc/SafeFunc") or fell
+  // through to `function_fallback_sql`'s class-name-to-SNAKE_CASE-plus-`_FUNC`
+  // fallback (`SAFE_FUNC(...)` instead of `SAFE.(...)`). Both are base-`Generator`
+  // entries, not BigQuery-specific overrides, so every dialect gets them for free.
+  assert.equal(Generator.TRANSFORMS.size, 80, "TRANSFORMS has 80 real entries after the properties-dispatch step");
 
   const wantTransform = Object.entries(WANT).filter(([, h]) => h === "transform");
   assert.equal(wantTransform.length, 143);
 
   const got = _buildDispatch(Generator);
   assert.equal(got.size, Object.keys(WANT).length - wantTransform.length + Generator.TRANSFORMS.size);
-  assert.equal(got.size, 495);
+  assert.equal(got.size, 497);
 });
 
 test("TRANSFORMS beats a same-named *_sql method", () => {
@@ -382,7 +389,11 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // above named (`create_sql`'s properties-location branches now really dispatch).
   // `root_properties`/`properties`/`with_properties`/`locate_properties`, ported in the
   // same step, are not `*_sql`-suffixed and so not counted here either.
-  assert.equal(bodied.length, 108, "exactly 108 *_sql methods have a real body");
+  // +1 from the BigQuery dialect+generator round (PORT_PLAN.md): `hexstring_sql`
+  // (py:1598), reached by `BigQueryGenerator`'s `TRANSFORMS[exp.HexString]`
+  // (`self.hexstring_sql(e, binary_function_repr="FROM_HEX")`) — a base-Generator
+  // method, not BigQuery-specific code, so every dialect gets it for free.
+  assert.equal(bodied.length, 109, "exactly 109 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -401,7 +412,10 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // 90, they "run" on the stand-in in the sense this assertion checks.
   // +4 for the SET/USE step's four new bodies, for the same reason.
   // +3 for the properties-dispatch step's three new bodies, for the same reason.
-  assert.equal(432 - stubs.length, 107, "107 of those 108 also run without a resolved Dialect");
+  // +1 for `hexstring_sql` (BigQuery dialect+generator round): it reads only
+  // `this.dialect.HEX_STRING_IS_INTEGER_TYPE`/`HEX_START`/`HEX_END` FIELDS, never a
+  // Dialect METHOD, so it runs on the frozen stand-in like the other 107.
+  assert.equal(432 - stubs.length, 108, "108 of those 109 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],

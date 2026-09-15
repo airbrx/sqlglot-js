@@ -14,10 +14,13 @@
 // established the first set; `hive.js` adds `build_regexp_extract`, `spark2.js` adds
 // `pivot_column_names`, `spark.js`/`databricks.js` add `build_date_delta`,
 // `postgres.js` adds `build_json_extract_path` and `build_timestamp_trunc`, and
-// `bigquery.js` adds `build_date_delta_with_interval`. A helper that is genuinely
-// specific to ONE dialect belongs in that dialect's own file instead — all of these
-// are in upstream's shared `dialects/dialect.py`, imported by several dialects each,
-// so they belong here.
+// `bigquery.js`'s parser adds `build_date_delta_with_interval`; `bigquery.js`'s
+// generator (P5, this round) adds `inline_array_unless_query` and
+// `date_add_interval_sql`, and exports `_asciiTranslate` (previously module-private)
+// for `BigQuery.normalize_identifier`'s own `.translate(ASCII_LOWER)` call. A helper
+// that is genuinely specific to ONE dialect belongs in that dialect's own file
+// instead — all of these are in upstream's shared `dialects/dialect.py`, imported by
+// several dialects each, so they belong here.
 //
 // Nothing here resolves a dialect by NAME (CONTRACTS.md §8). Every function that needs
 // dialect state takes an already-resolved dialect object, exactly as upstream's
@@ -27,7 +30,7 @@
 // for a missing dialect, it is the documented default, and it is reproduced by
 // consulting the base `DATE_PART_MAPPING` literal below rather than by any lookup.
 //
-// @ported-ranges sqlglot/dialects/dialect.py 858-953 1297-1299 1314-1316 1330-1332 1438-1454 1610-1637 1654-1674 1676-1697 1700-1706 1830-1837 1892-1914 1916-1920 1921-1922 1925-1963 1966-1967 1970-1973 2167-2176 2179-2184 2187-2220 2223-2265 2268-2295 2298-2302 2305-2323 2384-2394 2406-2407 2410-2411 2462-2474 2477-2497 2604-2617 2620-2625 2628-2641 2654-2672
+// @ported-ranges sqlglot/dialects/dialect.py 858-953 1280-1284 1297-1299 1314-1316 1330-1332 1438-1454 1610-1637 1654-1674 1676-1697 1700-1706 1709-1715 1830-1837 1892-1914 1916-1920 1921-1922 1925-1963 1966-1967 1970-1973 2167-2176 2179-2184 2187-2220 2223-2265 2268-2295 2298-2302 2305-2323 2384-2394 2406-2407 2410-2411 2462-2474 2477-2497 2604-2617 2620-2625 2628-2641 2654-2672
 //
 // One range per member ported, so `tools/lint_deny.mjs` measures this file against
 // what it actually claims rather than against all 2,600 lines of `dialects/dialect.py`
@@ -531,6 +534,18 @@ export function inline_array_sql(self, expression) {
 }
 
 /**
+ * py: sqlglot/dialects/dialect.py:1280 `inline_array_unless_query(self, expression)`.
+ * Added for `generators/bigquery.js`'s `TRANSFORMS[exp.Array]`.
+ */
+export function inline_array_unless_query(self, expression) {
+  const elem = seqGet(expression.expressions, 0);
+  if (elem instanceof exp.Expr && elem.find(exp.Query)) {
+    return self.func("ARRAY", elem);
+  }
+  return inline_array_sql(self, expression);
+}
+
+/**
  * py: sqlglot/dialects/dialect.py:1339
  * `strposition_sql(self, expression, func_name="STRPOS", supports_position=False, supports_occurrence=False, use_ansi_position=True)`
  */
@@ -742,6 +757,18 @@ export function unit_to_var(expression, default_ = "DAY") {
  * upstream's earlier line number, since JS function declarations below don't hoist
  * ahead of the `const`/arrow-returning factories they call.
  */
+/**
+ * py: sqlglot/dialects/dialect.py:1709 `date_add_interval_sql(data_type, kind)`.
+ * Added for `generators/bigquery.js`'s `TRANSFORMS[exp.DateAdd]` and friends.
+ */
+export function date_add_interval_sql(data_type, kind) {
+  return function func(self, expression) {
+    const this_ = self.sql(expression, "this");
+    const interval = new exp.Interval({ this: expression.expression, unit: unit_to_var(expression) });
+    return `${data_type}_${kind}(${this_}, ${self.sql(interval)})`;
+  };
+}
+
 export function timestamptrunc_sql(func = "DATE_TRUNC", zone = false) {
   return function _timestamptrunc_sql(self, expression) {
     const args = [weekstart_unit_to_str(self, expression), expression.this];
@@ -1624,8 +1651,13 @@ const MAXSIZE = 2n ** 63n - 1n;
  * over exactly the 26 ASCII letters is equivalent to flipping the case of only the
  * `[A-Za-z]` characters and leaving every other code point (including non-ASCII
  * letters) untouched, which a plain regex replace does directly with no lookup table.
+ *
+ * Exported (not module-private) because `dialects/bigquery.js`'s own
+ * `normalize_identifier` OVERRIDE — rather than calling `super.normalize_identifier()`
+ * — calls `expression.this.translate(ASCII_LOWER)` directly at py:1062's sibling
+ * `dialects/bigquery.py:157`, the same translate call this function already backs here.
  */
-function _asciiTranslate(s, upper) {
+export function _asciiTranslate(s, upper) {
   return upper ? s.replace(/[a-z]/g, (c) => c.toUpperCase()) : s.replace(/[A-Z]/g, (c) => c.toLowerCase());
 }
 

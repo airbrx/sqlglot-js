@@ -68,6 +68,20 @@ test("transpile renders a real cross-dialect identifier-quoting difference", () 
   assert.equal(sql, 'SELECT "id" FROM t');
 });
 
+test("every dialect index.js imports for its registration side effect actually resolves through the public entry point", () => {
+  // Regression: index.js's eager-import list is hand-maintained, not derived from
+  // src/dialects/ -- a dialect can be fully real (parser + settings + generator,
+  // verified against the real per-dialect oracles in spike/) and still be
+  // unreachable from THIS package's own top-level API if this list isn't updated
+  // in the same round a new dialect lands. Found stale for redshift/bigquery/tsql
+  // on 2026-09-15. This test only proves the import list is internally consistent
+  // with what get_or_raise can resolve -- it can't catch a dialect that's real but
+  // simply missing from BOTH this list and this test, so keep it in sync by hand.
+  for (const name of ["hive", "spark2", "spark", "databricks", "snowflake", "duckdb", "postgres", "redshift", "bigquery"]) {
+    assert.equal(Dialect.get_or_raise(name).parse("SELECT 1")[0].constructor.name, "Select", `dialect '${name}' should resolve`);
+  }
+});
+
 test("transpile returns one string per statement, empty string for a null slot", () => {
   const result = transpile("SELECT 1;;SELECT 2", { read: "snowflake", errorLevel: ErrorLevel.IGNORE });
   assert.deepEqual(result, ["SELECT 1", "", "SELECT 2"]);
@@ -96,7 +110,12 @@ test("Dialect is re-exported and resolves the same registry parse/transpile use"
 });
 
 test("Dialect.get_or_raise throws a clear error for an unregistered dialect name", () => {
-  assert.throws(() => Dialect.get_or_raise("bigquery"), /Unknown dialect/);
+  // Was "bigquery" -- true when this test was written (PR #48), stale the moment
+  // bigquery's real Dialect settings class landed and index.js started importing
+  // it. Use a name that can never become real instead of a currently-unported one,
+  // so this test doesn't silently start asserting the wrong thing again the next
+  // time a dialect ships.
+  assert.throws(() => Dialect.get_or_raise("not-a-real-dialect"), /Unknown dialect/);
 });
 
 test("error classes are re-exported and structured", () => {
