@@ -43,7 +43,7 @@ exp.select("id", "name").from_("users").where(exp.column("active").eq(true)).sql
 - **Most dialects have no real `Dialect` class at all.** The base `Generator` (`src/generator.js`) and the dialects listed in the table above have their own real `Parser`/`Dialect`/`Generator`, but most of the other ~40 of the 46 harvested dialects aren't registered — `Dialect.get_or_raise("tsql")` throws `Unknown dialect` before you'd even get to calling `.parse()` or `.generate()` on it.
 - **DuckDB's generator is intentionally partial.** 70 of 147 `TRANSFORMS` entries and 33 settings are ported (the marginal-value subset a closure-tool analysis identified, not upstream line order) — the rest is a named follow-on, not a silent gap; see PORT_PLAN.md R32 for exactly what's in vs. out.
 - **Not published to any registry.** `package.json` and `index.js` are real (`"name": "sqlglot-js"`, `"type": "module"`), but there's no npm publish yet — consume it as a git dependency (`github:airbrx/sqlglot-js#main`) from another project, or import `./index.js` directly from a repo checkout.
-- **`Schema`/`MappingSchema` and `diff`** — no target doc, no code (see docs/api.md's "Not yet designed" section).
+- **`diff`** — no target doc, no code (see docs/api.md's "Not yet designed" section). `Schema`/`MappingSchema` (column-type-aware table/column metadata) are real, dialect-agnostic, and differentially tested — see docs/api.md.
 
 **Zero runtime dependencies** — enforced by CI. Node ≥ 20 and modern browsers, ESM. (Build-time verification tooling depends on a pinned Python `sqlglot` install; the runtime library will not.)
 
@@ -51,4 +51,4 @@ exp.select("id", "name").from_("users").where(exp.column("active").eq(true)).sql
 
 **`contrib/`:** airbrx-specific application code built on top of the port, not part of it (no `py:` anchors, not tracked by PORT_PLAN.md's closure numbers). See [contrib/README.md](contrib/README.md) — currently `gatewaySqlMetadata.js`, a `Dialect.get_or_raise(...).parse(sql)`-based cache-key metadata extractor for `airbrx-gateway`'s regex-based `SqlParser.js`.
 
-**Docs:** [`docs/`](docs/) describes the public API — see [getting-started.md](docs/getting-started.md) and [api.md](docs/api.md) for what's real today and what's still target design (mainly: dialect coverage beyond the seven listed above, and `Schema`/`diff`).
+**Docs:** [`docs/`](docs/) describes the public API — see [getting-started.md](docs/getting-started.md) and [api.md](docs/api.md) for what's real today and what's still target design (mainly: dialect coverage beyond the seven listed above, and `diff`).
