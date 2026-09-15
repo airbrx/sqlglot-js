@@ -964,6 +964,16 @@ export class Parser {
     /* py:898 */ TokenType.CURRENT_TIMESTAMP,
     /* py:899 */ TokenType.CURRENT_TIME,
     /* py:900 */ TokenType.CURRENT_USER,
+    // Not a py: line -- added alongside CURRENT_USER when CURRENT_ROLE
+    // gained a real keyword/token type (tokens.js). Without this,
+    // `CURRENT_ROLE()` (parenthesized form) regressed: _parse_function_call
+    // gates entry into function-call parsing on FUNC_TOKENS, so the newly
+    // keyword-tokenized CURRENT_ROLE would fail that check and never reach
+    // the by-name generic-function-registration path it used to rely on
+    // (see ALL_FUNCTION_NAMES/_gen/function_meta.js) when it tokenized as a
+    // plain VAR. CURRENT_USER already required this same entry for its own
+    // parenthesized form to work, which is how this gap was found.
+    TokenType.CURRENT_ROLE,
     /* py:901 */ TokenType.CURRENT_CATALOG,
     /* py:902 */ TokenType.DECLARE,
     /* py:903 */ TokenType.FILTER,

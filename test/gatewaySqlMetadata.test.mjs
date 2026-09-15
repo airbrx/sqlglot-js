@@ -227,15 +227,34 @@ test("non-deterministic: detects CURRENT_USER, CURRENT_ROLE(), SESSION_USER as u
   );
 });
 
-test("non-deterministic: bare CURRENT_ROLE / SESSION_USER are dialect-specific keywords, verified per-dialect", () => {
-  // CURRENT_ROLE (bare, no parens) is not wired as a keyword by this port's
-  // tokenizer for any of the three target dialects yet — it reads back as a
-  // plain Column, same shape (and same non-heuristic reasoning) as bare
-  // SYSDATE above.
-  assert.deepEqual(
-    extractSqlMetadata("SELECT CURRENT_ROLE", { dialect: "databricks" }).nonDeterministic.types,
-    [],
-  );
+test("non-deterministic: bare CURRENT_ROLE is recognized in every target dialect (regression: found via airbrx-gateway PR #228's review)", () => {
+  // CURRENT_ROLE (bare, no parens) was not wired as a keyword by this
+  // port's tokenizer for any dialect -- it read back as a plain Column, so
+  // it was silently exempt from non-deterministic-function detection even
+  // though CURRENT_USER/SESSION_USER (the same class of identity-dependent
+  // function) already worked correctly bare. Fixed: tokens.js now maps
+  // "CURRENT_ROLE" to TokenType.CURRENT_ROLE (parser.js already had the
+  // TokenType.CURRENT_ROLE -> exp.CurrentRole builder rule, it just never
+  // received that token type), and TokenType.CURRENT_ROLE was added to
+  // FUNC_TOKENS so the parenthesized form (CURRENT_ROLE()) -- previously
+  // routed through the generic by-name function registry while CURRENT_ROLE
+  // still tokenized as a plain VAR -- keeps working now that it tokenizes
+  // as a real keyword, mirroring CURRENT_USER's own FUNC_TOKENS entry.
+  for (const dialect of ["databricks", "snowflake", "postgres"]) {
+    assert.deepEqual(
+      extractSqlMetadata("SELECT CURRENT_ROLE", { dialect }).nonDeterministic.types,
+      ["user"],
+      `bare CURRENT_ROLE under dialect: ${dialect}`,
+    );
+    assert.deepEqual(
+      extractSqlMetadata("SELECT CURRENT_ROLE()", { dialect }).nonDeterministic.types,
+      ["user"],
+      `CURRENT_ROLE() under dialect: ${dialect}`,
+    );
+  }
+});
+
+test("non-deterministic: bare SESSION_USER is a dialect-specific keyword, verified per-dialect", () => {
   // SESSION_USER (bare) IS recognized by Databricks and Postgres (both
   // inherit/declare it as a NO_PAREN_FUNCTIONS keyword) but NOT by Snowflake
   // (verified: Snowflake's real parser has no SESSION_USER mapping at all,
@@ -694,6 +713,26 @@ test("standardizedSql: falls back to the raw original SQL (not null) when the st
   assert.equal(r.isDDL, true);
 });
 
+test("standardizedSql: comments are stripped, not preserved (regression: found via airbrx-gateway PR #228's review)", () => {
+  // standardizedSql's whole purpose is a stable cache-key input, not a
+  // human-readable echo of the original text -- generate()'s comments
+  // option defaults to true, so a per-request comment a BI tool injects
+  // (Tableau's query-id, dbt's model annotation, a timestamp) was being
+  // preserved verbatim, giving two byte-identical queries that differ only
+  // by an injected comment two DIFFERENT cache keys (0% hit rate for that
+  // traffic shape). Fixed by passing comments: false to generate().
+  const withComment = extractSqlMetadata("/* Tableau query id 8f3a1b */ SELECT * FROM t WHERE x = 1", {
+    dialect: "databricks",
+  });
+  const withDifferentComment = extractSqlMetadata("/* Tableau query id 99cc77 */ SELECT * FROM t WHERE x = 1", {
+    dialect: "databricks",
+  });
+  const withoutComment = extractSqlMetadata("SELECT * FROM t WHERE x = 1", { dialect: "databricks" });
+  assert.equal(withComment.standardizedSql, "SELECT * FROM t WHERE x = 1");
+  assert.equal(withComment.standardizedSql, withDifferentComment.standardizedSql);
+  assert.equal(withComment.standardizedSql, withoutComment.standardizedSql);
+});
+
 // ---------------------------------------------------------------------------
 // Statement classification
 // ---------------------------------------------------------------------------
@@ -724,5 +763,42 @@ test("statementType/isDDL/isDCL/isDataChange for a spread of statement types", (
     assert.equal(r.isDDL, expected.isDDL, `${sql} isDDL`);
     assert.equal(r.isDCL, expected.isDCL, `${sql} isDCL`);
     assert.equal(r.isDataChange, expected.isDataChange, `${sql} isDataChange`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Set operations (regression: found via airbrx-gateway PR #228's review)
+// ---------------------------------------------------------------------------
+//
+// getStatementType()'s STATEMENT_TYPE_BY_CLASS fallback (name.toUpperCase())
+// already produced "UNION"/"INTERSECT"/"EXCEPT" correctly -- the bug was
+// that those strings weren't in READ_ONLY_TYPES or TABLE_BEARING_TYPES, so a
+// plain `SELECT ... UNION ALL SELECT ...` (a pure read, same as a bare
+// SELECT) came back isReadOnly: false, tables: []. A real, in-production
+// consumer (airbrx-gateway's PostgresqlAdapter) treats isReadOnly: false as
+// "this is a mutation" and routes it through cache-invalidation logic meant
+// for actual writes -- a read query would have been firing invalidation.
+
+test("set operations: UNION ALL is read-only and surfaces tables from both branches", () => {
+  const r = extractSqlMetadata("SELECT a FROM cat.sch.x UNION ALL SELECT a FROM cat.sch.y", { dialect: "databricks" });
+  assert.equal(r.statementType, "UNION");
+  assert.equal(r.isReadOnly, true);
+  assert.equal(r.isDataChange, false);
+  assert.equal(r.tableCount, 2);
+  assert.deepEqual(
+    r.tables.map((t) => t.fullyQualifiedName).sort(),
+    ["cat.sch.x", "cat.sch.y"],
+  );
+});
+
+test("set operations: INTERSECT and EXCEPT are read-only and surface tables from both branches", () => {
+  for (const [keyword, statementType] of [
+    ["INTERSECT", "INTERSECT"],
+    ["EXCEPT", "EXCEPT"],
+  ]) {
+    const r = extractSqlMetadata(`SELECT a FROM cat.sch.x ${keyword} SELECT a FROM cat.sch.y`, { dialect: "databricks" });
+    assert.equal(r.statementType, statementType, keyword);
+    assert.equal(r.isReadOnly, true, keyword);
+    assert.equal(r.tableCount, 2, keyword);
   }
 });

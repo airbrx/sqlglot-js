@@ -12,7 +12,16 @@
 
 import { Dialect, exp } from "../index.js";
 
-const READ_ONLY_TYPES = new Set(["SELECT", "EXPLAIN", "WITH", "LIST", "SHOW", "DESCRIBE", "DESC"]);
+// UNION/INTERSECT/EXCEPT (set operations): these are read-only compositions
+// of two SELECTs, same as a bare SELECT -- found via airbrx-gateway PR #228's
+// review. Before this fix, getStatementType()'s STATEMENT_TYPE_BY_CLASS
+// fallback (name.toUpperCase()) already produced the right string
+// ("UNION"/"INTERSECT"/"EXCEPT"), but that string wasn't in READ_ONLY_TYPES,
+// so isReadOnly came back false for a plain read -- a real, in-production
+// consumer (airbrx-gateway's Postgres adapter) treats isReadOnly=false as
+// "this is a mutation", routing a `SELECT ... UNION ALL ...` through
+// cache-invalidation logic meant for actual writes.
+const READ_ONLY_TYPES = new Set(["SELECT", "EXPLAIN", "WITH", "LIST", "SHOW", "DESCRIBE", "DESC", "UNION", "INTERSECT", "EXCEPT"]);
 const DATA_CHANGE_TYPES = new Set(["INSERT", "UPDATE", "DELETE", "MERGE", "COPY", "RESTORE"]);
 const DDL_TYPES = new Set([
   "CREATE", "ALTER", "DROP", "TRUNCATE", "RENAME", "VACUUM", "OPTIMIZE",
@@ -28,8 +37,18 @@ const DELTA_OP_TYPES = new Set(["OPTIMIZE", "VACUUM", "MERGE", "RESTORE", "CONVE
 // `USE main.sales` statement's target is itself an `exp.Table` node — but
 // that is session-context plumbing, not a "this statement reads/writes a
 // table" signal, so it must not appear in `tables[]`.
+// UNION/INTERSECT/EXCEPT included alongside SELECT: extractTables() walks
+// the whole subtree via root.findAll(exp.Table, false) regardless of the
+// root node's own type, so a set operation's root correctly surfaces
+// exp.Table nodes from BOTH branches once its statementType is in this set
+// -- verified directly (a two-branch UNION query returns both tables, not
+// just one). Before this fix a set operation fell through to the `else`
+// branch below and returned tables: [] unconditionally, losing all table
+// metadata (and therefore any table-scoped cache-invalidation rule match)
+// for a statement shape that is common in BI-tool-generated SQL.
 const TABLE_BEARING_TYPES = new Set([
   "SELECT", "INSERT", "UPDATE", "DELETE", "MERGE", "CREATE", "DROP", "ALTER", "TRUNCATE",
+  "UNION", "INTERSECT", "EXCEPT",
 ]);
 
 // Real AST class name -> gateway-shaped statementType string. Anything not
@@ -131,7 +150,18 @@ export function extractSqlMetadata(sql, options = {}) {
     let standardizedSql = sql;
     let extractionError = null;
     try {
-      standardizedSql = Dialect.get_or_raise(dialect).generate(root, { pretty: false });
+      // comments: false -- found via airbrx-gateway PR #228's review.
+      // Generator defaults comments to true, so a per-request comment a BI
+      // tool injects (Tableau's query-id, dbt's model annotation, a
+      // timestamp) was being preserved verbatim into standardizedSql, which
+      // feeds airbrx-gateway's cache key directly. Two byte-identical
+      // queries differing only by an injected comment hashed to different
+      // keys -- a 0%-hit-rate footgun for exactly the BI-tool traffic this
+      // parser exists to cache. standardizedSql's whole purpose is a stable
+      // cache-key input, not a human-readable echo of the original text, so
+      // comments (which never affect execution semantics) should never have
+      // been part of it.
+      standardizedSql = Dialect.get_or_raise(dialect).generate(root, { pretty: false, comments: false });
     } catch (err) {
       extractionError = `standardizedSql generation failed: ${describeError(err)}`;
     }

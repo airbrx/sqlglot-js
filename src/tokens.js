@@ -280,6 +280,17 @@ export class Tokenizer extends _TokenizerBase {
     ["CURRENT_TIME", TokenType.CURRENT_TIME],
     ["CURRENT_TIMESTAMP", TokenType.CURRENT_TIMESTAMP],
     ["CURRENT_USER", TokenType.CURRENT_USER],
+    // Found via airbrx-gateway PR #228's review: parser.js already has a
+    // CURRENT_ROLE -> exp.CurrentRole builder rule wired up (py:484-485
+    // twin of CURRENT_USER's), and contrib/gatewaySqlMetadata.js's
+    // classifyNonDeterministic() already handles exp.CurrentRole -- but
+    // this keyword table had no entry to ever produce that token type in
+    // the first place, so "CURRENT_ROLE" tokenized as a plain identifier
+    // and parsed as exp.Column across every dialect, silently exempting it
+    // from non-deterministic-function detection (a genuine identity-
+    // dependent function, same class as CURRENT_USER/SESSION_USER, both of
+    // which already worked correctly).
+    ["CURRENT_ROLE", TokenType.CURRENT_ROLE],
     ["CURRENT_CATALOG", TokenType.CURRENT_CATALOG],
     ["DATABASE", TokenType.DATABASE],
     ["DEFAULT", TokenType.DEFAULT],
