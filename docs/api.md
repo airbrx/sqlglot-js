@@ -1,8 +1,10 @@
 # API reference
 
 > **Status:** the public surface described below is real (`index.js`, the package root) for
-> seven dialects; each section also says exactly what's still missing (mainly: the other ~42
-> harvested dialects, and `Schema`/`diff`). Function names and option shapes mirror upstream sqlglot's
+> seven dialects, plus `Schema`/`MappingSchema` (dialect-agnostic — column-type-aware
+> table/column metadata, no dependency on how many dialects have landed); each section also
+> says exactly what's still missing (mainly: the other ~42 harvested dialects, and `diff`).
+> Function names and option shapes mirror upstream sqlglot's
 > own `sqlglot/__init__.py` as closely as JS naming allows: a name that collides with a JS
 > reserved word gets a trailing underscore (`from_`, `case_`), a multi-word `snake_case` name
 > becomes `camelCase` (`parse_one` → `parseOne`, `to_identifier` → `toIdentifier`), everything
@@ -169,11 +171,60 @@ collects all of a statement's errors and raises one exception for it, `IMMEDIATE
 the first error found. The default when `errorLevel` is omitted is `IMMEDIATE` — same default
 as upstream's `Parser.__init__`.
 
+## `Schema` / `MappingSchema`
+
+**Real today** (`src/schema.js`, whole-file port — nothing stubbed), re-exported from the
+package root as `import { Schema, MappingSchema } from "sqlglot-js"` (matching upstream's own
+`sqlglot/__init__.py`, which re-exports exactly these two names and none of the module's
+other helpers). Differentially tested against CPython: 24 scenarios / 71 checks
+(`spike/p6/fuzz_schema.mjs`, since — unlike the parse/generate corpus — nothing else in the
+port depends on this file yet, so there is no existing corpus row to reuse) plus 29 structural
+unit tests (`test/schema.test.mjs`).
+
+Column-type-aware table/column metadata: a nested mapping of `{table: {column: type}}` (or
+`{db: {table: {...}}}` / `{catalog: {db: {table: {...}}}}`), dialect-aware identifier
+normalization, and a trie-based lookup that resolves a partially-qualified table name
+(`"t1"`) against however many catalog/db/table levels the schema was actually built with —
+raising `SchemaError` if that's ambiguous.
+
+```js
+import { MappingSchema } from "sqlglot-js";
+
+const schema = new MappingSchema({ users: { id: "INT", email: "VARCHAR" } });
+schema.columnNames("users");             // ["id", "email"]
+schema.getColumnType("users", "id").sql(); // "INT"
+schema.hasColumn("users", "email");      // true
+
+// The string form splits on every comma (matching upstream exactly), so a parameterized
+// type's own commas need the object form instead: "total:DECIMAL(10,2)" would misparse.
+schema.addTable("orders", { id: "INT", user_id: "INT", total: "DECIMAL(10, 2)" });
+```
+
+Real methods: `addTable`, `columnNames`, `getColumnType`, `hasColumn`, `getUdfType`, `find`,
+`copy`, `MappingSchema.fromMappingSchema`. Module-level helpers `ensureSchema`,
+`ensureColumnMapping`, `normalizeName`, `flattenSchema`, `nestedGet`, `nestedSet` are real too
+but not re-exported from the package root (matching upstream's own top-level surface) — reach
+them via `import { ensureSchema } from "sqlglot-js/src/schema.js"` from a repo checkout (no
+npm publish yet, same caveat as everything else on this page).
+
+One JS-specific note worth knowing before hand-building a schema: the internal nested mapping
+is stored as `Map`, not a plain object, specifically so a table or column literally named
+`"123"` keeps its real insertion position instead of a JS object silently sorting
+integer-looking keys first. Passing a schema via `normalize: true` (the default) is always
+safe regardless of what you construct it from (plain object or `Map`) — the constructor
+rebuilds the internal structure as `Map` either way. Passing `normalize: false` stores
+whatever you hand it as-is (matching upstream's own aliasing, no copy), so a plain-object
+literal with numeric-looking keys under `normalize: false` keeps whatever order the JS engine
+already gave it by the time your code runs.
+
+**Target design, not yet real:** nothing actually *consumes* a `Schema` yet — the optimizer's
+`qualify`/`annotate_types` passes this metadata is for are themselves unported (see
+`PORT_PLAN.md`'s phase table). `Schema`/`MappingSchema` today are a complete, standalone,
+verified building block waiting on that.
+
 ## Not yet designed / documented here
 
-- **`Schema` / `MappingSchema`** — column-type-aware parsing and the optimizer's `qualify`
-  pass depend on these; no target doc yet, no code yet (`src/schema.js` doesn't exist).
-- **`diff`** — structural AST diffing; same status, no target doc yet.
+- **`diff`** — structural AST diffing; no target doc yet.
 - **Every dialect beyond the seven listed above** — no real `Parser`, `Dialect`, or
   `Generator`; `Dialect.get_or_raise("bigquery")` (for example), and therefore
   `parse`/`parseOne`/`transpile`/`tokenize` given `read`/`write: "bigquery"`, throws

@@ -31,8 +31,13 @@ import "./src/dialects/tsql.js";
 import { Dialect, parseOne } from "./src/dialects/dialect.js";
 import { ErrorLevel, ParseError, TokenError, UnsupportedError } from "./src/errors.js";
 import * as exp from "./src/expressions/index.js";
+// py: sqlglot/__init__.py:54 `from sqlglot.schema import MappingSchema as MappingSchema,
+// Schema as Schema` -- upstream's top-level package re-exports exactly these two names
+// (not the module's other helpers, e.g. `ensure_schema`/`normalize_name`), so this
+// mirrors that surface rather than the whole of src/schema.js.
+import { Schema, MappingSchema } from "./src/schema.js";
 
-export { Dialect, ErrorLevel, ParseError, TokenError, UnsupportedError, exp, parseOne };
+export { Dialect, ErrorLevel, ParseError, TokenError, UnsupportedError, exp, parseOne, Schema, MappingSchema };
 
 /**
  * py: sqlglot/__init__.py:83 `tokenize`.
