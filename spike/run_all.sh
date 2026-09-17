@@ -81,6 +81,15 @@ PYTHONHASHSEED=0 python3 spike/p5/gen_duckdb_dialect_ref.py > spike/out/duckdb_d
 # normalization (base/snowflake/duckdb), UDF resolution, and the trie's ambiguous-prefix
 # path, straight out of CPython.
 PYTHONHASHSEED=0 python3 spike/p6/gen_schema_ref.py > spike/out/schema.json || fail=1
+# P7 oracle. `scope.py`'s `Scope` class CORE surface (AIR-2093) -- constructor, `branch`,
+# `_collect`, and every lazily-computed property/method. `traverse_scope`/`build_scope`
+# (the module-level scope-TREE builders) are deferred to AIR-2094 and not exercised here;
+# both this oracle and `spike/p7/fuzz_scope.mjs` hand-wire five small `Scope` trees
+# directly through the class's own constructor/`branch()` instead, one per `ScopeType`
+# this file exercises (ROOT/DERIVED_TABLE/CTE/UNION/SUBQUERY) -- see `gen_scope_ref.py`'s
+# own header for why, and for the `.sql()`-text node-comparison choice it shares with
+# `spike/p3/gen_walk_in_scope_ref.py`.
+PYTHONHASHSEED=0 python3 spike/p7/gen_scope_ref.py > spike/out/scope.json || fail=1
 # P7 oracle. `optimizer/optimize_joins.py` is greenfield and has zero dependency on any
 # other unported optimizer module -- same "no corpus/atoms.jsonl tie-in" shape as
 # schema.js and transforms.py, so this is the only differential signal on it: parse +
@@ -160,6 +169,7 @@ run "P5: Dialect.get_or_raise().parse()"   node spike/p5/fuzz_dialect_parse.mjs
 run "P5: Snowflake dialect vs CPython"     node spike/p5/fuzz_snowflake_dialect.mjs
 run "P5: DuckDB dialect vs CPython"        node spike/p5/fuzz_duckdb_dialect.mjs
 run "P6: schema.js MappingSchema vs CPython" node spike/p6/fuzz_schema.mjs
+run "P7: optimizer/scope.js Scope class vs CPython" node spike/p7/fuzz_scope.mjs
 run "P7: optimize_joins.js vs CPython"       node spike/p7/fuzz_optimize_joins.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
