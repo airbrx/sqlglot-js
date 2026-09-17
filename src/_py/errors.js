@@ -31,3 +31,6 @@ export class PyStopIteration extends PyException {}
 
 /** py: OverflowError */
 export class PyOverflowError extends PyException {}
+
+/** py: AssertionError -- raised by a bare `assert` statement when its condition is falsy. */
+export class PyAssertionError extends PyException {}
