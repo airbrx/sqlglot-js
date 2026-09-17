@@ -8,12 +8,22 @@
 // tree builders `traverse_scope`/`build_scope`.
 //
 // AIR-2093 ported the `Scope` class itself: its constructor, `branch`, `_collect` and
-// every lazily-computed property/method that reads the class's OWN state. AIR-2094 (this
-// round) ports `traverse_scope`/`build_scope` and their seven module-private helpers
+// every lazily-computed property/method that reads the class's OWN state. AIR-2094
+// ports `traverse_scope`/`build_scope` and their seven module-private helpers
 // (`_traverse_scope`, `_traverse_select`, `_traverse_union`, `_traverse_ctes`,
 // `_traverse_tables`, `_traverse_subqueries`, `_traverse_udtfs`) — the algorithm that
 // walks an expression tree and BUILDS the `Scope` tree, wiring `sources`/`parent`/every
 // `*_scopes` list the class's own properties read.
+//
+// AIR-2095 (reconciliation, no new lines ported) re-verified the four Tier A helpers
+// (`walk_in_scope`/`find_all_in_scope`/`find_in_scope`, `_is_derived_table`) and the
+// class's `rename_source`/`add_source`/`remove_source`/`replace` against the real
+// `scope.py:1008-1101`/class body now that the full `Scope` tree exists to compare
+// against — everything already matched exactly. The one genuine gap found was
+// verification, not code: `walk_in_scope`'s `prune` callback (used by two real, still-
+// unported callers, `qualify_columns.py`'s `node.is_star` and `simplify.py`'s
+// `isinstance(node, exp.If)`) had never been exercised by any oracle since P3. See
+// `spike/p3/fuzz_walk_in_scope.mjs`'s `PRUNE_PROBES`.
 //
 // @ported-ranges sqlglot/optimizer/scope.py 39-46 101-644 647-846 849-857 860-870 873-1005 1008-1059 1062-1081 1084-1101 1104-1111
 
