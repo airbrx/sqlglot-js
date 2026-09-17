@@ -1,22 +1,26 @@
-// py: sqlglot/optimizer/scope.py @ 91119bc — Tier A (walk/find helpers) plus the
-// `Scope` class's own CORE surface (AIR-2093).
+// py: sqlglot/optimizer/scope.py @ 91119bc — Tier A (walk/find helpers), the `Scope`
+// class's own CORE surface (AIR-2093), and the module-level tree builders
+// `traverse_scope`/`build_scope` (AIR-2094).
 //
 // PORT_PLAN.md §6 splits this file into "Tier A (P3, parser-path)" — the four walk/find
 // helpers below, ported first because `parser.py:8675` reaches `find_in_scope` directly
 // — and "Tier B (P5)", the ~1,100-LOC remainder: the `Scope` class and the module-level
 // tree builders `traverse_scope`/`build_scope`.
 //
-// AIR-2093 ports the `Scope` class itself: its constructor, `branch`, `_collect` and
-// every lazily-computed property/method that reads the class's OWN state. It does NOT
-// port `traverse_scope`/`build_scope` (the functions that walk an expression tree and
-// BUILD a `Scope` tree, wiring `sources`/`parent`/`*_scopes` across scope boundaries) —
-// that is AIR-2094. Both are exported here as `NotPorted` stubs so an accidental caller
-// fails loudly rather than silently returning `undefined`.
+// AIR-2093 ported the `Scope` class itself: its constructor, `branch`, `_collect` and
+// every lazily-computed property/method that reads the class's OWN state. AIR-2094 (this
+// round) ports `traverse_scope`/`build_scope` and their seven module-private helpers
+// (`_traverse_scope`, `_traverse_select`, `_traverse_union`, `_traverse_ctes`,
+// `_traverse_tables`, `_traverse_subqueries`, `_traverse_udtfs`) — the algorithm that
+// walks an expression tree and BUILDS the `Scope` tree, wiring `sources`/`parent`/every
+// `*_scopes` list the class's own properties read.
 //
-// @ported-ranges sqlglot/optimizer/scope.py 39-46 101-644 849-857 860-870 1008-1059 1062-1081 1084-1101 1104-1111
+// @ported-ranges sqlglot/optimizer/scope.py 39-46 101-644 647-846 849-857 860-870 873-1005 1008-1059 1062-1081 1084-1101 1104-1111
 
 import * as exp from "../expressions/index.js";
-import { NotPorted, OptimizeError } from "../errors.js";
+import { OptimizeError } from "../errors.js";
+import { findNewName, seqGet } from "../helper.js";
+import { logger } from "../logging.js";
 
 // py: expressions/query.py:2165 `UNWRAPPED_QUERIES = (Select, SetOperation)`
 const UNWRAPPED_QUERIES = () => [exp.Select, exp.SetOperation];
@@ -684,21 +688,343 @@ export class Scope {
   }
 }
 
-/**
- * py: scope.py:647 `traverse_scope(expression)` — walks an expression tree and BUILDS
- * the `Scope` tree (wiring `sources`, `parent`, and every `*_scopes` list this class's
- * own properties read). Deferred to AIR-2094; this file ports the `Scope` class's own
- * core surface only (AIR-2093). Throws rather than returning `[]` so a caller relying on
- * scope-tree construction fails loudly instead of silently getting an empty result.
- */
-export function traverseScope(_expression) {
-  throw new NotPorted("traverseScope", "sqlglot/optimizer/scope.py:647");
-}
+// py: scope.py:20 `TRAVERSABLES = (exp.Query, exp.DDL, exp.DML)`
+const TRAVERSABLES = [exp.Query, exp.DDL, exp.DML];
 
 /**
- * py: scope.py:678 `build_scope(expression)` — `seq_get(traverse_scope(expression), -1)`.
- * Deferred to AIR-2094, same reason as `traverseScope`.
+ * py: scope.py:647 `traverse_scope(expression)` — walks an expression tree and BUILDS
+ * the `Scope` tree, wiring `sources`, `parent`, and every `*_scopes` list the class's
+ * own properties read.
  */
-export function buildScope(_expression) {
-  throw new NotPorted("buildScope", "sqlglot/optimizer/scope.py:678");
+export function traverseScope(expression) {
+  if (TRAVERSABLES.some((C) => expression instanceof C)) {
+    return [..._traverseScope(new Scope(expression))];
+  }
+  return [];
+}
+
+/** py: scope.py:678 `build_scope(expression)` — `seq_get(traverse_scope(expression), -1)`. */
+export function buildScope(expression) {
+  return seqGet(traverseScope(expression), -1);
+}
+
+// py: scope.py:691 `_traverse_scope(scope)`.
+function* _traverseScope(scope) {
+  const expression = scope.expression;
+
+  if (expression instanceof exp.Select) {
+    yield* _traverseSelect(scope);
+  } else if (expression instanceof exp.SetOperation) {
+    yield* _traverseCtes(scope);
+    yield* _traverseUnion(scope);
+    return;
+  } else if (expression instanceof exp.Subquery) {
+    if (scope.isRoot) {
+      yield* _traverseSelect(scope);
+    } else {
+      yield* _traverseSubqueries(scope);
+    }
+  } else if (expression instanceof exp.Table) {
+    yield* _traverseTables(scope);
+  } else if (expression instanceof exp.UDTF) {
+    yield* _traverseUdtfs(scope);
+  } else if (expression instanceof exp.DDL) {
+    // py: `ddl_expression = expression.args.get("expression")`
+    const ddlExpression = expression.args.expression;
+    if (ddlExpression instanceof exp.Query) {
+      yield* _traverseCtes(scope);
+      yield* _traverseScope(new Scope(ddlExpression, null, null, null, ScopeType.ROOT, null, scope.cteSources));
+    }
+    return;
+  } else if (expression instanceof exp.DML) {
+    yield* _traverseCtes(scope);
+
+    // Bare tables in relation position (e.g. UPDATE ... FROM t, DELETE / MERGE ... USING
+    // t) aren't part of any query, so they're scoped as standalone tables; `_traverseTables`
+    // also picks up any joins hanging off of them
+    const relations = [];
+    const from_ = expression.args.from_;
+
+    if (from_ instanceof exp.From) relations.push(from_.this);
+
+    const using = expression.args.using;
+    if (Array.isArray(using)) relations.push(...using);
+    else if (using instanceof exp.Expr) relations.push(using);
+
+    for (const relation of relations) {
+      if (relation instanceof exp.Table) {
+        yield* _traverseScope(new Scope(relation, null, null, null, ScopeType.ROOT, null, scope.cteSources));
+      }
+    }
+
+    for (const query of findAllInScope(expression, exp.Query)) {
+      // This check ensures we don't yield the CTE/nested queries twice
+      if (query.parent instanceof exp.CTE || query.parent instanceof exp.Subquery) continue;
+
+      if (isFromOrJoin(query)) {
+        const parent = query.parent;
+        if (parent instanceof exp.Join && (parent.parent instanceof exp.Subquery || parent.parent instanceof exp.Table)) {
+          // Scoped by the FROM-position relation (wrapper or table) it's joined to
+          continue;
+        }
+
+        // A query in FROM/JOIN position (e.g. UPDATE ... FROM (SELECT ...) AS s) acts
+        // like a derived table, so its scope stays rooted at the Subquery wrapper to
+        // pick up the wrapper's alias, column list and joins
+        yield* _traverseScope(new Scope(query, null, null, null, ScopeType.ROOT, null, scope.cteSources));
+      } else {
+        // Queries in value position (SET, WHERE, USING, ...) are scoped as subqueries,
+        // e.g. so their columns can be correlated to the DML's target table
+        yield* _traverseScope(scope.branch(query, ScopeType.SUBQUERY));
+      }
+    }
+    return;
+  } else {
+    // deny:implicit_str sqlglot/optimizer/scope.py:761 — `%s` on `expression` calls
+    // Python's `str(Expr)` (`__str__` -> `.sql()`); `.sql()` is the explicit equivalent.
+    logger.warning(`Cannot traverse scope ${scope.expression.sql()} with type '${expression?.constructor?.name}'`);
+    return;
+  }
+
+  yield scope;
+}
+
+// py: scope.py:767 `_traverse_select(scope)`.
+function* _traverseSelect(scope) {
+  yield* _traverseCtes(scope);
+  yield* _traverseTables(scope);
+  yield* _traverseSubqueries(scope);
+}
+
+// py: scope.py:773 `_traverse_union(scope)`.
+function* _traverseUnion(scope) {
+  let prevScope = null;
+  const unionScopeStack = [scope];
+
+  const setOp = scope.expression;
+  // Access the args directly instead of the left/right properties, because set operation
+  // operands aren't guaranteed to be Query nodes, e.g. in VALUES (1) UNION ALL SELECT 1
+  const expressionStack = [setOp.expression, setOp.this];
+
+  while (expressionStack.length) {
+    const expression = expressionStack.pop();
+    const unionScope = unionScopeStack[unionScopeStack.length - 1];
+
+    const newScope = unionScope.branch(expression, ScopeType.UNION, null, null, null, unionScope.outerColumns);
+
+    if (expression instanceof exp.SetOperation) {
+      yield* _traverseCtes(newScope);
+
+      unionScopeStack.push(newScope);
+      expressionStack.push(expression.expression, expression.this);
+      continue;
+    }
+
+    // py: `for scope in _traverse_scope(new_scope): yield scope` — the Python `for`
+    // variable leaks its last value past the loop, which `union_scope.union_scopes =
+    // [prev_scope, scope]` below then reads; `lastScope` makes that explicit in JS.
+    let lastScope = null;
+    for (const s of _traverseScope(newScope)) {
+      yield s;
+      lastScope = s;
+    }
+
+    if (prevScope) {
+      unionScopeStack.pop();
+      unionScope.unionScopes = [prevScope, lastScope];
+      prevScope = unionScope;
+
+      yield unionScope;
+    } else {
+      prevScope = lastScope;
+    }
+  }
+}
+
+// py: scope.py:813 `_traverse_ctes(scope)`.
+function* _traverseCtes(scope) {
+  const sources = new Map();
+
+  for (const cte of scope.ctes) {
+    const cteName = cte.alias;
+
+    // if the scope is a recursive cte, it must be in the form of base_case UNION
+    // recursive. thus the recursive scope is the first section of the union.
+    const with_ = scope.expression.args.with_;
+    if (with_ && with_.recursive) {
+      const union = cte.this;
+
+      if (union instanceof exp.SetOperation) {
+        sources.set(cteName, scope.branch(union.this, ScopeType.CTE));
+      }
+    }
+
+    let childScope = null;
+
+    for (const cs of _traverseScope(
+      scope.branch(cte.this, ScopeType.CTE, null, sources, null, cte.aliasColumnNames),
+    )) {
+      yield cs;
+      childScope = cs;
+    }
+
+    // append the final child_scope yielded
+    if (childScope) {
+      sources.set(cteName, childScope);
+      scope.cteScopes.push(childScope);
+    }
+  }
+
+  for (const [k, v] of sources) scope.sources.set(k, v);
+  for (const [k, v] of sources) scope.cteSources.set(k, v);
+}
+
+// py: scope.py:873 `_traverse_tables(scope)`.
+function* _traverseTables(scope) {
+  const sources = new Map();
+
+  // Traverse FROMs, JOINs, and LATERALs in the order they are defined
+  const expressions = [];
+  const from_ = scope.expression.args.from_;
+  if (from_) expressions.push(from_.this);
+
+  for (const join of scope.expression.args.joins || []) expressions.push(join.this);
+
+  if (scope.expression instanceof exp.Table || scope.expression instanceof exp.Subquery) {
+    // A Subquery-rooted scope, e.g., the FROM clause of a DML statement, a DDL source or
+    // a parenthesized query like (SELECT ...) LIMIT 1, scopes its own inner query as a
+    // derived table
+    expressions.push(scope.expression);
+  }
+
+  expressions.push(...(scope.expression.args.laterals || []));
+
+  for (let i = 0; i < expressions.length; i++) {
+    let expression = expressions[i];
+    if (expression instanceof exp.Final) expression = expression.this;
+
+    if (expression instanceof exp.Table) {
+      const tableName = expression.name;
+      const sourceName = expression.aliasOrName;
+
+      if (scope.sources.has(tableName) && !expression.db) {
+        // This is a reference to a parent source (e.g. a CTE), not an actual table,
+        // unless it is pivoted, because then we get back a new table and hence a new
+        // source.
+        const pivots = expression.args.pivots;
+        if (pivots && pivots.length) {
+          // deny:operators sqlglot/optimizer/scope.py:905 — Python `pivots[-1]`;
+          // `pivots[pivots.length - 1]` is the explicit equivalent.
+          sources.set(pivots[pivots.length - 1].alias, expression);
+        } else {
+          sources.set(sourceName, scope.sources.get(tableName));
+        }
+      } else if (sources.has(sourceName)) {
+        sources.set(findNewName(sources, tableName), expression);
+      } else {
+        sources.set(sourceName, expression);
+      }
+
+      // Make sure to not include the joins twice
+      if (expression !== scope.expression) {
+        for (const join of expression.args.joins || []) expressions.push(join.this);
+      }
+
+      continue;
+    }
+
+    if (!(expression instanceof exp.DerivedTable)) continue;
+
+    const node = expression;
+
+    let lateralSources;
+    let scopeType;
+    let scopes;
+
+    if (expression instanceof exp.UDTF) {
+      lateralSources = sources;
+      scopeType = ScopeType.UDTF;
+      scopes = scope.udtfScopes;
+    } else if (isDerivedTable(expression)) {
+      lateralSources = null;
+      scopeType = ScopeType.DERIVED_TABLE;
+      scopes = scope.derivedTableScopes;
+      if (node !== scope.expression) {
+        // The scope expression's own joins were already added above
+        for (const join of node.args.joins || []) expressions.push(join.this);
+      }
+    } else {
+      // Makes sure we check for possible sources in nested table constructs
+      expressions.push(node.this);
+      if (node !== scope.expression) {
+        for (const join of node.args.joins || []) expressions.push(join.this);
+      }
+      continue;
+    }
+
+    let childScope = null;
+
+    for (const cs of _traverseScope(
+      scope.branch(node, scopeType, null, null, lateralSources, node.aliasColumnNames),
+    )) {
+      yield cs;
+      childScope = cs;
+
+      // Tables without aliases will be set as ""
+      // This shouldn't be a problem once qualify_columns runs, as it adds aliases on
+      // everything. Until then, this means that only a single, unaliased derived table
+      // is allowed (rather, the latest one wins.
+      sources.set(getSourceAlias(node), cs);
+    }
+
+    // append the final child_scope yielded
+    if (childScope) {
+      scopes.push(childScope);
+      scope.tableScopes.push(childScope);
+    }
+  }
+
+  for (const [k, v] of sources) scope.sources.set(k, v);
+}
+
+// py: scope.py:969 `_traverse_subqueries(scope)`.
+function* _traverseSubqueries(scope) {
+  for (const subquery of scope.subqueries) {
+    let top = null;
+    for (const cs of _traverseScope(scope.branch(subquery, ScopeType.SUBQUERY))) {
+      yield cs;
+      top = cs;
+    }
+    if (top !== null) scope.subqueryScopes.push(top);
+  }
+}
+
+// py: scope.py:979 `_traverse_udtfs(scope)`.
+function* _traverseUdtfs(scope) {
+  let udtfExpressions;
+  if (scope.expression instanceof exp.Unnest) {
+    udtfExpressions = scope.expression.expressions;
+  } else if (scope.expression instanceof exp.Lateral) {
+    udtfExpressions = [scope.expression.this];
+  } else {
+    udtfExpressions = [];
+  }
+
+  const sources = new Map();
+  for (const expression of udtfExpressions) {
+    if (expression instanceof exp.Subquery) {
+      let top = null;
+      for (const cs of _traverseScope(
+        scope.branch(expression, ScopeType.SUBQUERY, null, null, null, expression.aliasColumnNames),
+      )) {
+        yield cs;
+        top = cs;
+        sources.set(getSourceAlias(expression), cs);
+      }
+
+      if (top !== null) scope.subqueryScopes.push(top);
+    }
+  }
+
+  for (const [k, v] of sources) scope.sources.set(k, v);
 }
