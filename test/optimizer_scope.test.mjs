@@ -31,6 +31,39 @@ test("Tier A exports are unaffected by the Scope class addition", () => {
   assert.ok(findInScope(tree, exp.Table) instanceof exp.Table);
 });
 
+// AIR-2095: `prune` is real, load-bearing surface for two future Track 2 callers
+// (`qualify_columns.py`'s `prune=lambda node: node.is_star`, `simplify.py`'s
+// `prune=lambda node: isinstance(node, exp.If)`) — see
+// `spike/p3/fuzz_walk_in_scope.mjs` for the CPython differential over the full corpus.
+// py: `yield node` happens BEFORE the `prune` check, so a pruned node is yielded ITSELF;
+// only its own descendants are skipped.
+test("walkInScope: prune yields the pruned node itself but skips its descendants", () => {
+  const tree = parseOne("SELECT a FROM x WHERE b IN (1, 2)");
+  const inExpr = findInScope(tree, exp.In);
+  const pruned = [...walkInScope(tree, (node) => node === inExpr)];
+  assert.ok(pruned.includes(inExpr));
+  // The IN's own literal args (1, 2) are descendants of the pruned node and must not
+  // appear.
+  const literals = [...findAllInScope(inExpr, exp.Literal)];
+  for (const lit of literals) assert.equal(pruned.includes(lit), false);
+});
+
+test("walkInScope: prune=null (the default) descends everywhere, same as calling with no prune at all", () => {
+  const tree = parseOne("SELECT a FROM x WHERE b IN (1, 2)");
+  const withDefault = [...walkInScope(tree)].length;
+  const withExplicitNull = [...walkInScope(tree, null)].length;
+  assert.equal(withDefault, withExplicitNull);
+});
+
+test("Scope.walk threads its prune argument through to walkInScope, same as scope.py:248", () => {
+  const expr = parseOne("SELECT a FROM x WHERE b IN (1, 2)");
+  const scope = new Scope(expr, null, null, null, ScopeType.ROOT);
+  const inExpr = findInScope(expr, exp.In);
+  const pruned = [...scope.walk((node) => node === inExpr)];
+  assert.ok(pruned.includes(inExpr));
+  assert.equal([...findAllInScope(inExpr, exp.Literal)].every((l) => !pruned.includes(l)), true);
+});
+
 test("constructor: defaults, ScopeType.ROOT, and the empty-dict clearCache reset", () => {
   const expr = parseOne("SELECT a FROM x");
   const scope = new Scope(expr);
@@ -167,6 +200,44 @@ test("addSource / removeSource / renameSource mutate sources and clear the cache
 
   scope.removeSource("z");
   assert.equal(scope.sources.has("z"), false);
+});
+
+test("renameSource: a null/undefined oldName defaults to \"\" (py: `old_name = old_name or \"\"`)", () => {
+  const expr = parseOne("SELECT a FROM x");
+  const scope = new Scope(expr, null, null, null, ScopeType.ROOT);
+  scope.sources.set("", "anonymous-source");
+  scope.renameSource(null, "named");
+  assert.equal(scope.sources.has(""), false);
+  assert.equal(scope.sources.get("named"), "anonymous-source");
+});
+
+test("renameSource: a no-op when oldName is not present in sources", () => {
+  const expr = parseOne("SELECT a FROM x");
+  const scope = new Scope(expr, null, null, null, ScopeType.ROOT);
+  scope.renameSource("missing", "z");
+  assert.equal(scope.sources.has("z"), false);
+});
+
+test("removeSource: a no-op (no throw) when name is not present, py: `sources.pop(name, None)`", () => {
+  const expr = parseOne("SELECT a FROM x");
+  const scope = new Scope(expr, null, null, null, ScopeType.ROOT);
+  assert.doesNotThrow(() => scope.removeSource("missing"));
+});
+
+test("Scope.replace: replaces the node in the tree and clears the cache, py: scope.py:257", () => {
+  const expr = parseOne("SELECT a FROM x");
+  const scope = new Scope(expr, null, null, null, ScopeType.ROOT);
+  scope.sources.set("x", expr.args.from_.this);
+  scope._ensureCollected();
+  assert.equal(scope._collected, true);
+
+  const aColumn = findInScope(expr, exp.Column);
+  const bColumn = parseOne("SELECT b").expressions[0];
+  scope.replace(aColumn, bColumn);
+
+  assert.equal(scope._collected, false);
+  assert.equal(expr.sql(), "SELECT b FROM x");
+  assert.equal(bColumn.parent, expr);
 });
 
 test("selectedSources throws OptimizeError on a duplicate alias", () => {
