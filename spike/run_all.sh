@@ -98,6 +98,33 @@ PYTHONHASHSEED=0 python3 spike/p7/gen_scope_ref.py > spike/out/scope.json || fai
 # reordering, comma joins, JOIN...USING) plus the module's own two doctests mirrored
 # exactly.
 PYTHONHASHSEED=0 python3 spike/p7/gen_optimize_joins_ref.py > spike/out/optimize_joins.json || fail=1
+# P7 oracle. `optimizer/resolver.py`'s `Resolver` class (AIR-2105) is greenfield --
+# same "no corpus/atoms.jsonl tie-in" shape as schema.js/optimize_joins.js, and there is
+# no upstream `tests/optimizer/test_resolver.py` either. Builds a real Scope (the R46
+# `traverseScope`) + real `MappingSchema` (R41) on both sides and replays 21 scenarios /
+# 35 method calls (single/multi-table resolution, join-order disambiguation, schema
+# inference, CTEs, SELECT *, UNION-as-source) against `Resolver`'s own return
+# values/errors, not `.sql()` text.
+PYTHONHASHSEED=0 python3 spike/p7/gen_resolver_ref.py > spike/out/resolver.json || fail=1
+# P7 oracle. `optimizer/unnest_subqueries.py` (AIR-2115) is also greenfield -- same
+# "no corpus/atoms.jsonl tie-in" shape as schema.js/optimize_joins.py above: parse +
+# unnest_subqueries + dump `.sql()`, against CPython doing the same, over 32 hand-picked
+# scenarios (the module's own docstring, uncorrelated scalar/IN/ANY/EXISTS subqueries
+# and where each is or is not reachable, and correlated EXISTS/IN/ANY/ALL/scalar
+# rewrites into LEFT JOINs via `decorrelate()`) -- see `gen_unnest_subqueries_ref.py`'s
+# own header for the two non-obvious dispatch gates most scenarios are named after.
+PYTHONHASHSEED=0 python3 spike/p7/gen_unnest_subqueries_ref.py > spike/out/unnest_subqueries.json || fail=1
+# AIR-2104. `optimizer/qualify_tables.py` and `optimizer/isolate_table_selects.py` are
+# both greenfield the same way -- the `qualify()` orchestrator that would wire them (and
+# optimize_joins.js above) together is AIR-2108, a separate follow-up issue, so each has
+# its own hand-picked scenario battery: 26 for qualify_tables (unaliased/aliased tables,
+# CTEs, derived tables, join-construct-as-subquery expansion, canonicalize_table_aliases,
+# db=/catalog=, a table-valued-function source, a VALUES UDTF source, dialect-specific
+# identifier casing) and 11 (+1 idempotency check) for isolate_table_selects (needs
+# isolating vs a single selected source vs a schema-unknown table vs an
+# already-a-derived-table source vs the no-alias OptimizeError).
+PYTHONHASHSEED=0 python3 spike/p7/gen_qualify_tables_ref.py > spike/out/qualify_tables.json || fail=1
+PYTHONHASHSEED=0 python3 spike/p7/gen_isolate_table_selects_ref.py > spike/out/isolate_table_selects.json || fail=1
 # P7 oracle. `typing/__init__.py`'s base `EXPRESSION_METADATA` table (294 entries) is
 # greenfield too -- its real consumer, `TypeAnnotator` (`optimizer/annotate_types.py`),
 # is unported (AIR-2097/2098) -- so the oracle records the exact CALL SHAPE each
@@ -177,6 +204,10 @@ run "P5: DuckDB dialect vs CPython"        node spike/p5/fuzz_duckdb_dialect.mjs
 run "P6: schema.js MappingSchema vs CPython" node spike/p6/fuzz_schema.mjs
 run "P7: optimizer/scope.js traverseScope/Scope vs CPython" node spike/p7/fuzz_scope.mjs
 run "P7: optimize_joins.js vs CPython"       node spike/p7/fuzz_optimize_joins.mjs
+run "P7: optimizer/resolver.js Resolver vs CPython" node spike/p7/fuzz_resolver.mjs
+run "P7: unnest_subqueries.js vs CPython"    node spike/p7/fuzz_unnest_subqueries.mjs
+run "P7: qualify_tables.js vs CPython"       node spike/p7/fuzz_qualify_tables.mjs
+run "P7: isolate_table_selects.js vs CPython" node spike/p7/fuzz_isolate_table_selects.mjs
 run "P7: typing/index.js EXPRESSION_METADATA vs CPython" node spike/p7/fuzz_typing.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
