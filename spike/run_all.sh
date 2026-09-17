@@ -125,6 +125,12 @@ PYTHONHASHSEED=0 python3 spike/p7/gen_unnest_subqueries_ref.py > spike/out/unnes
 # already-a-derived-table source vs the no-alias OptimizeError).
 PYTHONHASHSEED=0 python3 spike/p7/gen_qualify_tables_ref.py > spike/out/qualify_tables.json || fail=1
 PYTHONHASHSEED=0 python3 spike/p7/gen_isolate_table_selects_ref.py > spike/out/isolate_table_selects.json || fail=1
+# P7 oracle. `typing/__init__.py`'s base `EXPRESSION_METADATA` table (294 entries) is
+# greenfield too -- its real consumer, `TypeAnnotator` (`optimizer/annotate_types.py`),
+# is unported (AIR-2097/2098) -- so the oracle records the exact CALL SHAPE each
+# `annotator` closure would produce against a `fakeSelf` recorder, rather than skipping
+# entries it cannot invoke a real method through. See `gen_typing_ref.py`'s own header.
+PYTHONHASHSEED=0 python3 spike/p7/gen_typing_ref.py > spike/out/typing.json || fail=1
 
 run "PROBE 1a: numeric differential"      node spike/fuzz_num.mjs
 run "PROBE 1b: named go/no-go literal"    node spike/gonogo_snowflake367.mjs
@@ -202,6 +208,7 @@ run "P7: optimizer/resolver.js Resolver vs CPython" node spike/p7/fuzz_resolver.
 run "P7: unnest_subqueries.js vs CPython"    node spike/p7/fuzz_unnest_subqueries.mjs
 run "P7: qualify_tables.js vs CPython"       node spike/p7/fuzz_qualify_tables.mjs
 run "P7: isolate_table_selects.js vs CPython" node spike/p7/fuzz_isolate_table_selects.mjs
+run "P7: typing/index.js EXPRESSION_METADATA vs CPython" node spike/p7/fuzz_typing.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
 # unrun test is a comment, which is the same argument this repo makes for the deny-list
