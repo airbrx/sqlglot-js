@@ -98,6 +98,17 @@ PYTHONHASHSEED=0 python3 spike/p7/gen_scope_ref.py > spike/out/scope.json || fai
 # reordering, comma joins, JOIN...USING) plus the module's own two doctests mirrored
 # exactly.
 PYTHONHASHSEED=0 python3 spike/p7/gen_optimize_joins_ref.py > spike/out/optimize_joins.json || fail=1
+# AIR-2104. `optimizer/qualify_tables.py` and `optimizer/isolate_table_selects.py` are
+# both greenfield the same way -- the `qualify()` orchestrator that would wire them (and
+# optimize_joins.js above) together is AIR-2108, a separate follow-up issue, so each has
+# its own hand-picked scenario battery: 26 for qualify_tables (unaliased/aliased tables,
+# CTEs, derived tables, join-construct-as-subquery expansion, canonicalize_table_aliases,
+# db=/catalog=, a table-valued-function source, a VALUES UDTF source, dialect-specific
+# identifier casing) and 11 (+1 idempotency check) for isolate_table_selects (needs
+# isolating vs a single selected source vs a schema-unknown table vs an
+# already-a-derived-table source vs the no-alias OptimizeError).
+PYTHONHASHSEED=0 python3 spike/p7/gen_qualify_tables_ref.py > spike/out/qualify_tables.json || fail=1
+PYTHONHASHSEED=0 python3 spike/p7/gen_isolate_table_selects_ref.py > spike/out/isolate_table_selects.json || fail=1
 
 run "PROBE 1a: numeric differential"      node spike/fuzz_num.mjs
 run "PROBE 1b: named go/no-go literal"    node spike/gonogo_snowflake367.mjs
@@ -171,6 +182,8 @@ run "P5: DuckDB dialect vs CPython"        node spike/p5/fuzz_duckdb_dialect.mjs
 run "P6: schema.js MappingSchema vs CPython" node spike/p6/fuzz_schema.mjs
 run "P7: optimizer/scope.js traverseScope/Scope vs CPython" node spike/p7/fuzz_scope.mjs
 run "P7: optimize_joins.js vs CPython"       node spike/p7/fuzz_optimize_joins.mjs
+run "P7: qualify_tables.js vs CPython"       node spike/p7/fuzz_qualify_tables.mjs
+run "P7: isolate_table_selects.js vs CPython" node spike/p7/fuzz_isolate_table_selects.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
 # unrun test is a comment, which is the same argument this repo makes for the deny-list
