@@ -1,16 +1,15 @@
 // Structural / error-handling tests for `src/optimizer/scope.js`'s `Scope` class CORE
-// surface (AIR-2093), runnable with no Python present. The differential signal (this
-// class's behavior vs CPython's `sqlglot.optimizer.scope.Scope`, byte-exact over five
-// hand-wired scenarios) lives in `spike/p7/fuzz_scope.mjs` — see that file and
-// `src/optimizer/scope.js`'s own header for why `traverse_scope`/`build_scope` are
-// deferred (AIR-2094) and not exercised here.
+// surface (AIR-2093) and the module-level tree builders `traverseScope`/`buildScope`
+// (AIR-2094), runnable with no Python present. The differential signal (this file's
+// behavior vs CPython's `sqlglot.optimizer.scope`, byte-exact over a scenario corpus
+// driven through the REAL builder on both sides) lives in `spike/p7/fuzz_scope.mjs`.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as exp from "../src/expressions/index.js";
 import "../src/parser.js";
 import { Dialect } from "../src/dialects/dialect.js";
-import { OptimizeError, NotPorted } from "../src/errors.js";
+import { OptimizeError } from "../src/errors.js";
 import {
   Scope,
   ScopeType,
@@ -206,9 +205,165 @@ test("refCount: counts each distinct selected source once per reference", () => 
   assert.equal(counts.get(table), 1);
 });
 
-test("traverseScope / buildScope are explicit NotPorted stubs (AIR-2094)", () => {
-  assert.throws(() => traverseScope(parseOne("SELECT 1")), NotPorted);
-  assert.throws(() => buildScope(parseOne("SELECT 1")), NotPorted);
+test("traverseScope: non-TRAVERSABLES expression returns []", () => {
+  // py: scope.py:673 `if isinstance(expression, TRAVERSABLES): ... return []`
+  const column = parseOne("SELECT a FROM x").args.expressions[0];
+  assert.deepEqual(traverseScope(column), []);
+  // py: `seq_get([], -1)` returns `None` — this port's `seqGet` returns `undefined`.
+  assert.equal(buildScope(column), undefined);
+});
+
+test("traverseScope: plain SELECT yields exactly one ROOT scope with its table wired in", () => {
+  const expr = parseOne("SELECT a, b FROM x WHERE a > 1");
+  const scopes = traverseScope(expr);
+  assert.equal(scopes.length, 1);
+  const [root] = scopes;
+  assert.equal(root.isRoot, true);
+  assert.equal(root.parent, null);
+  assert.deepEqual([...root.sources.keys()], ["x"]);
+  // `buildScope` re-runs `traverseScope` from scratch (matching upstream's own
+  // `seq_get(traverse_scope(expression), -1)`), so it's a fresh, structurally-equal
+  // Scope, not the same object reference as `root` above.
+  assert.equal(buildScope(expr).expression.sql(), root.expression.sql());
+  assert.equal(buildScope(expr).isRoot, true);
+});
+
+test("traverseScope: subquery-in-FROM becomes a DERIVED_TABLE child wired to the root", () => {
+  const expr = parseOne("SELECT a FROM (SELECT a, c FROM x WHERE c > 0) AS y");
+  const [inner, root] = traverseScope(expr);
+  assert.equal(inner.scopeType, ScopeType.DERIVED_TABLE);
+  assert.equal(inner.parent, root);
+  assert.deepEqual([...inner.sources.keys()], ["x"]);
+  assert.equal(root.isRoot, true);
+  assert.deepEqual([...root.sources.keys()], ["y"]);
+  assert.equal(root.sources.get("y"), inner);
+  assert.deepEqual(root.derivedTableScopes, [inner]);
+  assert.deepEqual(root.tableScopes, [inner]);
+});
+
+test("traverseScope: nested CTEs — a later CTE sees an earlier one as a source", () => {
+  const expr = parseOne("WITH a AS (SELECT 1 AS x), b AS (SELECT x FROM a) SELECT x FROM b");
+  const [cteA, cteB, root] = traverseScope(expr);
+  assert.equal(cteA.scopeType, ScopeType.CTE);
+  assert.deepEqual([...cteA.sources.keys()], []);
+  assert.equal(cteB.scopeType, ScopeType.CTE);
+  assert.deepEqual([...cteB.sources.keys()], ["a"]);
+  assert.equal(cteB.sources.get("a"), cteA);
+  assert.deepEqual([...root.sources.keys()].sort(), ["a", "b"]);
+  assert.equal(root.sources.get("b"), cteB);
+  assert.deepEqual(root.cteScopes, [cteA, cteB]);
+});
+
+test("traverseScope: a derived table containing its own CTE nests correctly", () => {
+  const expr = parseOne("SELECT a FROM (WITH c AS (SELECT a FROM x) SELECT a FROM c) AS y");
+  const [cte, derived, root] = traverseScope(expr);
+  assert.equal(cte.scopeType, ScopeType.CTE);
+  assert.deepEqual([...cte.sources.keys()], ["x"]);
+  assert.equal(derived.scopeType, ScopeType.DERIVED_TABLE);
+  assert.equal(derived.parent, root);
+  assert.deepEqual([...derived.sources.keys()], ["c"]);
+  assert.equal(derived.sources.get("c"), cte);
+  assert.equal(cte.parent, derived);
+  assert.deepEqual([...root.sources.keys()], ["y"]);
+});
+
+test("traverseScope: a 3-way UNION chains union_scopes across two ROOT-adjacent UNION nodes", () => {
+  const expr = parseOne("SELECT a FROM x UNION SELECT a FROM y UNION SELECT a FROM z");
+  const scopes = traverseScope(expr);
+  assert.equal(scopes.length, 5);
+  const [leftmost, second, firstUnion, third, root] = scopes;
+
+  assert.equal(leftmost.scopeType, ScopeType.UNION);
+  assert.deepEqual([...leftmost.sources.keys()], ["x"]);
+  assert.equal(second.scopeType, ScopeType.UNION);
+  assert.deepEqual([...second.sources.keys()], ["y"]);
+  assert.equal(firstUnion.scopeType, ScopeType.UNION);
+  assert.deepEqual(firstUnion.unionScopes, [leftmost, second]);
+
+  assert.equal(third.scopeType, ScopeType.UNION);
+  assert.deepEqual([...third.sources.keys()], ["z"]);
+  assert.equal(root.isRoot, true);
+  assert.deepEqual(root.unionScopes, [firstUnion, third]);
+});
+
+test("traverseScope: recursive CTE branches the base case into a placeholder self-source", () => {
+  // py: scope.py:819-826 — `with_.recursive` and the CTE's own body being a
+  // `SetOperation` (base UNION recursive) is the only path that hits that branch.
+  const expr = parseOne(
+    "WITH RECURSIVE cte AS (SELECT 1 AS n UNION ALL SELECT n + 1 FROM cte WHERE n < 5) SELECT n FROM cte",
+  );
+  const scopes = traverseScope(expr);
+  const cteScope = scopes.find((s) => s.isCte);
+  assert.ok(cteScope);
+  assert.deepEqual([...cteScope.sources.keys()], ["cte"]);
+  const root = scopes[scopes.length - 1];
+  assert.equal(root.sources.get("cte"), cteScope);
+});
+
+test("traverseScope: a WHERE-clause correlated subquery two levels deep is fully correlated", () => {
+  const expr = parseOne(
+    "SELECT a FROM x WHERE a IN (SELECT b FROM y WHERE b IN (SELECT c FROM z WHERE z.c = x.a))",
+  );
+  const [innermost, middle, root] = traverseScope(expr);
+
+  assert.equal(innermost.scopeType, ScopeType.SUBQUERY);
+  assert.equal(innermost.parent, middle);
+  assert.deepEqual([...innermost.sources.keys()], ["z"]);
+  // `x.a` isn't a local source of the innermost scope, so it's external; the bare `c` in
+  // `SELECT c` is ALSO external — `external_columns` only excludes columns whose table
+  // text is a LOCAL source name, and an unqualified column's table text is "", which
+  // "z" (the only local source here) doesn't match either. Verified directly against
+  // CPython: both land in `external_columns`, not just `x.a`.
+  assert.deepEqual(innermost.externalColumns.map((c) => c.sql()).sort(), ["c", "x.a"]);
+  // canBeCorrelated propagates through every SUBQUERY branch() call, so this is correlated.
+  assert.equal(innermost.isCorrelatedSubquery, true);
+
+  assert.equal(middle.scopeType, ScopeType.SUBQUERY);
+  assert.equal(middle.parent, root);
+  assert.deepEqual(middle.subqueryScopes, [innermost]);
+  assert.deepEqual(root.subqueryScopes, [middle]);
+});
+
+test("traverseScope: a LATERAL subquery join is a UDTF scope wired via the FROM-clause's own source map", () => {
+  const expr = parseOne("SELECT a, b FROM x CROSS JOIN LATERAL (SELECT y.b FROM y WHERE y.a = x.a) AS t");
+  const [inner, udtf, root] = traverseScope(expr);
+
+  assert.equal(inner.scopeType, ScopeType.SUBQUERY);
+  assert.equal(inner.parent, udtf);
+  assert.deepEqual([...inner.sources.keys()], ["y"]);
+
+  assert.equal(udtf.scopeType, ScopeType.UDTF);
+  assert.equal(udtf.parent, root);
+  // py: scope.py:926 `lateral_sources = sources` — the enclosing scope's own
+  // in-progress FROM-clause source map ("x") is threaded into the UDTF scope.
+  assert.deepEqual([...udtf.sources.keys()].sort(), ["", "x"]);
+
+  assert.equal(root.isRoot, true);
+  assert.deepEqual([...root.sources.keys()].sort(), ["t", "x"]);
+  assert.equal(root.sources.get("t"), udtf);
+  assert.deepEqual(root.udtfScopes, [udtf]);
+});
+
+test("traverseScope: an UNNEST table function is a UDTF scope, no SUBQUERY children of its own", () => {
+  const expr = parseOne("SELECT a, b FROM x CROSS JOIN UNNEST(x.arr) AS t(b)");
+  const [udtf, root] = traverseScope(expr);
+  assert.equal(udtf.scopeType, ScopeType.UDTF);
+  // py: scope.py:926 `lateral_sources = sources` — same FROM-clause source-map
+  // threading as the LATERAL-subquery case above, just with nothing further to
+  // recurse into since UNNEST's own argument isn't a Subquery.
+  assert.deepEqual([...udtf.sources.keys()], ["x"]);
+  assert.deepEqual([...root.sources.keys()].sort(), ["t", "x"]);
+  assert.equal(root.sources.get("t"), udtf);
+});
+
+test("buildScope: returns a scope structurally equal to traverseScope's last element", () => {
+  const expr = parseOne("WITH y AS (SELECT a FROM x) SELECT a FROM y");
+  const scopes = traverseScope(expr);
+  const last = scopes[scopes.length - 1];
+  const built = buildScope(expr);
+  assert.equal(built.expression.sql(), last.expression.sql());
+  assert.equal(built.scopeType, last.scopeType);
+  assert.equal(built.isRoot, true);
 });
 
 test("toString matches upstream's __repr__ shape", () => {
