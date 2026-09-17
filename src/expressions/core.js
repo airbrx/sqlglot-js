@@ -623,6 +623,16 @@ export function xor(...expressions) { const o = trailingOptions(expressions); re
 export function not_(expression, options = {}) { return new (cls("Not"))({ this: maybeParse(expression, { ...options, copy: options.copy ?? true }) }); }
 /** py: expressions/core.py:2980 `paren(expression, copy=True)`. */
 export function paren(expression, copy = true) { return new (cls("Paren"))({ this: maybeParse(expression, { copy }) }); }
+// py: core.py:2850 `condition(expression, dialect=None, copy=True, **opts)`.  A thin
+// `maybe_parse(expression, into=Condition, ...)` wrapper — added here (strictly
+// additive, no existing caller's signature changes) because `optimizer/
+// unnest_subqueries.js`'s `_replace` is the first port-side caller of the public
+// `exp.condition()` builder; `combine`'s own comment above already notes that
+// `into=Condition` is a no-op against `maybeParse`'s current P2-safe fallback until a
+// real parser is registered, which by P7 it is (`src/dialects/dialect.js`).
+export function condition(expression, dialect = null, copy = true, options = {}) {
+  return maybeParse(expression, { ...options, into: cls("Condition"), dialect, copy });
+}
 /** py: core.py Dot.build */
 export function dotBuild(expressions) {
   const xs = [...expressions];

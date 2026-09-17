@@ -3047,9 +3047,15 @@ export class Generator {
     return `${group_by}${groupings}`;
   }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:2827
-  having_sql(expression) { throw new NotPorted("having_sql", "sqlglot/generator.py:2827"); }
+  /** @returns {string} */
+  // py: sqlglot/generator.py:2827. Ported off the back of `unnest_subqueries.js`
+  // (optimizer/unnest_subqueries.py, AIR-2115): its own HAVING-clause oracle scenario
+  // needed a real `.sql()` render, and this base-Generator method was a stub blocking
+  // it — same "generator chain surfaces base-Generator gaps" pattern as R31/R38.
+  having_sql(expression) {
+    const this_ = this.indent(this.sql(expression, "this"));
+    return `${this.seg("HAVING")}${this.sep()}${this_}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2831
@@ -5478,9 +5484,31 @@ export class Generator {
   // py: sqlglot/generator.py:5249
   dateadd_sql(expression) { throw new NotPorted("dateadd_sql", "sqlglot/generator.py:5249"); }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:5259
-  arrayany_sql(expression) { throw new NotPorted("arrayany_sql", "sqlglot/generator.py:5259"); }
+  /** @returns {string} */
+  // py: sqlglot/generator.py:5259. See `having_sql`'s comment for why this landed now.
+  //
+  // `import sqlglot.dialects.dialect` (py:5266) plus `self.dialect.__class__ !=
+  // sqlglot.dialects.dialect.Dialect` only exists to avoid warning for the base
+  // (un-dialected) SQLGlot dialect itself — `generator.js` cannot import `dialect.js`
+  // (a real circular import, not a style choice: `dialect.js` already imports FROM
+  // `generator.js`), so this reads the base class's own name, matching the identity
+  // check exactly the same way `this.dialect.constructor.name` is already used
+  // elsewhere in this file for dialect-identifying messages (`RESPECT/IGNORE NULLS`,
+  // a few lines below `arrayany_sql`'s own call site here).
+  arrayany_sql(expression) {
+    if (this.constructor.CAN_IMPLEMENT_ARRAY_ANY) {
+      const filtered = new exp.ArrayFilter({ this: expression.this, expression: expression.expression });
+      const filtered_not_empty = new exp.ArraySize({ this: filtered }).neq(0);
+      const original_is_empty = new exp.ArraySize({ this: expression.this }).eq(0);
+      return this.sql(exp.paren(original_is_empty.or_(filtered_not_empty)));
+    }
+
+    if (this.dialect.constructor.name !== "Dialect") {
+      this.unsupported("ARRAY_ANY is unsupported");
+    }
+
+    return this.function_fallback_sql(expression);
+  }
 
   /**
    * py: sqlglot/generator.py:5274
@@ -5725,13 +5753,46 @@ export class Generator {
   // py: sqlglot/generator.py:5702
   jsonexists_sql(expression) { throw new NotPorted("jsonexists_sql", "sqlglot/generator.py:5702"); }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:5716
-  _add_arrayagg_null_filter(array_agg_sql, array_agg_expr, column_expr) { throw new NotPorted("_add_arrayagg_null_filter", "sqlglot/generator.py:5716"); }
+  /**
+   * py: sqlglot/generator.py:5716 `_add_arrayagg_null_filter(array_agg_sql,
+   * array_agg_expr, column_expr)` — add a NULL FILTER to ARRAY_AGG if the dialect
+   * requires it, to mimic a null-excluding dialect (e.g. Spark) from one that isn't
+   * (e.g. DuckDB). Ported alongside `arrayagg_sql`/`having_sql` off the back of
+   * `unnest_subqueries.js`'s own oracle (AIR-2115) — see `having_sql`'s comment.
+   * @returns {string}
+   */
+  _add_arrayagg_null_filter(array_agg_sql, array_agg_expr, column_expr) {
+    if (!(this.dialect.ARRAY_AGG_INCLUDES_NULLS && array_agg_expr.args.nulls_excluded)) {
+      return array_agg_sql;
+    }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:5756
-  arrayagg_sql(expression) { throw new NotPorted("arrayagg_sql", "sqlglot/generator.py:5756"); }
+    const parent = array_agg_expr.parent;
+    if (parent instanceof exp.Filter) {
+      const parent_cond = parent.expression.this;
+      parent_cond.replace(parent_cond.and_(column_expr.is_(exp.null()).not_()));
+    } else if (column_expr.find(exp.Column)) {
+      // Do not add the filter if the input is not a column (e.g. literal, struct etc)
+      // DISTINCT is already present in the agg function, do not propagate it to FILTER as well
+      const this_sql = column_expr instanceof exp.Distinct
+        ? this.expressions(column_expr)
+        : this.sql(column_expr);
+      array_agg_sql = `${array_agg_sql} FILTER(WHERE ${this_sql} IS NOT NULL)`;
+    }
+
+    return array_agg_sql;
+  }
+
+  /** @returns {string} */
+  // py: sqlglot/generator.py:5756. See `having_sql`'s comment for why this landed now.
+  arrayagg_sql(expression) {
+    const array_agg = this.function_fallback_sql(expression);
+    let column_expr = expression.this;
+    if (column_expr instanceof exp.Order) {
+      column_expr = column_expr.this;
+    }
+
+    return this._add_arrayagg_null_filter(array_agg, expression, column_expr);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5764

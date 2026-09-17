@@ -393,7 +393,14 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // (py:1598), reached by `BigQueryGenerator`'s `TRANSFORMS[exp.HexString]`
   // (`self.hexstring_sql(e, binary_function_repr="FROM_HEX")`) — a base-Generator
   // method, not BigQuery-specific code, so every dialect gets it for free.
-  assert.equal(bodied.length, 109, "exactly 109 *_sql methods have a real body");
+  // +3 from `optimizer/unnest_subqueries.js` (AIR-2115, PORT_PLAN.md): its own
+  // differential oracle needed real `.sql()` renders for a HAVING-wrapped scalar
+  // subquery and an ARRAY_AGG/ARRAY_ANY-rewritten correlated IN/ANY/ALL, which
+  // surfaced three untouched base-Generator stubs on the render path —
+  // `having_sql`, `arrayagg_sql` (and its own `_add_arrayagg_null_filter` helper,
+  // not `_sql`-suffixed and so not counted here), `arrayany_sql` — none of them
+  // unnest_subqueries-specific code, every dialect gets them for free.
+  assert.equal(bodied.length, 112, "exactly 112 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -415,7 +422,12 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // +1 for `hexstring_sql` (BigQuery dialect+generator round): it reads only
   // `this.dialect.HEX_STRING_IS_INTEGER_TYPE`/`HEX_START`/`HEX_END` FIELDS, never a
   // Dialect METHOD, so it runs on the frozen stand-in like the other 107.
-  assert.equal(432 - stubs.length, 108, "108 of those 109 also run without a resolved Dialect");
+  // +3 for the unnest_subqueries round's three new bodies: `having_sql` reads no
+  // Dialect state at all; `arrayagg_sql`/`arrayany_sql` both throw a `TypeError` on
+  // a bare `new exp.Expr({})` (missing `.this`/`.expression`) rather than
+  // `NotPorted` — the same "runs, just not usefully, on made-up input" outcome the
+  // DML/DDL keystone step's ten bodies already established this assertion counts.
+  assert.equal(432 - stubs.length, 111, "111 of those 112 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],
