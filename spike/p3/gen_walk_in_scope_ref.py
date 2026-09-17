@@ -6,6 +6,13 @@ order-sensitive, and `find_in_scope` returns the FIRST match — so an order bug
 wrong answer, not a cosmetic difference. Run over every AST-oracle row rather than a
 handful of hand-written queries.
 
+Also covers `walk_in_scope`'s `prune` callback (AIR-2095): every unpruned scenario above
+already ran before this class existed to compare against, but `prune` itself had never
+been driven by any oracle. `PRUNE_PROBES` mirrors the two real upstream callers
+(`qualify_columns.py`'s `prune=lambda node: node.is_star`, `simplify.py`'s
+`prune=lambda node: isinstance(node, exp.If)`), both future Track 2 modules that will
+need this parameter to behave exactly like CPython's.
+
 Keyed by `atom_id` and driven by `parse_one`, so the JS side can reconstruct the SAME
 tree with `astLoad(corpus/ast/<dialect>.jsonl)` and compare without needing a working
 JS parser — which is the point, since at P3's blocking step most `_parse_*` are stubs.
@@ -69,6 +76,16 @@ PROBE_TYPES = [
     ("subquery", (exp.Subquery,)),
 ]
 
+# `prune` is only ever driven by two real upstream callers today --
+# `qualify_columns.py:353` (`prune=lambda node: node.is_star`) and
+# `simplify.py:196` (`prune=lambda node: isinstance(node, exp.If)`) -- both future
+# Track 2 modules. Neither is exercised by any existing oracle, so this is genuinely
+# new coverage, not a duplicate of the unpruned `order` field above.
+PRUNE_PROBES = [
+    ("prune_star", lambda node: node.is_star),
+    ("prune_if", lambda node: isinstance(node, exp.If)),
+]
+
 sql_by_atom = {}
 for line in open("corpus/atoms.jsonl"):
     a = json.loads(line)
@@ -102,12 +119,17 @@ for name in sorted(os.listdir("corpus/ast")):
         # parse_one at the pinned commit (all `UNION ... ORDER BY ... LIMIT`, where the
         # corpus records `limit` before `order`). Emitting the tree removes the
         # assumption entirely — both sides walk the same nodes by construction.
+        prune_orders = {
+            name: [type(x).__name__ for x in walk_in_scope(tree, prune=prune)]
+            for name, prune in PRUNE_PROBES
+        }
         print(json.dumps({
             "atom_id": row["atom_id"],
             "dialect": dialect,
             "ast": dump(tree),
             "order": [type(x).__name__ for x in walk_in_scope(tree)],
             "finds": finds,
+            "prune_orders": prune_orders,
         }, ensure_ascii=False))
 
 print(f"  {n} trees walked ({missing} ast rows had no atom)", file=sys.stderr)

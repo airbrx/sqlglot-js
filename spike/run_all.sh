@@ -98,6 +98,14 @@ PYTHONHASHSEED=0 python3 spike/p7/gen_scope_ref.py > spike/out/scope.json || fai
 # reordering, comma joins, JOIN...USING) plus the module's own two doctests mirrored
 # exactly.
 PYTHONHASHSEED=0 python3 spike/p7/gen_optimize_joins_ref.py > spike/out/optimize_joins.json || fail=1
+# P7 oracle. `optimizer/resolver.py`'s `Resolver` class (AIR-2105) is greenfield --
+# same "no corpus/atoms.jsonl tie-in" shape as schema.js/optimize_joins.js, and there is
+# no upstream `tests/optimizer/test_resolver.py` either. Builds a real Scope (the R46
+# `traverseScope`) + real `MappingSchema` (R41) on both sides and replays 21 scenarios /
+# 35 method calls (single/multi-table resolution, join-order disambiguation, schema
+# inference, CTEs, SELECT *, UNION-as-source) against `Resolver`'s own return
+# values/errors, not `.sql()` text.
+PYTHONHASHSEED=0 python3 spike/p7/gen_resolver_ref.py > spike/out/resolver.json || fail=1
 # P7 oracle. `optimizer/unnest_subqueries.py` (AIR-2115) is also greenfield -- same
 # "no corpus/atoms.jsonl tie-in" shape as schema.js/optimize_joins.py above: parse +
 # unnest_subqueries + dump `.sql()`, against CPython doing the same, over 32 hand-picked
@@ -179,6 +187,7 @@ run "P5: DuckDB dialect vs CPython"        node spike/p5/fuzz_duckdb_dialect.mjs
 run "P6: schema.js MappingSchema vs CPython" node spike/p6/fuzz_schema.mjs
 run "P7: optimizer/scope.js traverseScope/Scope vs CPython" node spike/p7/fuzz_scope.mjs
 run "P7: optimize_joins.js vs CPython"       node spike/p7/fuzz_optimize_joins.mjs
+run "P7: optimizer/resolver.js Resolver vs CPython" node spike/p7/fuzz_resolver.mjs
 run "P7: unnest_subqueries.js vs CPython"    node spike/p7/fuzz_unnest_subqueries.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
