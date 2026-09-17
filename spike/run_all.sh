@@ -98,6 +98,12 @@ PYTHONHASHSEED=0 python3 spike/p7/gen_scope_ref.py > spike/out/scope.json || fai
 # reordering, comma joins, JOIN...USING) plus the module's own two doctests mirrored
 # exactly.
 PYTHONHASHSEED=0 python3 spike/p7/gen_optimize_joins_ref.py > spike/out/optimize_joins.json || fail=1
+# P7 oracle. `typing/__init__.py`'s base `EXPRESSION_METADATA` table (294 entries) is
+# greenfield too -- its real consumer, `TypeAnnotator` (`optimizer/annotate_types.py`),
+# is unported (AIR-2097/2098) -- so the oracle records the exact CALL SHAPE each
+# `annotator` closure would produce against a `fakeSelf` recorder, rather than skipping
+# entries it cannot invoke a real method through. See `gen_typing_ref.py`'s own header.
+PYTHONHASHSEED=0 python3 spike/p7/gen_typing_ref.py > spike/out/typing.json || fail=1
 
 run "PROBE 1a: numeric differential"      node spike/fuzz_num.mjs
 run "PROBE 1b: named go/no-go literal"    node spike/gonogo_snowflake367.mjs
@@ -171,6 +177,7 @@ run "P5: DuckDB dialect vs CPython"        node spike/p5/fuzz_duckdb_dialect.mjs
 run "P6: schema.js MappingSchema vs CPython" node spike/p6/fuzz_schema.mjs
 run "P7: optimizer/scope.js traverseScope/Scope vs CPython" node spike/p7/fuzz_scope.mjs
 run "P7: optimize_joins.js vs CPython"       node spike/p7/fuzz_optimize_joins.mjs
+run "P7: typing/index.js EXPRESSION_METADATA vs CPython" node spike/p7/fuzz_typing.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
 # unrun test is a comment, which is the same argument this repo makes for the deny-list
