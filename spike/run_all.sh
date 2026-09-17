@@ -81,6 +81,14 @@ PYTHONHASHSEED=0 python3 spike/p5/gen_duckdb_dialect_ref.py > spike/out/duckdb_d
 # normalization (base/snowflake/duckdb), UDF resolution, and the trie's ambiguous-prefix
 # path, straight out of CPython.
 PYTHONHASHSEED=0 python3 spike/p6/gen_schema_ref.py > spike/out/schema.json || fail=1
+# P7 oracle. `optimizer/optimize_joins.py` is greenfield and has zero dependency on any
+# other unported optimizer module -- same "no corpus/atoms.jsonl tie-in" shape as
+# schema.js and transforms.py, so this is the only differential signal on it: parse +
+# optimize_joins + dump `.sql()`, against CPython doing the same, over 26 hand-picked
+# scenarios (cross-join promotion, the ANTI-join skip, side-bearing joins blocking
+# reordering, comma joins, JOIN...USING) plus the module's own two doctests mirrored
+# exactly.
+PYTHONHASHSEED=0 python3 spike/p7/gen_optimize_joins_ref.py > spike/out/optimize_joins.json || fail=1
 
 run "PROBE 1a: numeric differential"      node spike/fuzz_num.mjs
 run "PROBE 1b: named go/no-go literal"    node spike/gonogo_snowflake367.mjs
@@ -152,6 +160,7 @@ run "P5: Dialect.get_or_raise().parse()"   node spike/p5/fuzz_dialect_parse.mjs
 run "P5: Snowflake dialect vs CPython"     node spike/p5/fuzz_snowflake_dialect.mjs
 run "P5: DuckDB dialect vs CPython"        node spike/p5/fuzz_duckdb_dialect.mjs
 run "P6: schema.js MappingSchema vs CPython" node spike/p6/fuzz_schema.mjs
+run "P7: optimize_joins.js vs CPython"       node spike/p7/fuzz_optimize_joins.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
 # unrun test is a comment, which is the same argument this repo makes for the deny-list
