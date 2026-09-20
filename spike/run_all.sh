@@ -141,6 +141,28 @@ PYTHONHASHSEED=0 python3 spike/p7/gen_typing_ref.py > spike/out/typing.json || f
 # functions, ARRAY/ARRAY_AGG nesting, EXTRACT's BIGINT_EXTRACT_DATE_PARTS branch, and
 # NULL propagation through a binary operator plus `annotate()`'s own NULL-cleanup pass.
 PYTHONHASHSEED=0 python3 spike/p7/gen_annotate_types_ref.py > spike/out/annotate_types.json || fail=1
+# P7 oracle (AIR-2116). `optimizer/merge_subqueries.py` is the highest correctness-risk
+# module in this batch -- a wrong mergeability guard silently changes result
+# cardinality, not just SQL shape -- so this oracle is organized guard-by-guard rather
+# than feature-by-feature over 32 hand-picked scenarios, several as explicit
+# should-merge/should-NOT-merge pairs. Same "no corpus/atoms.jsonl tie-in" shape as
+# schema.js/optimize_joins.js/resolver.js/unnest_subqueries.js above. See
+# `gen_merge_subqueries_ref.py`'s own header for the adversarial
+# `_outer_select_joins_on_inner_select_join` dead-code finding and for why 4 of the 32
+# scenarios compare a structural "did the Subquery survive" signal instead of `.sql()`
+# text (this port's window_sql/querytransform_sql base-Generator methods aren't ported
+# yet -- out of this file's scope).
+PYTHONHASHSEED=0 python3 spike/p7/gen_merge_subqueries_ref.py > spike/out/merge_subqueries.json || fail=1
+# P7 oracles for `eliminate_subqueries.js`/`eliminate_ctes.js` (AIR-2114), both
+# greenfield with no consumer yet, the same shape `optimize_joins.js`/R45 already
+# established: 15 hand-picked scenarios for eliminate_subqueries (dedup of two
+# identical derived tables, a UNION subquery, existing-CTE dedup reuse, DAG-order
+# hoisting out of a nested CTE, a Subquery-rooted root, LATERAL/WHERE-clause-subquery
+# preservation, WITH RECURSIVE, alias-collision bumping, and the UPDATE...FROM
+# structural no-op) and 9 for eliminate_ctes (unused-CTE removal, a chain removed in
+# one reverse pass, SEMI/ANTI-join and correlated-subquery reference-count keep-alive).
+PYTHONHASHSEED=0 python3 spike/p7/gen_eliminate_subqueries_ref.py > spike/out/eliminate_subqueries.json || fail=1
+PYTHONHASHSEED=0 python3 spike/p7/gen_eliminate_ctes_ref.py > spike/out/eliminate_ctes.json || fail=1
 
 run "PROBE 1a: numeric differential"      node spike/fuzz_num.mjs
 run "PROBE 1b: named go/no-go literal"    node spike/gonogo_snowflake367.mjs
@@ -220,6 +242,9 @@ run "P7: qualify_tables.js vs CPython"       node spike/p7/fuzz_qualify_tables.m
 run "P7: isolate_table_selects.js vs CPython" node spike/p7/fuzz_isolate_table_selects.mjs
 run "P7: typing/index.js EXPRESSION_METADATA vs CPython" node spike/p7/fuzz_typing.mjs
 run "P7: annotate_types.js TypeAnnotator vs CPython" node spike/p7/fuzz_annotate_types.mjs
+run "P7: merge_subqueries.js vs CPython"                  node spike/p7/fuzz_merge_subqueries.mjs
+run "P7: eliminate_subqueries.js vs CPython"  node spike/p7/fuzz_eliminate_subqueries.mjs
+run "P7: eliminate_ctes.js vs CPython"        node spike/p7/fuzz_eliminate_ctes.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
 # unrun test is a comment, which is the same argument this repo makes for the deny-list
