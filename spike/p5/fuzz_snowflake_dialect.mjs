@@ -95,7 +95,8 @@ function check(what, got, want) {
 const KNOWN_GAPS = new Map([
   [
     "EXPRESSION_METADATA",
-    "sqlglot/typing/snowflake.py + optimizer/annotate_types.py are unported (P6+); the port carries an empty Map",
+    "sqlglot/typing/snowflake.py's own 163-entry overlay is unported (AIR-2098+); " +
+      "the base 294-entry table (AIR-2096/AIR-2097) is real and inherited from Dialect",
   ],
 ]);
 
