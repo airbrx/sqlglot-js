@@ -131,6 +131,16 @@ PYTHONHASHSEED=0 python3 spike/p7/gen_isolate_table_selects_ref.py > spike/out/i
 # `annotator` closure would produce against a `fakeSelf` recorder, rather than skipping
 # entries it cannot invoke a real method through. See `gen_typing_ref.py`'s own header.
 PYTHONHASHSEED=0 python3 spike/p7/gen_typing_ref.py > spike/out/typing.json || fail=1
+# AIR-2097. `optimizer/annotate_types.py`'s `TypeAnnotator` is the real consumer
+# `typing/index.js` (R51, above) was waiting for. Unlike every other greenfield P7
+# oracle, annotation does not change `.sql()` output, so this dumps a TYPE FINGERPRINT
+# of the whole annotated tree (`(class name, DType name or null)` per node in
+# `.walk(bfs=False)` order) over 42 scenarios: literals, arithmetic promotion,
+# TEXT+NUMERIC coercion both orderings, string concat, comparisons, CAST/TRY_CAST,
+# real-Schema column lookup (bare/aliased/joined/derived-table/CTE), fixed-return-type
+# functions, ARRAY/ARRAY_AGG nesting, EXTRACT's BIGINT_EXTRACT_DATE_PARTS branch, and
+# NULL propagation through a binary operator plus `annotate()`'s own NULL-cleanup pass.
+PYTHONHASHSEED=0 python3 spike/p7/gen_annotate_types_ref.py > spike/out/annotate_types.json || fail=1
 
 run "PROBE 1a: numeric differential"      node spike/fuzz_num.mjs
 run "PROBE 1b: named go/no-go literal"    node spike/gonogo_snowflake367.mjs
@@ -209,6 +219,7 @@ run "P7: unnest_subqueries.js vs CPython"    node spike/p7/fuzz_unnest_subquerie
 run "P7: qualify_tables.js vs CPython"       node spike/p7/fuzz_qualify_tables.mjs
 run "P7: isolate_table_selects.js vs CPython" node spike/p7/fuzz_isolate_table_selects.mjs
 run "P7: typing/index.js EXPRESSION_METADATA vs CPython" node spike/p7/fuzz_typing.mjs
+run "P7: annotate_types.js TypeAnnotator vs CPython" node spike/p7/fuzz_annotate_types.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
 # unrun test is a comment, which is the same argument this repo makes for the deny-list

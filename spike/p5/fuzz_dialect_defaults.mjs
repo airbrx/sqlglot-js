@@ -89,12 +89,15 @@ const trunc = (s) => (s.length > 200 ? `${s.slice(0, 200)}…` : s);
 // Ported partially or not at all, each with the reason. Every one still gets a printed
 // line below — PORT_PLAN.md's standing rule is that a skip states its count out loud
 // rather than being dropped from the denominator.
-const KNOWN_GAPS = new Map([
-  [
-    "EXPRESSION_METADATA",
-    "sqlglot/optimizer/annotate_types.py is unported (P6+); the port carries an empty Map",
-  ],
-]);
+const KNOWN_GAPS = new Map([]);
+
+// `EXPRESSION_METADATA`'s values are closures (`{annotator: fn}`)/plain option
+// records (`{returns: DType}`), neither of which `enc()` can encode — same
+// unencodable-lambda problem `gen_dialect_ref.py`'s own `COUNT_ONLY` set solves on the
+// CPython side (py:37-41). AIR-2097 wired this from an empty Map to the real 294-entry
+// `typing/index.js` table, so this is now a real count comparison (294 vs 294) rather
+// than a `KNOWN_GAPS` skip.
+const COUNT_ONLY = new Set(["EXPRESSION_METADATA"]);
 
 for (const [name, want] of Object.entries(ref.attrs)) {
   if (KNOWN_GAPS.has(name)) {
@@ -105,6 +108,10 @@ for (const [name, want] of Object.entries(ref.attrs)) {
   if (!(name in Dialect)) {
     fails.push(`${name}\n       got  <ABSENT from the port>\n       want ${trunc(JSON.stringify(want))}`);
     checks += 1;
+    continue;
+  }
+  if (COUNT_ONLY.has(name)) {
+    check(name, { $count: Dialect[name].size }, want);
     continue;
   }
   check(name, enc(Dialect[name]), want);

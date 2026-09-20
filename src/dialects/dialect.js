@@ -54,15 +54,27 @@ import { ALL_JSON_PATH_PARTS, Generator, unsupported_args } from "../generator.j
 import * as exp from "../expressions/index.js";
 import { SAFE_IDENTIFIER_RE, registerAstDialects, registerGenerator, registerParser } from "../expressions/core.js";
 import { findAllInScope } from "../optimizer/scope.js";
+import { EXPRESSION_METADATA } from "../typing/index.js";
 
 /**
- * py: sqlglot/optimizer/annotate_types.py — NOT PORTED.
+ * py: sqlglot/optimizer/annotate_types.py — ported (AIR-2097) into
+ * `src/optimizer/annotate_types.js`'s `TypeAnnotator`/`annotate_types`, but
+ * DELIBERATELY NOT wired here.
  *
  * `build_trunc` and `build_timetostr_or_tochar` call it to decide date-vs-numeric
- * truncation and TimeToStr-vs-ToChar from the ANNOTATED type of an argument. The type
- * annotator is a separate upstream module (P6+) with its own scope; there is no honest
- * partial answer here, so the two call sites announce themselves as stubs rather than
- * guessing a type and silently building the wrong node.
+ * truncation and TimeToStr-vs-ToChar from the ANNOTATED type of an argument. Wiring
+ * this local stub to the real implementation would require this file to `import` from
+ * `../optimizer/annotate_types.js` — but that file itself imports `Dialect` FROM this
+ * one (the same no-cycle shape `optimizer/resolver.js`/R48 and `schema.js`/R41 already
+ * use safely), so a top-level import here would close a real two-directional ES-module
+ * cycle, the exact hazard class R32/R42/R43 already named for `generator.js`<->
+ * `dialect.js` and the `tsql.js` parser/dialect/generator trio. Resolving it the same
+ * way those rounds did (a `Dialect.get_or_raise`-style runtime handoff) is a genuine
+ * option, but it changes these two call sites' own behavior (partial vs. full
+ * annotation, scope-awareness) and is therefore left as a stated follow-up rather than
+ * folded into AIR-2097's stated "core engine, no existing call sites" scope. The two
+ * call sites still announce themselves as stubs rather than guessing a type and
+ * silently building the wrong node.
  */
 function annotate_types(_expression, _dialect) {
   throw new NotPorted("annotate_types", "sqlglot/optimizer/annotate_types.py");
@@ -1856,15 +1868,19 @@ export class Dialect {
   /**
    * py:957 `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()`.
    *
-   * Upstream's is `sqlglot/optimizer/annotate_types.py`'s 294-entry type-inference and
-   * validation table. That module is unported (P6+) — the same gap the
-   * `annotate_types` stub at the top of this file announces. Empty here, and
-   * `spike/p5/fuzz_dialect_defaults.mjs` asserts the CPython side is 294 and prints
-   * the difference on every run, so the hole is a number in the probe output rather
-   * than an attribute nobody remembers is missing (PORT_PLAN.md R19: a table with no
-   * reader is invisible to every structural sweep).
+   * `src/typing/index.js`'s 294-entry `EXPRESSION_METADATA` table (AIR-2096/R51),
+   * copied the same way upstream copies its own module-level table onto the class.
+   * Wired in the same round `TypeAnnotator` (AIR-2097, `src/optimizer/annotate_types.js`)
+   * lands, per R51's own "Deliberately NOT done" note — that file is the real consumer,
+   * and reads this exact property off a `Dialect` INSTANCE (`this.dialect.EXPRESSION_METADATA`
+   * inside `TypeAnnotator`'s constructor), so `_mirrorSettingsOntoPrototype` (below) is
+   * what makes instance access see it: the name is ALL_CAPS, so it is swept onto
+   * `klass.prototype` automatically, no separate wiring needed there. Per-dialect
+   * overlays (Snowflake etc., AIR-2098+) are a future dialect subclass's own
+   * `static EXPRESSION_METADATA = new Map([...Dialect.EXPRESSION_METADATA, ...])`
+   * override — this base copy is what they'll spread.
    */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = new Map(EXPRESSION_METADATA);
 
   // Determines the supported Dialect instance settings
   static SUPPORTED_SETTINGS = new Set(["normalization_strategy", "version"]);
