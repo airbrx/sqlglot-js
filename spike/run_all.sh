@@ -131,6 +131,18 @@ PYTHONHASHSEED=0 python3 spike/p7/gen_isolate_table_selects_ref.py > spike/out/i
 # `annotator` closure would produce against a `fakeSelf` recorder, rather than skipping
 # entries it cannot invoke a real method through. See `gen_typing_ref.py`'s own header.
 PYTHONHASHSEED=0 python3 spike/p7/gen_typing_ref.py > spike/out/typing.json || fail=1
+# P7 oracle (AIR-2116). `optimizer/merge_subqueries.py` is the highest correctness-risk
+# module in this batch -- a wrong mergeability guard silently changes result
+# cardinality, not just SQL shape -- so this oracle is organized guard-by-guard rather
+# than feature-by-feature over 32 hand-picked scenarios, several as explicit
+# should-merge/should-NOT-merge pairs. Same "no corpus/atoms.jsonl tie-in" shape as
+# schema.js/optimize_joins.js/resolver.js/unnest_subqueries.js above. See
+# `gen_merge_subqueries_ref.py`'s own header for the adversarial
+# `_outer_select_joins_on_inner_select_join` dead-code finding and for why 4 of the 32
+# scenarios compare a structural "did the Subquery survive" signal instead of `.sql()`
+# text (this port's window_sql/querytransform_sql base-Generator methods aren't ported
+# yet -- out of this file's scope).
+PYTHONHASHSEED=0 python3 spike/p7/gen_merge_subqueries_ref.py > spike/out/merge_subqueries.json || fail=1
 # P7 oracles for `eliminate_subqueries.js`/`eliminate_ctes.js` (AIR-2114), both
 # greenfield with no consumer yet, the same shape `optimize_joins.js`/R45 already
 # established: 15 hand-picked scenarios for eliminate_subqueries (dedup of two
@@ -219,6 +231,7 @@ run "P7: unnest_subqueries.js vs CPython"    node spike/p7/fuzz_unnest_subquerie
 run "P7: qualify_tables.js vs CPython"       node spike/p7/fuzz_qualify_tables.mjs
 run "P7: isolate_table_selects.js vs CPython" node spike/p7/fuzz_isolate_table_selects.mjs
 run "P7: typing/index.js EXPRESSION_METADATA vs CPython" node spike/p7/fuzz_typing.mjs
+run "P7: merge_subqueries.js vs CPython"                  node spike/p7/fuzz_merge_subqueries.mjs
 run "P7: eliminate_subqueries.js vs CPython"  node spike/p7/fuzz_eliminate_subqueries.mjs
 run "P7: eliminate_ctes.js vs CPython"        node spike/p7/fuzz_eliminate_ctes.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
