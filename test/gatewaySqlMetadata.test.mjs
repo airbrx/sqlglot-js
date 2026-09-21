@@ -8,6 +8,7 @@
 // behavior and explains why in a comment, rather than forcing a fragile match.
 
 import test from "node:test";
+import { Dialect } from "../index.js";
 import assert from "node:assert/strict";
 import { extractSqlMetadata } from "../contrib/gatewaySqlMetadata.js";
 
@@ -844,13 +845,59 @@ test('semicolon literals, trailing terminators and read-only CTEs stay reads', (
     assert.equal(r.isDataChange, false);
   }
 });
-test('generator fallback never grants cache eligibility', () => {
-  const sql = 'SELECT ROW_NUMBER() OVER (ORDER BY id) FROM t';
-  const r = extractSqlMetadata(sql, { dialect: 'postgres' });
-  assert.equal(r.cacheable, false);
-  assert.equal(r.standardizedSql, sql);
-  assert.match(r.extractionError, /generation failed/);
+test('AIR-2135: generation failure preserves independently established read safety and raw identity', (t) => {
+  t.mock.method(Dialect.prototype, 'generate', () => { throw new Error('deliberate generator gap'); });
+  for (const sql of ['SELECT * FROM t WHERE id = $1', 'SELECT * FROM t WHERE id = $2']) {
+    const r = extractSqlMetadata(sql, { dialect: 'postgres' });
+    assert.equal(r.isReadOnly, true);
+    assert.equal(r.cacheable, true);
+    assert.equal(r.standardizedSql, sql);
+    assert.match(r.extractionError, /deliberate generator gap/);
+  }
+  for (const sql of ['SELECT 1; DELETE FROM t', 'WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d']) {
+    const r = extractSqlMetadata(sql, { dialect: 'postgres' });
+    assert.equal(r.cacheable, false);
+    assert.equal(r.isReadOnly, false);
+    assert.equal(r.standardizedSql, sql);
+  }
 });
+
+for (const dialect of ['postgres', 'snowflake', 'databricks']) {
+  test(`AIR-2135: comment-only roots are not statements (${dialect})`, () => {
+    for (const suffix of ['; -- tableau id=123', '; /* trailing */', ';\n-- dbt: model foo', '; /* a */; -- b']) {
+      const sql = `SELECT * FROM orders${suffix}`;
+      const r = extractSqlMetadata(sql, { dialect });
+      assert.equal(r.statementCount, 1);
+      assert.equal(r.statementType, 'SELECT');
+      assert.equal(r.cacheable, true);
+      assert.equal(r.originalSql, sql);
+      assert.equal(r.standardizedSql, 'SELECT * FROM orders');
+      const batch = `SELECT 1${suffix}\n; DELETE FROM orders; -- end`;
+      const m = extractSqlMetadata(batch, { dialect });
+      assert.equal(m.statementCount, 2);
+      assert.equal(m.cacheable, false);
+      assert.equal(m.standardizedSql, batch);
+      assert.deepEqual(m.mutationTypes, ['DELETE']);
+    }
+    assert.equal(extractSqlMetadata('; -- comment only', { dialect }).statementCount, 0);
+  });
+}
+
+for (const [dialect, sql] of [
+  ['postgres', 'SELECT * FROM t WHERE id = $1'],
+  ['postgres', 'SELECT ROW_NUMBER() OVER (ORDER BY id) FROM t'],
+  ['postgres', 'SELECT EXTRACT(MONTH FROM d) FROM t'],
+  ['postgres', 'SELECT * FROM t WHERE x > -1'],
+  ['snowflake', 'SELECT DATEADD(day, -7, CURRENT_DATE())'],
+  ['databricks', 'SELECT * FROM orders WHERE order_date = CURRENT_DATE'],
+]) {
+  test(`AIR-2135: ordinary reads remain eligible as generator coverage changes: ${sql}`, () => {
+    const r = extractSqlMetadata(sql, { dialect });
+    assert.equal(r.isReadOnly, true);
+    assert.equal(r.cacheable, true);
+    assert.equal(r.statementCount, 1);
+  });
+}
 test('opaque EXPLAIN bodies and SELECT INTO cannot confer read safety', () => {
   for (const sql of ['EXPLAIN ANALYZE DELETE FROM t', 'SELECT * INTO new_t FROM t', 'SELECT * FROM t FOR UPDATE']) {
     const r = extractSqlMetadata(sql, { dialect: 'postgres' });

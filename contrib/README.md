@@ -240,7 +240,13 @@ Multi-statement requests are deliberately unsupported for caching: `cacheable: f
 including writable CTEs; their target operations are not SELECTs. `mutationTypes`
 lets gateway invalidation rules match nested/batched writes independently of the outer
 statement type. Consumers must honor negative `cacheable`/`isReadOnly` metadata even
-when a cache hint requests caching. A generator fallback never grants cache eligibility.
+when a cache hint requests caching. Read eligibility is established from the complete
+AST, independently of generation: if a proven read cannot be regenerated,
+`standardizedSql` retains the full raw input and `extractionError` reports the
+normalization failure, but `cacheable` stays true. Generator success or failure
+never grants read safety to a mutation, opaque command, or parse failure.
+Comment-only `Semicolon` roots (pinned parser.py:2254–2256) and null roots do not
+count as executable statements; real statements on either side are retained.
 Opaque commands and parse failures are not proofs of safety. This adapter is not a
 SQL authorization system; unknown side effects inside user-defined functions remain
 outside its static analysis, and invalidation still requires suitable gateway rules.

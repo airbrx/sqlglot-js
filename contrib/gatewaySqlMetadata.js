@@ -106,7 +106,10 @@ export function extractSqlMetadata(sql, options = {}) {
   let roots;
   try {
     const d = Dialect.get_or_raise(dialect);
-    roots = d.parse(sql).filter(Boolean);
+    // AIR-2135: pinned parser.py:2254-2256 emits Semicolon nodes solely
+    // to retain terminator comments. They carry no executable statement.
+    // Filter AST nodes, never SQL text: comments/literals cannot hide a write.
+    roots = d.parse(sql).filter((node) => node && !(node instanceof exp.Semicolon));
     [root] = roots;
   } catch (err) {
     return safeDefaultResult(sql, cacheOverride, describeError(err));
@@ -190,7 +193,9 @@ export function extractSqlMetadata(sql, options = {}) {
       statementCount: 1,
       mutationTypes: mutationTypes(root),
       mutations: mutationRecords(root),
-      cacheable: isReadOnly && extractionError === null,
+      // AIR-2135: read safety was established from the full AST above.
+      // Generation coverage only affects normalization; raw SQL is a full key.
+      cacheable: isReadOnly,
       statementType,
       isReadOnly,
       isSessionStateChange,
