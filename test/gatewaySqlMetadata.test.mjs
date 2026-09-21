@@ -858,3 +858,36 @@ test('opaque EXPLAIN bodies and SELECT INTO cannot confer read safety', () => {
     assert.equal(r.cacheable, false);
   }
 });
+
+test('batched command targets use the same extraction path as standalone commands', () => {
+  const r = extractSqlMetadata('SELECT 1; OPTIMIZE main.sales.t', {dialect:'databricks'});
+  assert.equal(r.cacheable,false);
+  assert.deepEqual(r.mutationTypes,['OPTIMIZE']);
+  assert.equal(r.tables[0].fullyQualifiedName,'main.sales.t');
+  assert.equal(r.mutations[0].tables[0].operation,'OPTIMIZE');
+});
+test('SELECT INTO records CREATE mutation and destination separately from its source', () => {
+  const r = extractSqlMetadata('SELECT * INTO new_t FROM src', {dialect:'postgres'});
+  assert.equal(r.cacheable,false);
+  assert.deepEqual(r.mutationTypes,['CREATE']);
+  assert.deepEqual(r.tables.map(t=>[t.table,t.operation]),[['new_t','CREATE'],['src','SELECT']]);
+  assert.deepEqual(r.mutations[0].tables.map(t=>t.table),['new_t']);
+});
+test('repeated mutation types preserve occurrences and their own tables', () => {
+  for (const sql of ['DELETE FROM orders; DELETE FROM users',
+    'WITH d AS (DELETE FROM orders RETURNING *) DELETE FROM users']) {
+    const r=extractSqlMetadata(sql,{dialect:'postgres'});
+    assert.equal(r.cacheable,false);
+    assert.equal(r.mutations.length,2);
+    assert.deepEqual(r.mutations.map(m=>m.tables.map(t=>t.table)).sort(),[['orders'],['users']]);
+  }
+});
+test('empty and unsupported fallback results retain a stable mutation metadata shape', () => {
+  for(const sql of ['',null,'SELECT FROM (']) {
+    const r=extractSqlMetadata(sql,{dialect:'postgres'});
+    assert.equal(r.cacheable,false);
+    assert.deepEqual(r.mutations,[]);
+    assert.deepEqual(r.mutationTypes,[]);
+    assert.equal(r.statementCount,sql ? null : 0);
+  }
+});

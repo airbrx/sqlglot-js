@@ -163,6 +163,20 @@ PYTHONHASHSEED=0 python3 spike/p7/gen_merge_subqueries_ref.py > spike/out/merge_
 # one reverse pass, SEMI/ANTI-join and correlated-subquery reference-count keep-alive).
 PYTHONHASHSEED=0 python3 spike/p7/gen_eliminate_subqueries_ref.py > spike/out/eliminate_subqueries.json || fail=1
 PYTHONHASHSEED=0 python3 spike/p7/gen_eliminate_ctes_ref.py > spike/out/eliminate_ctes.json || fail=1
+# P7 oracle. `optimizer/simplify.py`'s `Simplifier` (the whole 1,880-LOC file, whole-file
+# port per PORT_PLAN.md -- originally scoped as three separate issues, but the real
+# `_simplify` dispatcher chains almost every method in sequence, so a partial port
+# would leave it calling NotPorted stubs mid-pipeline). Same "no corpus/atoms.jsonl
+# tie-in" shape as optimize_joins.js/resolver.js above: parse + simplify + dump
+# `.sql()`, against CPython doing the same, over 81 hand-picked scenarios covering
+# boolean algebra (NOT/AND/OR reduction, De Morgan, TRUE/FALSE absorption), constant
+# comparison/arithmetic/string-concat folding, COALESCE, CASE/IF, BETWEEN rewriting,
+# date/interval arithmetic (including a month-end-clamping case exercising the new
+# `PyRelativedelta` port in `_py/datetime.js`), DATE_TRUNC range rewrites, and a no-op
+# round-trip. See `gen_simplify_ref.py`'s own header for the 3 scenarios deliberately
+# left out because rendering their surviving node needs a pre-existing, unrelated
+# base-Generator stub (`div_sql`/`concat_sql`/`concatws_sql`).
+PYTHONHASHSEED=0 python3 spike/p7/gen_simplify_ref.py > spike/out/simplify.json || fail=1
 
 run "PROBE 1a: numeric differential"      node spike/fuzz_num.mjs
 run "PROBE 1b: named go/no-go literal"    node spike/gonogo_snowflake367.mjs
@@ -245,6 +259,7 @@ run "P7: annotate_types.js TypeAnnotator vs CPython" node spike/p7/fuzz_annotate
 run "P7: merge_subqueries.js vs CPython"                  node spike/p7/fuzz_merge_subqueries.mjs
 run "P7: eliminate_subqueries.js vs CPython"  node spike/p7/fuzz_eliminate_subqueries.mjs
 run "P7: eliminate_ctes.js vs CPython"        node spike/p7/fuzz_eliminate_ctes.mjs
+run "P7: optimizer/simplify.js Simplifier vs CPython" node spike/p7/fuzz_simplify.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
 # unrun test is a comment, which is the same argument this repo makes for the deny-list

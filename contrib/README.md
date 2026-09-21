@@ -244,3 +244,12 @@ when a cache hint requests caching. A generator fallback never grants cache elig
 Opaque commands and parse failures are not proofs of safety. This adapter is not a
 SQL authorization system; unknown side effects inside user-defined functions remain
 outside its static analysis, and invalidation still requires suitable gateway rules.
+
+Mutation occurrence metadata also includes `mutations: [{statementType, tables}]`.
+Unlike the compatibility `mutationTypes` list, this preserves repeated types and
+local table scope so separate DELETEs can match separate invalidation rules.
+SELECT INTO records a CREATE occurrence for its destination. Batched OPTIMIZE/VACUUM
+use the same command-target extractor as standalone commands. Empty input returns
+`statementCount: 0`; parse failure returns `statementCount: null` (unknown); both
+always provide empty mutation lists and disable caching. Consumers must run the
+whole-input/occurrence deny pass before any invalidation side effect.

@@ -123,7 +123,8 @@ export function extractSqlMetadata(sql, options = {}) {
       const result = safeDefaultResult(sql, cacheOverride, "Multi-statement SQL is not cacheable");
       result.statementCount = roots.length;
       result.mutationTypes = [...new Set(roots.flatMap(mutationTypes))];
-      result.tables = roots.flatMap((node) => extractTables(node, getStatementType(node)));
+      result.mutations = roots.flatMap(mutationRecords);
+      result.tables = roots.flatMap((node) => extractRootTables(node));
       result.tableCount = result.tables.length;
       result.catalogs = [...new Set(result.tables.map((t) => t.catalog).filter(Boolean))];
       result.schemas = [...new Set(result.tables.map((t) => t.schema).filter(Boolean))];
@@ -143,14 +144,7 @@ export function extractSqlMetadata(sql, options = {}) {
     const isReadOnly = READ_ONLY_TYPES.has(statementType) && !unsafe;
     const isSessionStateChange = getIsSessionStateChange(root, statementType);
     const sessionStateChange = isSessionStateChange ? extractSessionStateChange(root, statementType) : null;
-    let tables;
-    if (root instanceof exp.Command) {
-      tables = extractCommandTables(root, statementType);
-    } else if (TABLE_BEARING_TYPES.has(statementType)) {
-      tables = extractTables(root, statementType);
-    } else {
-      tables = [];
-    }
+    const tables = extractRootTables(root);
     const isFullyQualified = tables.length > 0 && tables.every((t) => t.catalog && t.schema);
     const parameterInfo = extractParameters(root);
     const nonDeterministic = detectNonDeterministic(root);
@@ -195,6 +189,7 @@ export function extractSqlMetadata(sql, options = {}) {
     return {
       statementCount: 1,
       mutationTypes: mutationTypes(root),
+      mutations: mutationRecords(root),
       cacheable: isReadOnly && extractionError === null,
       statementType,
       isReadOnly,
@@ -245,6 +240,9 @@ function extractCacheOverride(sql) {
 function emptyResult(originalSql, cacheOverride) {
   return {
     statementType: "UNKNOWN",
+    statementCount: 0,
+    mutationTypes: [],
+    mutations: [],
     cacheable: false,
     isReadOnly: false,
     isSessionStateChange: false,
@@ -283,6 +281,9 @@ function emptyResult(originalSql, cacheOverride) {
 function safeDefaultResult(sql, cacheOverride, extractionError) {
   return {
     statementType: "UNKNOWN",
+    statementCount: null, // Unknown after a parse failure, not zero statements.
+    mutationTypes: [],
+    mutations: [],
     cacheable: false,
     isReadOnly: false,
     isSessionStateChange: false,
@@ -308,13 +309,31 @@ function safeDefaultResult(sql, cacheOverride, extractionError) {
   };
 }
 
-// Consumed by gateway invalidation rules independently of the outer statement type.
+// Preserve occurrences and local table scope: two DELETEs may match two rules.
+function isMutation(node) {
+  const type = getStatementType(node);
+  return DATA_CHANGE_TYPES.has(type) || DDL_TYPES.has(type) || DCL_TYPES.has(type);
+}
+
+function mutationRecords(root) {
+  return [...root.walk(false)].filter(isMutation).map((node) => ({
+    statementType: getStatementType(node),
+    tables: extractRootTables(node, node),
+  }));
+}
+
 function mutationTypes(root) {
-  return [...new Set([...root.walk(false)].map(getStatementType).filter((type) =>
-    DATA_CHANGE_TYPES.has(type) || DDL_TYPES.has(type) || DCL_TYPES.has(type)))];
+  return [...new Set([...root.walk(false)].filter(isMutation).map(getStatementType))];
+}
+
+function extractRootTables(root, mutationOwner = null) {
+  const type = getStatementType(root);
+  if (root instanceof exp.Command) return extractCommandTables(root, type);
+  return TABLE_BEARING_TYPES.has(type) ? extractTables(root, type, mutationOwner) : [];
 }
 
 function getStatementType(root) {
+  if (root instanceof exp.Into) return "CREATE"; // SELECT INTO creates its destination.
   if (root instanceof exp.Command) {
     const kw = typeof root.args.this === "string" ? root.args.this.toUpperCase() : "";
     return kw || "UNKNOWN";
@@ -401,7 +420,7 @@ function collectCteNames(root) {
   return names;
 }
 
-function extractTables(root, statementType) {
+function extractTables(root, statementType, mutationOwner = null) {
   const opByTable = new Map();
   for (const node of root.walk(false)) {
     for (const [table, operation] of tagOperations(node, getStatementType(node))) opByTable.set(table, operation);
@@ -409,6 +428,11 @@ function extractTables(root, statementType) {
   const cteNames = collectCteNames(root);
   const out = [];
   for (const t of root.findAll(exp.Table, false)) {
+    if (mutationOwner) {
+      let owner = t.parent;
+      while (owner && owner !== mutationOwner && !isMutation(owner)) owner = owner.parent;
+      if (owner !== mutationOwner) continue; // Belongs to a nested mutation occurrence.
+    }
     const info = tableInfo(t, opByTable.get(t) ?? "SELECT");
     // A real AST does not itself mark a FROM-clause reference as
     // "this name resolves to a CTE" (that needs schema-aware qualification,
