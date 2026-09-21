@@ -4278,9 +4278,14 @@ export class Generator {
     return `(${sql}${this.seg(")", "")}`;
   }
 
-  /** @returns {*} */
+  /** @returns {string} */
   // py: sqlglot/generator.py:4013
-  neg_sql(expression) { throw new NotPorted("neg_sql", "sqlglot/generator.py:4013"); }
+  neg_sql(expression) {
+    // Keep adjacent minus signs from turning the operand into a SQL comment.
+    const this_sql = this.sql(expression, "this");
+    const sep = cpAt(this_sql, 0) === "-" ? " " : "";
+    return `-${sep}${this_sql}`;
+  }
 
   /** @returns {string} */
   // py: sqlglot/generator.py:4019
