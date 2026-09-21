@@ -9,6 +9,7 @@ mkdir -p spike/out
 # Preconditions: never pretend that incomplete test fixtures are a green control.
 test -f "$SQLGLOT_REF/tests/dialects/__init__.py"
 test "$(git -C "$SQLGLOT_REF" rev-parse HEAD)" = 91119bcaac977ede6f4a641bdda593b0015ef998
+python3 -c 'import dateutil, pytz, six; assert dateutil.__version__=="2.9.0.post0"; assert pytz.__version__=="2022.7.1"; assert six.__version__=="1.15.0"'
 python3 -c 'import sys,unicodedata; assert sys.version.split()[0]=="3.9.25"; assert unicodedata.unidata_version=="13.0.0"'
 node tools/parity/check.mjs
 node tools/parity/check_parser_tables.mjs
