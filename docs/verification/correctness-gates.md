@@ -73,6 +73,7 @@ control independently executes 15,540 atoms with **0 mismatch/error**.
 git clone https://github.com/tobymao/sqlglot.git /tmp/sqlglot-complete-pin
 git -C /tmp/sqlglot-complete-pin checkout 91119bcaac977ede6f4a641bdda593b0015ef998
 python3 -m pip install --no-deps -e /tmp/sqlglot-complete-pin
+python3 -m pip install --no-deps pytz==2022.7.1 # upstream BigQuery test dependency
 export SQLGLOT_REF=/tmp/sqlglot-complete-pin PYTHONHASHSEED=0
 npm test
 make lint
@@ -84,7 +85,10 @@ node spike/p5/fuzz_dialect_generate.mjs --strict # full parity: exit 1
 
 The CI pins the interpreter versions above and fetches a complete reference. Locally
 `make` was unavailable, so the seven commands in its lint target were run directly;
-all seven passed. No dependency is added to the zero-dependency runtime.
+all seven passed. No dependency is added to the zero-dependency runtime. Upstream dialect test discovery
+requires the build-only `pytz==2022.7.1` already present on the local host; CI installs
+it explicitly. The first hosted run correctly failed on its absence rather than
+accepting an incomplete warning population.
 
 ## Repository controls (inspected, NOT changed)
 
