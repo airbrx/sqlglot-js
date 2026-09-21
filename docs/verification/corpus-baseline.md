@@ -31,3 +31,28 @@ still a stub, and public `parseOne` still returns only the first tree: neither i
 hidden by this adapter. Public `transpile`'s string[] shape is tested separately;
 warnings require the same production generator instance, not an invented array
 property. Versioned/long-tail keys stay in the full denominator as visible gaps.
+
+## Authorized merge integration against main cb4d6d2
+
+Main simplify prerequisites unlock 11 additional exact atoms; no previously accepted
+pass regressed. Reviewed each new SQL/target dialect against the unchanged fixture
+and a fresh pinned Python full control (15,540 exact, mismatch/error zero).
+The baseline only adds these IDs, never removes IDs or changes expectations:
+
+- `06f15ee8a05a457d`
+- `2d19223c0a8b29c7`
+- `386b722f6ba0b9d1`
+- `510b3ee2cfd3ff25`
+- `7c086ae7d3ffbaaa`
+- `7df324053d167144`
+- `9ab43e3f16749699`
+- `af404fe374beac49`
+- `c5cfb8e48892d0a4`
+- `c642b7405424f7ad`
+- `f918bf7c23328aa6`
+
+Current full result: 5,688 exact, 9,028 stub, 200 error, 610 SQL mismatch,
+8 warning mismatch, 6 expected-error mismatch; total15,540, exclusions0.
+These are not all green: only accepted-pass regressions are zero.
+The PR-relative monotonic check now runs in its own corpus-ratchet workflow,
+so it is enforced immediately when this PR merges, not deferred to the CI PR.
