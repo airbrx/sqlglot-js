@@ -763,6 +763,30 @@ export function unit_to_var(expression, default_ = "DAY") {
   return value ? exp.var(value) : null;
 }
 
+// py: sqlglot/dialects/dialect.py:2116 `WEEK_START_DAY_TO_DOW` — days of week to ISO
+// 8601 day-of-week numbers (Monday=1 .. Sunday=7). Needed by `optimizer/simplify.js`'s
+// `_trunc_unit`, which is the first caller of this and `week_offset_to_dow` in this
+// port; `week_unit_to_dow` (py:2132), the third function in this upstream cluster, has
+// no caller yet and is not ported.
+export const WEEK_START_DAY_TO_DOW = new Map([
+  ["MONDAY", 1],
+  ["TUESDAY", 2],
+  ["WEDNESDAY", 3],
+  ["THURSDAY", 4],
+  ["FRIDAY", 5],
+  ["SATURDAY", 6],
+  ["SUNDAY", 7],
+]);
+
+/**
+ * py: sqlglot/dialects/dialect.py:2127 `week_offset_to_dow(offset)`.
+ * Convert a dialect's WEEK_OFFSET (days relative to Monday) to the ISO day number of
+ * its week start.
+ */
+export function week_offset_to_dow(offset) {
+  return ((offset % 7) + 7) % 7 + 1;
+}
+
 /**
  * py: sqlglot/dialects/dialect.py:1718 `timestamptrunc_sql(func="DATE_TRUNC", zone=False)`
  * Placed after its `unit_to_var`/`weekstart_unit_to_str` dependencies rather than at
