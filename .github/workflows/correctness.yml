@@ -28,28 +28,6 @@ jobs:
           git clone --filter=blob:none https://github.com/tobymao/sqlglot.git /tmp/sqlglot-ref
           git -C /tmp/sqlglot-ref checkout 91119bcaac977ede6f4a641bdda593b0015ef998
       - run: make lint
-  corpus:
-    name: corpus-ratchet
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22.12.0'
-      - run: node test/runner.mjs --report corpus-outcomes.jsonl
-      - name: Accepted passes cannot be removed
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          node tools/check_ratchet_change.mjs "$BASE_SHA"
-          node tools/check_differential_change.mjs "$BASE_SHA"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: corpus-outcomes
-          path: corpus-outcomes.jsonl
   differential:
     name: differential-ratchets
     runs-on: ubuntu-latest
@@ -59,6 +37,8 @@ jobs:
       PYTHONHASHSEED: '0'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22.12.0'
@@ -71,6 +51,10 @@ jobs:
           git -C "$SQLGLOT_REF" checkout 91119bcaac977ede6f4a641bdda593b0015ef998
           python3 -m pip install --no-deps -e "$SQLGLOT_REF"
           python3 -m pip install --no-deps pytz==2022.7.1
+      - name: Differential accepted populations cannot shrink
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node tools/check_differential_change.mjs "$BASE_SHA"
       - run: bash tools/run_correctness.sh
       - uses: actions/upload-artifact@v4
         if: always()

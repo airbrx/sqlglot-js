@@ -29,10 +29,11 @@ python3 spike/p4/gen_generator_base_ref.py > spike/out/generator_base.json
 node spike/p4/fuzz_generator_base.mjs
 python3 spike/p4/gen_transforms_ref.py > spike/out/transforms.json
 node spike/p4/fuzz_transforms.mjs
-node spike/p4/fuzz_generate_oracle.mjs
+# Strict base-only diagnostic is in run_all.sh; all of its IDs are protected
+# by the full production-generation ratchet below (including foreign read dialects).
 python3 spike/p6/gen_schema_ref.py > spike/out/schema.json
 node spike/p6/fuzz_schema.mjs
-for name in scope optimize_joins resolver unnest_subqueries qualify_tables isolate_table_selects typing annotate_types merge_subqueries eliminate_subqueries eliminate_ctes; do
+for name in scope optimize_joins resolver unnest_subqueries qualify_tables isolate_table_selects typing annotate_types merge_subqueries eliminate_subqueries eliminate_ctes simplify; do
   python3 "spike/p7/gen_${name}_ref.py" > "spike/out/${name}.json"
   node "spike/p7/fuzz_${name}.mjs"
 done

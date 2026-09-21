@@ -15,12 +15,12 @@
   ],
   "exclusions": 0,
   "eligible": 6522,
-  "exact": 4015,
-  "PASS": 3989,
+  "exact": 4021,
+  "PASS": 3995,
   "PASS_EXPECTED_ERROR": 26,
-  "STUB": 1858,
+  "STUB": 1848,
   "ERROR": 171,
-  "SQL_MISMATCH": 467,
+  "SQL_MISMATCH": 471,
   "WARNING_MISMATCH": 8,
   "EXPECTED_ERROR_MISMATCH": 3,
   "byWrite": [
@@ -63,10 +63,10 @@
     {
       "write": "hive",
       "eligible": 445,
-      "exact": 357,
-      "PASS": 350,
+      "exact": 358,
+      "PASS": 351,
       "PASS_EXPECTED_ERROR": 7,
-      "STUB": 79,
+      "STUB": 78,
       "ERROR": 1,
       "SQL_MISMATCH": 1,
       "WARNING_MISMATCH": 7,
@@ -75,10 +75,10 @@
     {
       "write": "spark2",
       "eligible": 62,
-      "exact": 47,
-      "PASS": 46,
+      "exact": 48,
+      "PASS": 47,
       "PASS_EXPECTED_ERROR": 1,
-      "STUB": 15,
+      "STUB": 14,
       "ERROR": 0,
       "SQL_MISMATCH": 0,
       "WARNING_MISMATCH": 0,
@@ -87,10 +87,10 @@
     {
       "write": "spark",
       "eligible": 620,
-      "exact": 477,
-      "PASS": 472,
+      "exact": 478,
+      "PASS": 473,
       "PASS_EXPECTED_ERROR": 5,
-      "STUB": 137,
+      "STUB": 136,
       "ERROR": 6,
       "SQL_MISMATCH": 0,
       "WARNING_MISMATCH": 0,
@@ -99,10 +99,10 @@
     {
       "write": "databricks",
       "eligible": 334,
-      "exact": 216,
-      "PASS": 214,
+      "exact": 217,
+      "PASS": 215,
       "PASS_EXPECTED_ERROR": 2,
-      "STUB": 89,
+      "STUB": 88,
       "ERROR": 27,
       "SQL_MISMATCH": 2,
       "WARNING_MISMATCH": 0,
@@ -111,10 +111,10 @@
     {
       "write": "postgres",
       "eligible": 801,
-      "exact": 446,
-      "PASS": 446,
+      "exact": 448,
+      "PASS": 448,
       "PASS_EXPECTED_ERROR": 0,
-      "STUB": 334,
+      "STUB": 332,
       "ERROR": 19,
       "SQL_MISMATCH": 2,
       "WARNING_MISMATCH": 0,
@@ -126,9 +126,9 @@
       "exact": 198,
       "PASS": 194,
       "PASS_EXPECTED_ERROR": 4,
-      "STUB": 90,
+      "STUB": 86,
       "ERROR": 4,
-      "SQL_MISMATCH": 1,
+      "SQL_MISMATCH": 5,
       "WARNING_MISMATCH": 0,
       "EXPECTED_ERROR_MISMATCH": 0
     }
@@ -245,9 +245,9 @@
       "exact": 57,
       "PASS": 55,
       "PASS_EXPECTED_ERROR": 2,
-      "STUB": 26,
+      "STUB": 22,
       "ERROR": 0,
-      "SQL_MISMATCH": 1,
+      "SQL_MISMATCH": 5,
       "WARNING_MISMATCH": 0,
       "EXPECTED_ERROR_MISMATCH": 0
     },
@@ -996,10 +996,10 @@
       "read": "postgres",
       "write": "hive",
       "eligible": 17,
-      "exact": 13,
-      "PASS": 12,
+      "exact": 14,
+      "PASS": 13,
       "PASS_EXPECTED_ERROR": 1,
-      "STUB": 3,
+      "STUB": 2,
       "ERROR": 0,
       "SQL_MISMATCH": 1,
       "WARNING_MISMATCH": 0,
@@ -1009,10 +1009,10 @@
       "read": "postgres",
       "write": "spark2",
       "eligible": 5,
-      "exact": 2,
-      "PASS": 1,
+      "exact": 3,
+      "PASS": 2,
       "PASS_EXPECTED_ERROR": 1,
-      "STUB": 3,
+      "STUB": 2,
       "ERROR": 0,
       "SQL_MISMATCH": 0,
       "WARNING_MISMATCH": 0,
@@ -1022,10 +1022,10 @@
       "read": "postgres",
       "write": "spark",
       "eligible": 15,
-      "exact": 11,
-      "PASS": 10,
+      "exact": 12,
+      "PASS": 11,
       "PASS_EXPECTED_ERROR": 1,
-      "STUB": 3,
+      "STUB": 2,
       "ERROR": 1,
       "SQL_MISMATCH": 0,
       "WARNING_MISMATCH": 0,
@@ -1035,10 +1035,10 @@
       "read": "postgres",
       "write": "databricks",
       "eligible": 6,
-      "exact": 3,
-      "PASS": 2,
+      "exact": 4,
+      "PASS": 3,
       "PASS_EXPECTED_ERROR": 1,
-      "STUB": 3,
+      "STUB": 2,
       "ERROR": 0,
       "SQL_MISMATCH": 0,
       "WARNING_MISMATCH": 0,
@@ -1048,10 +1048,10 @@
       "read": "postgres",
       "write": "postgres",
       "eligible": 580,
-      "exact": 282,
-      "PASS": 282,
+      "exact": 284,
+      "PASS": 284,
       "PASS_EXPECTED_ERROR": 0,
-      "STUB": 278,
+      "STUB": 276,
       "ERROR": 19,
       "SQL_MISMATCH": 1,
       "WARNING_MISMATCH": 0,
@@ -2412,6 +2412,32 @@
       ]
     },
     {
+      "method": "NotPorted: rand_sql",
+      "count": 20,
+      "ids": [
+        "0347e60d700513a6",
+        "1ad79b493a79b6ab",
+        "2476e235b1b4d279",
+        "2a891844e581db6b",
+        "2ecbb2f2e76f53f3",
+        "3266a168def25701",
+        "3b3da7ae2b57a935",
+        "3badc51af49a058e",
+        "6445dfbb647b58ba",
+        "7f6b674986b64ce0",
+        "8a959e7760cc17f9",
+        "9fff4e3bdf1fce75",
+        "a4d7bb6a006bae88",
+        "a8c8053d71af003f",
+        "a8d5fe469eb840fe",
+        "aae4df1d132ca04a",
+        "c0fea7916bcbd46c",
+        "c5687618dc04b08d",
+        "d6a486fbbba062a5",
+        "fe1be7f28edcae88"
+      ]
+    },
+    {
       "method": "NotPorted: sequenceproperties_sql",
       "count": 20,
       "ids": [
@@ -2460,31 +2486,6 @@
         "d3db5bbcca7e9571",
         "dc2fba7efeedc84f",
         "dfda3195cf9bd99e"
-      ]
-    },
-    {
-      "method": "NotPorted: rand_sql",
-      "count": 19,
-      "ids": [
-        "0347e60d700513a6",
-        "1ad79b493a79b6ab",
-        "2476e235b1b4d279",
-        "2a891844e581db6b",
-        "2ecbb2f2e76f53f3",
-        "3266a168def25701",
-        "3b3da7ae2b57a935",
-        "3badc51af49a058e",
-        "6445dfbb647b58ba",
-        "7f6b674986b64ce0",
-        "9fff4e3bdf1fce75",
-        "a4d7bb6a006bae88",
-        "a8c8053d71af003f",
-        "a8d5fe469eb840fe",
-        "aae4df1d132ca04a",
-        "c0fea7916bcbd46c",
-        "c5687618dc04b08d",
-        "d6a486fbbba062a5",
-        "fe1be7f28edcae88"
       ]
     },
     {
@@ -2784,6 +2785,25 @@
       ]
     },
     {
+      "method": "NotPorted: kwarg_sql",
+      "count": 13,
+      "ids": [
+        "120c26ac0c497ec2",
+        "1212e3c728976935",
+        "1ae69532b984f522",
+        "1e405ce1a62ab36e",
+        "3df22a006d142743",
+        "45484f8bbfcedd67",
+        "4f1db1dfab107d95",
+        "8b427d67df8c02a2",
+        "a7110d40c2b0eb29",
+        "affa0d1ac47367f4",
+        "b33063a061fd44fb",
+        "c14a008b3c2a3dea",
+        "ebd2abd9986264f5"
+      ]
+    },
+    {
       "method": "NotPorted: converttimezone_sql",
       "count": 13,
       "ids": [
@@ -2836,24 +2856,6 @@
         "bad04df4b66a9a25",
         "d1a1e4a09d63be92",
         "e55a5683fe641f1c"
-      ]
-    },
-    {
-      "method": "NotPorted: kwarg_sql",
-      "count": 12,
-      "ids": [
-        "120c26ac0c497ec2",
-        "1212e3c728976935",
-        "1ae69532b984f522",
-        "1e405ce1a62ab36e",
-        "3df22a006d142743",
-        "45484f8bbfcedd67",
-        "4f1db1dfab107d95",
-        "8b427d67df8c02a2",
-        "a7110d40c2b0eb29",
-        "affa0d1ac47367f4",
-        "b33063a061fd44fb",
-        "c14a008b3c2a3dea"
       ]
     },
     {
@@ -2955,22 +2957,6 @@
         "65f927f1afe7d712",
         "ad0db5c0067ec723",
         "e2d313cb84418469"
-      ]
-    },
-    {
-      "method": "NotPorted: lte_sql",
-      "count": 10,
-      "ids": [
-        "06f15ee8a05a457d",
-        "386b722f6ba0b9d1",
-        "4cdffe38a325ce57",
-        "4ea84b8c8431e03f",
-        "7c086ae7d3ffbaaa",
-        "8a959e7760cc17f9",
-        "9ab43e3f16749699",
-        "a8715170705a958a",
-        "bcd8ab6d975cc018",
-        "f918bf7c23328aa6"
       ]
     },
     {
@@ -3712,14 +3698,6 @@
       "ids": [
         "272a4b559afbf804",
         "5eec596e1e4edfb2"
-      ]
-    },
-    {
-      "method": "NotPorted: gte_sql",
-      "count": 2,
-      "ids": [
-        "2d19223c0a8b29c7",
-        "ebd2abd9986264f5"
       ]
     },
     {

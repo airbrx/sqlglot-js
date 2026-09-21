@@ -4815,7 +4815,7 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4512
-  gte_sql(expression) { throw new NotPorted("gte_sql", "sqlglot/generator.py:4512"); }
+  gte_sql(expression) { return this.binary(expression, ">="); }
 
   /**
    * py: sqlglot/generator.py:4515
@@ -4912,7 +4912,7 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4587
-  lte_sql(expression) { throw new NotPorted("lte_sql", "sqlglot/generator.py:4587"); }
+  lte_sql(expression) { return this.binary(expression, "<="); }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4590

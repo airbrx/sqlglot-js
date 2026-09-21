@@ -1,9 +1,9 @@
 # v0 readiness scorecard and next-work queue
 
-**Measured 2026-09-21; not release-ready.** The review's `b3ecdde` remained fetched
-`origin/main` throughout reproduction. This scorecard uses that runtime plus the
-reviewed-for-acceptance corpus harness; the CI/scorecard changes do not improve SQL
-conformance. Upstream remains `91119bcaac977ede6f4a641bdda593b0015ef998`.
+**Measured 2026-09-21; not release-ready.** The original review reproduction used `b3ecdde`.
+This integration refresh includes current main's simplify prerequisites (`cb4d6d2`)
+and merged safety/corpus fixes. The six additional exact v0 rows come from already-
+landed main, not from the CI/scorecard tooling. Upstream remains `91119bcaac977ede6f4a641bdda593b0015ef998`.
 
 ## End-to-end population (not customer-query coverage)
 
@@ -16,19 +16,19 @@ silently skipped. The machine-readable [scorecard](v0-scorecard.json) includes a
 81 dialect pairs, even empty ones, their exact/eligible counts and every outcome
 category. The measurement command writes one result for each of the 6,522 IDs.
 
-| Outcome | Review | Fresh JS | Pinned Python control |
+| Outcome | Review | Integrated JS | Pinned Python control |
 |---|---:|---:|---:|
-| Exact SQL + warnings, or exact expected UnsupportedError | 4,015 | **4,015** | **6,522** |
-| NotPorted / unavailable dialect | 1,858 | 1,858 | 0 |
+| Exact SQL + warnings, or exact expected UnsupportedError | 4,015 | **4,021** | **6,522** |
+| NotPorted / unavailable dialect | 1,858 | 1,848 | 0 |
 | Other errors/crashes | 171 | 171 | 0 |
-| SQL mismatch | 467 | 467 | 0 |
+| SQL mismatch | 467 | 471 | 0 |
 | Warning mismatch | 8 | 8 | 0 |
 | Expected error not raised/mismatched | 3 | 3 | 0 |
 | Explicit exclusions within v0 | 0 | 0 | 0 |
 | **Total** | **6,522** | **6,522** | **6,522** |
 
-The 4,015 exact results include 26 expected-error passes and 3,989 successful SQL
-outputs. **61.6% is fixture conformance, not 61.6% of customer queries.** No customer
+The 4,021 exact results include 26 expected-error passes and 3,995 successful SQL
+outputs. **61.7% is fixture conformance, not 61.7% of customer queries.** No customer
 query sampling was performed. Full-corpus control also passes **15,540/15,540**, with
 zero SQL/warning/exception mismatches and zero errors. JS has **nonzero mismatches and
 errors**; the new pass-ID ratchet's success must not be called full parity.
@@ -38,16 +38,16 @@ errors**; the new pass-ID ratchet's success must not be called full parity.
 | Write | Exact | Eligible | Stub | Error | SQL mismatch | Warning mismatch | Expected-error mismatch |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | default | 426 | 666 | 229 | 9 | 2 | 0 | 0 |
-| Snowflake | 1,341 | 1,849 | 418 | 72 | 18 | 0 | 0 |
-| DuckDB | 507 | 1,452 | 467 | 33 | 441 | 1 | 3 |
-| Hive | 357 | 445 | 79 | 1 | 1 | 7 | 0 |
-| Spark2 | 47 | 62 | 15 | 0 | 0 | 0 | 0 |
-| Spark | 477 | 620 | 137 | 6 | 0 | 0 | 0 |
-| Databricks | 216 | 334 | 89 | 27 | 2 | 0 | 0 |
-| Postgres | 446 | 801 | 334 | 19 | 2 | 0 | 0 |
-| Redshift | 198 | 293 | 90 | 4 | 1 | 0 | 0 |
+| snowflake | 1341 | 1849 | 418 | 72 | 18 | 0 | 0 |
+| duckdb | 507 | 1452 | 467 | 33 | 441 | 1 | 3 |
+| hive | 358 | 445 | 78 | 1 | 1 | 7 | 0 |
+| spark2 | 48 | 62 | 14 | 0 | 0 | 0 | 0 |
+| spark | 478 | 620 | 136 | 6 | 0 | 0 | 0 |
+| databricks | 217 | 334 | 88 | 27 | 2 | 0 | 0 |
+| postgres | 448 | 801 | 332 | 19 | 2 | 0 | 0 |
+| redshift | 198 | 293 | 86 | 4 | 5 | 0 | 0 |
 
-DuckDB's 441 SQL mismatches dominate the 467 v0 SQL mismatches. This is a strong
+DuckDB's 441 SQL mismatches dominate the 471 v0 SQL mismatches. This is a strong
 reason to finish required behavior there before expanding dialect breadth. It is
 not evidence that every mismatch shares one cause.
 
@@ -71,8 +71,8 @@ native edge tests and full differential review before implementation credit.
 | 5 | Core ordinary date/string/aggregation generator clusters: `extract_sql`, `pad_sql`, then sampling and division as required by product queries | 65 / 61 / 44 `tablesample_sql` / 35 `div_sql` | **Not measured**; dependent blockers can remain | Not measured |
 | 6 | DuckDB-specific remaining SQL and unsupported-warning/expected-error gaps | 424 SQL mismatches remain after the isolated LIST_SORT candidate; baseline 1 warning + 3 expected-error mismatches | **Not measured**; cluster by failing IDs/required query, not dialect count | Not measured |
 
-Combined first three candidates: **+142 exact → 4,157/6,522**, zero accepted passes
-lost, then restored to **4,015/6,522**. They do not fix the whole v0 gap. First-blocker
+Combined first three candidates: **+142 exact → 4,163/6,522**, zero accepted passes
+lost, then restored to **4,021/6,522**. They do not fix the whole v0 gap. First-blocker
 counts are **not unlocked-atom counts**: negation's 49 first failures yield only 32
 exact rows; window's 136 yield only 93. Nested unported methods, dialect overrides
 (e.g. DuckDB CORR/window handling), warning differences and parser failures remain.
@@ -90,16 +90,16 @@ long-tail dialect additions, broad optimizer work or the entire remaining port.
 
 Track three separate lanes rather than labeling registered dialects as complete:
 
-1. **Gateway safety:** PR #74 plus coordinated gateway PR #236. Both mutation
+1. **Gateway safety:** Merged PR #74 plus coordinated gateway PR #236 (still requires review). Both mutation
    reproductions fail closed, full SQL identity retained, actual gateway cache hint
    veto and mutation-rule invalidation exercised. New boundary tests: **0/8 before,
-   8/8 after**; selected gateway cache/parser tests **403/403**. A fresh `npm ci
+   8/8 after**; selected gateway cache/parser tests now **409/409**, boundary14/14 after review fixes. A fresh `npm ci
    --ignore-scripts` from the immutable dependency pin also passes the 8 boundary tests.
-   This is tested, **awaiting review/integration**, not deployed. Invalidations remain
+   The library safety fix is merged; the gateway changes are tested but **awaiting required review**, not deployed. Invalidations remain
    configured-rule-dependent; arbitrary side-effecting UDFs are not inferred.
 2. **v0 transpiler conformance:** P4–P8 are **partial**, not 0% and not complete merely
    because classes are registered. Required nine-key scope and P8 release boundary
-   remain unchanged. PR #75 proposes the 5,677 full-corpus pass-ID baseline; #76 adds
+   remain unchanged. Merged PR #75 protects 5,688 full-corpus passing IDs; #76 adds
    enforceable incremental checks. Release review must consider all remaining v0
    failures/exclusions explicitly, not replace its bar with “ratchet green.”
 3. **Broader SQLGlot parity:** landed optimizer prerequisites are useful, but do not
@@ -150,3 +150,13 @@ The experiment must restore the baseline; its 142 hypothetical new passes are **
 added to `test/ratchet.json`. No source, optimizer, fixtures or runtime dependency
 was changed by these tools. Review all JSON artifact changes rather than automatically
 accepting regenerated numbers.
+
+## Integration review delta
+
+Relative to the original reproduction: exact+6, stub-10, SQL mismatch+4; errors,
+warning mismatches and expected-error mismatches unchanged. These four newly reached
+SQL mismatches remain visible (formerly unported), not accepted passes. No previously
+accepted v0 pass regressed. Current corpus-ratchet workflow and the production row
+ratchets preserve all accepted IDs; full parity remains red. Metadata review fixes
+also preserve mutation occurrences and pre-deny ordering (R60), and the base-output
+strict diagnostic now includes all foreign-reader ASTs (R62).

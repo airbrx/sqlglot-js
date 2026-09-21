@@ -260,6 +260,27 @@ export function installQueryMethods(classes) {
     }
   }
 
+  // py: expressions/core.py:2070-2072 `TimeUnit.unit` (`@property`, returning
+  // `args.get("unit")`) and core.py:2081-2090 `IntervalOp.interval()` — installed the
+  // same trait-driven way as `Binary.left`/`.right` just above, for the same reason.
+  // `optimizer/simplify.js` (AIR-2101/2102/2103) is the first port-side caller of
+  // either; existing callers elsewhere that predate it read `expression.args.unit`
+  // directly (R31/R33's `dialects/dialect.js` note) and are unaffected by adding these.
+  for (const C of all) {
+    if (has(C, "TimeUnit")) {
+      getter(C, "unit", function () { return this.args.unit ?? null; });
+    }
+    if (has(C, "IntervalOp")) {
+      method(C, "interval", function () {
+        const expr = this.expression;
+        return new (classes.Interval)({
+          this: expr != null ? expr.copy() : null,
+          unit: this.unit ? this.unit.copy() : null,
+        });
+      });
+    }
+  }
+
   get("Select", "selects", function () { return this.expressions; });
   get("Select", "namedSelects", function () { const out = []; for (const e of this.expressions) { if (value(e, "aliasOrName", "alias_or_name")) out.push(value(e, "outputName", "output_name")); else if (e.constructor?.name === "Aliases") for (const a of e.args.aliases || []) out.push(value(a, "name")); } return out; }, "named_selects");
   get("Select", "isStar", function () { return this.expressions.some(e => !!value(e, "isStar", "is_star")); }, "is_star");

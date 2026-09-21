@@ -1,13 +1,13 @@
 {
   "diagnosticOnly": true,
   "total": 6522,
-  "baselineExact": 4015,
+  "baselineExact": 4021,
   "experiments": [
     {
       "candidates": [
         "neg"
       ],
-      "exact": 4047,
+      "exact": 4053,
       "gained": [
         "061e323640b7203a",
         "070795a789f4e0c6",
@@ -48,7 +48,7 @@
       "candidates": [
         "window_cluster"
       ],
-      "exact": 4108,
+      "exact": 4114,
       "gained": [
         "00da0d53b86f91ed",
         "01d2b6addcbe26a8",
@@ -150,7 +150,7 @@
       "candidates": [
         "duckdb_list_sort"
       ],
-      "exact": 4032,
+      "exact": 4038,
       "gained": [
         "006afea51cc51e7e",
         "1542a8d5f567537e",
@@ -178,7 +178,7 @@
         "window_cluster",
         "duckdb_list_sort"
       ],
-      "exact": 4157,
+      "exact": 4163,
       "gained": [
         "006afea51cc51e7e",
         "00da0d53b86f91ed",
