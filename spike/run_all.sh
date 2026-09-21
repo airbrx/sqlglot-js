@@ -6,6 +6,7 @@
 #
 # Exits non-zero if any probe diverges from CPython.
 set -uo pipefail
+export PYTHONHASHSEED=0
 cd "$(dirname "$0")/.."
 
 mkdir -p spike/out
@@ -21,8 +22,9 @@ run() {
   shift
   if "$@"; then
     return 0
+  else
+    local rc=$?
   fi
-  local rc=$?
   echo "  >>> PROBE FAILED (exit $rc): $name"
   failed_probes+=("$name")
   fail=1
@@ -246,6 +248,8 @@ run "SELFTEST: generator closure maths"   node tools/closure_generator.mjs --sel
 run "P5: Dialect defaults vs CPython"      node spike/p5/fuzz_dialect_defaults.mjs
 run "P5: Dialect.get_or_raise().parse()"   node spike/p5/fuzz_dialect_parse.mjs
 run "P5: Snowflake dialect vs CPython"     node spike/p5/fuzz_snowflake_dialect.mjs
+run "P5: real dialect generation row ratchet" node spike/p5/fuzz_dialect_generate.mjs
+
 run "P5: DuckDB dialect vs CPython"        node spike/p5/fuzz_duckdb_dialect.mjs
 run "P6: schema.js MappingSchema vs CPython" node spike/p6/fuzz_schema.mjs
 run "P7: optimizer/scope.js traverseScope/Scope vs CPython" node spike/p7/fuzz_scope.mjs

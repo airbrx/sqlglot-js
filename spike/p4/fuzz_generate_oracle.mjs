@@ -1,5 +1,5 @@
-// The generate oracle, run for real: parse a corpus row, generate it back out with the
-// PORT's generator, and diff byte-for-byte against CPython's recorded output.
+// Base generate oracle: load the pinned AST, generate with the PORT, and
+// compare SQL plus warnings against CPython. End-to-end parsing is gated separately.
 //
 //   node spike/p4/fuzz_generate_oracle.mjs
 //   node spike/p4/fuzz_generate_oracle.mjs --verbose
@@ -10,10 +10,9 @@
 // into the same four buckets, for the same reason:
 //
 //   EXACT      generated, and byte-identical to corpus/gen's `sql`
-//   MISMATCH   generated, but differs  <- the only bucket that fails the build
+//   MISMATCH   generated SQL or warnings differ  <- fails the build
 //   STUB       hit a NotPorted stub — the next round's work, counted not hidden
 //   ERROR      any other throw      <- also fails; a stub must announce itself
-//   PARSE      the PORT's parser could not read the row at all (not a generator defect)
 //
 // A run where STUB is large and MISMATCH is zero is the expected state of a blocking
 // step, and the numbers say so out loud rather than being rounded to "green".
@@ -37,17 +36,17 @@
 // check found its first defect before this file was committed (the tool ignored whether
 // the port could resolve a row's dialect at all, and over-claimed 1,002 rows).
 //
-// SCOPE, stated rather than left implicit. The port registers no dialect but the base
-// one — `src/dialects/` holds `dialect.js` alone, and named registration is P5 — so
-// `Dialect.get_or_raise("snowflake")` throws. Rows naming a dialect are counted as
-// SKIPPED (dialect unavailable), never silently generated with base settings, which
-// would compare the wrong thing and could only produce noise. That is also why the
-// generator is constructed directly here rather than through `Dialect.generate`:
-// `Dialect.generator_class` is unset, and wiring it is a change to a P5-owned file.
+// LEGACY BASE-ONLY DEMAND DIAGNOSTIC, not the production dialect gate.
+// This deliberately imports only the base registration. Its named-output excluded
+// rows are ALL evaluated by p5/fuzz_dialect_generate.mjs instead.
+// The independent production corpus ratchet checks parse + generate + warnings.
+// Demand is generation-only; use the recorded AST, not parser reachability.
 
 import { readFileSync, readdirSync } from "node:fs";
 import { Dialect } from "../../src/dialects/dialect.js";
 import { Generator } from "../../src/generator.js";
+import { astLoad } from "../../src/expressions/index.js";
+import { ErrorLevel } from "../../src/errors.js";
 import { captureLogs } from "../../src/logging.js";
 
 const argv = process.argv.slice(2);
@@ -60,6 +59,16 @@ for (const line of readFileSync("corpus/atoms.jsonl", "utf8").split("\n")) {
   const a = JSON.parse(line);
   atoms.set(a.atom_id, a);
 }
+
+const asts = new Map();
+for (const file of readdirSync("corpus/ast").filter(f => f.endsWith(".jsonl"))) {
+  for (const line of readFileSync(`corpus/ast/${file}`, "utf8").split("\n").filter(Boolean)) {
+    const row = JSON.parse(line);
+    if (asts.has(row.atom_id)) throw new Error(`Duplicate AST reference: ${row.atom_id}`);
+    asts.set(row.atom_id, row.ast);
+  }
+}
+if (!atoms.size || !asts.size) throw new Error("Empty oracle population");
 
 const demand = JSON.parse(readFileSync("corpus/generate_demand.json", "utf8"));
 const DEMAND_UNITS = demand.units;
@@ -115,7 +124,7 @@ function dialectFor(name) {
   return dialectCache.get(name);
 }
 
-const tot = { exact: 0, mismatch: 0, stub: 0, error: 0, parse: 0, skipped: 0 };
+const tot = { exact: 0, mismatch: 0, stub: 0, error: 0, skipped: 0 };
 const mismatches = [];
 const errors = [];
 const stubCounts = new Map();
@@ -128,50 +137,38 @@ for (const name of readdirSync("corpus/gen")) {
     if (!line) continue;
     const row = JSON.parse(line);
     const atom = atoms.get(row.ast_ref);
-    if (!atom) continue;
+    if (!atom) throw new Error(`Missing atom reference: ${row.atom_id}`);
     if (PREDICTED_ONLY && !predicted.has(row.atom_id)) continue;
 
-    const readDialect = dialectFor(atom.read);
     const writeDialect = dialectFor(atom.write);
-    if (!readDialect || !writeDialect) {
+    if (!writeDialect) {
       tot.skipped += 1;
       // A row closure predicted closed must not be unverifiable: that is the tool
       // claiming a row it cannot reach, which is exactly what this cross-check is for.
       if (predicted.has(row.atom_id)) {
-        overclaimed.push({ id: row.atom_id, why: `dialect unavailable (${atom.read}->${atom.write})` });
+        overclaimed.push({ id: row.atom_id, why: `write dialect unavailable (${atom.write})` });
       }
       continue;
     }
 
-    // Parse and generate are separated so a PARSER gap cannot be reported as a generator
-    // defect. The generator's own buckets have to mean what they say.
-    let ast;
-    try {
-      const { result } = captureLogs(() => readDialect.parse(atom.sql));
-      // py: `Dialect.generate` joins multiple statements with "; ". Asserted rather than
-      // assumed: a multi-statement row would silently compare only the first.
-      if (result.length !== 1) throw new Error(`multi-statement row (${result.length})`);
-      ast = result[0];
-    } catch (e) {
-      tot.parse += 1;
-      if (errors.length < 40) {
-        errors.push(`PARSE ${row.atom_id} [${atom.read || "(default)"}] ${e.name}: ${e.message.split("\n")[0].slice(0, 100)}`);
-      }
-      if (predicted.has(row.atom_id)) {
-        overclaimed.push({ id: row.atom_id, why: `PARSE ${e.name}` });
-      }
-      continue;
-    }
+    // Demand was harvested from GENERATION. Feed the recorded AST instead of
+    // accidentally testing parser reachability and calling that a closure defect.
+    if (!asts.has(row.ast_ref)) throw new Error(`Missing AST reference: ${row.ast_ref}`);
+    const ast = astLoad(asts.get(row.ast_ref));
 
     let got;
+    let warnings;
     try {
       const { result } = captureLogs(() => {
         const generator = new Generator({
           dialect: writeDialect,
+          unsupported_level: ErrorLevel.IGNORE,
           pretty: row.flags.pretty,
           identify: row.flags.identify,
         });
-        return generator.generate(ast);
+        const sql = generator.generate(ast);
+        warnings = generator.unsupported_messages;
+        return sql;
       });
       got = result;
     } catch (e) {
@@ -200,7 +197,7 @@ for (const name of readdirSync("corpus/gen")) {
       continue;
     }
 
-    if (got === row.sql) {
+    if (got === row.sql && JSON.stringify(warnings) === JSON.stringify(row.unsupported_messages)) {
       tot.exact += 1;
     } else {
       tot.mismatch += 1;
@@ -214,13 +211,12 @@ for (const name of readdirSync("corpus/gen")) {
   }
 }
 
-const seen = tot.exact + tot.mismatch + tot.stub + tot.error + tot.parse;
-console.log(`\n  generate oracle over ${seen} reachable rows (${tot.skipped} skipped: dialect not registered)`);
+const seen = tot.exact + tot.mismatch + tot.stub + tot.error;
+console.log(`\n  generate oracle over ${seen} reachable rows (${tot.skipped} excluded: write dialect not registered)`);
 console.log(`    EXACT     ${String(tot.exact).padStart(6)}  (generated and byte-identical)`);
 console.log(`    MISMATCH  ${String(tot.mismatch).padStart(6)}  <- must be 0`);
 console.log(`    STUB      ${String(tot.stub).padStart(6)}  (NotPorted, or an unwired TRANSFORMS entry)`);
 console.log(`    ERROR     ${String(tot.error).padStart(6)}  <- must be 0`);
-console.log(`    PARSE     ${String(tot.parse).padStart(6)}  (the port's PARSER could not read the row; not a generator defect)`);
 
 console.log(`\n  closure cross-check (R13: a closure number is not a probe)`);
 console.log(`    rows tools/closure_generator.mjs predicts closed  ${predicted.size}`);

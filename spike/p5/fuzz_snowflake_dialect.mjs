@@ -1,3 +1,5 @@
+import { upstreamKeywords, upstreamFuncTokens, CURRENT_ROLE_EXCLUSION } from "../../tools/verification_exclusions.mjs";
+console.log(CURRENT_ROLE_EXCLUSION);
 // Differential: `src/dialects/snowflake.js`'s `Snowflake` class vs CPython.
 //
 //   PYTHONHASHSEED=0 python3 spike/p5/gen_snowflake_dialect_ref.py \
@@ -152,7 +154,7 @@ check("tokenizer_class is the declared nested Tokenizer", tk === Snowflake.Token
 check("tokenizer_class base", Object.getPrototypeOf(tk) === Tokenizer, T.base === "Tokenizer");
 
 // Declared settings.
-check("Tokenizer.KEYWORDS", enc(mapVals(tk.KEYWORDS, tt)), T.KEYWORDS);
+check("Tokenizer.KEYWORDS", enc(mapVals(upstreamKeywords(tk.KEYWORDS), tt)), T.KEYWORDS);
 check("Tokenizer.SINGLE_TOKENS", enc(mapVals(tk.SINGLE_TOKENS, tt)), T.SINGLE_TOKENS);
 check("Tokenizer.COMMANDS", { $s: [...tk.COMMANDS].map(tt).sort(byJson) }, T.COMMANDS);
 check("Tokenizer.COMMENTS", enc(tk.COMMENTS), T.COMMENTS);

@@ -114,6 +114,16 @@ def main():
         ("KEYWORDS", keywords, "static KEYWORDS = new Map(["),
     ):
         got = extract_js(marker, "]);")
+        # Comments are prose, not table entries; compare all actual entries in
+        # source order. CURRENT_ROLE is the exact PR #62 consumer extension.
+        want = [line for line in want if not line.strip().startswith('//')]
+        got = [line for line in got if not line.strip().startswith('//')]
+        if label == "KEYWORDS":
+            extension = '    ["CURRENT_ROLE", TokenType.CURRENT_ROLE],'
+            if got.count(extension) != 1:
+                sys.exit("CURRENT_ROLE exclusion no longer matches its exact entry")
+            got.remove(extension)
+            print("  EXCLUSION: CURRENT_ROLE keyword extension (PR #62); all other entries compared")
         if got == want:
             print(f"  ok   {label}: {len(want)} lines match upstream source order")
             continue

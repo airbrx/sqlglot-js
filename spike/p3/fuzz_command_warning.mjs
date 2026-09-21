@@ -88,6 +88,6 @@ if (fails.length > 10) console.log(`    ... and ${fails.length - 10} more`);
 const gateOk = snow.total === 18 && snow.pass === 18;
 if (!gateOk) console.log(`    GATE: expected 18/18 snowflake, got ${snow.pass}/${snow.total}`);
 
-const bad = fails.length > 0 || !gateOk;
+const bad = fails.length > 0 || !gateOk || skipped > 0 || rows.length !== 131;
 console.log(bad ? "\n  COMMAND WARNINGS: FAIL" : "\n  COMMAND WARNINGS: OK");
 process.exit(bad ? 1 : 0);
