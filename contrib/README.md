@@ -231,3 +231,16 @@ properties subsystem as of the properties-dispatch step (branch
   unclaimed.
 - Hot-path parse performance versus the gateway's regex approach —
   unbenchmarked.
+
+### Whole-input cache safety
+
+Multi-statement requests are deliberately unsupported for caching: `cacheable: false`,
+`statementType: UNKNOWN`, conservative change flags, every parsed table retained, and
+`standardizedSql === originalSql` (the full input). Nested mutations are inspected,
+including writable CTEs; their target operations are not SELECTs. `mutationTypes`
+lets gateway invalidation rules match nested/batched writes independently of the outer
+statement type. Consumers must honor negative `cacheable`/`isReadOnly` metadata even
+when a cache hint requests caching. A generator fallback never grants cache eligibility.
+Opaque commands and parse failures are not proofs of safety. This adapter is not a
+SQL authorization system; unknown side effects inside user-defined functions remain
+outside its static analysis, and invalidation still requires suitable gateway rules.

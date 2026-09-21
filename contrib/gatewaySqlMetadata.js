@@ -103,9 +103,11 @@ export function extractSqlMetadata(sql, options = {}) {
   }
 
   let root;
+  let roots;
   try {
     const d = Dialect.get_or_raise(dialect);
-    [root] = d.parse(sql);
+    roots = d.parse(sql).filter(Boolean);
+    [root] = roots;
   } catch (err) {
     return safeDefaultResult(sql, cacheOverride, describeError(err));
   }
@@ -115,8 +117,30 @@ export function extractSqlMetadata(sql, options = {}) {
   }
 
   try {
+    // Multi-statement requests are unsupported for caching, including all-SELECT
+    // batches. Retain every parsed table for invalidation and the full raw identity.
+    if (roots.length !== 1) {
+      const result = safeDefaultResult(sql, cacheOverride, "Multi-statement SQL is not cacheable");
+      result.statementCount = roots.length;
+      result.mutationTypes = [...new Set(roots.flatMap(mutationTypes))];
+      result.tables = roots.flatMap((node) => extractTables(node, getStatementType(node)));
+      result.tableCount = result.tables.length;
+      result.catalogs = [...new Set(result.tables.map((t) => t.catalog).filter(Boolean))];
+      result.schemas = [...new Set(result.tables.map((t) => t.schema).filter(Boolean))];
+      return result;
+    }
+
     const statementType = getStatementType(root);
-    const isReadOnly = READ_ONLY_TYPES.has(statementType);
+    // Safety is a whole-input property, never a property of just the root.
+    // Command bodies are opaque (EXPLAIN ANALYZE can execute a mutation).
+    const nodes = [...root.walk(false)];
+    const types = nodes.map(getStatementType);
+    const isDataChange = types.some((type) => DATA_CHANGE_TYPES.has(type)) || nodes.some((n) => n instanceof exp.Into);
+    const isDDL = types.some((type) => DDL_TYPES.has(type));
+    const isDCL = types.some((type) => DCL_TYPES.has(type));
+    const unsafe = isDataChange || isDDL || isDCL || nodes.some((n) =>
+      n instanceof exp.Command || n instanceof exp.Lock || getIsSessionStateChange(n, getStatementType(n)));
+    const isReadOnly = READ_ONLY_TYPES.has(statementType) && !unsafe;
     const isSessionStateChange = getIsSessionStateChange(root, statementType);
     const sessionStateChange = isSessionStateChange ? extractSessionStateChange(root, statementType) : null;
     let tables;
@@ -166,16 +190,21 @@ export function extractSqlMetadata(sql, options = {}) {
       extractionError = `standardizedSql generation failed: ${describeError(err)}`;
     }
 
+    // A mutation-containing SELECT must never acquire a normalized read identity.
+    if (unsafe && READ_ONLY_TYPES.has(statementType)) standardizedSql = sql;
     return {
+      statementCount: 1,
+      mutationTypes: mutationTypes(root),
+      cacheable: isReadOnly && extractionError === null,
       statementType,
       isReadOnly,
       isSessionStateChange,
       sessionStateChange,
       isFullyQualified,
       cacheOverride,
-      isDataChange: !isReadOnly && DATA_CHANGE_TYPES.has(statementType),
-      isDDL: DDL_TYPES.has(statementType),
-      isDCL: DCL_TYPES.has(statementType),
+      isDataChange,
+      isDDL,
+      isDCL,
       isDeltaOperation: DELTA_OP_TYPES.has(statementType),
       tables,
       tableCount: tables.length,
@@ -216,6 +245,7 @@ function extractCacheOverride(sql) {
 function emptyResult(originalSql, cacheOverride) {
   return {
     statementType: "UNKNOWN",
+    cacheable: false,
     isReadOnly: false,
     isSessionStateChange: false,
     sessionStateChange: null,
@@ -253,6 +283,7 @@ function emptyResult(originalSql, cacheOverride) {
 function safeDefaultResult(sql, cacheOverride, extractionError) {
   return {
     statementType: "UNKNOWN",
+    cacheable: false,
     isReadOnly: false,
     isSessionStateChange: false,
     sessionStateChange: null,
@@ -275,6 +306,12 @@ function safeDefaultResult(sql, cacheOverride, extractionError) {
     nonDeterministic: emptyNonDeterministicResult(),
     extractionError,
   };
+}
+
+// Consumed by gateway invalidation rules independently of the outer statement type.
+function mutationTypes(root) {
+  return [...new Set([...root.walk(false)].map(getStatementType).filter((type) =>
+    DATA_CHANGE_TYPES.has(type) || DDL_TYPES.has(type) || DCL_TYPES.has(type)))];
 }
 
 function getStatementType(root) {
@@ -365,7 +402,10 @@ function collectCteNames(root) {
 }
 
 function extractTables(root, statementType) {
-  const opByTable = tagOperations(root, statementType);
+  const opByTable = new Map();
+  for (const node of root.walk(false)) {
+    for (const [table, operation] of tagOperations(node, getStatementType(node))) opByTable.set(table, operation);
+  }
   const cteNames = collectCteNames(root);
   const out = [];
   for (const t of root.findAll(exp.Table, false)) {
@@ -375,7 +415,7 @@ function extractTables(root, statementType) {
     // i.e. the optimizer) — same underlying limitation the gateway's regex
     // has, just resolved here from a real `With`/`CTE` node's alias instead
     // of a fragile regex over the raw WITH clause. See contrib/README.md.
-    if (!info.catalog && !info.schema && info.table && cteNames.has(info.table.toLowerCase())) continue;
+    if (!opByTable.has(t) && !info.catalog && !info.schema && info.table && cteNames.has(info.table.toLowerCase())) continue;
     out.push(info);
   }
   return out;

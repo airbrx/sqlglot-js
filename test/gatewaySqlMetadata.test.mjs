@@ -802,3 +802,59 @@ test("set operations: INTERSECT and EXCEPT are read-only and surface tables from
     assert.equal(r.tableCount, 2, keyword);
   }
 });
+
+// Whole-request safety: SQL-looking text inside literals/comments is not a statement.
+for (const sql of [
+  'SELECT 1; DELETE FROM important_table',
+  'SELECT 1; SELECT 2',
+  '/* __AIRBRX_CACHE__ */ SELECT 1; DELETE FROM important_table',
+]) {
+  test(`multi-statement requests fail closed: ${sql}`, () => {
+    const r = extractSqlMetadata(sql, { dialect: 'postgres' });
+    assert.equal(r.isReadOnly, false);
+    assert.equal(r.cacheable, false);
+    assert.equal(r.isDataChange, true); // conservative for unsupported batches
+    assert.equal(r.statementCount, 2);
+    assert.equal(r.originalSql, sql);
+    assert.equal(r.standardizedSql, sql);
+    assert.match(r.extractionError, /Multi-statement/);
+    if (sql.includes('DELETE')) assert.ok(r.tables.some(t => t.table === 'important_table' && t.operation === 'DELETE'));
+  });
+}
+for (const sql of [
+  'WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d',
+  'WITH t AS (DELETE FROM t RETURNING *) SELECT * FROM t',
+  'WITH d AS (UPDATE t SET x = 1 RETURNING *) SELECT * FROM d',
+  'WITH d AS (INSERT INTO t VALUES (1) RETURNING *) SELECT * FROM d',
+]) {
+  test(`nested mutations cannot be reads: ${sql}`, () => {
+    const r = extractSqlMetadata(sql, { dialect: 'postgres' });
+    assert.equal(r.isReadOnly, false);
+    assert.equal(r.cacheable, false);
+    assert.equal(r.isDataChange, true);
+    assert.equal(r.standardizedSql, sql);
+    assert.ok(r.tables.some(t => t.table === 't' && t.operation !== 'SELECT'));
+  });
+}
+test('semicolon literals, trailing terminators and read-only CTEs stay reads', () => {
+  for (const sql of ["SELECT '; DELETE FROM t'", 'SELECT 1;', 'WITH d AS (SELECT * FROM t) SELECT * FROM d']) {
+    const r = extractSqlMetadata(sql, { dialect: 'postgres' });
+    assert.equal(r.isReadOnly, true);
+    assert.equal(r.cacheable, true);
+    assert.equal(r.isDataChange, false);
+  }
+});
+test('generator fallback never grants cache eligibility', () => {
+  const sql = 'SELECT ROW_NUMBER() OVER (ORDER BY id) FROM t';
+  const r = extractSqlMetadata(sql, { dialect: 'postgres' });
+  assert.equal(r.cacheable, false);
+  assert.equal(r.standardizedSql, sql);
+  assert.match(r.extractionError, /generation failed/);
+});
+test('opaque EXPLAIN bodies and SELECT INTO cannot confer read safety', () => {
+  for (const sql of ['EXPLAIN ANALYZE DELETE FROM t', 'SELECT * INTO new_t FROM t', 'SELECT * FROM t FOR UPDATE']) {
+    const r = extractSqlMetadata(sql, { dialect: 'postgres' });
+    assert.equal(r.isReadOnly, false);
+    assert.equal(r.cacheable, false);
+  }
+});
