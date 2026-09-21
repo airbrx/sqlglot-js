@@ -50,7 +50,7 @@ jobs:
           git clone --filter=blob:none https://github.com/tobymao/sqlglot.git "$SQLGLOT_REF"
           git -C "$SQLGLOT_REF" checkout 91119bcaac977ede6f4a641bdda593b0015ef998
           python3 -m pip install --no-deps -e "$SQLGLOT_REF"
-          python3 -m pip install --no-deps pytz==2022.7.1
+          python3 -m pip install --no-deps -r tools/requirements-oracle.txt
       - name: Differential accepted populations cannot shrink
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -81,7 +81,7 @@ jobs:
           git clone --filter=blob:none https://github.com/tobymao/sqlglot.git "$SQLGLOT_REF"
           git -C "$SQLGLOT_REF" checkout 91119bcaac977ede6f4a641bdda593b0015ef998
           python3 -m pip install --no-deps -e "$SQLGLOT_REF"
-          python3 -m pip install --no-deps pytz==2022.7.1
+          python3 -m pip install --no-deps -r tools/requirements-oracle.txt
       # Deliberately red until the separately documented legacy gaps close.
       # Production populations are fully enforced in differential-ratchets above.
       - run: bash spike/run_all.sh 2>&1 | tee spike-full.log

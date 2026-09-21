@@ -77,7 +77,7 @@ control independently executes 15,540 atoms with **0 mismatch/error**.
 git clone https://github.com/tobymao/sqlglot.git /tmp/sqlglot-complete-pin
 git -C /tmp/sqlglot-complete-pin checkout 91119bcaac977ede6f4a641bdda593b0015ef998
 python3 -m pip install --no-deps -e /tmp/sqlglot-complete-pin
-python3 -m pip install --no-deps pytz==2022.7.1 # upstream BigQuery test dependency
+python3 -m pip install --no-deps -r tools/requirements-oracle.txt
 export SQLGLOT_REF=/tmp/sqlglot-complete-pin PYTHONHASHSEED=0
 npm test
 make lint
@@ -132,3 +132,11 @@ The new simplify oracle is included in the required applicable oracle suite; bot
 its generation step and probe are preserved in run_all.sh. The standalone
 corpus-ratchet workflow from PR #75 replaces the duplicate job formerly in
 correctness.yml; differential baseline monotonicity now runs in the differential job.
+
+Clean hosted integration exposed another oracle-environment defect: optional
+python-dateutil was missing, so pinned upstream silently declined ten date folds
+while JS implemented them. Local control was83 exact /0 mismatch/error; hosted
+control became73 exact /10 mismatch /0 error. Pin build-only python-dateutil2.9.0.post0
+and six1.15.0 alongside pytz in requirements-oracle.txt; the simplify fixture
+generator now imports relativedelta explicitly so missing dependencies fail as
+infrastructure, not misleading SQL mismatches. No simplify implementation changed.

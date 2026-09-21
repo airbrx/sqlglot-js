@@ -33,6 +33,10 @@ REF = os.environ.get("SQLGLOT_REF", "/tmp/sqlglot-ref")
 sys.path.insert(0, REF)
 os.chdir(REF)
 
+# Fail infrastructure loudly: upstream catches missing optional dateutil and
+# silently declines date folds, creating a different oracle on clean CI hosts.
+from dateutil.relativedelta import relativedelta  # noqa: F401, E402
+
 from sqlglot import parse_one  # noqa: E402
 from sqlglot.optimizer.simplify import simplify  # noqa: E402
 
