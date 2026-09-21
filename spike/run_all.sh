@@ -54,6 +54,7 @@ python3 spike/p3/gen_generator_kernel_ref.py > spike/out/generator_kernel.jsonl 
 python3 spike/p3/gen_parse_path_sql_ref.py   > spike/out/parse_path_sql.jsonl   || fail=1
 python3 spike/p3/gen_raise_error_ref.py      > spike/out/raise_error.jsonl      || fail=1
 python3 spike/p3/gen_command_warning_ref.py  > spike/out/command_warnings.jsonl || fail=1
+python3 spike/p4/gen_neg_ref.py > spike/out/neg.json || fail=1
 python3 spike/p4/gen_generator_base_ref.py   > spike/out/generator_base.json    || fail=1
 python3 spike/p4/gen_transforms_ref.py       > spike/out/transforms.json        || fail=1
 # P4 oracle. identifier_sql over the full (name x normalize x identify x quoted x pretty)
@@ -226,6 +227,7 @@ run "P3: parse-path generate call sites"  node spike/p3/fuzz_parse_path_sql.mjs
 run "P3: raise_error + unicode columns"   node spike/p3/fuzz_raise_error.mjs
 run "P3: check_command_warning strings"   node spike/p3/fuzz_command_warning.mjs
 run "P3: AST oracle coverage (honest)"    node spike/p3/fuzz_ast_coverage.mjs
+run "P4: negation full v0 oracle" node spike/p4/fuzz_neg.mjs
 run "P4: base Generator (settings/prims/gen)" node spike/p4/fuzz_generator_base.mjs
 # The generator's counterpart to "P3: AST oracle coverage (honest)", and wired in for the
 # same reason: without it, `tools/closure_generator.mjs`'s percentage is the only number

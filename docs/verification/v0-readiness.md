@@ -1,5 +1,10 @@
 # v0 readiness scorecard and next-work queue
 
+> This milestone snapshot is tied to `5571dde`. The subsequent
+> [negation follow-up](negation.md) measures **4,053/6,522 exact**, up32, with
+> no accepted passes lost. Historical tables and candidate experiments below are
+> retained as the milestone baseline, not advertised as the latest runtime counts.
+
 **Measured 2026-09-21; not release-ready.** The original review reproduction used `b3ecdde`.
 This integration refresh includes current main's simplify prerequisites (`cb4d6d2`)
 and merged safety/corpus fixes. The six additional exact v0 rows come from already-
