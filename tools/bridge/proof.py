@@ -139,7 +139,7 @@ def main():
             print(f"      {t}\n{tb.splitlines()[-1] if tb else ''}")
         failures.append("proof1")
 
-    # ---- PROOF 2: test_transpile.py satisfiability --------------------------
+    # ---- FEASIBILITY ONLY (0 upstream transpile tests executed): test_transpile.py satisfiability --------------------------
     # `transpile` lands at P4, so what is provable NOW is whether the proxy COULD serve
     # this module: its assertions must be over strings, not object graphs.
     tp = os.path.join(REF, "tests/test_transpile.py")
@@ -157,15 +157,15 @@ def main():
                     graphy += 1
     pct = 100 * (n2 - graphy) / n2 if n2 else 0
     print(
-        f"  ok   PROOF 2  tests/test_transpile.py satisfiability: {n2} assertions, "
+        f"  INFO FEASIBILITY ONLY (0 upstream transpile tests executed)  tests/test_transpile.py satisfiability: {n2} assertions, "
         f"{graphy} touch object graphs, {pct:.0f}% string-only "
-        f"(needs `transpile`, lands P4)"
+        f"(static assertion-shape analysis only, not conformance)"
     )
 
     bridge.close()
 
     print(
-        "\n  BRIDGE PROOFS: GREEN\n" if not failures else f"\n  BRIDGE PROOFS: RED ({failures})\n"
+        "\n  BRIDGE: error tests executed; transpile feasibility checked, NOT executed\n" if not failures else f"\n  BRIDGE PROOFS: RED ({failures})\n"
     )
     return 1 if failures else 0
 

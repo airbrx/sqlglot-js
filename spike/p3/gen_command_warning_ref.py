@@ -82,7 +82,25 @@ import unittest  # noqa: E402
 loader = unittest.TestLoader()
 suite = loader.discover(os.path.join(REF, "tests", "dialects"), pattern="test_*.py",
                         top_level_dir=REF)
-unittest.TextTestRunner(stream=open(os.devnull, "w"), verbosity=0).run(suite)
+# Upstream test_lazy_load invokes literal `python`, which is absent on some
+# python3-only hosts. Expose THIS pinned interpreter, not a different PATH Python.
+import tempfile
+with tempfile.TemporaryDirectory(prefix="sqlglot-python-") as bin_dir:
+    os.symlink(sys.executable, os.path.join(bin_dir, "python"))
+    old_path = os.environ.get("PATH", "")
+    os.environ["PATH"] = bin_dir + os.pathsep + old_path
+    try:
+        with open(os.devnull, "w") as sink:
+            result = unittest.TextTestRunner(stream=sink, verbosity=0).run(suite)
+    finally:
+        os.environ["PATH"] = old_path
+print(f"  upstream discovery executed {result.testsRun} tests: {len(result.failures)} failures, {len(result.errors)} errors (harvest, NOT a test-success claim)", file=sys.stderr)
+for test, traceback in result.errors + result.failures:
+    print(f"  DISCOVERY ISSUE {test}: {traceback}", file=sys.stderr)
+if not result.wasSuccessful():
+    sys.exit("Pinned upstream discovery failed; warning harvest is not accepted")
+if not cases:
+    sys.exit("Missing command-warning population: complete pinned tests checkout required")
 
 out = sys.stdout
 for c in cases:

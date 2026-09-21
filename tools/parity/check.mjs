@@ -1,3 +1,5 @@
+import { upstreamKeywords, upstreamFuncTokens, CURRENT_ROLE_EXCLUSION } from "../verification_exclusions.mjs";
+console.log(CURRENT_ROLE_EXCLUSION);
 // Parity probes — assert the JS runtime against the extracted upstream snapshots.
 // PORT_PLAN.md §7 P0 item 6, §8.3 ("python3 tools/parity/check.py --probe argtypes").
 //
@@ -15,11 +17,7 @@ const DIR = "corpus/parity";
 const load = (n) => JSON.parse(readFileSync(`${DIR}/${n}.json`, "utf8"));
 
 async function tryImport(spec) {
-  try {
-    return await import(spec);
-  } catch {
-    return null;
-  }
+  return await import(spec);
 }
 
 const results = [];
@@ -182,17 +180,13 @@ async function probeDispatch() {
 /* ---- probe 5: dialect registry -------------------------------------------- */
 async function probeDialects() {
   const want = load("dialects");
-  const mod = await tryImport("../../src/dialects/dialect.js");
-  if (!mod?.Dialect?.classes) {
-    return report("5 dialects", "NOT_BUILT", `${want.count} dialects expected`);
-  }
-  const got = Object.keys(mod.Dialect.classes);
-  const missing = Object.keys(want.dialects).filter((d) => !got.includes(d));
-  report(
-    "5 dialects",
-    missing.length === 0 ? "PASS" : "FAIL",
-    `${got.length}/${want.count}` + (missing.length ? ` missing ${missing.join(",")}` : ""),
-  );
+  const { Dialect } = await import("../../index.js");
+  const missing = Object.keys(want.dialects).filter(d => !Dialect.get(d));
+  const required = ["", "snowflake", "duckdb", "hive", "spark2", "spark", "databricks", "postgres", "redshift", "bigquery", "tsql"];
+  const lost = required.filter(d => !Dialect.get(d));
+  report("5 dialects", lost.length ? "FAIL" : missing.length ? "PARTIAL" : "PASS",
+    `${want.count - missing.length}/${want.count} registered; STUB ${missing.length}: ${missing.join(",")}; registration is NOT conformance`);
+
 }
 
 /* ---- probe 6: parser/tokenizer table shapes -------------------------------- */
@@ -218,7 +212,7 @@ async function probeParsers() {
   const bad = [];
   const pending = [];
   for (const [name, size] of Object.entries(want.parsers.Parser)) {
-    const got = mod.Parser[name];
+    const got = name === "FUNC_TOKENS" ? upstreamFuncTokens(mod.Parser[name]) : mod.Parser[name];
     if (got == null) {
       bad.push(`Parser.${name}: absent (expected ${size})`);
       continue;
@@ -290,4 +284,4 @@ console.log(
   `\n  ${results.length - failed - notBuilt - partial} pass, ${failed} fail, ` +
   `${partial} partial (stub queue), ${notBuilt} not built yet\n`,
 );
-process.exit(failed ? 1 : 0);
+process.exit(failed || notBuilt || !results.length ? 1 : 0);

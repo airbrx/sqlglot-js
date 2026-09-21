@@ -1,0 +1,108 @@
+name: correctness
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  native:
+    name: native-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+      - run: npm test
+  lint:
+    name: lints
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+      - name: Pinned source for anchor lint
+        run: |
+          git clone --filter=blob:none https://github.com/tobymao/sqlglot.git /tmp/sqlglot-ref
+          git -C /tmp/sqlglot-ref checkout 91119bcaac977ede6f4a641bdda593b0015ef998
+      - run: make lint
+  corpus:
+    name: corpus-ratchet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+      - run: node test/runner.mjs --report corpus-outcomes.jsonl
+      - name: Accepted passes cannot be removed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          node tools/check_ratchet_change.mjs "$BASE_SHA"
+          node tools/check_differential_change.mjs "$BASE_SHA"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: corpus-outcomes
+          path: corpus-outcomes.jsonl
+  differential:
+    name: differential-ratchets
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SQLGLOT_REF: /tmp/sqlglot-ref
+      PYTHONHASHSEED: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.9.25'
+      - name: Complete pinned reference, not bridge-shaped fixtures
+        run: |
+          git clone --filter=blob:none https://github.com/tobymao/sqlglot.git "$SQLGLOT_REF"
+          git -C "$SQLGLOT_REF" checkout 91119bcaac977ede6f4a641bdda593b0015ef998
+          python3 -m pip install --no-deps -e "$SQLGLOT_REF"
+      - run: bash tools/run_correctness.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: differential-outcomes
+          path: spike/out/
+  legacy:
+    name: legacy-diagnostics-not-release-green
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    env:
+      SQLGLOT_REF: /tmp/sqlglot-ref
+      PYTHONHASHSEED: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.9.25'
+      - run: |
+          git clone --filter=blob:none https://github.com/tobymao/sqlglot.git "$SQLGLOT_REF"
+          git -C "$SQLGLOT_REF" checkout 91119bcaac977ede6f4a641bdda593b0015ef998
+          python3 -m pip install --no-deps -e "$SQLGLOT_REF"
+      # Deliberately red until the separately documented legacy gaps close.
+      # Production populations are fully enforced in differential-ratchets above.
+      - run: bash spike/run_all.sh 2>&1 | tee spike-full.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: legacy-diagnostic-outcomes
+          path: |
+            spike-full.log
+            spike/out/

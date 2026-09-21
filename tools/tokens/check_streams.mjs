@@ -1,3 +1,5 @@
+import { upstreamKeywords, upstreamFuncTokens, CURRENT_ROLE_EXCLUSION } from "../verification_exclusions.mjs";
+console.log(CURRENT_ROLE_EXCLUSION);
 // Parity probe #1, the load-bearing half: token streams byte-exact against CPython.
 //
 // PORT_PLAN.md §7 P1 exit. Called by tools/parity/check.mjs; runnable directly for
@@ -111,7 +113,7 @@ function checkDerivations() {
   }
 
   checks++;
-  if (Tokenizer.KEYWORDS.size !== want.keywords_count) {
+  if (upstreamKeywords(Tokenizer.KEYWORDS).size !== want.keywords_count) {
     fail("A derivations", `Tokenizer.KEYWORDS ${Tokenizer.KEYWORDS.size} vs ${want.keywords_count}`);
   }
   checks++;

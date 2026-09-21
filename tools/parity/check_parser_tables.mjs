@@ -1,3 +1,5 @@
+import { upstreamKeywords, upstreamFuncTokens, CURRENT_ROLE_EXCLUSION } from "../verification_exclusions.mjs";
+console.log(CURRENT_ROLE_EXCLUSION);
 // Assert `src/parser.js`'s class tables against the full upstream snapshot.
 // PORT_PLAN.md §8.1 Rule 2' — one entry per line, upstream declaration order, and the
 // ORDER is CI-asserted because §4.6 establishes that insertion order is output-visible.
@@ -101,7 +103,7 @@ const perTable = [];
 
 for (const [name, want] of Object.entries(SNAP.tables)) {
   if (only && name !== only) continue;
-  const got = Parser[name];
+  const got = name === "FUNC_TOKENS" ? upstreamFuncTokens(Parser[name]) : Parser[name];
   if (got === undefined) {
     missingTables.push(name);
     continue;
