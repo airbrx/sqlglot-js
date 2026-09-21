@@ -6,12 +6,14 @@
 //   node test/runner.mjs --selftest             # verify the runner with a fake library
 //   node test/runner.mjs --baseline             # accept the current corpus into the ratchet
 //
-// The JS library does not exist until P1–P4, so `transpile` is resolved lazily and every
-// atom reports `todo` until it does. That is the correct P0 state: the ratchet's job is
-// to stop `todo` growing and stop `pass` regressing, both of which are testable now.
+// Every selected atom runs against the production root API. Missing inputs/imports
+// and empty populations are infrastructure failures. No automatic pass acceptance.
 
-import { readFileSync, existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, existsSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { createCorpusAdapter } from "./corpus-adapter.mjs";
+import { NotPorted } from "../src/errors.js";
 import {
   loadRatchet,
   saveRatchet,
@@ -23,9 +25,12 @@ import {
 } from "../tools/ratchet.mjs";
 import { UnsupportedError } from "../src/errors.js";
 
-const RATCHET_PATH = "test/ratchet.json";
-const ATOMS_PATH = "corpus/atoms.jsonl";
-const PROVENANCE_PATH = "corpus/PROVENANCE.json";
+const argv = process.argv.slice(2);
+const option = (name, fallback) => { const i = argv.indexOf(name); return i < 0 ? fallback : argv[i + 1]; };
+const RATCHET_PATH = option('--ratchet', 'test/ratchet.json');
+const ATOMS_PATH = option('--atoms', 'corpus/atoms.jsonl');
+const PROVENANCE_PATH = option('--provenance', 'corpus/PROVENANCE.json');
+export const V0_DIALECTS = new Set(['', 'snowflake', 'duckdb', 'hive', 'spark2', 'spark', 'databricks', 'postgres', 'redshift']);
 
 // PORT_PLAN.md §5.2/R6: golden expectations are interpreter-version-dependent
 // (subsecond_precision, Unicode data). A corpus harvested under a different toolchain
@@ -34,7 +39,7 @@ const PROVENANCE_PATH = "corpus/PROVENANCE.json";
 // unidata_version); upstream_commit drift is what --resync is FOR, so it is not checked
 // here.
 function checkProvenance(ratchet) {
-  if (!existsSync(PROVENANCE_PATH)) return { ok: true }; // nothing harvested yet
+  if (!existsSync(PROVENANCE_PATH)) throw new Error(`Missing provenance: ${PROVENANCE_PATH}`);
   const current = JSON.parse(readFileSync(PROVENANCE_PATH, "utf8"));
   if (!ratchet.provenance) return { ok: true, current }; // first --baseline sets it
   const accepted = ratchet.provenance;
@@ -52,61 +57,41 @@ export function loadAtoms(path = ATOMS_PATH) {
   return out;
 }
 
-/**
- * Resolve the library entry point. Returns null until P4 lands a generator.
- * Kept as a single seam so the runner never half-imports a partial library.
- */
-async function resolveTranspile() {
-  const candidates = ["../src/index.js", "../src/sqlglot.js"];
-  for (const c of candidates) {
-    try {
-      const mod = await import(c);
-      if (typeof mod.transpile === "function") return mod.transpile;
-    } catch {
-      /* not built yet */
-    }
-  }
-  return null;
+/** Loading errors are infrastructure failures, never NOT_PORTED atoms. */
+export async function resolveTranspile(path = new URL('../index.js', import.meta.url)) {
+  const library = await import(path);
+  return createCorpusAdapter(library);
 }
 
-/**
- * Run one atom. `transpile(sql, {read, write, pretty, identify})` must return
- * `{sql, unsupportedMessages}` — the shape CONTRACTS.md §5 fixes.
- */
 export function runAtom(atom, transpile) {
-  if (!transpile) return { ok: false, reason: "NOT_PORTED" };
+  if (typeof transpile !== 'function') throw new Error('Production corpus adapter is missing');
   let got;
   try {
     got = transpile(atom.sql, {
-      read: atom.read || null,
-      write: atom.write || null,
-      pretty: atom.pretty,
-      identify: atom.identify,
+      read: atom.read, write: atom.write, pretty: atom.pretty,
+      identify: atom.identify, raises: atom.raises ?? atom.expected === null,
     });
-  } catch (e) {
-    // `expected: null` is the UnsupportedError sentinel (§7 P4's 5 cases). Only the
-    // library's own UnsupportedError may satisfy it — an unrelated crash (TypeError,
-    // a bug in the generator) throwing on the same input must NOT be able to pass by
-    // accident. Codex review, PR #1: the previous `if (atom.expected === null)` branch
-    // accepted any thrown value here, which would hide exactly that class of defect.
-    if (atom.expected === null) {
-      if (e instanceof UnsupportedError) return { ok: true, reason: "EXPECTED_UNSUPPORTED" };
-      return { ok: false, reason: "THREW_WRONG_TYPE", detail: String(e && e.message) };
+  } catch (error) { got = { error, unsupportedMessages: [] }; }
+  const error = got?.error;
+  const expectsError = atom.raises ?? atom.expected === null;
+  if (error) {
+    if (!(expectsError && error instanceof UnsupportedError)) {
+      return { ok: false, reason: error instanceof NotPorted || /Unknown dialect/.test(error.message) ? 'STUB' : 'ERROR',
+        detail: `${error.name}: ${error.message}` };
     }
-    return { ok: false, reason: "THREW", detail: String(e && e.message) };
+  } else if (expectsError) {
+    return { ok: false, reason: 'EXPECTED_ERROR_MISMATCH', got: got?.sql };
+  } else if (typeof got?.sql !== 'string') {
+    return { ok: false, reason: 'ERROR', detail: 'Adapter did not return SQL string' };
+  } else if (got.sql !== atom.expected) {
+    return { ok: false, reason: 'SQL_MISMATCH', got: got.sql, want: atom.expected };
   }
-  if (atom.expected === null) {
-    return { ok: false, reason: "EXPECTED_THROW_BUT_RETURNED", detail: got && got.sql };
+  const want = atom.unsupported ?? [];
+  const actual = got.unsupportedMessages;
+  if (!Array.isArray(actual) || JSON.stringify(actual) !== JSON.stringify(want)) {
+    return { ok: false, reason: 'WARNING_MISMATCH', got: actual, want };
   }
-  if (got.sql !== atom.expected) {
-    return { ok: false, reason: "GENERATE_MISMATCH", got: got.sql, want: atom.expected };
-  }
-  const wantMsgs = JSON.stringify(atom.unsupported ?? []);
-  const gotMsgs = JSON.stringify(got.unsupportedMessages ?? []);
-  if (wantMsgs !== gotMsgs) {
-    return { ok: false, reason: "UNSUPPORTED_MISMATCH", got: gotMsgs, want: wantMsgs };
-  }
-  return { ok: true };
+  return { ok: true, reason: expectsError ? 'PASS_EXPECTED_ERROR' : 'PASS' };
 }
 
 /* --------------------------------------------------------------------------- *
@@ -129,13 +114,13 @@ function selftest() {
     ...over,
   });
 
-  t("no library => NOT_PORTED", runAtom(atom(), null).reason === "NOT_PORTED");
+  try { runAtom(atom(), null); t("missing library fails", false); } catch { t("missing library fails", true); }
 
   const good = () => ({ sql: "SELECT 1", unsupportedMessages: [] });
   t("exact match passes", runAtom(atom(), good).ok);
 
   const wrong = () => ({ sql: "SELECT 2", unsupportedMessages: [] });
-  t("wrong SQL fails as GENERATE_MISMATCH", runAtom(atom(), wrong).reason === "GENERATE_MISMATCH");
+  t("wrong SQL fails as SQL_MISMATCH", runAtom(atom(), wrong).reason === "SQL_MISMATCH");
 
   // §3.1(D): unsupported_messages are asserted, so a port that never calls
   // unsupported() must NOT be able to pass an atom that expects messages.
@@ -143,7 +128,7 @@ function selftest() {
   const needsMsg = atom({ unsupported: ["x is not supported"] });
   t(
     "missing unsupported_messages fails",
-    runAtom(needsMsg, silent).reason === "UNSUPPORTED_MISMATCH",
+    runAtom(needsMsg, silent).reason === "WARNING_MISMATCH",
   );
   const loud = () => ({ sql: "SELECT 1", unsupportedMessages: ["x is not supported"] });
   t("matching unsupported_messages passes", runAtom(needsMsg, loud).ok);
@@ -157,7 +142,7 @@ function selftest() {
   t("sentinel passes when it throws UnsupportedError", runAtom(sentinel, throwsUnsupported).ok);
   t(
     "sentinel fails when it returns",
-    runAtom(sentinel, good).reason === "EXPECTED_THROW_BUT_RETURNED",
+    runAtom(sentinel, good).reason === "EXPECTED_ERROR_MISMATCH",
   );
   // Codex review, PR #1: an unrelated crash on a sentinel atom must not be able to pass
   // by accident just because it happened to throw.
@@ -166,7 +151,7 @@ function selftest() {
   };
   t(
     "sentinel fails when a non-UnsupportedError is thrown",
-    runAtom(sentinel, throwsUnrelated).reason === "THREW_WRONG_TYPE",
+    runAtom(sentinel, throwsUnrelated).reason === "ERROR",
   );
 
   // Ratchet wiring: a pass-listed atom that fails must be reported as a regression.
@@ -185,7 +170,7 @@ function selftest() {
 
 /* --------------------------------------------------------------------------- */
 
-const argv = process.argv.slice(2);
+async function main() {
 if (argv.includes("--selftest")) process.exit(selftest());
 
 if (!existsSync(ATOMS_PATH)) {
@@ -194,6 +179,9 @@ if (!existsSync(ATOMS_PATH)) {
 }
 
 const atoms = loadAtoms();
+if (!atoms.length) throw new Error('Empty corpus: no atoms evaluated');
+if (new Set(atoms.map(a => a.atom_id)).size !== atoms.length) throw new Error('Duplicate atom IDs');
+if (!existsSync(RATCHET_PATH)) throw new Error(`Missing ratchet: ${RATCHET_PATH}`);
 const ratchet = loadRatchet(RATCHET_PATH);
 const isBaselining = argv.includes("--baseline");
 
@@ -257,7 +245,7 @@ if (argv.includes("--resync")) {
 }
 
 const dIdx = argv.indexOf("--dialect");
-const dialects = dIdx >= 0 ? new Set(argv[dIdx + 1].split(",")) : null;
+const dialects = argv.includes("--v0") ? V0_DIALECTS : dIdx >= 0 ? new Set(argv[dIdx + 1].split(",")) : null;
 const fIdx = argv.indexOf("--filter");
 const filter = fIdx >= 0 ? argv[fIdx + 1] : null;
 
@@ -265,21 +253,35 @@ let selected = atoms;
 if (dialects) selected = selected.filter((a) => dialects.has(a.read) && dialects.has(a.write));
 if (filter) selected = selected.filter((a) => a.sql.includes(filter));
 
-const transpile = await resolveTranspile();
+if (!selected.length) throw new Error('Empty evaluated population: selection matched no atoms');
+const rs = resync(ratchet, atoms);
+if (rs.changed.length || rs.removed.length || rs.suspiciousTurnover) throw new Error('Corpus baseline drift: run --resync and obtain explicit review');
+const atomIds = new Set(atoms.map(a => a.atom_id));
+if (ratchet.pass.some(id => !atomIds.has(id))) throw new Error('Accepted pass IDs missing from corpus');
+const transpile = await resolveTranspile(option('--library', null) ? pathToFileURL(resolve(option('--library'))) : undefined);
+const report = [];
 const results = new Map();
 const reasons = new Map();
 for (const a of selected) {
   const r = runAtom(a, transpile);
+  report.push({ atom_id: a.atom_id, read: a.read, write: a.write, ...r });
   results.set(a.atom_id, r.ok);
   if (!r.ok) reasons.set(r.reason, (reasons.get(r.reason) ?? 0) + 1);
 }
 
+if (option('--report', null)) writeFileSync(option('--report'), report.map(r => JSON.stringify(r)).join('\n') + '\n');
+if (option('--propose-passes', null)) {
+  // A review artifact only: never edits the ratchet, never accepts regressions.
+  writeFileSync(option('--propose-passes'), JSON.stringify(report.filter(r => r.ok).map(r => r.atom_id).sort(), null, 1) + '\n');
+}
 const verdict = check(ratchet, results);
+if (!ratchet.pass.length) { verdict.ok = false; console.error('No accepted pass population; proposed IDs require review'); }
 const passSet = new Set(ratchet.pass);
 const nPass = selected.filter((a) => stateOf(ratchet, a.atom_id, passSet) === PASS).length;
 
 console.log(`\n  ${selected.length.toLocaleString()} atoms selected of ${atoms.length.toLocaleString()}`);
-console.log(`  library: ${transpile ? "loaded" : "NOT BUILT (every atom is todo — expected until P4)"}\n`);
+console.log(`  library: production root index.js (parse/generator adapter)\n`);
+console.log(`    PASS ${report.filter(r => r.ok).length}; evaluated ${report.length}; exclusions 0`);
 console.log(`    pass-listed   ${nPass.toLocaleString()}`);
 console.log(`    todo          ${verdict.counts.todo.toLocaleString()}`);
 console.log(`    wontfix       ${verdict.counts.wontfix.toLocaleString()}`);
@@ -302,3 +304,8 @@ if (!verdict.ok) {
 }
 console.log(verdict.ok ? "\n  RATCHET: OK\n" : "\n  RATCHET: FAILED\n");
 process.exit(verdict.ok ? 0 : 1);
+
+}
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main().catch(error => { console.error(`CORPUS INFRASTRUCTURE ERROR: ${error.stack}`); process.exitCode = 2; });
+}
