@@ -40,6 +40,19 @@ export function pyNumCmp(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+// `optimizer/simplify.py`'s `merge_ranges(ranges)` call (py:helper.merge_ranges,
+// already ported as `mergeRanges`) sorts `(date, date)`/`(datetime, datetime)` tuples
+// — the one caller in this codebase that needs `pyCmp` to compare something other
+// than str/int/float/bool. Rather than duplicating `merge_ranges`'s algorithm inside
+// `optimizer/simplify.js` for one new comparable kind, `pyCmp` grows a same-kind
+// case for it, guarded by a `compareKey` getter so this file does not need to import
+// `_py/num.js`'s `PyDecimal` or `_py/datetime.js`'s `PyDate`/`PyDateTime` by name —
+// any future comparable value kind can opt in the same way.
+function hasCompareKey(x) {
+  return x !== null && typeof x === "object" && typeof x.compareKey !== "undefined"
+    && (typeof x.compareKey === "number" || typeof x.compareKey === "bigint");
+}
+
 /**
  * py: default `<` for the value kinds sqlglot actually sorts — str, int/float,
  * bool, and tuples/lists thereof (compared element-wise, then by length).
@@ -59,6 +72,14 @@ export function pyCmp(a, b) {
   // Python treats bool as a subclass of int.
   if (ta === "boolean" && (tb === "number" || tb === "bigint")) return pyNumCmp(a ? 1 : 0, b);
   if ((ta === "number" || ta === "bigint") && tb === "boolean") return pyNumCmp(a, b ? 1 : 0);
+  if (hasCompareKey(a) && hasCompareKey(b)) {
+    // Python raises TypeError comparing e.g. a `date` to a `datetime`; mirror that by
+    // requiring the exact same constructor rather than just "both have a compareKey".
+    if (a.constructor !== b.constructor) {
+      throw new TypeError(`'<' not supported between instances of '${a.constructor?.name}' and '${b.constructor?.name}'`);
+    }
+    return pyNumCmp(a.compareKey, b.compareKey);
+  }
   throw new TypeError(`'<' not supported between instances of '${ta}' and '${tb}'`);
 }
 

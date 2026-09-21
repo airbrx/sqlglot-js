@@ -250,6 +250,13 @@ export function installFocusedMethods() {
   getter(C.TsOrDsAdd, "returnType", function () { return C.DataType.build(this.args.return_type || DType.DATE); });
   getter(C.DateTrunc, "unit", function () { return this.args.unit; });
 
+  // `TimeUnit.unit` (core.py:2070-2072) and `IntervalOp.interval()` (core.py:2083-2090)
+  // are installed generically, trait-driven, in `installQueryMethods` (query_methods.js)
+  // — same reason `Binary.left`/`.right` live there rather than here: generated classes
+  // do not form a real JS inheritance chain (see that file's own comment), so a getter
+  // defined on the `TimeUnit`/`IntervalOp` trait class itself would never be reached by
+  // a concrete subclass like `DateTrunc`/`DateAdd`.
+
   const propertyNames = {
     ALGORITHM:C.AlgorithmProperty, AUTO_INCREMENT:C.AutoIncrementProperty, "CHARACTER SET":C.CharacterSetProperty,
     CLUSTERED_BY:C.ClusteredByProperty, COLLATE:C.CollateProperty, COMMENT:C.SchemaCommentProperty,
