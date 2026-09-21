@@ -37,8 +37,8 @@
 // the port could resolve a row's dialect at all, and over-claimed 1,002 rows).
 //
 // LEGACY BASE-ONLY DEMAND DIAGNOSTIC, not the production dialect gate.
-// This deliberately imports only the base registration. Its 15,315 excluded
-// named-dialect rows are ALL evaluated by p5/fuzz_dialect_generate.mjs instead.
+// This deliberately imports only the base registration. Its named-output excluded
+// rows are ALL evaluated by p5/fuzz_dialect_generate.mjs instead.
 // The independent production corpus ratchet checks parse + generate + warnings.
 // Demand is generation-only; use the recorded AST, not parser reachability.
 
@@ -140,14 +140,13 @@ for (const name of readdirSync("corpus/gen")) {
     if (!atom) throw new Error(`Missing atom reference: ${row.atom_id}`);
     if (PREDICTED_ONLY && !predicted.has(row.atom_id)) continue;
 
-    const readDialect = dialectFor(atom.read);
     const writeDialect = dialectFor(atom.write);
-    if (!readDialect || !writeDialect) {
+    if (!writeDialect) {
       tot.skipped += 1;
       // A row closure predicted closed must not be unverifiable: that is the tool
       // claiming a row it cannot reach, which is exactly what this cross-check is for.
       if (predicted.has(row.atom_id)) {
-        overclaimed.push({ id: row.atom_id, why: `dialect unavailable (${atom.read}->${atom.write})` });
+        overclaimed.push({ id: row.atom_id, why: `write dialect unavailable (${atom.write})` });
       }
       continue;
     }
@@ -213,7 +212,7 @@ for (const name of readdirSync("corpus/gen")) {
 }
 
 const seen = tot.exact + tot.mismatch + tot.stub + tot.error;
-console.log(`\n  generate oracle over ${seen} reachable rows (${tot.skipped} skipped: dialect not registered)`);
+console.log(`\n  generate oracle over ${seen} reachable rows (${tot.skipped} excluded: write dialect not registered)`);
 console.log(`    EXACT     ${String(tot.exact).padStart(6)}  (generated and byte-identical)`);
 console.log(`    MISMATCH  ${String(tot.mismatch).padStart(6)}  <- must be 0`);
 console.log(`    STUB      ${String(tot.stub).padStart(6)}  (NotPorted, or an unwired TRANSFORMS entry)`);

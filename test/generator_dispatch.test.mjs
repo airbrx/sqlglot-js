@@ -400,7 +400,12 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // `having_sql`, `arrayagg_sql` (and its own `_add_arrayagg_null_filter` helper,
   // not `_sql`-suffixed and so not counted here), `arrayany_sql` — none of them
   // unnest_subqueries-specific code, every dialect gets them for free.
-  assert.equal(bodied.length, 112, "exactly 112 *_sql methods have a real body");
+  // +2 from `optimizer/simplify.js`'s own whole-file port (PORT_PLAN.md): `gte_sql`,
+  // `lte_sql` — both one-line `this.binary(expression, "...")` bodies matching their
+  // already-ported `gt_sql`/`lt_sql`/`eq_sql`/`neq_sql` siblings, needed because
+  // `Simplifier.rewrite_between` rewrites `x BETWEEN y AND z` into `x >= y AND x <= z`
+  // and the base Generator could render neither `>=` nor `<=` before this.
+  assert.equal(bodied.length, 114, "exactly 114 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -427,7 +432,9 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // a bare `new exp.Expr({})` (missing `.this`/`.expression`) rather than
   // `NotPorted` — the same "runs, just not usefully, on made-up input" outcome the
   // DML/DDL keystone step's ten bodies already established this assertion counts.
-  assert.equal(432 - stubs.length, 111, "111 of those 112 also run without a resolved Dialect");
+  // +2 for `gte_sql`/`lte_sql`: `this.binary(...)` reads no Dialect state, so both run
+  // on a bare `new exp.Expr({})` the same way `gt_sql`/`lt_sql` already do.
+  assert.equal(432 - stubs.length, 113, "113 of those 114 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],
