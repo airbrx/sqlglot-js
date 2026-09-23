@@ -8,6 +8,7 @@
 // behavior and explains why in a comment, rather than forcing a fragile match.
 
 import test from "node:test";
+import { Dialect } from "../index.js";
 import assert from "node:assert/strict";
 import { extractSqlMetadata } from "../contrib/gatewaySqlMetadata.js";
 
@@ -596,18 +597,17 @@ test("delta ops: a plain MERGE is classified isDeltaOperation, matching the gate
 // Error tolerance — the module's most important property
 // ---------------------------------------------------------------------------
 
-test("error tolerance: RESTORE TABLE ... TO VERSION AS OF ... throws a real ParseError, caught into a safe default", () => {
-  // Verified: this construct is a hard `ParseError` in this port, unlike the
-  // gateway's regex parser, which never throws. This is exactly the shape
-  // the error-tolerant wrapper exists for.
+test("AIR-2163: bounded Databricks RESTORE extension preserves target mutation metadata", () => {
   const r = extractSqlMetadata("RESTORE TABLE t TO VERSION AS OF 5", { dialect: "databricks" });
-  assert.equal(r.statementType, "UNKNOWN");
+  assert.equal(r.statementType, "RESTORE");
   assert.equal(r.isReadOnly, false);
-  assert.equal(r.isDataChange, true, "errs toward non-cacheable");
-  assert.equal(r.isDDL, true, "errs toward non-cacheable");
-  assert.deepEqual(r.tables, []);
-  assert.ok(typeof r.extractionError === "string" && r.extractionError.length > 0);
-  assert.ok(!r.extractionError.includes(String.fromCharCode(27)), "ANSI escape codes are stripped from the error message");
+  assert.equal(r.isDataChange, true);
+  assert.equal(r.isDDL, false);
+  assert.equal(r.cacheable, false);
+  assert.deepEqual(r.mutations, [{ statementType: "RESTORE", tables: r.tables }]);
+  assert.equal(r.tables[0].operation, "RESTORE");
+  assert.equal(r.tables[0].table, "t");
+  assert.equal(r.extractionError, null);
 });
 
 test("error tolerance: garbage input never throws — degrades to a safe default with extractionError set", () => {
@@ -664,7 +664,7 @@ test("cache override: still detected even when the statement fails to parse", ()
   // Scanned over the raw SQL text before parsing is attempted — matches the
   // gateway's own ordering ("Check for cache override hint before
   // normalization") — so it survives a ParseError, unlike every other field.
-  const r = extractSqlMetadata("-- __AIRBRX_NOCACHE__\nRESTORE TABLE t TO VERSION AS OF 5", { dialect: "databricks" });
+  const r = extractSqlMetadata("-- __AIRBRX_NOCACHE__\nRESTORE TABLE t TO VERSION AS OF (SELECT 5)", { dialect: "databricks" });
   assert.equal(r.cacheOverride, "nocache");
   assert.ok(r.extractionError);
 });
@@ -701,13 +701,13 @@ test("standardizedSql: falls back to the raw original SQL (not null) with extrac
 });
 
 test("standardizedSql: falls back to the raw original SQL (not null) when the statement fails to parse at all", () => {
-  // RESTORE TABLE ... TO VERSION AS OF ... throws a hard ParseError today
+  // RESTORE with a subquery version is unsupported and remains fail-closed
   // (verified, PORT_PLAN.md/contrib/README.md) — this is the total-failure
   // path (safeDefaultResult), one level more severe than a generator gap,
   // but the same cache-key-stability argument applies: fall back to the
   // statement's own text rather than null.
-  const r = extractSqlMetadata("RESTORE TABLE my_table TO VERSION AS OF 5", { dialect: "databricks" });
-  assert.equal(r.standardizedSql, "RESTORE TABLE my_table TO VERSION AS OF 5");
+  const r = extractSqlMetadata("RESTORE TABLE my_table TO VERSION AS OF (SELECT 5)", { dialect: "databricks" });
+  assert.equal(r.standardizedSql, "RESTORE TABLE my_table TO VERSION AS OF (SELECT 5)");
   assert.ok(r.extractionError);
   assert.equal(r.isDataChange, true);
   assert.equal(r.isDDL, true);
@@ -844,13 +844,59 @@ test('semicolon literals, trailing terminators and read-only CTEs stay reads', (
     assert.equal(r.isDataChange, false);
   }
 });
-test('generator fallback never grants cache eligibility', () => {
-  const sql = 'SELECT ROW_NUMBER() OVER (ORDER BY id) FROM t';
-  const r = extractSqlMetadata(sql, { dialect: 'postgres' });
-  assert.equal(r.cacheable, false);
-  assert.equal(r.standardizedSql, sql);
-  assert.match(r.extractionError, /generation failed/);
+test('AIR-2135: generation failure preserves independently established read safety and raw identity', (t) => {
+  t.mock.method(Dialect.prototype, 'generate', () => { throw new Error('deliberate generator gap'); });
+  for (const sql of ['SELECT * FROM t WHERE id = $1', 'SELECT * FROM t WHERE id = $2']) {
+    const r = extractSqlMetadata(sql, { dialect: 'postgres' });
+    assert.equal(r.isReadOnly, true);
+    assert.equal(r.cacheable, true);
+    assert.equal(r.standardizedSql, sql);
+    assert.match(r.extractionError, /deliberate generator gap/);
+  }
+  for (const sql of ['SELECT 1; DELETE FROM t', 'WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d']) {
+    const r = extractSqlMetadata(sql, { dialect: 'postgres' });
+    assert.equal(r.cacheable, false);
+    assert.equal(r.isReadOnly, false);
+    assert.equal(r.standardizedSql, sql);
+  }
 });
+
+for (const dialect of ['postgres', 'snowflake', 'databricks']) {
+  test(`AIR-2135: comment-only roots are not statements (${dialect})`, () => {
+    for (const suffix of ['; -- tableau id=123', '; /* trailing */', ';\n-- dbt: model foo', '; /* a */; -- b']) {
+      const sql = `SELECT * FROM orders${suffix}`;
+      const r = extractSqlMetadata(sql, { dialect });
+      assert.equal(r.statementCount, 1);
+      assert.equal(r.statementType, 'SELECT');
+      assert.equal(r.cacheable, true);
+      assert.equal(r.originalSql, sql);
+      assert.equal(r.standardizedSql, 'SELECT * FROM orders');
+      const batch = `SELECT 1${suffix}\n; DELETE FROM orders; -- end`;
+      const m = extractSqlMetadata(batch, { dialect });
+      assert.equal(m.statementCount, 2);
+      assert.equal(m.cacheable, false);
+      assert.equal(m.standardizedSql, batch);
+      assert.deepEqual(m.mutationTypes, ['DELETE']);
+    }
+    assert.equal(extractSqlMetadata('; -- comment only', { dialect }).statementCount, 0);
+  });
+}
+
+for (const [dialect, sql] of [
+  ['postgres', 'SELECT * FROM t WHERE id = $1'],
+  ['postgres', 'SELECT ROW_NUMBER() OVER (ORDER BY id) FROM t'],
+  ['postgres', 'SELECT EXTRACT(MONTH FROM d) FROM t'],
+  ['postgres', 'SELECT * FROM t WHERE x > -1'],
+  ['snowflake', 'SELECT DATEADD(day, -7, CURRENT_DATE())'],
+  ['databricks', 'SELECT * FROM orders WHERE order_date = CURRENT_DATE'],
+]) {
+  test(`AIR-2135: ordinary reads remain eligible as generator coverage changes: ${sql}`, () => {
+    const r = extractSqlMetadata(sql, { dialect });
+    assert.equal(r.isReadOnly, true);
+    assert.equal(r.cacheable, true);
+    assert.equal(r.statementCount, 1);
+  });
+}
 test('opaque EXPLAIN bodies and SELECT INTO cannot confer read safety', () => {
   for (const sql of ['EXPLAIN ANALYZE DELETE FROM t', 'SELECT * INTO new_t FROM t', 'SELECT * FROM t FOR UPDATE']) {
     const r = extractSqlMetadata(sql, { dialect: 'postgres' });
