@@ -597,18 +597,17 @@ test("delta ops: a plain MERGE is classified isDeltaOperation, matching the gate
 // Error tolerance — the module's most important property
 // ---------------------------------------------------------------------------
 
-test("error tolerance: RESTORE TABLE ... TO VERSION AS OF ... throws a real ParseError, caught into a safe default", () => {
-  // Verified: this construct is a hard `ParseError` in this port, unlike the
-  // gateway's regex parser, which never throws. This is exactly the shape
-  // the error-tolerant wrapper exists for.
+test("AIR-2163: bounded Databricks RESTORE extension preserves target mutation metadata", () => {
   const r = extractSqlMetadata("RESTORE TABLE t TO VERSION AS OF 5", { dialect: "databricks" });
-  assert.equal(r.statementType, "UNKNOWN");
+  assert.equal(r.statementType, "RESTORE");
   assert.equal(r.isReadOnly, false);
-  assert.equal(r.isDataChange, true, "errs toward non-cacheable");
-  assert.equal(r.isDDL, true, "errs toward non-cacheable");
-  assert.deepEqual(r.tables, []);
-  assert.ok(typeof r.extractionError === "string" && r.extractionError.length > 0);
-  assert.ok(!r.extractionError.includes(String.fromCharCode(27)), "ANSI escape codes are stripped from the error message");
+  assert.equal(r.isDataChange, true);
+  assert.equal(r.isDDL, false);
+  assert.equal(r.cacheable, false);
+  assert.deepEqual(r.mutations, [{ statementType: "RESTORE", tables: r.tables }]);
+  assert.equal(r.tables[0].operation, "RESTORE");
+  assert.equal(r.tables[0].table, "t");
+  assert.equal(r.extractionError, null);
 });
 
 test("error tolerance: garbage input never throws — degrades to a safe default with extractionError set", () => {
@@ -665,7 +664,7 @@ test("cache override: still detected even when the statement fails to parse", ()
   // Scanned over the raw SQL text before parsing is attempted — matches the
   // gateway's own ordering ("Check for cache override hint before
   // normalization") — so it survives a ParseError, unlike every other field.
-  const r = extractSqlMetadata("-- __AIRBRX_NOCACHE__\nRESTORE TABLE t TO VERSION AS OF 5", { dialect: "databricks" });
+  const r = extractSqlMetadata("-- __AIRBRX_NOCACHE__\nRESTORE TABLE t TO VERSION AS OF (SELECT 5)", { dialect: "databricks" });
   assert.equal(r.cacheOverride, "nocache");
   assert.ok(r.extractionError);
 });
@@ -702,13 +701,13 @@ test("standardizedSql: falls back to the raw original SQL (not null) with extrac
 });
 
 test("standardizedSql: falls back to the raw original SQL (not null) when the statement fails to parse at all", () => {
-  // RESTORE TABLE ... TO VERSION AS OF ... throws a hard ParseError today
+  // RESTORE with a subquery version is unsupported and remains fail-closed
   // (verified, PORT_PLAN.md/contrib/README.md) — this is the total-failure
   // path (safeDefaultResult), one level more severe than a generator gap,
   // but the same cache-key-stability argument applies: fall back to the
   // statement's own text rather than null.
-  const r = extractSqlMetadata("RESTORE TABLE my_table TO VERSION AS OF 5", { dialect: "databricks" });
-  assert.equal(r.standardizedSql, "RESTORE TABLE my_table TO VERSION AS OF 5");
+  const r = extractSqlMetadata("RESTORE TABLE my_table TO VERSION AS OF (SELECT 5)", { dialect: "databricks" });
+  assert.equal(r.standardizedSql, "RESTORE TABLE my_table TO VERSION AS OF (SELECT 5)");
   assert.ok(r.extractionError);
   assert.equal(r.isDataChange, true);
   assert.equal(r.isDDL, true);
