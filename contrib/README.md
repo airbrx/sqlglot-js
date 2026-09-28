@@ -39,8 +39,7 @@ README's "What doesn't exist yet."
 
 The gateway's regex parser never throws — it degrades to an empty/default
 result on unparseable input. A real parser does throw (`ParseError`,
-`TokenError`; verified concretely: `RESTORE TABLE ... TO VERSION AS OF ...`
-is a hard `ParseError` on Databricks in this port). `extractSqlMetadata`
+`TokenError`; malformed or unsupported RESTORE forms are examples). `extractSqlMetadata`
 never propagates an exception: on any parse or extraction failure it returns
 a conservative, safe-default result — `isReadOnly: false`, `isDataChange:
 true`, `isDDL: true` — erring toward **not** caching rather than risking a
@@ -50,15 +49,19 @@ in `extractionError` (`string | null`), never swallowed silently.
 `standardizedSql` gets its own inner try/catch, separate from the rest of the
 extraction: generator coverage gaps (see below) can make regeneration fail
 for a query whose tables/session-state/parameters/etc. are all extracted
-correctly. On failure — whether a generator gap or a total parse failure
-(`safeDefaultResult`) — `standardizedSql` falls back to the raw original SQL
-text rather than `null` (`extractionError` explains why). This field's whole
-purpose is to feed a cache key: `null` would be a *worse* cache-key input
-than the query's own text, since every currently-unsupported statement would
-collide on the same `null` key instead of each keying on its own SQL. The
-fallback only ever gets more precise as generator coverage grows; it never
-regresses an existing cache key's stability once a given shape starts
-regenerating for real.
+correctly. AIR-2163 also reparses generated SQL and compares its entire argument
+tree (ignoring positions, comments, key order and dialect-insignificant identifier
+case). A silent clause omission is a normalization failure, not a successful key.
+Warnings raise rather than silently conferring normalization success.
+
+For proven reads, fallback uses SQL token source spans, removes ordinary comments,
+normalizes spacing and dialect-confirmed unquoted identifiers, and preserves string
+literals, quoted identifiers and parameter names. It must reparse to the same tree;
+otherwise the original text is retained. This is conservative lexical normalization,
+not a claim that all equivalent SQL shares a key. Parse failures, batches and unsafe
+inputs retain raw identity. `originalSql` is never changed. Cache hints are extracted
+before normalization. Changes in normalization require a coordinated gateway
+cache-key engine-version bump; old poisoned keys must not remain reachable.
 
 ### Verified deviations from the gateway's regex behavior
 
@@ -108,10 +111,18 @@ reasoning.
   structured statement class. Table name is pulled with a small regex
   scoped only to the `Command` node's own raw text, and the result is marked
   `isDeltaOperation: true`.
-- **`RESTORE TABLE ... TO VERSION AS OF ...` throws a hard `ParseError`** on
-  Databricks in this port. Handled entirely by the top-level error-tolerance
-  wrapper — no special-casing needed, which is exactly the point of building
-  that wrapper first.
+- **RESTORE remains unsupported by the pinned upstream parser.** AIR-2163 adds
+  a gateway-only Databricks extension for `RESTORE [TABLE] name [TO] VERSION AS OF
+  <unsigned integer>` or `TIMESTAMP AS OF <string literal>`. It uses SQL tokens,
+  accepts one-to-three-part names and a terminal semicolon, records the RESTORE
+  target and mutation occurrence, and never enables read caching. Other dialects,
+  expressions, parameters, subqueries, trailing text and batches remain UNKNOWN.
+  See [Databricks' grammar](https://docs.databricks.com/aws/en/sql/language-manual/delta-restore).
+  This bounded extension is not upstream parity or complete RESTORE support.
+- **COPY/PIVOT/UNPIVOT now use the pinned parser methods.** COPY mutation metadata
+  carries its destination (file literals are not warehouse tables). PIVOT generation
+  still falls back; parsing is no longer blocked on `_parse_pivot`. Opaque COPY
+  command fallbacks remain UNKNOWN so table-scoped deny rules cannot be bypassed.
 - **`'o''brien'`-style doubled-quote escaping is not decoded on Databricks
   (Spark-family dialects).** Verified against pinned CPython sqlglot: their
   `STRING_ESCAPES` config does not declare `''` as an apostrophe escape, so
@@ -201,9 +212,8 @@ Postgres fares somewhat better still on the remaining gaps (its generator is
 more complete — see the root README's per-dialect table). This is a real,
 current limitation, not hidden behind a passing test: every affected case is
 covered in `test/gatewaySqlMetadata.test.mjs`, asserting `extractionError` is
-set and `standardizedSql` falls back to the raw original SQL (not the fully
-canonical form a working generator would produce — see "Error tolerance"
-above for why `null` would be a worse fallback). Closing the rest needs more
+set and `standardizedSql` retains full-input identity using the conservative
+SQL-aware fallback described above (raw SQL for unsafe/unparseable inputs). Closing the rest needs more
 of `src/generators/{databricks,snowflake}.js` (Snowflake's generator is
 otherwise fairly complete — see the root README — the specific gaps here are
 scattered `*_sql` methods for statement types the corpus under-samples, not a
@@ -240,7 +250,13 @@ Multi-statement requests are deliberately unsupported for caching: `cacheable: f
 including writable CTEs; their target operations are not SELECTs. `mutationTypes`
 lets gateway invalidation rules match nested/batched writes independently of the outer
 statement type. Consumers must honor negative `cacheable`/`isReadOnly` metadata even
-when a cache hint requests caching. A generator fallback never grants cache eligibility.
+when a cache hint requests caching. Read eligibility is established from the complete
+AST, independently of generation: if a proven read cannot be regenerated,
+`standardizedSql` retains full-input identity and `extractionError` reports the
+normalization failure, but `cacheable` stays true. Generator success or failure
+never grants read safety to a mutation, opaque command, or parse failure.
+Comment-only `Semicolon` roots (pinned parser.py:2254–2256) and null roots do not
+count as executable statements; real statements on either side are retained.
 Opaque commands and parse failures are not proofs of safety. This adapter is not a
 SQL authorization system; unknown side effects inside user-defined functions remain
 outside its static analysis, and invalidation still requires suitable gateway rules.

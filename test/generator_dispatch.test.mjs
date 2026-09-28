@@ -406,7 +406,7 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // `Simplifier.rewrite_between` rewrites `x BETWEEN y AND z` into `x >= y AND x <= z`
   // and the base Generator could render neither `>=` nor `<=` before this.
   // +1 for neg_sql: preserve nested-minus spacing and Python empty-index errors.
-  assert.equal(bodied.length, 115, "exactly 115 *_sql methods have a real body");
+  assert.equal(bodied.length, 119, "exactly 119 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -436,7 +436,7 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // +2 for `gte_sql`/`lte_sql`: `this.binary(...)` reads no Dialect state, so both run
   // on a bare `new exp.Expr({})` the same way `gt_sql`/`lt_sql` already do.
   // neg_sql on a missing operand raises IndexError, not NotPorted.
-  assert.equal(432 - stubs.length, 114, "114 of those 115 also run without a resolved Dialect");
+  assert.equal(432 - stubs.length, 118, "118 of those 119 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],

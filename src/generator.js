@@ -96,8 +96,9 @@ import { ensure_bools, move_ctes_to_top_level } from "./transforms.js";
  * objects upstream and collapsing them would change `Generator`'s own table.
  */
 export const AFTER_HAVING_MODIFIER_TRANSFORMS = new Map([
-  // py:66  ["windows", ...]  — needs `expressions()` on the `windows` key; stub-queue scope
-  // py:70  ["qualify", ...]  — trivial, but paired with the above; stub-queue scope
+  // py:66-71
+  ["windows", (self, e) => pyTruthy(e.args.windows) ? self.seg("WINDOW ") + self.expressions(e, "windows", { flat: true }) : ""],
+  ["qualify", (self, e) => self.sql(e, "qualify")],
 ]);
 
 /**
@@ -980,27 +981,11 @@ export class Generator {
     /* py:668 */ ["YEARS", "YEAR"],
   ]);
 
-  /**
-   * py: sqlglot/generator.py:671
-   *
-   * `cluster`/`distribute`/`sort` were TODO-commented stubs left by the P4 "render a
-   * basic SELECT statement" keystone group (R25) — those three DML-only modifiers
-   * (Hive/Spark's `CLUSTER BY`/`DISTRIBUTE BY`/`SORT BY`) had no caller until the
-   * Databricks-chain generator step (PORT_PLAN.md) started reaching real HIVE corpus
-   * rows through `query_modifiers`. `windows`/`qualify` (module-level
-   * `AFTER_HAVING_MODIFIER_TRANSFORMS` above, py:65) stay unported — no dialect in this
-   * port's scope reaches them yet.
-   */
+  /** py: sqlglot/generator.py:671 — all five modifiers, including WINDOW/QUALIFY. */
   static AFTER_HAVING_MODIFIER_TRANSFORMS = new Map([
     ["cluster", (self, e) => self.sql(e, "cluster")],
     ["distribute", (self, e) => self.sql(e, "distribute")],
     ["sort", (self, e) => self.sql(e, "sort")],
-    // py:675  `**AFTER_HAVING_MODIFIER_TRANSFORMS` — the module-level constant (py:65,
-    // "windows"/"qualify"), which is a no-op today: both its entries are themselves
-    // still stub-queue-scoped comments, so the spread adds zero real keys. Spread
-    // anyway, rather than leaving the merge as a TODO, so this class field's shape
-    // matches upstream's `{**AFTER_HAVING_MODIFIER_TRANSFORMS}` construction exactly
-    // and needs no further edit the day "windows"/"qualify" land for real.
     ...AFTER_HAVING_MODIFIER_TRANSFORMS,
   ]);
 
@@ -3809,7 +3794,10 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3472
-  qualify_sql(expression) { throw new NotPorted("qualify_sql", "sqlglot/generator.py:3472"); }
+  qualify_sql(expression) {
+    const this_ = this.indent(this.sql(expression, "this"));
+    return `${this.seg("QUALIFY")}${this.sep()}${this_}`;
+  }
 
   // py: sqlglot/generator.py:3476 — ported alongside `generators/postgres.js`'s own
   // `unnest_sql` override (PORT_PLAN.md P4), which falls back to `super().unnest_sql()`
@@ -3868,15 +3856,43 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3513
-  window_sql(expression) { throw new NotPorted("window_sql", "sqlglot/generator.py:3513"); }
+  window_sql(expression) {
+    let this_ = this.sql(expression, "this");
+    const partition = this.partition_by_sql(expression);
+    let order = expression.args.order;
+    order = order ? this.order_sql(order, true) : "";
+    const spec = this.sql(expression, "spec");
+    const alias = this.sql(expression, "alias");
+    const over = this.sql(expression, "over") || "OVER";
+    this_ = `${this_} ${expression.argKey === "windows" ? "AS" : over}`;
+    const firstValue = expression.args.first;
+    const first = firstValue == null ? "" : firstValue ? "FIRST" : "LAST";
+    if (!partition && !order && !spec && alias) return `${this_} ${alias}`;
+    const args = this.format_args(...[alias, first, partition, order, spec].filter(Boolean), { sep: " " });
+    return `${this_} (${args})`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3538
-  partition_by_sql(expression) { throw new NotPorted("partition_by_sql", "sqlglot/generator.py:3538"); }
+  partition_by_sql(expression) {
+    const partition = this.expressions(expression, "partition_by", { flat: true });
+    return partition ? `PARTITION BY ${partition}` : "";
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3542
-  windowspec_sql(expression) { throw new NotPorted("windowspec_sql", "sqlglot/generator.py:3542"); }
+  windowspec_sql(expression) {
+    const kind = this.sql(expression, "kind");
+    const start = csv(this.sql(expression, "start"), this.sql(expression, "start_side"), { sep: " " });
+    const end = csv(this.sql(expression, "end"), this.sql(expression, "end_side"), { sep: " " }) || "CURRENT ROW";
+    let windowSpec = `${kind} BETWEEN ${start} AND ${end}`;
+    const exclude = this.sql(expression, "exclude");
+    if (exclude) {
+      if (this.constructor.SUPPORTS_WINDOW_EXCLUDE) windowSpec += ` EXCLUDE ${exclude}`;
+      else this.unsupported("EXCLUDE clause is not supported in the WINDOW clause");
+    }
+    return windowSpec;
+  }
 
   // py: sqlglot/generator.py:3561 — ported alongside `generators/postgres.js`'s
   // `TRANSFORMS[exp.PercentileCont]`/`[exp.PercentileDisc]` (via

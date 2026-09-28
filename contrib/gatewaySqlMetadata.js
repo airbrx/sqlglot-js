@@ -10,7 +10,9 @@
 // cache-key generation and routing. See contrib/README.md for the full list
 // of verified behaviors and intentional deviations from that regex parser.
 
-import { Dialect, exp } from "../index.js";
+import { restoreTable } from "./restoreMetadata.js";
+import { fallbackSqlIdentity, sameSqlStructure } from "./sqlIdentity.js";
+import { Dialect, ErrorLevel, exp } from "../index.js";
 
 // UNION/INTERSECT/EXCEPT (set operations): these are read-only compositions
 // of two SELECTs, same as a bare SELECT -- found via airbrx-gateway PR #228's
@@ -47,7 +49,7 @@ const DELTA_OP_TYPES = new Set(["OPTIMIZE", "VACUUM", "MERGE", "RESTORE", "CONVE
 // metadata (and therefore any table-scoped cache-invalidation rule match)
 // for a statement shape that is common in BI-tool-generated SQL.
 const TABLE_BEARING_TYPES = new Set([
-  "SELECT", "INSERT", "UPDATE", "DELETE", "MERGE", "CREATE", "DROP", "ALTER", "TRUNCATE",
+  "SELECT", "INSERT", "UPDATE", "DELETE", "MERGE", "COPY", "CREATE", "DROP", "ALTER", "TRUNCATE",
   "UNION", "INTERSECT", "EXCEPT",
 ]);
 
@@ -106,9 +108,24 @@ export function extractSqlMetadata(sql, options = {}) {
   let roots;
   try {
     const d = Dialect.get_or_raise(dialect);
-    roots = d.parse(sql).filter(Boolean);
+    // AIR-2135: pinned parser.py:2254-2256 emits Semicolon nodes solely
+    // to retain terminator comments. They carry no executable statement.
+    // Filter AST nodes, never SQL text: comments/literals cannot hide a write.
+    roots = d.parse(sql).filter((node) => node && !(node instanceof exp.Semicolon));
     [root] = roots;
   } catch (err) {
+    const table = restoreTable(sql, dialect);
+    if (table) {
+      return {
+        ...safeDefaultResult(sql, cacheOverride, null),
+        statementType: "RESTORE", statementCount: 1,
+        mutationTypes: ["RESTORE"], mutations: [{ statementType: "RESTORE", tables: [table] }],
+        isDDL: false, isDeltaOperation: true,
+        isFullyQualified: Boolean(table.catalog && table.schema),
+        tables: [table], tableCount: 1,
+        catalogs: table.catalog ? [table.catalog] : [], schemas: table.schema ? [table.schema] : [],
+      };
+    }
     return safeDefaultResult(sql, cacheOverride, describeError(err));
   }
 
@@ -149,39 +166,23 @@ export function extractSqlMetadata(sql, options = {}) {
     const parameterInfo = extractParameters(root);
     const nonDeterministic = detectNonDeterministic(root);
 
-    // standardizedSql needs its own try/catch: it depends on generator
-    // coverage (e.g. `currentdate_sql` is not yet ported for every target
-    // dialect — see contrib/README.md), which is unrelated to whether the
-    // rest of this metadata is trustworthy. A generator gap degrades only
-    // this one field instead of the whole result.
-    //
-    // On failure, fall back to the raw original SQL rather than `null`.
-    // This field's whole purpose is to feed a cache key: `null` is a worse
-    // cache-key input than the query's own text, because two differently-
-    // cased/whitespaced copies of the SAME unfixable-today query would both
-    // key on `null` and collide with EVERY OTHER currently-unsupported
-    // statement, not just each other. Falling back to `sql` at least keeps
-    // cache-key uniqueness for the (common) case where the same client
-    // resends byte-identical SQL, and it can only ever get MORE precise as
-    // generator coverage grows — never regress an existing cache key's
-    // stability once the fallback path stops firing for a given shape.
+    // Generation is not a proof of completeness: missing transforms can silently
+    // drop clauses. Reparse in the same dialect and compare the WHOLE argument tree.
+    // On an error, warning, or structural change, retain full-input identity with
+    // SQL-aware lexical normalization for proven reads only.
     let standardizedSql = sql;
     let extractionError = null;
     try {
-      // comments: false -- found via airbrx-gateway PR #228's review.
-      // Generator defaults comments to true, so a per-request comment a BI
-      // tool injects (Tableau's query-id, dbt's model annotation, a
-      // timestamp) was being preserved verbatim into standardizedSql, which
-      // feeds airbrx-gateway's cache key directly. Two byte-identical
-      // queries differing only by an injected comment hashed to different
-      // keys -- a 0%-hit-rate footgun for exactly the BI-tool traffic this
-      // parser exists to cache. standardizedSql's whole purpose is a stable
-      // cache-key input, not a human-readable echo of the original text, so
-      // comments (which never affect execution semantics) should never have
-      // been part of it.
-      standardizedSql = Dialect.get_or_raise(dialect).generate(root, { pretty: false, comments: false });
+      const d = Dialect.get_or_raise(dialect);
+      const generated = d.generate(root, { pretty: false, comments: false, unsupported_level: ErrorLevel.RAISE });
+      const reparsed = d.parse(generated).filter((node) => node && !(node instanceof exp.Semicolon));
+      if (reparsed.length !== 1 || !sameSqlStructure(root, reparsed[0], d)) {
+        throw new Error("generated SQL changes parsed structure");
+      }
+      standardizedSql = generated;
     } catch (err) {
       extractionError = `standardizedSql generation failed: ${describeError(err)}`;
+      if (isReadOnly) standardizedSql = fallbackSqlIdentity(sql, root, Dialect.get_or_raise(dialect));
     }
 
     // A mutation-containing SELECT must never acquire a normalized read identity.
@@ -190,7 +191,9 @@ export function extractSqlMetadata(sql, options = {}) {
       statementCount: 1,
       mutationTypes: mutationTypes(root),
       mutations: mutationRecords(root),
-      cacheable: isReadOnly && extractionError === null,
+      // AIR-2135: read safety was established from the full AST above.
+      // Generation coverage only affects normalization; raw SQL is a full key.
+      cacheable: isReadOnly,
       statementType,
       isReadOnly,
       isSessionStateChange,
@@ -336,6 +339,8 @@ function getStatementType(root) {
   if (root instanceof exp.Into) return "CREATE"; // SELECT INTO creates its destination.
   if (root instanceof exp.Command) {
     const kw = typeof root.args.this === "string" ? root.args.this.toUpperCase() : "";
+    // An opaque COPY fallback has no trustworthy target: preserve deny refusal.
+    if (kw === "COPY") return "UNKNOWN";
     return kw || "UNKNOWN";
   }
   const name = root.constructor.name;
@@ -378,6 +383,11 @@ function tagAll(node, op, opByTable) {
 function tagOperations(root, statementType) {
   const opByTable = new Map();
   switch (statementType) {
+    case "COPY":
+      // COPY FROM loads the target. COPY TO exports it; retain conservative
+      // mutation classification but do not label source tables as writes.
+      if (root.args.kind) tagAll(root.args.this, "COPY", opByTable);
+      break;
     case "INSERT":
       tagAll(root.args.this, "INSERT", opByTable);
       break;
@@ -433,6 +443,7 @@ function extractTables(root, statementType, mutationOwner = null) {
       while (owner && owner !== mutationOwner && !isMutation(owner)) owner = owner.parent;
       if (owner !== mutationOwner) continue; // Belongs to a nested mutation occurrence.
     }
+    if (t.this instanceof exp.Literal) continue;
     const info = tableInfo(t, opByTable.get(t) ?? "SELECT");
     // A real AST does not itself mark a FROM-clause reference as
     // "this name resolves to a CTE" (that needs schema-aware qualification,

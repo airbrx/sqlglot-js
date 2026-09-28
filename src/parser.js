@@ -57,6 +57,13 @@ import * as exp from "./expressions/index.js";
 import { findInScope } from "./optimizer/scope.js";
 import { normalize_identifiers } from "./optimizer/normalize_identifiers.js";
 
+// py: sqlglot/parser.py:283
+function _unpivot_target(expr) {
+  if (expr instanceof exp.Column && !expr.table) return expr.this;
+  if (expr instanceof exp.Tuple) expr.set("expressions", expr.expressions.map(_unpivot_target));
+  return expr;
+}
+
 /**
  * py: parser.py:334 `SENTINEL_NONE: Token = Token(TokenType.SENTINEL, "SENTINEL")`
  *
@@ -1246,7 +1253,7 @@ export class Parser {
     // py:1160  [TokenType.CACHE, ...]  — `_parse_cache` is still a NotPorted stub
     /* py:1161 */ [TokenType.COMMENT, (self) => self._parse_comment()],
     /* py:1162 */ [TokenType.COMMIT, (self) => self._parse_commit_or_rollback()],
-    // py:1163  [TokenType.COPY, ...]  — `_parse_copy` is still a NotPorted stub
+    /* py:1163 */ [TokenType.COPY, (self) => self._parse_copy()],
     /* py:1164 */ [TokenType.CREATE, (self) => self._parse_create()],
     /* py:1165 */ [TokenType.DECLARE, (self) => self._parse_declare()],
     /* py:1166 */ [TokenType.DELETE, (self) => self._parse_delete()],
@@ -4276,15 +4283,97 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5367
-  _parse_pivot_in() { throw new NotPorted("_parse_pivot_in", "sqlglot/parser.py:5367"); }
+  _parse_pivot_in() {
+    const parseAliasedExpression = () => {
+      const this_ = this._parse_select_or_expression();
+      this._match(TokenType.ALIAS);
+      let alias = this._parse_bitwise();
+      if (alias) {
+        if (alias instanceof exp.Column && !alias.db) alias = alias.this;
+        return this.expression(new exp.PivotAlias({ this: this_, alias }));
+      }
+      return this_;
+    };
+    const value = this._parse_column();
+    if (!this._match(TokenType.IN)) this.raise_error("Expecting IN");
+    if (this._match(TokenType.L_PAREN)) {
+      const exprs = this._match(TokenType.ANY)
+        ? ensureList(new exp.PivotAny({ this: this._parse_order() }))
+        : this._parse_csv(parseAliasedExpression);
+      this._match_r_paren();
+      return this.expression(new exp.In({ this: value, expressions: exprs }));
+    }
+    return this.expression(new exp.In({ this: value, field: this._parse_id_var() }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5395
-  _parse_pivot_aggregation() { throw new NotPorted("_parse_pivot_aggregation", "sqlglot/parser.py:5395"); }
+  _parse_pivot_aggregation() {
+    const func = this._parse_function();
+    if (!func) {
+      if (this._prev.token_type === TokenType.COMMA) return null;
+      this.raise_error("Expecting an aggregation function in PIVOT");
+    }
+    return this._parse_alias(func);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5404
-  _parse_pivot() { throw new NotPorted("_parse_pivot", "sqlglot/parser.py:5404"); }
+  _parse_pivot() {
+    const index = this._index;
+    let includeNulls = null;
+    let unpivot;
+    if (this._match(TokenType.PIVOT)) unpivot = false;
+    else if (this._match(TokenType.UNPIVOT)) {
+      unpivot = true;
+      if (this._match_text_seq("INCLUDE", "NULLS")) includeNulls = true;
+      else if (this._match_text_seq("EXCLUDE", "NULLS")) includeNulls = false;
+    } else return null;
+    if (!this._match(TokenType.L_PAREN)) { this._retreat(index); return null; }
+    const expressions = this._parse_csv(() => unpivot ? this._parse_column() : this._parse_pivot_aggregation());
+    if (!expressions.length) this.raise_error("Failed to parse PIVOT's aggregation list");
+    if (!this._match(TokenType.FOR)) this.raise_error("Expecting FOR");
+    const fields = [];
+    while (true) {
+      const field = this._try_parse(() => this._parse_pivot_in());
+      if (!field) break;
+      fields.push(field);
+    }
+    const defaultOnNull = this._match_text_seq("DEFAULT", "ON", "NULL") && this._parse_wrapped(() => this._parse_bitwise());
+    const group = this._parse_group();
+    this._match_r_paren();
+    const pivot = this.expression(new exp.Pivot({ expressions, fields, unpivot, include_nulls: includeNulls, default_on_null: defaultOnNull, group }));
+    if (unpivot) {
+      pivot.set("expressions", pivot.expressions.map(_unpivot_target));
+      for (const field of pivot.fields) if (field instanceof exp.In) field.set("this", _unpivot_target(field.this));
+      pivot.set("value_columns_first", this.constructor.UNPIVOT_VALUE_COLUMNS_FIRST);
+    }
+    if (!this._match_set(new Set([TokenType.PIVOT, TokenType.UNPIVOT]), false)) pivot.set("alias", this._parse_table_alias());
+    if (!unpivot) {
+      const names = this._pivot_column_names(expressions);
+      const columns = [];
+      const allFields = [];
+      for (const field of pivot.fields) {
+        if (seqGet(field.expressions, 0) instanceof exp.PivotAny) continue;
+        // deny:implicit_str sqlglot/parser.py:5491 — fld.sql() uses the pinned kernel.
+        allFields.push(field.expressions.map((fld) => this.constructor.IDENTIFY_PIVOT_STRINGS && !(fld instanceof exp.PivotAlias) ? kernelSql(fld) : fld.aliasOrName));
+      }
+      if (allFields.length) {
+        if (names.length) allFields.push(names);
+        // py:5503 itertools.product(*all_fields), preserving left-to-right order.
+        const product = allFields.reduce((rows, values) => rows.flatMap((row) => values.map((v) => [...row, v])), [[]]);
+        for (const parts of product) {
+          if (names.length && this.constructor.PREFIXED_PIVOT_COLUMNS) parts.unshift(parts.pop());
+          columns.push(exp.toIdentifier(parts.join("_")));
+        }
+      }
+      pivot.set("columns", columns);
+      pivot.set("identify_pivot_strings", this.constructor.IDENTIFY_PIVOT_STRINGS);
+      pivot.set("prefixed_pivot_columns", this.constructor.PREFIXED_PIVOT_COLUMNS);
+      pivot.set("pivot_column_naming", this.constructor.PIVOT_COLUMN_NAMING);
+    }
+    return pivot;
+  }
 
   /**
    * py: sqlglot/parser.py:5521
@@ -6486,19 +6575,60 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9884
-  _parse_copy_parameters() { throw new NotPorted("_parse_copy_parameters", "sqlglot/parser.py:9884"); }
+  _parse_copy_parameters() {
+    const sep = this.dialect.COPY_PARAMS_ARE_CSV ? TokenType.COMMA : null;
+    const options = [];
+    while (this._curr.bool() && !this._match(TokenType.R_PAREN, false)) {
+      const option = this._parse_var(true);
+      const prev = pyUpper(this._prev.text);
+      this._match(TokenType.EQ);
+      this._match(TokenType.ALIAS);
+      const param = this.expression(new exp.CopyParameter({ this: option }));
+      if (this.constructor.COPY_INTO_VARLEN_OPTIONS.has(prev) && this._match(TokenType.L_PAREN, false)) param.set("expressions", this._parse_wrapped_options());
+      else if (prev === "FILE_FORMAT") param.set("expression", this._parse_field());
+      else if (prev === "FORMAT" && this._prev.token_type === TokenType.ALIAS && this._match_texts(new Set(["AVRO", "JSON"]))) {
+        param.set("this", exp.var("FORMAT AS " + pyUpper(this._prev.text)));
+        param.set("expression", this._parse_field());
+      } else param.set("expression", this._parse_unquoted_field() || this._parse_bracket());
+      options.push(param);
+      if (sep) this._match(sep);
+    }
+    return options;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9923
-  _parse_credentials() { throw new NotPorted("_parse_credentials", "sqlglot/parser.py:9923"); }
+  _parse_credentials() {
+    const expr = this.expression(new exp.Credentials());
+    if (this._match_text_seq("STORAGE_INTEGRATION", "=")) expr.set("storage", this._parse_field());
+    if (this._match_text_seq("CREDENTIALS")) expr.set("credentials", this._match(TokenType.EQ) ? this._parse_wrapped_options() : this._parse_field());
+    if (this._match_text_seq("ENCRYPTION")) expr.set("encryption", this._parse_wrapped_options());
+    if (this._match_text_seq("IAM_ROLE")) expr.set("iam_role", this._match(TokenType.DEFAULT) ? exp.var(this._prev.text) : this._parse_field());
+    if (this._match_text_seq("REGION")) expr.set("region", this._parse_field());
+    return expr;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9946
-  _parse_file_location() { throw new NotPorted("_parse_file_location", "sqlglot/parser.py:9946"); }
+  _parse_file_location() { return this._parse_field(); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9949
-  _parse_copy() { throw new NotPorted("_parse_copy", "sqlglot/parser.py:9949"); }
+  _parse_copy() {
+    const start = this._prev;
+    this._match(TokenType.INTO);
+    const this_ = this._match(TokenType.L_PAREN, false)
+      ? this._parse_select(true, false, false)
+      : this._parse_table(true);
+    const kind = this._match(TokenType.FROM) || !this._match_text_seq("TO");
+    let files = this._parse_csv(() => this._parse_file_location());
+    if (this._match(TokenType.EQ, false)) { this._advance(-1); files = []; }
+    const credentials = this._parse_credentials();
+    this._match_text_seq("WITH");
+    const params = this._parse_wrapped(() => this._parse_copy_parameters(), true);
+    if (this._curr.bool()) return this._parse_as_command(start);
+    return this.expression(new exp.Copy({ this: this_, kind, credentials, files, params }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9984

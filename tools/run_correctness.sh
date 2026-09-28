@@ -26,6 +26,8 @@ for name in dialect snowflake_dialect duckdb_dialect; do
   python3 "spike/p5/gen_${name}_ref.py" > "spike/out/${target}.json"
   node "spike/p5/fuzz_${target}.mjs"
 done
+python3 spike/p4/gen_gateway_regressions_ref.py > spike/out/gateway_regressions.json
+node spike/p4/fuzz_gateway_regressions.mjs
 python3 spike/p4/gen_neg_ref.py > spike/out/neg.json
 node spike/p4/fuzz_neg.mjs
 python3 spike/p4/gen_generator_base_ref.py > spike/out/generator_base.json

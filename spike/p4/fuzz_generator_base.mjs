@@ -48,15 +48,8 @@ const dtypeName = (v) => (v && v.__enum__ === "DType" ? `DType.${v.name}` : name
 // from emptiness, so a table that becomes accidentally empty later still fails.
 const DEFERRED_TABLES = new Set([]);
 
-// `AFTER_HAVING_MODIFIER_TRANSFORMS` moved from fully-deferred to PARTIALLY seeded on
-// the Databricks-chain generator step (PORT_PLAN.md R31): `cluster`/`distribute`/`sort`
-// (Hive/Spark's DML-only `CLUSTER BY`/`DISTRIBUTE BY`/`SORT BY`, reached via
-// `query_modifiers`) are real now, verified against real HIVE/SPARK corpus rows;
-// `windows`/`qualify` stay unseeded (still nobody's caller). Neither the blanket
-// `DEFERRED_TABLES` path (which demands exactly 0) nor the general "map" comparison
-// below (which demands the full upstream key set) fits a table that is correctly
-// SOME of each, so this gets its own explicit, named check instead of forcing it
-// through either.
+// AIR-2163: AFTER_HAVING_MODIFIER_TRANSFORMS is now complete and goes through
+// the full reference-map comparison below, not a partial-seed exception.
 // `TRANSFORMS` (py:136, expression-CLASS-keyed) moved from fully-deferred to
 // PARTIALLY seeded on the Postgres generator step (PORT_PLAN.md P4,
 // `src/generators/postgres.js`): 14 upstream `// TODO lambda` placeholders that a real
@@ -72,7 +65,6 @@ const DEFERRED_TABLES = new Set([]);
 // `AFTER_HAVING_MODIFIER_TRANSFORMS` below: neither `DEFERRED_TABLES` (demands exactly
 // 0) nor a full-map comparison (demands the full 143-key set) fits "correctly SOME".
 const PARTIALLY_SEEDED_MAP_KEYS = new Map([
-  ["AFTER_HAVING_MODIFIER_TRANSFORMS", ["cluster", "distribute", "sort"]],
   [
     "TRANSFORMS",
     [

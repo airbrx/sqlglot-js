@@ -54,6 +54,8 @@ python3 spike/p3/gen_generator_kernel_ref.py > spike/out/generator_kernel.jsonl 
 python3 spike/p3/gen_parse_path_sql_ref.py   > spike/out/parse_path_sql.jsonl   || fail=1
 python3 spike/p3/gen_raise_error_ref.py      > spike/out/raise_error.jsonl      || fail=1
 python3 spike/p3/gen_command_warning_ref.py  > spike/out/command_warnings.jsonl || fail=1
+python3 spike/p4/gen_gateway_regressions_ref.py > spike/out/gateway_regressions.json || fail=1
+run "AIR-2163: parser and key regression oracle" node spike/p4/fuzz_gateway_regressions.mjs
 python3 spike/p4/gen_neg_ref.py > spike/out/neg.json || fail=1
 python3 spike/p4/gen_generator_base_ref.py   > spike/out/generator_base.json    || fail=1
 python3 spike/p4/gen_transforms_ref.py       > spike/out/transforms.json        || fail=1
