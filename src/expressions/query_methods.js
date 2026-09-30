@@ -163,6 +163,17 @@ export function installQueryMethods(classes) {
   for (const part of ["table", "db", "catalog"]) get("Column", part, function () { return this.text(part); });
   get("Column", "outputName", function () { return this.name; }, "output_name");
   get("Column", "parts", function () { return ["catalog", "db", "table", "this"].map(k => this.args[k]).filter(Boolean); });
+  // py: core.py:1794 `class Pseudocolumn(Column): pass` -- a real subclass upstream,
+  // so it inherits `Column.output_name` for free; generated classes here do not form
+  // a JS inheritance chain (see the module docstring, and R59's identical note for
+  // `Binary.left`/`.right` just below), so it is installed the same bases-driven way
+  // rather than hand-picked by name. Found while verifying `qualify_columns.js`
+  // (AIR-2106): `qualify_outputs` reads `selection.output_name` for a bare
+  // `SELECT LEVEL` (Snowflake), and without this, `Pseudocolumn` fell through to the
+  // base `Expr.outputName` ("") and got a synthetic `_col_N` alias instead of `LEVEL`.
+  for (const C of all) {
+    if (has(C, "Column") && C.name !== "Column") getter(C, "outputName", function () { return this.name; });
+  }
   // py: core.py:1736 Column.to_dot. `deepcopy(parts)` is `p.copy()` per element:
   // `Dot.build` re-parents what it is handed, so handing it the live children would
   // detach them from the Column the caller may still be holding.

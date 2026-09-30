@@ -153,7 +153,7 @@ export class DuckDB extends Dialect {
    * as an empty Map rather than omitted so the attribute EXISTS with the right shape
    * (PORT_PLAN.md R19), same treatment as `snowflake.js`'s copy of this note.
    */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = new Map(Dialect.EXPRESSION_METADATA);
 
   // py:33 `{**Dialect.DATE_PART_MAPPING, "DAYOFWEEKISO": "ISODOW"}`, then py:40
   // `DATE_PART_MAPPING.pop("WEEKDAY")` — a mutation AFTER the merge, not an entry
