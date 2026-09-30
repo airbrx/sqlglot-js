@@ -2,11 +2,13 @@
 //
 // Link 2 of 4 in `Hive <- Spark2 <- Spark <- Databricks` — see `hive.js`'s header for
 // the full explanation of the split, the `registerDialect` requirement, and the
-// remaining deliberate gaps (`EXPRESSION_METADATA`, `COERCES_TO`/`JSONPathTokenizer`)
-// that apply verbatim to every file in this chain. `Generator = Spark2Generator` (py:41)
-// IS now declared, same as `hive.js`'s own `Generator` — `generators/spark2.js` exists
-// (PORT_PLAN.md, the Databricks-chain generator step). This file adds `class Spark2
-// extends Hive` with its 3 overridden settings and the nested `Tokenizer` subclass.
+// remaining deliberate gaps (`COERCES_TO`/`JSONPathTokenizer`) that apply verbatim to
+// every file in this chain. `Generator = Spark2Generator` (py:41) IS now declared, same
+// as `hive.js`'s own `Generator` — `generators/spark2.js` exists (PORT_PLAN.md, the
+// Databricks-chain generator step). `EXPRESSION_METADATA` (py:13) now resolves to the
+// real `typing/spark2.js` table (AIR-2100), Link 2 of the overlay chain — see that
+// file's own header. This file adds `class Spark2 extends Hive` with its 3 overridden
+// settings and the nested `Tokenizer` subclass.
 //
 // Every setting below is diffed value-by-value against CPython by
 // `spike/p5/fuzz_dialect_parse.mjs`'s SPARK2 row.
@@ -16,6 +18,7 @@ import { Spark2Parser } from "../parsers/spark2.js";
 import { Spark2Generator } from "../generators/spark2.js";
 import { Dialects, registerDialect } from "./dialect.js";
 import { Hive } from "./hive.js";
+import { EXPRESSION_METADATA as SPARK2_EXPRESSION_METADATA } from "../typing/spark2.js";
 
 /**
  * py: sqlglot/dialects/spark2.py:29 `class Tokenizer(Hive.Tokenizer)`.
@@ -43,9 +46,10 @@ export class Spark2 extends Hive {
 
   /**
    * py:13 `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()`, from
-   * `sqlglot/typing/spark2.py`. Unported — see `hive.js`'s class-level note.
+   * `sqlglot/typing/spark2.py` (AIR-2100). Link 2 of the four-link overlay chain — see
+   * `typing/spark2.js`'s own header.
    */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = SPARK2_EXPRESSION_METADATA;
 
   // Spark 2.x parses MM/dd/HH/hh/mm/ss leniently (SimpleDateFormat), unlike strict Hive/Spark 3+
   static TIME_MAPPING = new Map([

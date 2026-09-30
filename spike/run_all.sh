@@ -156,6 +156,17 @@ PYTHONHASHSEED=0 python3 spike/p7/gen_annotate_types_ref.py > spike/out/annotate
 # entries, including two override-precedence proofs (DayOfWeek's base INT vs Snowflake's
 # TINYINT, ArrayAgg's base by-args-array annotator vs Snowflake's flat ARRAY return).
 PYTHONHASHSEED=0 python3 spike/p7/gen_annotate_types_snowflake_ref.py > spike/out/annotate_types_snowflake.json || fail=1
+# P7 oracles (AIR-2100). The four-link `Hive <- Spark2 <- Spark <- Databricks`
+# typing-overlay chain -- each link seeds its `Map` from the PREVIOUS link's table
+# (matching this repo's existing generator/parser chain for the same four dialects) and
+# layers its own new keys / overrides on top, exercised through the SAME real
+# `TypeAnnotator` the base/Snowflake oracles above use, with every scenario parsed and
+# annotated with that link's own dialect so `dialect.EXPRESSION_METADATA` resolves to the
+# real class's table, not an earlier link's or the base's.
+PYTHONHASHSEED=0 python3 spike/p7/gen_annotate_types_hive_ref.py > spike/out/annotate_types_hive.json || fail=1
+PYTHONHASHSEED=0 python3 spike/p7/gen_annotate_types_spark2_ref.py > spike/out/annotate_types_spark2.json || fail=1
+PYTHONHASHSEED=0 python3 spike/p7/gen_annotate_types_spark_ref.py > spike/out/annotate_types_spark.json || fail=1
+PYTHONHASHSEED=0 python3 spike/p7/gen_annotate_types_databricks_ref.py > spike/out/annotate_types_databricks.json || fail=1
 # P7 oracle (AIR-2116). `optimizer/merge_subqueries.py` is the highest correctness-risk
 # module in this batch -- a wrong mergeability guard silently changes result
 # cardinality, not just SQL shape -- so this oracle is organized guard-by-guard rather
@@ -275,6 +286,10 @@ run "P7: isolate_table_selects.js vs CPython" node spike/p7/fuzz_isolate_table_s
 run "P7: typing/index.js EXPRESSION_METADATA vs CPython" node spike/p7/fuzz_typing.mjs
 run "P7: annotate_types.js TypeAnnotator vs CPython" node spike/p7/fuzz_annotate_types.mjs
 run "P7: typing/snowflake.js EXPRESSION_METADATA vs CPython" node spike/p7/fuzz_annotate_types_snowflake.mjs
+run "P7: typing/hive.js EXPRESSION_METADATA vs CPython" node spike/p7/fuzz_annotate_types_hive.mjs
+run "P7: typing/spark2.js EXPRESSION_METADATA vs CPython" node spike/p7/fuzz_annotate_types_spark2.mjs
+run "P7: typing/spark.js EXPRESSION_METADATA vs CPython" node spike/p7/fuzz_annotate_types_spark.mjs
+run "P7: typing/databricks.js EXPRESSION_METADATA vs CPython" node spike/p7/fuzz_annotate_types_databricks.mjs
 run "P7: merge_subqueries.js vs CPython"                  node spike/p7/fuzz_merge_subqueries.mjs
 run "P7: eliminate_subqueries.js vs CPython"  node spike/p7/fuzz_eliminate_subqueries.mjs
 run "P7: eliminate_ctes.js vs CPython"        node spike/p7/fuzz_eliminate_ctes.mjs

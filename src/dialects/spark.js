@@ -4,8 +4,10 @@
 // the full explanation of the split, the `registerDialect` requirement, and the
 // remaining deliberate gaps that apply verbatim to every file in this chain.
 // `Generator = SparkGenerator` (py:46) IS now declared — `generators/spark.js` exists
-// (PORT_PLAN.md, the Databricks-chain generator step). This file adds `class Spark
-// extends Spark2` with its 4 overridden settings and the nested `Tokenizer` subclass.
+// (PORT_PLAN.md, the Databricks-chain generator step). `EXPRESSION_METADATA` (py:16)
+// now resolves to the real `typing/spark.js` table (AIR-2100), Link 3 of the overlay
+// chain — see that file's own header. This file adds `class Spark extends Spark2` with
+// its 4 overridden settings and the nested `Tokenizer` subclass.
 //
 // Every setting below is diffed value-by-value against CPython by
 // `spike/p5/fuzz_dialect_parse.mjs`'s SPARK row.
@@ -15,6 +17,7 @@ import { SparkParser } from "../parsers/spark.js";
 import { SparkGenerator } from "../generators/spark.js";
 import { Dialects, registerDialect } from "./dialect.js";
 import { Spark2 } from "./spark2.js";
+import { EXPRESSION_METADATA as SPARK_EXPRESSION_METADATA } from "../typing/spark.js";
 
 /**
  * py: sqlglot/dialects/spark.py:16 `class Tokenizer(Spark2.Tokenizer)`.
@@ -53,9 +56,10 @@ export class Spark extends Spark2 {
 
   /**
    * py:16 `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()`, from
-   * `sqlglot/typing/spark.py`. Unported — see `hive.js`'s class-level note.
+   * `sqlglot/typing/spark.py` (AIR-2100). Link 3 of the four-link overlay chain — see
+   * `typing/spark.js`'s own header.
    */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = SPARK_EXPRESSION_METADATA;
 
   // Spark 3+ parses MM/dd/HH/hh/mm/ss strictly, unlike Spark 2 (SimpleDateFormat)
   static TIME_MAPPING = new Map([

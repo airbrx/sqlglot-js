@@ -5,7 +5,9 @@
 // the remaining deliberate gaps that apply verbatim to every file in this chain.
 // `Generator = DatabricksGenerator` (py:42) IS now declared — `generators/databricks.js`
 // exists (PORT_PLAN.md, the Databricks-chain generator step; this is the fourth and
-// final link, closing out the whole chain). This file adds `class Databricks extends
+// final link, closing out the whole chain). `EXPRESSION_METADATA` (py:16) now resolves
+// to the real `typing/databricks.js` table (AIR-2100), Link 4 — the LEAF — of the
+// overlay chain, see that file's own header. This file adds `class Databricks extends
 // Spark` with its 2 overridden settings and the nested `Tokenizer` subclass.
 //
 // Every setting below is diffed value-by-value against CPython by
@@ -16,6 +18,7 @@ import { DatabricksParser } from "../parsers/databricks.js";
 import { DatabricksGenerator } from "../generators/databricks.js";
 import { Dialects, registerDialect } from "./dialect.js";
 import { Spark } from "./spark.js";
+import { EXPRESSION_METADATA as DATABRICKS_EXPRESSION_METADATA } from "../typing/databricks.js";
 
 /**
  * py: sqlglot/dialects/databricks.py:31 `class Tokenizer(Spark.Tokenizer)`.
@@ -46,9 +49,10 @@ export class Databricks extends Spark {
 
   /**
    * py:16 `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()`, from
-   * `sqlglot/typing/databricks.py`. Unported — see `hive.js`'s class-level note.
+   * `sqlglot/typing/databricks.py` (AIR-2100). Link 4, the LEAF of the four-link overlay
+   * chain — see `typing/databricks.js`'s own header.
    */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = DATABRICKS_EXPRESSION_METADATA;
 
   /**
    * py:18-26 `COERCES_TO = defaultdict(set, deepcopy(TypeAnnotator.COERCES_TO))`, then a

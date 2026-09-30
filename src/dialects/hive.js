@@ -16,21 +16,19 @@
 // need their own `registerDialect` call — one per class, matching how the parser chain
 // registers each link separately.
 //
-// TWO DELIBERATE GAPS REMAIN, announced rather than faked, same reasons Snowflake's
-// are; ONE CLOSED THIS ROUND:
+// ONE DELIBERATE GAP REMAINS, announced rather than faked, same reason Snowflake's is;
+// TWO CLOSED THIS ROUND:
 //
 //   `Generator = HiveGenerator` (py:126) IS now declared — `generators/hive.js` exists
 //   (PORT_PLAN.md, the Databricks-chain generator step, following Ben's corrected
 //   priority order §1). `registerDialect` no longer falls through to `base_generator`
 //   for this dialect; it resolves the real chain-specific `Generator` subclass instead.
 //
-//   `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()` (py:30, from the unported
-//   `sqlglot/typing/hive.py`) is declared as an empty `Map()`, same treatment as every
-//   other dialect's copy of this note. Spark2/Spark/Databricks each re-assign their OWN
-//   `EXPRESSION_METADATA` from a DIFFERENT unported `typing/<dialect>.py` module in
-//   upstream — the re-assignment is kept at each link (rather than only declaring it
-//   once here and letting it inherit) to mirror upstream's actual class-body shape,
-//   even though the content is identically empty at every link today.
+//   `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()` (py:30) now resolves to the real
+//   `typing/hive.js` table (AIR-2100) — root of the four-link overlay chain, see that
+//   file's own header. Spark2/Spark/Databricks each re-assign their OWN
+//   `EXPRESSION_METADATA` from their OWN `typing/<dialect>.js` module, layered on top of
+//   this one, mirroring upstream's actual class-body shape at each link.
 //
 //   `COERCES_TO` (py:37-42, from `sqlglot/optimizer/annotate_types.py`'s `TypeAnnotator`)
 //   is declared as an empty `Map()` for the same reason: the optimizer package is P6+.
@@ -61,6 +59,7 @@ import { Tokenizer, TokenType, initTokenizerSubclass } from "../tokens.js";
 import { HiveParser } from "../parsers/hive.js";
 import { HiveGenerator } from "../generators/hive.js";
 import { Dialect, Dialects, NormalizationStrategy, registerDialect } from "./dialect.js";
+import { EXPRESSION_METADATA as HIVE_EXPRESSION_METADATA } from "../typing/hive.js";
 
 /**
  * py: sqlglot/dialects/hive.py:84 `class Tokenizer(tokens.Tokenizer)`.
@@ -123,10 +122,11 @@ export class Hive extends Dialect {
 
   /**
    * py:30 `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()`, from
-   * `sqlglot/typing/hive.py`. Unported, same as every other dialect's copy of this
-   * note — `sqlglot/optimizer/annotate_types.py` and `typing/` are P6+.
+   * `sqlglot/typing/hive.py` (AIR-2100). Root of the four-link
+   * `Hive <- Spark2 <- Spark <- Databricks` overlay chain — see `typing/hive.js`'s own
+   * header.
    */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = HIVE_EXPRESSION_METADATA;
 
   // https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=27362046#LanguageManualUDF-StringFunctions
   // https://github.com/apache/hive/blob/master/ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java#L266-L269

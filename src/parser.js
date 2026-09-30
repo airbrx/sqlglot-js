@@ -4939,7 +4939,7 @@ export class Parser {
   // py: sqlglot/parser.py:6798
   // note: param `this` renamed to `this_` (JS reserved word)
   _parse_at_time_zone(this_) {
-    if(!this._match_pair(TokenType.AT,TokenType.TIME_ZONE))return this_;return this._parse_at_time_zone(this.expression(new exp.AtTimeZone({this:this_,zone:this._parse_unary()})));
+    if(!this._match_text_seq("AT","TIME","ZONE"))return this_;return this._parse_at_time_zone(this.expression(new exp.AtTimeZone({this:this_,zone:this._parse_unary()})));
   }
 
   /** @returns {*} */
