@@ -50,6 +50,7 @@ import {
   NormalizationStrategy,
   registerDialect,
 } from "./dialect.js";
+import { EXPRESSION_METADATA as SNOWFLAKE_EXPRESSION_METADATA } from "../typing/snowflake.js";
 
 /**
  * py: sqlglot/dialects/snowflake.py:132 `class Tokenizer(tokens.Tokenizer)`.
@@ -162,16 +163,14 @@ export class Snowflake extends Dialect {
 
   /**
    * py:38 `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()`, from
-   * `sqlglot/typing/snowflake.py` — a 457-entry type-inference table.
-   *
-   * Unported, exactly as the base `Dialect`'s own 294-entry version is unported:
-   * `sqlglot/optimizer/annotate_types.py` and the `typing/` package are P6+. Declared
-   * as an empty Map rather than omitted so the attribute EXISTS with the right shape,
-   * and `spike/p5/fuzz_snowflake_dialect.mjs` prints CPython's 457 against the port's 0
-   * on every run — a gap that states its own size rather than a table nobody remembers
-   * is missing (PORT_PLAN.md R19).
+   * `sqlglot/typing/snowflake.py` (AIR-2098) — a 457-entry type-inference table: the
+   * base `Dialect`'s own 294-entry table (`src/typing/index.js`, AIR-2096/R51), with
+   * Snowflake's 163 new keys / 44 overrides layered on top in upstream's own
+   * top-to-bottom merge order. `src/typing/snowflake.js` is that table; this field is
+   * its wiring onto the class, the same shape `base Dialect.EXPRESSION_METADATA`'s own
+   * R54 wiring already established one class up.
    */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = SNOWFLAKE_EXPRESSION_METADATA;
 
   // https://docs.snowflake.com/en/en/sql-reference/functions/initcap
   // py:41. A plain Python string, not a regex: `\\-` and `\\[`/`\\]` are a literal
