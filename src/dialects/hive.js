@@ -126,7 +126,7 @@ export class Hive extends Dialect {
    * `sqlglot/typing/hive.py`. Unported, same as every other dialect's copy of this
    * note — `sqlglot/optimizer/annotate_types.py` and `typing/` are P6+.
    */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = new Map(Dialect.EXPRESSION_METADATA);
 
   // https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=27362046#LanguageManualUDF-StringFunctions
   // https://github.com/apache/hive/blob/master/ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java#L266-L269
