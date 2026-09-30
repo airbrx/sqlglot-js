@@ -135,7 +135,7 @@ export class TSQL extends Dialect {
   static TIME_FORMAT = "'yyyy-mm-dd hh:mm:ss'";
 
   /** py:27 `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()`. See file header. */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = new Map(Dialect.EXPRESSION_METADATA);
 
   static DATE_PART_MAPPING = new Map([
     ...DATE_PART_MAPPING,

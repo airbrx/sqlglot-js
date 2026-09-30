@@ -69,6 +69,18 @@ class Logger {
   error(message) {
     this._emit("ERROR", message);
   }
+
+  /**
+   * py: `logger.info(...)`. Unlike `warning`/`error`, an INFO record is below the
+   * "sqlglot" logger's default effective level (WARNING), so `logging.lastResort`
+   * never sees it and nothing reaches stderr — it is only observable while a
+   * capture (this port's analogue of `assertLogs`, which temporarily lowers the
+   * threshold) is active.
+   */
+  info(message) {
+    if (!sinks.size) return;
+    this._emit("INFO", message);
+  }
 }
 
 const loggers = new Map();
