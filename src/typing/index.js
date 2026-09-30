@@ -347,7 +347,17 @@ setEach([exp.ArrayFirst, exp.ArrayLast], { annotator: annotateByArrayElement });
 
 // py:296
 EXPRESSION_METADATA.set(exp.Anonymous, {
-  annotator: (self, e) => self._set_type(e, self.schema.get_udf_type(e)),
+  // AIR-2099 (typing-overlay-family round): was `self.schema.get_udf_type(e)`, a
+  // snake_case call against the JS `Schema` class, which only exposes `getUdfType`
+  // (`src/schema.js:140/455`) -- `get_udf_type` is `undefined` on every `Schema`
+  // instance, so calling it threw `TypeError: self.schema.get_udf_type is not a
+  // function` the moment any UDF/unrecognized-function call reached this entry. Found
+  // by `spike/p7/gen_typing_overlay_family_ref.py`'s own `bq-json-jsonobject`
+  // scenario, which reached this path only because BigQuery's own `JSON_OBJECT`
+  // function-name registration is a separate, unrelated parser gap (builds
+  // `exp.Anonymous` instead of `exp.JSONObject`) -- this fix is independent of that
+  // one and belongs to the base table this entry already lives in.
+  annotator: (self, e) => self._set_type(e, self.schema.getUdfType(e)),
 });
 
 // py:297-304

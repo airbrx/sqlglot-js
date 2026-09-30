@@ -217,6 +217,16 @@ PYTHONHASHSEED=0 python3 spike/p7/gen_qualify_columns_ref.py > spike/out/qualify
 # COMPLETE checkout, not the lean one -- see `gen_normalize_ref.py`'s own header for
 # why (the lean ref's `tests/fixtures/optimizer/` has no `normalize.sql` at all).
 PYTHONHASHSEED=0 python3 spike/p10/gen_normalize_ref.py > spike/out/normalize.json || fail=1
+# P7 oracle (AIR-2099). Five per-dialect type-inference overlays -- `typing/
+# {postgres,redshift,duckdb,bigquery,tsql}.py` -- exercised through the same real
+# `TypeAnnotator` every other typing/*.js overlay above uses. One combined oracle
+# covers all five (four are tiny: 13/3/24/14 keys; BigQuery's 83 keys / 7 custom
+# `_annotate_*` helpers is the only one needing real branch coverage on its own). See
+# `gen_typing_overlay_family_ref.py`'s own header for the full scenario breakdown,
+# including Redshift's override-of-Postgres's-override precedence proof (Ntile) and
+# BigQuery's four `_annotate_array` paths (ARRAY(SELECT col)/ARRAY(SELECT AS STRUCT
+# ...)/ARRAY(SELECT ... UNION ALL ...)/literal-array fallback).
+PYTHONHASHSEED=0 python3 spike/p7/gen_typing_overlay_family_ref.py > spike/out/typing_overlay_family.json || fail=1
 
 run "PROBE 1a: numeric differential"      node spike/fuzz_num.mjs
 run "PROBE 1b: named go/no-go literal"    node spike/gonogo_snowflake367.mjs
@@ -306,6 +316,7 @@ run "P7: eliminate_ctes.js vs CPython"        node spike/p7/fuzz_eliminate_ctes.
 run "P7: optimizer/simplify.js Simplifier vs CPython" node spike/p7/fuzz_simplify.mjs
 run "P7: optimizer/qualify_columns.js (core) vs CPython" node spike/p7/fuzz_qualify_columns.mjs
 run "P10: optimizer/normalize.js vs CPython"          node spike/p10/fuzz_normalize.mjs
+run "P7: typing/{postgres,redshift,duckdb,bigquery,tsql}.js vs CPython" node spike/p7/fuzz_typing_overlay_family.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
 # unrun test is a comment, which is the same argument this repo makes for the deny-list

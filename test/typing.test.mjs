@@ -101,10 +101,13 @@ test("Case builds its arg list from e.args.ifs[*].args.true, plus a trailing \"d
   assert.deepEqual(calls[0], [e, "A", "B", "default"]);
 });
 
-test("Anonymous nests self.schema.get_udf_type(e) inside self._set_type(e, ...)", () => {
+test("Anonymous nests self.schema.getUdfType(e) inside self._set_type(e, ...)", () => {
+  // AIR-2099: was `schema.get_udf_type`, a snake_case call against a method the real
+  // `Schema` class only exposes as `getUdfType` (`src/schema.js:140/455`) -- this test
+  // encoded the same bug `src/typing/index.js`'s own fix corrects.
   const calls = [];
   const fakeSelf = {
-    schema: { get_udf_type: (e) => `udf-type-of-${e.this}` },
+    schema: { getUdfType: (e) => `udf-type-of-${e.this}` },
     _set_type: (e, v) => calls.push([e.this, v]),
   };
   EXPRESSION_METADATA.get(exp.Anonymous).annotator(fakeSelf, new exp.Expr({ this: "f" }));

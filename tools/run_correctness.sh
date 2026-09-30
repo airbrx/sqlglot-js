@@ -38,7 +38,7 @@ node spike/p4/fuzz_transforms.mjs
 # by the full production-generation ratchet below (including foreign read dialects).
 python3 spike/p6/gen_schema_ref.py > spike/out/schema.json
 node spike/p6/fuzz_schema.mjs
-for name in scope optimize_joins resolver unnest_subqueries qualify_tables isolate_table_selects typing annotate_types annotate_types_snowflake merge_subqueries eliminate_subqueries eliminate_ctes simplify; do
+for name in scope optimize_joins resolver unnest_subqueries qualify_tables isolate_table_selects typing annotate_types annotate_types_snowflake merge_subqueries eliminate_subqueries eliminate_ctes simplify qualify_columns typing_overlay_family; do
   python3 "spike/p7/gen_${name}_ref.py" > "spike/out/${name}.json"
   node "spike/p7/fuzz_${name}.mjs"
 done
