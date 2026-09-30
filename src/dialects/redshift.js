@@ -12,12 +12,11 @@
 // exists (PORT_PLAN.md, the Redshift generator step), closing this file's own
 // previously-deferred `generator_class` gap.
 //
-// ONE REMAINING DELIBERATE GAP, announced rather than faked, same reason as Postgres's:
-//
-//   `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()` (py:17, from
-//   `sqlglot/typing/redshift.py`) is declared as an empty `Map()` for the same reason
-//   `Postgres.EXPRESSION_METADATA` is: `sqlglot/optimizer/annotate_types.py` and
-//   `typing/` are P6+.
+// `EXPRESSION_METADATA` (py:17 `= EXPRESSION_METADATA.copy()`, from
+// `sqlglot/typing/redshift.py`, AIR-2099) IS now wired from `src/typing/redshift.js` —
+// seeded from `Postgres.EXPRESSION_METADATA` (matching upstream's own `from
+// sqlglot.typing.postgres import EXPRESSION_METADATA`, not the base table), 307
+// entries total since Redshift's 3 keys all already exist in Postgres's table.
 //
 // Every setting below is diffed value-by-value against CPython by
 // `spike/p5/fuzz_dialect_parse.mjs`'s REDSHIFT row.
@@ -27,6 +26,7 @@ import { RedshiftParser } from "../parsers/redshift.js";
 import { RedshiftGenerator } from "../generators/redshift.js";
 import { Dialects, registerDialect, NormalizationStrategy } from "./dialect.js";
 import { Postgres } from "./postgres.js";
+import { EXPRESSION_METADATA as REDSHIFT_EXPRESSION_METADATA } from "../typing/redshift.js";
 
 /**
  * py: sqlglot/dialects/redshift.py:38 `class Tokenizer(Postgres.Tokenizer)`.
@@ -67,9 +67,12 @@ initTokenizerSubclass(RedshiftTokenizer);
 export class Redshift extends Postgres {
   /**
    * py:17 `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()`, from
-   * `sqlglot/typing/redshift.py`. Unported — see `postgres.js`'s class-level note.
+   * `sqlglot/typing/redshift.py` (AIR-2099) — seeded from `Postgres.EXPRESSION_METADATA`
+   * (matching upstream's own `from sqlglot.typing.postgres import EXPRESSION_METADATA`,
+   * not the base table) and layered with Redshift's 3 overrides. See
+   * `src/typing/redshift.js` for the table itself.
    */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = REDSHIFT_EXPRESSION_METADATA;
 
   // https://docs.aws.amazon.com/redshift/latest/dg/r_names.html
   static NORMALIZATION_STRATEGY = NormalizationStrategy.CASE_INSENSITIVE;

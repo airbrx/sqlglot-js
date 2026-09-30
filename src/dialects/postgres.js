@@ -11,12 +11,10 @@
 // prototype, so an instance's settings are `undefined` until `registerDialect` mirrors
 // them, as its last step, after every derivation is final.
 //
-// ONE REMAINING DELIBERATE GAP, announced rather than faked, same reason as
-// Snowflake's:
-//
-//   `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()` (py:12, from
-//   `sqlglot/typing/postgres.py`) is declared as an empty `Map()` for the same reason
-//   Snowflake's is: `sqlglot/optimizer/annotate_types.py` and `typing/` are P6+.
+// `EXPRESSION_METADATA` (py:12 `= EXPRESSION_METADATA.copy()`, from
+// `sqlglot/typing/postgres.py`, AIR-2099) IS now wired from `src/typing/postgres.js` —
+// a 307-entry type-inference table (294 base + 13 Postgres-specific), the same
+// `Snowflake.EXPRESSION_METADATA` wiring shape `snowflake.js` already established.
 //
 // `Generator = PostgresGenerator` (py:143) IS now declared (PORT_PLAN.md P4,
 // `generators/postgres.js`) — the `SUPPORTED_JSON_PATH_PARTS` pruning this file's
@@ -32,6 +30,7 @@ import { PostgresParser } from "../parsers/postgres.js";
 import { PostgresGenerator } from "../generators/postgres.js";
 import * as exp from "../expressions/index.js";
 import { Dialect, Dialects, registerDialect } from "./dialect.js";
+import { EXPRESSION_METADATA as POSTGRES_EXPRESSION_METADATA } from "../typing/postgres.js";
 
 /**
  * py: sqlglot/dialects/postgres.py:72 `class Tokenizer(tokens.Tokenizer)`.
@@ -133,10 +132,13 @@ initTokenizerSubclass(PostgresTokenizer);
 export class Postgres extends Dialect {
   /**
    * py:12 `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()`, from
-   * `sqlglot/typing/postgres.py`. Unported, same as `Snowflake.EXPRESSION_METADATA` —
-   * see the class-level note above for why this is an empty `Map` rather than omitted.
+   * `sqlglot/typing/postgres.py` (AIR-2099) — a 307-entry type-inference table: the
+   * base 294-entry table (`typing/index.js`) plus 13 Postgres-specific overrides/new
+   * keys. `src/typing/postgres.js` is that table; this field is its wiring onto the
+   * class, the same shape `Snowflake.EXPRESSION_METADATA`'s own wiring already
+   * established.
    */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = POSTGRES_EXPRESSION_METADATA;
 
   static INDEX_OFFSET = 1;
   static ASCII_ONLY_NORMALIZATION = true;

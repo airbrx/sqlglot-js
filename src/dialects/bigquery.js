@@ -16,16 +16,20 @@
 // R20). `registerDialect` does that mirroring, as its last step, after every derivation
 // is final.
 //
-// TWO GAPS, EACH ANNOUNCED RATHER THAN FAKED — the same shape `snowflake.js` already
-// documents for its own two:
+// `EXPRESSION_METADATA` (py:132 `= EXPRESSION_METADATA.copy()`, from
+// `sqlglot/typing/bigquery.py`, AIR-2099) IS now wired from `src/typing/bigquery.js` —
+// a 377-entry type-inference table (294 base + 83 BigQuery-specific), the same
+// `Snowflake.EXPRESSION_METADATA` wiring shape `snowflake.js` already established.
 //
-//   `EXPRESSION_METADATA` (py:132 `= EXPRESSION_METADATA.copy()`, from the unported
-//   `sqlglot/typing/bigquery.py`, a type-inference table) and `COERCES_TO` (py:118,
-//   `{**TypeAnnotator.COERCES_TO, ...}` — `TypeAnnotator` is `sqlglot/optimizer/
-//   annotate_types.py`, also unported) both stay empty `Map`s, exactly matching base
-//   `Dialect`'s own current (unported-optimizer) default for each. Declared explicitly
-//   below rather than omitted, so the attribute EXISTS with the right shape and a gap
-//   that states its own size (PORT_PLAN.md R19) rather than one nobody remembers.
+// ONE GAP REMAINS, announced rather than faked, same shape `snowflake.js` already
+// documents for its own:
+//
+//   `COERCES_TO` (py:118, `{**TypeAnnotator.COERCES_TO, ...}` — `TypeAnnotator` is
+//   `sqlglot/optimizer/annotate_types.py`) stays an empty `Map`, exactly matching base
+//   `Dialect`'s own current default, since `COERCES_TO` is declared in
+//   `dialects/bigquery.py` itself, not `typing/bigquery.py` — outside this round's
+//   scope. Declared explicitly below rather than omitted, so the attribute EXISTS with
+//   the right shape and a gap that states its own size (PORT_PLAN.md R19).
 //
 //   `class JSONPathTokenizer(jsonpath.JSONPathTokenizer)` (py:163) is NOT declared, for
 //   the same reason `Dialect.jsonpath_tokenizer_class` is null: `sqlglot/jsonpath.py` is
@@ -47,6 +51,7 @@ import {
   NormalizationStrategy,
   registerDialect,
 } from "./dialect.js";
+import { EXPRESSION_METADATA as BIGQUERY_EXPRESSION_METADATA } from "../typing/bigquery.js";
 
 /**
  * py: sqlglot/dialects/bigquery.py:170 `class Tokenizer(tokens.Tokenizer)`.
@@ -212,10 +217,13 @@ export class BigQuery extends Dialect {
 
   /**
    * py:132 `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()`, from
-   * `sqlglot/typing/bigquery.py` — unported, exactly as the base `Dialect`'s own
-   * (unported) version. See the file header.
+   * `sqlglot/typing/bigquery.py` (AIR-2099) — a 377-entry type-inference table: the
+   * base 294-entry table (`typing/index.js`) plus 83 BigQuery-specific overrides/new
+   * keys. `src/typing/bigquery.js` is that table; this field is its wiring onto the
+   * class, the same shape `Snowflake.EXPRESSION_METADATA`'s own wiring already
+   * established.
    */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = BIGQUERY_EXPRESSION_METADATA;
 
   /** py:186 `Parser = BigQueryParser` — what `registerDialect` turns into `parser_class`. */
   static Parser = BigQueryParser;

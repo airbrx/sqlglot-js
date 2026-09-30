@@ -131,6 +131,33 @@ function datatypeShape(dt) {
   };
 }
 
+// AIR-2099 (typing-overlay-family round): `gen_typing_ref.py`'s recorder captures
+// CPython's own real attribute name, so `Anonymous`'s entry always reads
+// `"self.schema.get_udf_type"` in the reference JSON. This port's `Schema` class
+// (`src/schema.js`) already camelCases its ENTIRE public API -- `getColumnType`,
+// `columnNames`, `hasColumn`, `getUdfType` -- with no snake_case alias for any of
+// them, and every other call site in the codebase (`optimizer/annotate_types.js`,
+// `optimizer/resolver.js`) already calls them that way; `typing/index.js`'s own
+// `Anonymous` entry previously called the literal (nonexistent) `self.schema.
+// get_udf_type`, which happened to satisfy this shape-oracle's naive string
+// comparison while throwing `TypeError` at actual runtime the moment any UDF call
+// reached it. Renaming ONLY this one known, intentional divergence here (rather than
+// teaching `gen_typing_ref.py` to guess this port's per-method naming choices) keeps
+// the oracle a faithful, unmodified recording of CPython on one side while still
+// comparing REAL, runnable JS call shapes on the other.
+const JS_METHOD_RENAMES = new Map([["self.schema.get_udf_type", "self.schema.getUdfType"]]);
+function renameCalls(v) {
+  if (Array.isArray(v)) return v.map(renameCalls);
+  if (v && typeof v === "object") {
+    const out = {};
+    for (const [k, val] of Object.entries(v)) {
+      out[k] = k === "$call" && JS_METHOD_RENAMES.has(val) ? JS_METHOD_RENAMES.get(val) : renameCalls(val);
+    }
+    return out;
+  }
+  return v;
+}
+
 function enc(v, probe) {
   if (v === probe) return { $e: true };
   if (v && typeof v === "object" && "$call" in v) {
@@ -195,8 +222,8 @@ for (const [name, want] of Object.entries(ref.classes)) {
     }
     const gotTrue = enc(spec.annotator(fakeSelf, PROBE_TRUE), PROBE_TRUE);
     const gotFalse = enc(spec.annotator(fakeSelf, PROBE_FALSE), PROBE_FALSE);
-    check(`${name}.annotator(true)`, gotTrue, want.true);
-    check(`${name}.annotator(false)`, gotFalse, want.false);
+    check(`${name}.annotator(true)`, gotTrue, renameCalls(want.true));
+    check(`${name}.annotator(false)`, gotFalse, renameCalls(want.false));
   }
 }
 

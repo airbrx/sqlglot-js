@@ -29,10 +29,10 @@
 // Databricks chain (PR #43) already exercise, so there was never a guard here that
 // blocked setting `generator_class`.
 //
-// `EXPRESSION_METADATA` (py:38, from the unported `sqlglot/typing/duckdb.py`) is
-// declared as an empty Map for the same reason Snowflake's is: `sqlglot/typing/` and
-// `sqlglot/optimizer/annotate_types.py` are P6+, and an empty Map states the gap's own
-// shape rather than omitting the attribute.
+// `EXPRESSION_METADATA` (py:38, from `sqlglot/typing/duckdb.py`, AIR-2099) IS now wired
+// from `src/typing/duckdb.js` — a 310-entry type-inference table (294 base + 16
+// DuckDB-specific), the same `Snowflake.EXPRESSION_METADATA` wiring shape `snowflake.js`
+// already established.
 //
 // Every setting below is diffed value-by-value against CPython by
 // `spike/p5/fuzz_duckdb_dialect.mjs`.
@@ -42,6 +42,7 @@ import { DuckDBParser } from "../parsers/duckdb.js";
 import { DuckDBGenerator } from "../generators/duckdb.js";
 import * as exp from "../expressions/index.js";
 import { DATE_PART_MAPPING, Dialect, Dialects, NormalizationStrategy, registerDialect } from "./dialect.js";
+import { EXPRESSION_METADATA as DUCKDB_EXPRESSION_METADATA } from "../typing/duckdb.js";
 
 /**
  * py: sqlglot/dialects/duckdb.py:69 `class Tokenizer(tokens.Tokenizer)`.
@@ -146,14 +147,12 @@ export class DuckDB extends Dialect {
 
   /**
    * py:38 `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()`, from
-   * `sqlglot/typing/duckdb.py` — a type-inference table.
-   *
-   * Unported, exactly as the base `Dialect`'s own version is unported:
-   * `sqlglot/optimizer/annotate_types.py` and the `typing/` package are P6+. Declared
-   * as an empty Map rather than omitted so the attribute EXISTS with the right shape
-   * (PORT_PLAN.md R19), same treatment as `snowflake.js`'s copy of this note.
+   * `sqlglot/typing/duckdb.py` (AIR-2099) — a 310-entry type-inference table: the base
+   * 294-entry table (`typing/index.js`) plus 16 DuckDB-specific overrides/new keys.
+   * `src/typing/duckdb.js` is that table; this field is its wiring onto the class, the
+   * same shape `Snowflake.EXPRESSION_METADATA`'s own wiring already established.
    */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = DUCKDB_EXPRESSION_METADATA;
 
   // py:33 `{**Dialect.DATE_PART_MAPPING, "DAYOFWEEKISO": "ISODOW"}`, then py:40
   // `DATE_PART_MAPPING.pop("WEEKDAY")` — a mutation AFTER the merge, not an entry

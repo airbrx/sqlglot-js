@@ -41,12 +41,10 @@
 // `spike/p3/dialect_tokenizer.mjs` imports `TSQLParser` directly without ever
 // touching this file. See that function's comment for the full trace.
 //
-// ONE GAP REMAINS, announced rather than faked, same as every prior dialect round:
-//
-//   `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()` (py:27, from the 100+ entry
-//   `sqlglot/typing/tsql.py`) is declared as an empty `Map` — `annotate_types` and
-//   `sqlglot/typing/` are P6+ unported, exactly as the base `Dialect`'s own
-//   `EXPRESSION_METADATA` and every other dialect's copy of this same field are.
+// `EXPRESSION_METADATA` (py:27 `= EXPRESSION_METADATA.copy()`, from
+// `sqlglot/typing/tsql.py`, AIR-2099) IS now wired from `src/typing/tsql.js` — a
+// 298-entry type-inference table (294 base + 4 TSQL-specific), the same
+// `Snowflake.EXPRESSION_METADATA` wiring shape `snowflake.js` already established.
 
 import { Tokenizer, TokenType, initTokenizerSubclass } from "../tokens.js";
 import { TSQLParser } from "../parsers/tsql.js";
@@ -58,6 +56,7 @@ import {
   NormalizationStrategy,
   registerDialect,
 } from "./dialect.js";
+import { EXPRESSION_METADATA as TSQL_EXPRESSION_METADATA } from "../typing/tsql.js";
 
 /**
  * py: sqlglot/dialects/tsql.py:150 `class Tokenizer(tokens.Tokenizer)`.
@@ -135,7 +134,7 @@ export class TSQL extends Dialect {
   static TIME_FORMAT = "'yyyy-mm-dd hh:mm:ss'";
 
   /** py:27 `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()`. See file header. */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = TSQL_EXPRESSION_METADATA;
 
   static DATE_PART_MAPPING = new Map([
     ...DATE_PART_MAPPING,
