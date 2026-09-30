@@ -42,6 +42,8 @@ for name in scope optimize_joins resolver unnest_subqueries qualify_tables isola
   python3 "spike/p7/gen_${name}_ref.py" > "spike/out/${name}.json"
   node "spike/p7/fuzz_${name}.mjs"
 done
+python3 spike/p10/gen_normalize_ref.py > spike/out/normalize.json
+node spike/p10/fuzz_normalize.mjs
 python3 tools/bridge/proof.py
 python3 tools/corpus_control.py --report spike/out/python-control.jsonl
 node spike/p5/fuzz_dialect_parse.mjs --report spike/out/production-parse.jsonl

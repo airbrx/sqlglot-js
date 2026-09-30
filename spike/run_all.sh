@@ -207,6 +207,16 @@ PYTHONHASHSEED=0 python3 spike/p7/gen_simplify_ref.py > spike/out/simplify.json 
 # missing TRANSFORMS entry) compare a structural `repr()`/`.toString()` dump instead
 # -- see `gen_qualify_columns_ref.py`'s own `STRUCTURAL` set.
 PYTHONHASHSEED=0 python3 spike/p7/gen_qualify_columns_ref.py > spike/out/qualify_columns.json || fail=1
+# P10 oracle. `optimizer/normalize.py` (AIR-2110) is NOT greenfield -- upstream ships a
+# real fixture corpus for it, `tests/fixtures/optimizer/normalize.sql` (17 pairs),
+# reproduced here through the exact small pipeline `TestOptimizer.test_normalize` runs
+# it through (`normalize() -> annotate_types() -> simplify()`, both already ported),
+# plus the three direct `test_normalize` assertions (plain CNF, DNF, and a Snowflake
+# BOOLXOR/Xor-arity scenario) and the three `test_normalization_distance` depth
+# scenarios. Unlike every other gen_*_ref.py above, its default `SQLGLOT_REF` is the
+# COMPLETE checkout, not the lean one -- see `gen_normalize_ref.py`'s own header for
+# why (the lean ref's `tests/fixtures/optimizer/` has no `normalize.sql` at all).
+PYTHONHASHSEED=0 python3 spike/p10/gen_normalize_ref.py > spike/out/normalize.json || fail=1
 
 run "PROBE 1a: numeric differential"      node spike/fuzz_num.mjs
 run "PROBE 1b: named go/no-go literal"    node spike/gonogo_snowflake367.mjs
@@ -295,6 +305,7 @@ run "P7: eliminate_subqueries.js vs CPython"  node spike/p7/fuzz_eliminate_subqu
 run "P7: eliminate_ctes.js vs CPython"        node spike/p7/fuzz_eliminate_ctes.mjs
 run "P7: optimizer/simplify.js Simplifier vs CPython" node spike/p7/fuzz_simplify.mjs
 run "P7: optimizer/qualify_columns.js (core) vs CPython" node spike/p7/fuzz_qualify_columns.mjs
+run "P10: optimizer/normalize.js vs CPython"          node spike/p10/fuzz_normalize.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
 # unrun test is a comment, which is the same argument this repo makes for the deny-list
