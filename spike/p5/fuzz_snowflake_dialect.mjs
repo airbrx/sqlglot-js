@@ -94,13 +94,16 @@ function check(what, got, want) {
 // `NORMALIZATION_STRATEGY` needs no special casing: upstream's enum derives from `str`,
 // so `{"$e": "UPPERCASE"}` on the oracle side is compared against the port's frozen
 // string map by unwrapping `$e` here rather than wrapping there.
-const KNOWN_GAPS = new Map([
-  [
-    "EXPRESSION_METADATA",
-    "sqlglot/typing/snowflake.py's own 163-entry overlay is unported (AIR-2098+); " +
-      "the base 294-entry table (AIR-2096/AIR-2097) is real and inherited from Dialect",
-  ],
-]);
+const KNOWN_GAPS = new Map([]);
+
+// `EXPRESSION_METADATA`'s values are closures (`{annotator: fn}`)/plain option records
+// (`{returns: DType}`), neither of which `enc()` can encode — same unencodable-lambda
+// problem `gen_snowflake_dialect_ref.py`'s own `COUNT_ONLY` set solves on the CPython
+// side. AIR-2098 wired this from an empty Map to the real 457-entry `typing/snowflake.js`
+// table, so this is now a real count comparison (457 vs 457) rather than a `KNOWN_GAPS`
+// skip — the same transition `fuzz_dialect_defaults.mjs` made for the base 294-entry
+// table when AIR-2097 landed.
+const COUNT_ONLY = new Set(["EXPRESSION_METADATA"]);
 
 for (const [name, want] of Object.entries(ref.attrs)) {
   if (KNOWN_GAPS.has(name)) {
@@ -113,6 +116,10 @@ for (const [name, want] of Object.entries(ref.attrs)) {
   if (!(name in Snowflake)) {
     checks += 1;
     fails.push(`${name}\n       got  <ABSENT from the port>\n       want ${trunc(JSON.stringify(want))}`);
+    continue;
+  }
+  if (COUNT_ONLY.has(name)) {
+    check(name, { $count: Snowflake[name].size }, want);
     continue;
   }
   const got = want !== null && typeof want === "object" && "$e" in want
@@ -137,10 +144,14 @@ for (let k = Snowflake; k && k !== Function.prototype; k = Object.getPrototypeOf
 // value-by-value pass cannot: if the port had silently mutated the BASE class instead of
 // subclassing it, every value above would still match while `Dialect` was corrupted.
 const gotOverrides = Object.keys(ref.attrs)
-  .filter((n) => !KNOWN_GAPS.has(n))
+  .filter((n) => !KNOWN_GAPS.has(n) && !COUNT_ONLY.has(n))
   .filter((n) => JSON.stringify(enc(Snowflake[n])) !== JSON.stringify(enc(Dialect[n])))
   .sort();
-check("settings that differ from the base Dialect", gotOverrides, ref.overrides.filter((n) => !KNOWN_GAPS.has(n)));
+check(
+  "settings that differ from the base Dialect",
+  gotOverrides,
+  ref.overrides.filter((n) => !KNOWN_GAPS.has(n) && !COUNT_ONLY.has(n)),
+);
 
 // ---------------------------------------------------------------------------
 // 2. The nested Tokenizer subclass
