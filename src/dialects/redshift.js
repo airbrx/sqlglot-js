@@ -69,7 +69,7 @@ export class Redshift extends Postgres {
    * py:17 `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()`, from
    * `sqlglot/typing/redshift.py`. Unported — see `postgres.js`'s class-level note.
    */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = new Map(Postgres.EXPRESSION_METADATA);
 
   // https://docs.aws.amazon.com/redshift/latest/dg/r_names.html
   static NORMALIZATION_STRATEGY = NormalizationStrategy.CASE_INSENSITIVE;

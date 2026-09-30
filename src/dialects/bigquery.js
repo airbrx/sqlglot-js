@@ -215,7 +215,7 @@ export class BigQuery extends Dialect {
    * `sqlglot/typing/bigquery.py` — unported, exactly as the base `Dialect`'s own
    * (unported) version. See the file header.
    */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = new Map(Dialect.EXPRESSION_METADATA);
 
   /** py:186 `Parser = BigQueryParser` — what `registerDialect` turns into `parser_class`. */
   static Parser = BigQueryParser;

@@ -171,7 +171,7 @@ export class Snowflake extends Dialect {
    * on every run — a gap that states its own size rather than a table nobody remembers
    * is missing (PORT_PLAN.md R19).
    */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = new Map(Dialect.EXPRESSION_METADATA);
 
   // https://docs.snowflake.com/en/en/sql-reference/functions/initcap
   // py:41. A plain Python string, not a regex: `\\-` and `\\[`/`\\]` are a literal

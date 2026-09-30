@@ -136,7 +136,7 @@ export class Postgres extends Dialect {
    * `sqlglot/typing/postgres.py`. Unported, same as `Snowflake.EXPRESSION_METADATA` —
    * see the class-level note above for why this is an empty `Map` rather than omitted.
    */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = new Map(Dialect.EXPRESSION_METADATA);
 
   static INDEX_OFFSET = 1;
   static ASCII_ONLY_NORMALIZATION = true;

@@ -182,6 +182,21 @@ PYTHONHASHSEED=0 python3 spike/p7/gen_eliminate_ctes_ref.py > spike/out/eliminat
 # left out because rendering their surviving node needs a pre-existing, unrelated
 # base-Generator stub (`div_sql`/`concat_sql`/`concatws_sql`).
 PYTHONHASHSEED=0 python3 spike/p7/gen_simplify_ref.py > spike/out/simplify.json || fail=1
+# P7 oracle (AIR-2106). `optimizer/qualify_columns.py` CORE (column qualification +
+# star expansion) -- `validate_qualify_columns`/`quote_identifiers` are AIR-2107, a
+# separate follow-up issue, and are not ported or exercised here. Same "no
+# corpus/atoms.jsonl tie-in" shape as resolver.js/merge_subqueries.js/simplify.js
+# above: 41 hand-picked scenarios covering basic/ambiguous/join-disambiguated
+# qualification, USING joins (2-way/3-way/NATURAL/SEMI), alias-ref expansion (WHERE/
+# HAVING/QUALIFY/GROUP BY, BigQuery's shadow-marking), GROUP BY/ORDER BY/DISTINCT ON
+# positional references, struct-field-to-Dot conversion, Snowflake positional column
+# refs, PIVOT column qualification, BigQuery struct-star expansion, star EXCEPT/
+# REPLACE/RENAME/ILIKE, and qualify_outputs/pushdown_cte_alias_columns. Comparison is
+# `.sql()` text for most scenarios; 7 that hit pre-existing, unrelated `NotPorted`
+# base-Generator stubs (`pseudocolumn_sql`/`dot_sql`/`pivot_sql`, `TableColumn`'s
+# missing TRANSFORMS entry) compare a structural `repr()`/`.toString()` dump instead
+# -- see `gen_qualify_columns_ref.py`'s own `STRUCTURAL` set.
+PYTHONHASHSEED=0 python3 spike/p7/gen_qualify_columns_ref.py > spike/out/qualify_columns.json || fail=1
 
 run "PROBE 1a: numeric differential"      node spike/fuzz_num.mjs
 run "PROBE 1b: named go/no-go literal"    node spike/gonogo_snowflake367.mjs
@@ -268,6 +283,7 @@ run "P7: merge_subqueries.js vs CPython"                  node spike/p7/fuzz_mer
 run "P7: eliminate_subqueries.js vs CPython"  node spike/p7/fuzz_eliminate_subqueries.mjs
 run "P7: eliminate_ctes.js vs CPython"        node spike/p7/fuzz_eliminate_ctes.mjs
 run "P7: optimizer/simplify.js Simplifier vs CPython" node spike/p7/fuzz_simplify.mjs
+run "P7: optimizer/qualify_columns.js (core) vs CPython" node spike/p7/fuzz_qualify_columns.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
 # unrun test is a comment, which is the same argument this repo makes for the deny-list
