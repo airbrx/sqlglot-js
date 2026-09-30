@@ -48,7 +48,7 @@ export class Databricks extends Spark {
    * py:16 `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()`, from
    * `sqlglot/typing/databricks.py`. Unported — see `hive.js`'s class-level note.
    */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = new Map(Spark.EXPRESSION_METADATA);
 
   /**
    * py:18-26 `COERCES_TO = defaultdict(set, deepcopy(TypeAnnotator.COERCES_TO))`, then a

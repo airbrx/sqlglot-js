@@ -55,7 +55,7 @@ export class Spark extends Spark2 {
    * py:16 `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()`, from
    * `sqlglot/typing/spark.py`. Unported — see `hive.js`'s class-level note.
    */
-  static EXPRESSION_METADATA = new Map();
+  static EXPRESSION_METADATA = new Map(Spark2.EXPRESSION_METADATA);
 
   // Spark 3+ parses MM/dd/HH/hh/mm/ss strictly, unlike Spark 2 (SimpleDateFormat)
   static TIME_MAPPING = new Map([
