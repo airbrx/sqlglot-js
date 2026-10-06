@@ -228,6 +228,26 @@ PYTHONHASHSEED=0 python3 spike/p7/gen_qualify_columns_ref.py > spike/out/qualify
 # COMPLETE checkout, not the lean one -- see `gen_normalize_ref.py`'s own header for
 # why (the lean ref's `tests/fixtures/optimizer/` has no `normalize.sql` at all).
 PYTHONHASHSEED=0 python3 spike/p10/gen_normalize_ref.py > spike/out/normalize.json || fail=1
+# P10 oracle. `optimizer/eliminate_joins.py` (AIR-2113) is NOT greenfield either --
+# upstream ships a real fixture corpus, `tests/fixtures/optimizer/eliminate_joins.sql`
+# (18 pairs), reproduced here through `TestOptimizer.test_eliminate_joins`'s own
+# (bare, un-dressed) pipeline: `eliminate_joins(parse_one(sql)).sql(pretty=True)`, plus
+# 7 direct `join_condition()` scenarios covering its CNF/DNF/neither branches that the
+# fixture corpus alone never reaches. Like `normalize.js` above, its default
+# `SQLGLOT_REF` is the COMPLETE checkout -- see `gen_eliminate_joins_ref.py`'s own
+# header.
+PYTHONHASHSEED=0 python3 spike/p10/gen_eliminate_joins_ref.py > spike/out/eliminate_joins.json || fail=1
+# P10 oracle (AIR-2112). `optimizer/pushdown_predicates.py` is also NOT greenfield --
+# upstream ships a real fixture corpus, `tests/fixtures/optimizer/
+# pushdown_predicates.sql` (32 pairs), consumed by `TestOptimizer.
+# test_pushdown_predicates` with NO wrapper pipeline (unlike normalize.sql): just
+# `pushdown_predicates(parse_one(sql, read=dialect), dialect=dialect).sql(dialect=
+# dialect)`, reproduced verbatim here. 6 of the 32 pairs are gated behind `# dialect:
+# presto|trino|athena` and are skipped by the JS fuzzer with a named reason (none of
+# those three dialects are ported in this codebase, so `parseOne` already throws on
+# them independently of this module) -- see `gen_pushdown_predicates_ref.py`'s and
+# `src/optimizer/pushdown_predicates.js`'s own headers.
+PYTHONHASHSEED=0 python3 spike/p10/gen_pushdown_predicates_ref.py > spike/out/pushdown_predicates.json || fail=1
 # P7 oracle (AIR-2099). Five per-dialect type-inference overlays -- `typing/
 # {postgres,redshift,duckdb,bigquery,tsql}.py` -- exercised through the same real
 # `TypeAnnotator` every other typing/*.js overlay above uses. One combined oracle
@@ -331,6 +351,8 @@ run "P7: eliminate_ctes.js vs CPython"        node spike/p7/fuzz_eliminate_ctes.
 run "P7: optimizer/simplify.js Simplifier vs CPython" node spike/p7/fuzz_simplify.mjs
 run "P7: optimizer/qualify_columns.js (core) vs CPython" node spike/p7/fuzz_qualify_columns.mjs
 run "P10: optimizer/normalize.js vs CPython"          node spike/p10/fuzz_normalize.mjs
+run "P10: optimizer/eliminate_joins.js vs CPython"    node spike/p10/fuzz_eliminate_joins.mjs
+run "P10: optimizer/pushdown_predicates.js vs CPython" node spike/p10/fuzz_pushdown_predicates.mjs
 run "P7: typing/{postgres,redshift,duckdb,bigquery,tsql}.js vs CPython" node spike/p7/fuzz_typing_overlay_family.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
