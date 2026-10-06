@@ -157,6 +157,30 @@ export function installQueryMethods(classes) {
   for (const K of all) if (has(K, "UDTF")) {
     getter(K, "selects", function () { return this.args.alias?.columns || []; });
   }
+  // py: query.py:85-87 `Selectable.named_selects` -- the base-class fallback
+  // (`[select.output_name for select in self.selects]`) applies to EVERY
+  // `Selectable` subclass upstream, not just `Query` ones; `Query` itself never
+  // overrides it, so `Select`/`Union`/etc. were already covered by line ~141's loop
+  // above only because `query(K)` is true for them too. But `Values`/`Unnest`/
+  // `Lateral`/`Pivot` (`Selectable` via `UDTF`/`DerivedTable`, never `Query`) fell
+  // through to nothing -- this port's flattened-bases class generation does not
+  // automatically inherit a property from a non-leaf Python base class, the same
+  // "generated classes do not form a real JS inheritance chain" trap already
+  // documented for `Binary.left`/`.right` (R59) and `Pseudocolumn.outputName` (R67,
+  // just above). Found via `optimizer/qualify.js`'s end-to-end oracle (AIR-2108):
+  // `Resolver.getSourceColumns` (`optimizer/resolver.js`) reads a bare-VALUES/UNNEST
+  // source's `namedSelects` directly, which was `undefined` rather than `[]`/a real
+  // array, throwing `TypeError: Cannot read properties of undefined (reading
+  // 'length')` for any query selecting from an unaliased `(VALUES ...)` or a lateral
+  // UNNEST -- reachable only once a REAL `qualify_tables()` pass runs first and gives
+  // the source a synthetic alias, which no prior isolated oracle for
+  // `qualify_columns.js`/`resolver.js` ever did. The `!hasOwnProperty` guard matches
+  // line ~141's own style, so a class with its own more specific override (`Table`,
+  // `Select`, `SetOperation`, installed further below) is never clobbered.
+  for (const K of all) if (has(K, "Selectable") && !Object.getOwnPropertyDescriptor(K.prototype, "namedSelects")) {
+    getter(K, "namedSelects", function () { return this.selects.map(x => value(x, "outputName", "output_name")); });
+    getter(K, "named_selects", function () { return this.namedSelects; });
+  }
 
   get("With", "recursive", function () { return !!this.args.recursive; });
   get("TableAlias", "columns", function () { return this.args.columns || []; });

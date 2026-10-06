@@ -44,26 +44,26 @@ import { pyUpper } from "../_py/str.js";
 import { pyTruthy } from "../_py/truthy.js";
 import { pyReGroups, PyReError } from "../_py/re.js";
 import { kernelSql } from "../generator_kernel.js";
-import { NotPorted } from "../errors.js";
 import * as exp from "../expressions/index.js";
 import {
   binary_from_function,
   build_date_delta_with_interval,
   build_formatted_time,
 } from "../dialects/dialect.js";
-
-/**
- * py: sqlglot/optimizer/annotate_types.py — NOT PORTED.
- *
- * `_parse_unnest` imports this INSIDE its own body upstream (`parsers/bigquery.py:613`),
- * so a file-local stub mirrors upstream's own structure rather than widening
- * `dialects/dialect.js`'s export surface with a member that is not part of
- * `dialects/dialect.py` at all. Same reasoning, and same P6+ scope, as the
- * identically-named stub in `postgres.js`.
- */
-function annotate_types(_expression, _dialect) {
-  throw new NotPorted("annotate_types", "sqlglot/optimizer/annotate_types.py");
-}
+// `_parse_unnest` imports this INSIDE its own body upstream (`parsers/bigquery.py:613`)
+// specifically to avoid a module-level cycle; a static top-level import here is safe
+// because `optimizer/annotate_types.js` reaches back only as far as
+// `dialects/dialect.js` (via `Scope`/`MappingSchema`), and `dialects/dialect.js`'s own
+// import of `parsers/base.js` (the BASE class) never reaches this BigQuery-specific
+// file -- confirmed live (no `ReferenceError` at module load), unlike the real cycle
+// `normalize_identifiers.js`'s own header documents for `parser.js` itself. Found +
+// fixed via `optimizer/qualify.js`'s end-to-end oracle (AIR-2108): this stub had
+// outlived its own stated blocker (`optimizer/annotate_types.js` landed whole at R54),
+// the same "stubs outlive their stated blocker" defect class R68's `DataType.from_str`
+// finding already named -- `_parse_unnest`'s struct-array UNNEST explosion was reached
+// by nothing in this port's existing oracles until a real `qualify()` composition over
+// a schema-less BigQuery UNNEST query hit it for the first time.
+import { annotate_types } from "../optimizer/annotate_types.js";
 
 /** py: sqlglot/parsers/bigquery.py:20 */
 function _build_contains_substring(args) {
@@ -706,7 +706,7 @@ export class BigQueryParser extends Parser {
 
     const unnest_expr = seqGet(unnest.expressions, 0);
     if (unnest_expr) {
-      const annotated = annotate_types(unnest_expr, this.dialect);
+      const annotated = annotate_types(unnest_expr, { dialect: this.dialect });
 
       // Unnesting a nested array (i.e array of structs) explodes the top-level struct fields,
       // in contrast to other dialects such as DuckDB which flattens only the array by default
