@@ -248,6 +248,20 @@ PYTHONHASHSEED=0 python3 spike/p10/gen_eliminate_joins_ref.py > spike/out/elimin
 # them independently of this module) -- see `gen_pushdown_predicates_ref.py`'s and
 # `src/optimizer/pushdown_predicates.js`'s own headers.
 PYTHONHASHSEED=0 python3 spike/p10/gen_pushdown_predicates_ref.py > spike/out/pushdown_predicates.json || fail=1
+# P10 oracle (AIR-2117). `optimizer/canonicalize.py`'s remainder (canonicalize() itself,
+# add_text_to_concat, replace_date_funcs, coerce_type + its _coerce_*/_replace_* helpers,
+# remove_redundant_casts, remove_ascending_order, _replace_int_predicate -- ensure_bools
+# alone landed R43). Upstream's own test wrapper is `optimizer.optimize(sql,
+# rules=[qualify, quote_identifiers, annotate_types, canonicalize], ...)`; `qualify()`
+# (the orchestrator) and `quote_identifiers` are both real, already-documented,
+# out-of-scope gaps in this port (`qualify_columns.js`'s own header), so this oracle
+# calls qualify()'s OTHER constituent steps directly in order (normalize_identifiers ->
+# qualify_tables -> isolate_table_selects -> qualify_columns -> annotate_types ->
+# canonicalize) on BOTH sides -- a pure JS-vs-CPython differential, not a comparison
+# against the fixture file's own quoted "expected" text. See `gen_canonicalize_ref.py`'s
+# own header for the base-Generator `concat_sql`/`dateadd_sql` gaps this round's own
+# battery surfaced (pre-existing, unrelated to canonicalize.js, recorded not fixed).
+PYTHONHASHSEED=0 python3 spike/p10/gen_canonicalize_ref.py > spike/out/canonicalize.json || fail=1
 # P7 oracle (AIR-2099). Five per-dialect type-inference overlays -- `typing/
 # {postgres,redshift,duckdb,bigquery,tsql}.py` -- exercised through the same real
 # `TypeAnnotator` every other typing/*.js overlay above uses. One combined oracle
@@ -353,6 +367,7 @@ run "P7: optimizer/qualify_columns.js (core) vs CPython" node spike/p7/fuzz_qual
 run "P10: optimizer/normalize.js vs CPython"          node spike/p10/fuzz_normalize.mjs
 run "P10: optimizer/eliminate_joins.js vs CPython"    node spike/p10/fuzz_eliminate_joins.mjs
 run "P10: optimizer/pushdown_predicates.js vs CPython" node spike/p10/fuzz_pushdown_predicates.mjs
+run "P10: optimizer/canonicalize.js vs CPython"        node spike/p10/fuzz_canonicalize.mjs
 run "P7: typing/{postgres,redshift,duckdb,bigquery,tsql}.js vs CPython" node spike/p7/fuzz_typing_overlay_family.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
