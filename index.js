@@ -37,8 +37,22 @@ import * as exp from "./src/expressions/index.js";
 // (not the module's other helpers, e.g. `ensure_schema`/`normalize_name`), so this
 // mirrors that surface rather than the whole of src/schema.js.
 import { Schema, MappingSchema } from "./src/schema.js";
+// py: sqlglot/__init__.py:56 `from sqlglot.optimizer import optimize as optimize`
+// (the package's own `optimizer/__init__.py` re-exports `optimize` from
+// `optimizer.py`; `RULES` is not re-exported at upstream's package root, but is
+// re-exported here anyway — see this file's own export line below for why).
+import { optimize, RULES } from "./src/optimizer/optimizer.js";
 
 export { Dialect, ErrorLevel, ParseError, TokenError, UnsupportedError, exp, parseOne, Schema, MappingSchema };
+// `optimize` matches upstream's own root re-export name exactly (no snake_case to
+// convert — it's already a single lowercase word). `RULES` is NOT part of upstream's
+// `sqlglot/__init__.py` surface (callers reach it as `sqlglot.optimizer.optimizer.RULES`
+// there), but is re-exported here anyway: it's the only way a caller can build a custom
+// `rules` array for `optimize()`'s own `rules` option (e.g. `RULES.filter(...)`) without
+// a second import path into `src/optimizer/`, and this port has no npm-published
+// subpath-import story yet (see docs/api.md's Schema section on the same limitation for
+// `ensureSchema` et al.).
+export { optimize, RULES };
 
 /**
  * py: sqlglot/__init__.py:83 `tokenize`.
