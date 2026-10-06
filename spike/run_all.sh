@@ -339,6 +339,9 @@ PYTHONHASHSEED=0 python3 spike/p10/gen_optimizer_ref.py > spike/out/optimizer.js
 # inventory and `fuzz_optimize_e2e.mjs`'s own header for the fingerprint fallback's
 # own associativity/insertion-order canonicalization (non-observable in rendered SQL).
 PYTHONHASHSEED=0 python3 spike/p10/gen_optimize_e2e_ref.py > spike/out/optimize_e2e.json || fail=1
+# AIR-2123 oracle. `anonymize.py` is NOT greenfield either -- own new oracle,
+# reproducing every assertion in tests/test_anonymize.py.
+PYTHONHASHSEED=0 python3 spike/p10/gen_anonymize_ref.py > spike/out/anonymize.json || fail=1
 # AIR-2122: `diff.js`, greenfield, zero optimizer dependency. Reproduces every
 # `tests/test_diff.py` CALL (not its hand-written `expected` values -- see
 # `gen_diff_ref.py`'s own header), comparing a canonicalized SET of
@@ -458,6 +461,7 @@ run "P10: optimizer/qualify.js vs CPython (end-to-end)" node spike/p10/fuzz_qual
 run "P10: optimizer/canonicalize.js vs CPython"        node spike/p10/fuzz_canonicalize.mjs
 run "P10: optimizer/optimizer.js vs CPython (RULES + optimize())" node spike/p10/fuzz_optimizer.mjs
 run "AIR-2119: optimize() end-to-end (tpc-h/tpc-ds + more) vs CPython" node spike/p10/fuzz_optimize_e2e.mjs
+run "AIR-2123: anonymize.js vs CPython (tests/test_anonymize.py)" node spike/p10/fuzz_anonymize.mjs
 run "AIR-2122: diff.js vs CPython sqlglot.diff"       node spike/p10/fuzz_diff.mjs
 run "P7: typing/{postgres,redshift,duckdb,bigquery,tsql}.js vs CPython" node spike/p7/fuzz_typing_overlay_family.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this

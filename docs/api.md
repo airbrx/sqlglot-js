@@ -277,6 +277,46 @@ optimized.sql();
 predicate folded away — both require a schema to do fully; without one, `qualify` still runs
 but can't resolve `*` or an unqualified column against anything.
 
+## `anonymize(sqlOrTokens, dialect?)` / `render(sql, tokens, dialect?)`
+
+**Real today** (`src/anonymize.js`, port of `sqlglot/anonymize.py`), re-exported from the
+package root as `import { anonymize, render } from "sqlglot-js"`. Neither is part of
+upstream's own top-level re-export surface (upstream reaches them as
+`sqlglot.anonymize.anonymize`/`.render`) but both are re-exported here anyway, for the same
+npm-published-subpath reason `RULES` is (see `optimize()` above).
+
+```ts
+function anonymize(sqlOrTokens: string | Token[], dialect?: string | Dialect | null): Token[]
+function render(sql: string, tokens: Token[], dialect?: string | Dialect | null): string
+```
+
+`anonymize()` replaces sensitive tokens — identifiers, strings, numbers — with fixed-width,
+length-preserving, consistent aliases (the same source text always gets the same alias within
+one call), and blanks out comment and hint bodies. It mutates and returns its own token list: a
+SQL string is tokenized first (any un-tokenized remainder, e.g. an unterminated string literal,
+is appended as a blanked `UNKNOWN` token so the delimiter that broke tokenization stays
+visible), or an already-tokenized `Token[]` is anonymized in place. `render()` then
+reconstructs a full SQL string from the *original* `sql` and the anonymized tokens' positions,
+so every token lines up with its own source span — a token that wasn't anonymized keeps its
+original spelling (including whitespace the tokenizer would otherwise normalize away), and an
+anonymized one has its alias fitted between the quotes of its span. The output is always
+exactly as long as the input.
+
+**Not a cryptographic hash** — there is no `hash()`/`hashlib` anywhere in `anonymize.py`. The
+alias for a VAR/IDENTIFIER-shaped token is a base-26 counter rendered as letters (`a`, `b`, ...,
+`z`, `aa`, ...); a NUMBER token's alias is a same-width, same-shape digit string derived from
+the same counter (preserving a decimal point and/or exponent marker at their original
+positions). A known function name immediately followed by `(` (looked up in the dialect's own
+`FUNCTIONS`/`FUNCTION_PARSERS` tables) is left untouched, on the theory that `SUM(...)` is not
+itself sensitive.
+
+```js
+import { anonymize, render } from "sqlglot-js";
+
+const sql = "SELECT name, email FROM users WHERE id = 42 -- internal only";
+render(sql, anonymize(sql));
+// 'SELECT aaaa, aaaab FROM aaaac WHERE ad = 14 -- ........ ....'
+```
 ## `diff(source, target, options?)`
 
 **Real today** (`src/diff.js`, port of `sqlglot/diff.py`'s Chawathe et al./Change-Distiller
@@ -318,7 +358,6 @@ const edits = diff(parseOne("SELECT a + b"), parseOne("SELECT a - b"), { delta_o
 rendered to SQL text for the dice-coefficient similarity score — it does not make `diff()`
 aware of a dialect's own parsing quirks, and does not require `source`/`target` to have been
 parsed under that same dialect.
-
 ## Not yet designed / documented here
 
 - **Every dialect beyond the seven listed above** — no real `Parser`, `Dialect`, or

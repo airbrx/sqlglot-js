@@ -42,6 +42,12 @@ import { Schema, MappingSchema } from "./src/schema.js";
 // `optimizer.py`; `RULES` is not re-exported at upstream's package root, but is
 // re-exported here anyway — see this file's own export line below for why).
 import { optimize, RULES } from "./src/optimizer/optimizer.js";
+// `anonymize`/`render` are NOT re-exported from upstream's own `sqlglot/__init__.py`
+// (callers reach them as `sqlglot.anonymize.anonymize`/`.render` there) -- re-exported
+// here anyway for the same reason `RULES` is (see this file's own note on it above):
+// this port has no npm-published subpath-import story yet, so the package root is the
+// only import path a caller has.
+import { anonymize, render } from "./src/anonymize.js";
 // py: sqlglot/__init__.py:18 `from sqlglot.diff import diff as diff` (upstream's own
 // root re-export). `Insert`/`Remove`/`Move`/`Update`/`Keep` are NOT part of upstream's
 // own `sqlglot/__init__.py` surface (upstream reaches them as `sqlglot.diff.Insert`
@@ -61,6 +67,7 @@ export { Dialect, ErrorLevel, ParseError, TokenError, UnsupportedError, exp, par
 // subpath-import story yet (see docs/api.md's Schema section on the same limitation for
 // `ensureSchema` et al.).
 export { optimize, RULES };
+export { anonymize, render };
 export { diff, Insert, Remove, Move, Update, Keep };
 
 /**
