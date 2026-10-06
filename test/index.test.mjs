@@ -8,10 +8,13 @@ import assert from "node:assert/strict";
 import {
   Dialect,
   ErrorLevel,
+  MappingSchema,
   ParseError,
+  RULES,
   TokenError,
   UnsupportedError,
   exp,
+  optimize,
   parse,
   parseOne,
   tokenize,
@@ -116,6 +119,20 @@ test("Dialect.get_or_raise throws a clear error for an unregistered dialect name
   // so this test doesn't silently start asserting the wrong thing again the next
   // time a dialect ships.
   assert.throws(() => Dialect.get_or_raise("not-a-real-dialect"), /Unknown dialect/);
+});
+
+test("optimize and RULES are re-exported from the package root", () => {
+  // Regression for AIR-2120: `optimize`/`RULES` (src/optimizer/optimizer.js, R78)
+  // were real but unreachable from `index.js` until this fix, the same class of
+  // gap the dialect-registration test above already guards for a different list.
+  assert.equal(typeof optimize, "function");
+  assert.equal(RULES.length, 14);
+});
+
+test("optimize qualifies columns and folds constants against a real schema", () => {
+  const schema = new MappingSchema({ x: { a: "INT", b: "INT" } });
+  const result = optimize("SELECT * FROM x WHERE 1 = 1 AND a = 1", { schema });
+  assert.equal(result.sql(), 'SELECT "x"."a" AS "a", "x"."b" AS "b" FROM "x" AS "x" WHERE "x"."a" = 1');
 });
 
 test("error classes are re-exported and structured", () => {

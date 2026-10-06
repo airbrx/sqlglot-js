@@ -139,7 +139,7 @@ Every `Expr` (real today, `src/expressions/core.js`):
 - **`.copy()`** — deep copy (Python `deepcopy`-equivalent, including its recursion-depth
   semantics — `PORT_PLAN.md` R11 measured and documented the real ceiling).
 - **`.equals(other)`** / **`.hash()`** — structural equality and a stable 64-bit hash, used
-  internally for CTE/subquery deduplication in the (not yet ported) optimizer.
+  internally for CTE/subquery deduplication in the optimizer (see `optimize()` below).
 - **`.eq(x)`, `.neq(x)`, `.and_(x)`, `.or_(x)`**, and the rest of the comparison/boolean
   builder methods for fluently composing conditions on an existing node.
 - **`.sql(dialect?, options?)`** — **real today**, through the default dialect as soon as any
@@ -217,10 +217,64 @@ whatever you hand it as-is (matching upstream's own aliasing, no copy), so a pla
 literal with numeric-looking keys under `normalize: false` keeps whatever order the JS engine
 already gave it by the time your code runs.
 
-**Target design, not yet real:** nothing actually *consumes* a `Schema` yet — the optimizer's
-`qualify`/`annotate_types` passes this metadata is for are themselves unported (see
-`PORT_PLAN.md`'s phase table). `Schema`/`MappingSchema` today are a complete, standalone,
-verified building block waiting on that.
+A real consumer now exists: `optimize()` below passes `schema` straight through to the
+`qualify`/`annotate_types` rules it runs, which is what resolves `*` into real columns and
+infers each expression's type.
+
+## `optimize(expression, options?)`
+
+**Real today** (`src/optimizer/optimizer.js`, port of `sqlglot/optimizer/optimizer.py`),
+re-exported from the package root as `import { optimize, RULES } from "sqlglot-js"`. `RULES`
+itself is not part of upstream's own top-level re-export surface (upstream reaches it as
+`sqlglot.optimizer.optimizer.RULES`) but is re-exported here anyway since this port has no
+npm-published subpath-import story yet — see `RULES`'s own use in the custom-`rules` note
+below.
+
+```ts
+function optimize(expression: string | Expr, options?: {
+  schema?: Schema | object | Map;  // table/column metadata; ensureSchema()-wrapped if omitted
+  db?: string;
+  catalog?: string;
+  dialect?: string;
+  rules?: Function[];               // defaults to RULES, run in this exact order
+  sql?: string;
+  // ...plus any rule-specific kwarg a RULES entry declares by name (e.g. `identify`,
+  // `quote_identifiers`, `expand_stars`, `leave_tables_isolated`) — see
+  // `src/optimizer/optimizer.js`'s own `KNOWN_RULE_KWARGS` for the full recognized set.
+}): Expr
+```
+
+Rewrites `expression` into an optimized AST by running, in order: `qualify` (resolve `*` and
+unqualified names against `schema`), `pushdown_projections`, `normalize`, `unnest_subqueries`,
+`pushdown_predicates`, `optimize_joins`, `eliminate_subqueries`, `merge_subqueries`,
+`eliminate_joins`, `eliminate_ctes`, `quote_identifiers`, `annotate_types`, `canonicalize`,
+`simplify` (constant folding and boolean simplification) — upstream's exact default `RULES`
+order. Every one of these 14 rules was independently differentially tested against CPython
+before this file existed; this file's own job is the composition (see the file's header
+comment for the one real design decision involved — a hand-written kwarg adapter per rule,
+since JS has no `inspect.getfullargspec` equivalent).
+
+**What it does NOT do:** there is no executor here — `optimize()` only rewrites the AST and
+returns a new `Expr` (`.sql()` it yourself afterwards); it never runs a query, touches a
+database, or estimates cost. It also does not generically support upstream's `rules=`
+override — a caller-supplied rule that isn't one of the 14 default `RULES` entries runs with
+*no* kwargs forwarded to it (a real, documented limitation, not a silent bug — see the file's
+own header for why closing it would need either an unbounded set of hand-written adapters or
+genuine runtime reflection, which JS doesn't have).
+
+```js
+import { optimize, MappingSchema } from "sqlglot-js";
+
+const schema = new MappingSchema({ users: { id: "INT", email: "VARCHAR" } });
+const optimized = optimize("SELECT * FROM users WHERE 1 = 1 AND id = 1", { schema });
+
+optimized.sql();
+// 'SELECT "users"."id" AS "id", "users"."email" AS "email" FROM "users" AS "users" WHERE "users"."id" = 1'
+```
+
+`*` expanded to the real columns from `schema`, and the always-true `1 = 1 AND` redundant
+predicate folded away — both require a schema to do fully; without one, `qualify` still runs
+but can't resolve `*` or an unqualified column against anything.
 
 ## Not yet designed / documented here
 
