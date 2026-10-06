@@ -3,9 +3,9 @@
 // catalogue is generated, but these few non-declarative class bodies cannot be.
 // py: sqlglot/expressions/{array,constraints,datatypes,functions,json,properties,temporal}.py
 import * as C from "./classes.js";
-import { Expr, convert, maybeCopy, maybeParse, registerAstEnums, dotBuild, COLUMN_PARTS } from "./core.js";
+import { Expr, convert, maybeCopy, maybeParse, registerAstEnums, dotBuild, COLUMN_PARTS, isParserRegistered } from "./core.js";
 import { PyValueError, PyKeyError } from "../_py/errors.js";
-import { NotPorted, ErrorLevel } from "../errors.js";
+import { NotPorted, ErrorLevel, ParseError } from "../errors.js";
 import { EXPR_META } from "../_gen/expr_meta.js";
 import { literalNumberText } from "../_py/num.js";
 
@@ -173,27 +173,53 @@ export function installFocusedMethods() {
   // udt=False, **kwargs)`), consumed by the `parse_one(dtype, read=dialect, ...)` path
   // and never forwarded into `cls(...)`. See `build` above for what leaving it in
   // `...kwargs` produced.
+  //
+  // AIR-2099 (typing-overlay-family round): the `DType[upper]` bare-name shortcut and
+  // the `if (udt) return ... USERDEFINED` short-circuit that used to sit here
+  // UNCONDITIONALLY (added as a pre-R17 stopgap while `parse_one` wasn't wired yet,
+  // then left in place by R17's "only this branch changed" note) do NOT exist upstream
+  // and were both real bugs once the real parser WAS available (R17+): upstream ALWAYS
+  // parses first, via `read=dialect`, and only falls back to a `USERDEFINED` node in
+  // the `except ParseError` branch. Any type-name that happened to collide with a bare
+  // `DType` member spelling (`"VARCHAR"`, `"TIMESTAMP"`, `"DATETIME"`, ...) skipped the
+  // dialect's own tokenizer keyword remap entirely -- e.g. `from_str("VARCHAR",
+  // dialect="duckdb")` returned the literal `VARCHAR` member instead of DuckDB's own
+  // `VARCHAR -> TEXT` remap (`dialects/duckdb.js`'s `Tokenizer.KEYWORDS`) -- and the
+  // `udt` check ran BEFORE any parse attempt, so every dialect with
+  // `SUPPORTS_USER_DEFINED_TYPES = true` (the base `Dialect` default, inherited by
+  // Postgres/DuckDB/most others) turned EVERY schema column type string into
+  // `USERDEFINED` unconditionally, never actually parsing it. Found by
+  // `spike/p7/gen_typing_overlay_family_ref.py`'s own schema-driven scenarios
+  // (`BYTEA`/`VARCHAR`/`TIMESTAMP`/`DATETIME` columns), which is exactly the kind of
+  // schema-type-resolution path those scenarios exist to exercise.
+  //
+  // Both shortcuts are KEPT, but now gated on `!isParserRegistered()`: `test/
+  // expressions/*` and any other caller of this module alone, without a dialect ever
+  // having been imported (so `registerParser`, P3, never ran), has no real parser to
+  // fall back on at all -- `maybeParse`'s own P2-safe leaf fallback for `into:
+  // DataType` wraps the bare name in an `Identifier` rather than resolving a `DType`,
+  // and never throws, so the `try`/`catch` below would silently produce a malformed
+  // node instead of the old, correctly-shaped one. Once a dialect IS loaded (the
+  // normal runtime path, and what every differential oracle exercises), this whole
+  // branch is skipped and the real parse path below runs unconditionally, matching
+  // upstream exactly.
   C.DataType.fromStr = function (dtype, { dialect = null, udt = false, ...kwargs } = {}) {
     const upper = String(dtype).toUpperCase();
     if (upper === "UNKNOWN") return new C.DataType({ this: DType.UNKNOWN, ...kwargs });
-    if (DType[upper]) return new C.DataType({ this: DType[upper], expressions: null, nested: false }).setKwargs(kwargs);
-    if (udt) return new C.DataType({ this: DType.USERDEFINED, kind: dtype, ...kwargs });
-    // Upstream reaches here for anything the bare-name lookup above misses -- e.g. the
-    // parameterised `DECIMAL(38, 0)` / `DECIMAL(18, 3)` that Snowflake's and DuckDB's
-    // TYPE_CONVERTERS build -- and resolves it with
-    // `parse_one(dtype, read=dialect, into=cls, error_level=IGNORE)`.
-    //
-    // That was a `NotPorted` stub on the stated grounds that it "needs `registerParser`,
-    // which nothing calls yet". R17 wired `registerParser` (dialects/dialect.js:1455),
-    // so the dependency is satisfied and the real path can run. Only this branch
-    // changed: the UNKNOWN / bare-name / `udt` short-circuits above are untouched, so
-    // nothing that already worked can take a different route -- this can only convert a
-    // throw into a value.
-    return maybeParse(String(dtype), {
-      into: C.DataType,
-      dialect,
-      error_level: ErrorLevel.IGNORE,
-    }).setKwargs(kwargs);
+    if (!isParserRegistered()) {
+      if (DType[upper]) return new C.DataType({ this: DType[upper], expressions: null, nested: false }).setKwargs(kwargs);
+      if (udt) return new C.DataType({ this: DType.USERDEFINED, kind: dtype, ...kwargs });
+    }
+    try {
+      return maybeParse(String(dtype), {
+        into: C.DataType,
+        dialect,
+        error_level: ErrorLevel.IGNORE,
+      }).setKwargs(kwargs);
+    } catch (e) {
+      if (udt && e instanceof ParseError) return new C.DataType({ this: DType.USERDEFINED, kind: dtype, ...kwargs });
+      throw e;
+    }
   };
   C.DataType.prototype.isType = function (...dtypes) {
     let options = {};

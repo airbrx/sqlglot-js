@@ -585,6 +585,11 @@ export const DType = Object.freeze({});
 let PARSE = null;
 let GENERATE = null;
 export function registerParser(fn) { PARSE = fn; }
+// Lets a caller outside this module (e.g. `DataType.fromStr`) distinguish "the real
+// parser isn't wired up yet" from "the real parser ran and genuinely couldn't parse
+// this" -- `maybeParse` itself already branches on this, but silently, via its P2-safe
+// leaf fallback below, which never throws.
+export function isParserRegistered() { return PARSE !== null; }
 /** Install the P4 generator without making the expression layer depend on it. */
 export function registerGenerator(fn) { GENERATE = fn; }
 export function maybeCopy(x, copy = true) { return copy && x instanceof Expr ? x.copy() : x; }
