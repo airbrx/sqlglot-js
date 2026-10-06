@@ -67,6 +67,7 @@
 // @ported-ranges sqlglot/optimizer/qualify_columns.py 28-1319
 
 import * as exp from "../expressions/index.js";
+import { ExprMap } from "../_py/collections.js";
 import { Dialect } from "../dialects/dialect.js";
 import { OptimizeError, highlightSql } from "../errors.js";
 import { seqGet } from "../helper.js";
@@ -615,7 +616,14 @@ function _expand_order_by_and_distinct_on(scope, resolver) {
     }
 
     if (expr.args.group) {
-      const selects = new Map(expression.selects.map((s) => [s.this, exp.column(s.aliasOrName)]));
+      // py: `selects = {s.this: exp.column(s.alias_or_name) for s in expression.selects}`
+      // -- a plain Python dict keyed by `s.this` uses `Expression.__hash__`/`__eq__`
+      // (structural), so a DIFFERENT but structurally-identical qualified-column node
+      // from the ORDER BY still looks up the same entry. A bare JS `Map` keys by
+      // reference identity and would never hit here (`node` below is always a
+      // different object from any `s.this`), silently leaving the ORDER BY/DISTINCT
+      // ON column fully qualified instead of collapsed to its bare SELECT alias.
+      const selects = new ExprMap(expression.selects.map((s) => [s.this, exp.column(s.aliasOrName)]));
 
       for (const node of modifier_expressions) {
         let replacement;

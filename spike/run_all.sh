@@ -316,6 +316,29 @@ PYTHONHASHSEED=0 python3 spike/p10/gen_canonicalize_ref.py > spike/out/canonical
 # `src/dialects/mysql.js` does not exist in this port. See `gen_optimizer_ref.py`'s own
 # header for the full rationale.
 PYTHONHASHSEED=0 python3 spike/p10/gen_optimizer_ref.py > spike/out/optimizer.json || fail=1
+# AIR-2119 (epic AIR-2091, "8.2 End-to-end optimize() differential oracle") -- the
+# issue's own framing: "the actual 'is Track 2 done' gate, not any individual
+# module's own oracle passing in isolation." Extends R78's own optimizer.sql replay
+# to EVERY OTHER real `optimizer.optimize(...)`-based assertion in
+# tests/test_optimizer.py: real TPC-H (22 queries) + TPC-DS (99 queries) fixtures
+# (the two issue-named primary targets), `test_merge_subqueries`/`test_canonicalize`'s
+# own `rules=` overrides naming raw rule functions, and ~25 small ad-hoc assertions
+# (error-highlighting, type-annotation-through-the-full-pipeline, schema shapes,
+# an `on_qualify` callback, dialect-specific JSON dot-access). Found and fixed two
+# real bugs along the way (see this round's PORT_PLAN entry): a plain-`Map`-instead-
+# of-`ExprMap` lookup in `qualify_columns.js`'s `_expand_order_by_and_distinct_on`
+# (silently left ORDER BY fully qualified instead of collapsed to its GROUP-BY-query
+# alias), and `optimizer.js`'s `ADAPTERS` missing entries for `qualify_tables`/
+# `qualify_columns` when named directly in a `rules=` override (upstream's own
+# `test_merge_subqueries` does this) -- the fallback no-kwargs call silently ran
+# column qualification with NO schema at all. 278 rows: EXACT 206, GENERATOR_GAP 65
+# (named, pre-existing, unrelated base-Generator/parser stubs -- div_sql/rollup_sql/
+# hint_sql/dateadd_sql/dot_sql/extract_sql/concat_sql/JSONPathKey), SKIPPED 7 (mysql/
+# clickhouse unported, GROUPING SETS parser gap, colon-access JSON path parse gap),
+# MISMATCH 0, ERROR 0. See `gen_optimize_e2e_ref.py`'s own header for the full row
+# inventory and `fuzz_optimize_e2e.mjs`'s own header for the fingerprint fallback's
+# own associativity/insertion-order canonicalization (non-observable in rendered SQL).
+PYTHONHASHSEED=0 python3 spike/p10/gen_optimize_e2e_ref.py > spike/out/optimize_e2e.json || fail=1
 # P7 oracle (AIR-2099). Five per-dialect type-inference overlays -- `typing/
 # {postgres,redshift,duckdb,bigquery,tsql}.py` -- exercised through the same real
 # `TypeAnnotator` every other typing/*.js overlay above uses. One combined oracle
@@ -425,6 +448,7 @@ run "P10: optimizer/pushdown_predicates.js vs CPython" node spike/p10/fuzz_pushd
 run "P10: optimizer/qualify.js vs CPython (end-to-end)" node spike/p10/fuzz_qualify.mjs
 run "P10: optimizer/canonicalize.js vs CPython"        node spike/p10/fuzz_canonicalize.mjs
 run "P10: optimizer/optimizer.js vs CPython (RULES + optimize())" node spike/p10/fuzz_optimizer.mjs
+run "AIR-2119: optimize() end-to-end (tpc-h/tpc-ds + more) vs CPython" node spike/p10/fuzz_optimize_e2e.mjs
 run "P7: typing/{postgres,redshift,duckdb,bigquery,tsql}.js vs CPython" node spike/p7/fuzz_typing_overlay_family.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
