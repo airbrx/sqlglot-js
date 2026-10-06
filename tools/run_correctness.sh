@@ -52,6 +52,8 @@ python3 spike/p10/gen_pushdown_predicates_ref.py > spike/out/pushdown_predicates
 node spike/p10/fuzz_pushdown_predicates.mjs
 python3 spike/p10/gen_qualify_ref.py > spike/out/qualify.json
 node spike/p10/fuzz_qualify.mjs
+python3 spike/p10/gen_canonicalize_ref.py > spike/out/canonicalize.json
+node spike/p10/fuzz_canonicalize.mjs
 python3 tools/bridge/proof.py
 python3 tools/corpus_control.py --report spike/out/python-control.jsonl
 node spike/p5/fuzz_dialect_parse.mjs --report spike/out/production-parse.jsonl
