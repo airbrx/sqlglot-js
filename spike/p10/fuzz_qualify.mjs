@@ -51,11 +51,13 @@ const gapSamples = [];
 // Pre-existing, unrelated gaps this fixture replay reaches but `qualify.js` itself
 // cannot fix: base-Generator `NotPorted` stubs for rendering (`dot_sql`/`pivot_sql`/
 // `parameter_sql`/`tablesample_sql`/`pseudocolumn_sql`/`hint_sql`/`copy_sql`/
-// `addconstraint_sql`/`userdefinedfunction_sql`), two rare unsupported expression
-// types (`TableColumn`, `JSONPathKey`) the generator/parser layer doesn't handle yet,
-// and one narrow `_qualify_columns`/scope-building gap for a multi-column `AS (a, b)`
-// alias over a table-generating function (`STACK`) that this file's own composition
-// does not touch. Same "named, counted exclusion" shape `gen_qualify_columns_ref.py`'s
+// `addconstraint_sql`/`userdefinedfunction_sql`) and two rare unsupported expression
+// types (`TableColumn`, `JSONPathKey`) the generator/parser layer doesn't handle yet.
+// (AIR-2193 fixed the third, previously-listed gap here -- a multi-column `AS (a, b)`
+// alias over a table-generating function (`STACK`) -- by fixing `Select.namedSelects`'
+// `Aliases` branch, which read a nonexistent `args.aliases` instead of `expressions`,
+// plus porting the base-Generator `aliases_sql` stub it then exposed; that row is now
+// EXACT, not a gap.) Same "named, counted exclusion" shape `gen_qualify_columns_ref.py`'s
 // own `STRUCTURAL` set and `gen_pushdown_predicates_ref.py`'s dialect skip already
 // established -- classified by the underlying stub/type name, not by row id, so a
 // NEW unrelated gap of the same shape is still caught by name rather than silently
@@ -63,7 +65,6 @@ const gapSamples = [];
 const KNOWN_GAPS = [
   /^NotPorted: (dot_sql|pivot_sql|parameter_sql|tablesample_sql|pseudocolumn_sql|hint_sql|copy_sql|addconstraint_sql|userdefinedfunction_sql) is not ported yet/,
   /^PyValueError: Unsupported expression type (TableColumn|JSONPathKey)$/,
-  /^OptimizeError: Column 'first' could not be resolved\. Line: 1, Col: 12$/,
 ];
 
 function isKnownGap(got) {
