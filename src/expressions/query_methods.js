@@ -155,7 +155,7 @@ export function installQueryMethods(classes) {
   // `Unnest`/`Lateral`/bare `DerivedTable`) read `undefined` here instead of inheriting
   // it -- e.g. `resolver.js`'s `getSourceColumns` crashed on `(VALUES(1, 2)) AS q(x, y)`
   // (`sourceExpr.namedSelects` undefined, `undefined.length` downstream). Found via
-  // `pushdown_projections.js`'s own new fixture-corpus oracle (AIR-2111, R71), fixed
+  // `pushdown_projections.js`'s own new fixture-corpus oracle (AIR-2111, R74), fixed
   // here since it's a pre-existing base-expressions-layer bug, not specific to that file.
   for (const K of all) if (has(K, "Selectable")) {
     if (!Object.getOwnPropertyDescriptor(K.prototype, "namedSelects")) getter(K, "namedSelects", function () { return this.selects.map(x => value(x, "outputName", "output_name")); });
