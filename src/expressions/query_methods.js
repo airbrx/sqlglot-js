@@ -138,8 +138,6 @@ export function installQueryMethods(classes) {
   // Query / Selectable traits (query.py:80-435).
   for (const K of all) if (query(K)) {
     getter(K, "ctes", function () { return this.args.with_?.expressions || []; });
-    if (!Object.getOwnPropertyDescriptor(K.prototype, "namedSelects")) getter(K, "namedSelects", function () { return this.selects.map(x => value(x, "outputName", "output_name")); });
-    getter(K, "named_selects", function () { return this.namedSelects; });
     method(K, "subquery", function (alias = null, o = {}) { const x = maybeCopy(this, o.copy ?? true); return new (C("Subquery"))({ this: x, alias: alias instanceof Expr ? alias : (alias ? new (C("TableAlias"))({ this: toIdentifier(alias) }) : null) }); });
     method(K, "limit", function (x, o = {}) { return applyBuilder(x, this, "limit", { prefix: "LIMIT", ...o }, C("Limit"), "expression"); });
     method(K, "offset", function (x, o = {}) { return applyBuilder(x, this, "offset", { prefix: "OFFSET", ...o }, C("Offset"), "expression"); });
@@ -150,6 +148,18 @@ export function installQueryMethods(classes) {
     method(K, "where", function (...xs) { const o=options(xs); return applyConjunctionBuilder(xs.map(x => x instanceof C("Where") ? x.this : x),this,"where",o,C("Where")); });
     method(K, "with_", function (alias, as_, o={}) { return cte(this,alias,as_,o); });
     for (const [mn, cn] of [["union","Union"],["intersect","Intersect"],["except_","Except"]]) method(K,mn,function(...xs){const o=options(xs); return applySetOperation([this,...xs],o,C(cn));});
+  }
+  // py: query.py:80-87 `Selectable.named_selects` -- defined once on the `Selectable`
+  // trait itself (`[select.output_name for select in self.selects]`), not on `Query`.
+  // Was gated on `query(K)` above, so every non-Query `Selectable` (`UDTF`/`Values`/
+  // `Unnest`/`Lateral`/bare `DerivedTable`) read `undefined` here instead of inheriting
+  // it -- e.g. `resolver.js`'s `getSourceColumns` crashed on `(VALUES(1, 2)) AS q(x, y)`
+  // (`sourceExpr.namedSelects` undefined, `undefined.length` downstream). Found via
+  // `pushdown_projections.js`'s own new fixture-corpus oracle (AIR-2111, R74), fixed
+  // here since it's a pre-existing base-expressions-layer bug, not specific to that file.
+  for (const K of all) if (has(K, "Selectable")) {
+    if (!Object.getOwnPropertyDescriptor(K.prototype, "namedSelects")) getter(K, "namedSelects", function () { return this.selects.map(x => value(x, "outputName", "output_name")); });
+    getter(K, "named_selects", function () { return this.namedSelects; });
   }
   for (const K of all) if (has(K, "DerivedTable")) {
     getter(K, "selects", function () { return query(this.this?.constructor) ? this.this.selects : []; });
