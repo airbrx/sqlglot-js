@@ -1,23 +1,27 @@
-// Differential: `src/optimizer/qualify_columns.js` (core -- column qualification +
-// star expansion, AIR-2106) vs CPython's `sqlglot.optimizer.qualify_columns`, at the
-// pin. `validate_qualify_columns`/`quote_identifiers` are NOT ported here (AIR-2107)
-// and are not exercised by this harness.
+// Differential: `src/optimizer/qualify_columns.js` (`qualify_columns`/AIR-2106 CORE,
+// plus `validate_qualify_columns`/`quote_identifiers`/AIR-2107 remainder) vs
+// CPython's `sqlglot.optimizer.qualify_columns`, at the pin.
 //
 //   PYTHONHASHSEED=0 python3 spike/p7/gen_qualify_columns_ref.py > spike/out/qualify_columns.json
 //   node spike/p7/fuzz_qualify_columns.mjs
 //
-// See `gen_qualify_columns_ref.py`'s own header for what each scenario targets.
-// Comparison is plain `.sql()` string equality for most scenarios (or exception class
-// + message for the error-path scenario) -- simpler than an AST-dump diff and just as
-// strict, since this port's own parser+generator are independently verified elsewhere
-// (PORT_PLAN.md P1-P5) and any AST-shape divergence here would show up as different
-// SQL text. 7 scenarios that hit unrelated pre-existing `NotPorted` base-Generator
-// stubs compare a structural `repr()`/`.toString()` dump instead -- see
+// See `gen_qualify_columns_ref.py`'s own header for what each scenario targets. Every
+// record carries a `fn` tag dispatching it to the right export below. Comparison is
+// plain `.sql()` string equality for most scenarios (or exception class + message for
+// the error-path scenarios) -- simpler than an AST-dump diff and just as strict, since
+// this port's own parser+generator are independently verified elsewhere (PORT_PLAN.md
+// P1-P5) and any AST-shape divergence here would show up as different SQL text. 7
+// `qualify_columns` scenarios that hit unrelated pre-existing `NotPorted`
+// base-Generator stubs compare a structural `repr()`/`.toString()` dump instead -- see
 // `gen_qualify_columns_ref.py`'s own `STRUCTURAL` set for which and why.
 
 import { readFileSync } from "node:fs";
 import { parseOne } from "../../src/dialects/dialect.js";
-import { qualify_columns } from "../../src/optimizer/qualify_columns.js";
+import {
+  qualify_columns,
+  validate_qualify_columns,
+  quote_identifiers,
+} from "../../src/optimizer/qualify_columns.js";
 // Side-effect imports: register the real base-Generator dispatch (needed by `.sql()`)
 // and every dialect a scenario names.
 import "../../src/generator.js";
@@ -61,22 +65,49 @@ function normalizeRepr(repr) {
   return repr.replace(/,\n\s*_comments=\[\]/g, "");
 }
 
-function runOne(name, sql, schema, kwargs, dialect) {
+function runQualifyColumns(name, sql, schema, kwargs, dialect) {
+  const ast = parseOne(sql, { dialect });
+  const out = qualify_columns(ast, schema, {
+    allowPartialQualification: kwargs.allow_partial_qualification ?? false,
+    dialect,
+  });
+  if (STRUCTURAL.has(name)) return { repr: normalizeRepr(out.toString()) };
+  return { ok: out.sql(dialect) };
+}
+
+function runValidateQualifyColumns(sql, pre_qualify_schema, dialect, sql_arg) {
+  let ast = parseOne(sql, { dialect });
+  if (pre_qualify_schema !== null) ast = qualify_columns(ast, pre_qualify_schema, { dialect });
+  const out = validate_qualify_columns(ast, sql_arg);
+  return { ok: out.sql(dialect) };
+}
+
+function runQuoteIdentifiers(sql, dialect, identify) {
+  const ast = parseOne(sql, { dialect });
+  const out = quote_identifiers(ast, dialect, identify);
+  return { ok: out.sql(dialect) };
+}
+
+function runRecord(record) {
   try {
-    const ast = parseOne(sql, { dialect });
-    const out = qualify_columns(ast, schema, {
-      allowPartialQualification: kwargs.allow_partial_qualification ?? false,
-      dialect,
-    });
-    if (STRUCTURAL.has(name)) return { repr: normalizeRepr(out.toString()) };
-    return { ok: out.sql(dialect) };
+    switch (record.fn) {
+      case "qualify_columns":
+        return runQualifyColumns(record.name, record.sql, record.schema, record.kwargs, record.dialect);
+      case "validate_qualify_columns":
+        return runValidateQualifyColumns(record.sql, record.pre_qualify_schema, record.dialect, record.sql_arg);
+      case "quote_identifiers":
+        return runQuoteIdentifiers(record.sql, record.dialect, record.identify);
+      default:
+        throw new Error(`unknown fn: ${record.fn}`);
+    }
   } catch (e) {
     return { error: e.constructor.name, message: e.message };
   }
 }
 
-for (const { name, sql, schema, kwargs, dialect, result: expected } of ref.scenarios) {
-  const got = runOne(name, sql, schema, kwargs, dialect);
+for (const record of ref.scenarios) {
+  const { name, sql, result: expected } = record;
+  const got = runRecord(record);
   let ok;
   if ("ok" in expected) {
     ok = "ok" in got && got.ok === expected.ok;
