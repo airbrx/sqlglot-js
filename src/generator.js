@@ -87,6 +87,39 @@ import { registerGenerator } from "./expressions/core.js";
 import { formatTime } from "./time.js";
 import { pyTruthy } from "./_py/truthy.js";
 import { ensure_bools, move_ctes_to_top_level } from "./transforms.js";
+import { getAnnotateTypesRef, getDialectHelpersRef } from "./tokens.js";
+
+/**
+ * `tokens.js`'s `getDialectHelpersRef()` relay (see its own header) carries
+ * `dialects/dialect.py`'s module-level `unit_to_str`/`map_date_part`/
+ * `concat_to_dpipe_sql` — this file cannot import `dialects/dialect.js` directly
+ * (R32: that module already imports `Generator` FROM here). Used by `dateadd_sql`
+ * (unconditionally), and by `extract_sql`/`concat_sql` only on the branch that needs
+ * them, so a standalone `generator.js` import never has to populate this relay for
+ * any call these two make with their default (false) class settings.
+ * @returns {{ unit_to_str: Function, map_date_part: Function, concat_to_dpipe_sql: Function }}
+ */
+function _getDialectHelpers() {
+  const ref = getDialectHelpersRef();
+  if (!ref) {
+    throw new Error("generator.js: dialect helpers not loaded yet — import dialects/dialect.js first.");
+  }
+  return ref;
+}
+
+/**
+ * Same relay shape, for `optimizer/annotate_types.js`'s `annotate_types` (R76) —
+ * needed by `convert_concat_args`'s `_wrap_with_coalesce` (py:3697) only on the
+ * branch reached when an un-typed arg needs annotating.
+ * @returns {{ annotate_types: Function, TypeAnnotator: Function }}
+ */
+function _getAnnotateTypesModule() {
+  const ref = getAnnotateTypesRef();
+  if (!ref) {
+    throw new Error("generator.js: annotate_types not loaded yet — import optimizer/annotate_types.js first.");
+  }
+  return ref;
+}
 
 /**
  * py: sqlglot/generator.py:65 `AFTER_HAVING_MODIFIER_TRANSFORMS`
@@ -547,7 +580,7 @@ export class Generator {
     // py:235  [exp.PathColumnConstraint, /* TODO lambda */],
     // py:236  [exp.PartitionedByBucket, /* TODO lambda */],
     // py:237  [exp.PartitionByTruncate, /* TODO lambda */],
-    // py:238  [exp.PivotAny, /* TODO lambda */],
+    [exp.PivotAny, (self, e) => `ANY${self.sql(e, "this")}`], // py:238
     // py:239  [exp.PositionalColumn, /* TODO lambda */],
     // py:240  [exp.ProjectionPolicyColumnConstraint, /* TODO lambda */],
     // py:243  [exp.InvisibleColumnConstraint, /* TODO lambda */],
@@ -2336,7 +2369,13 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1946
-  hint_sql(expression) { throw new NotPorted("hint_sql", "sqlglot/generator.py:1946"); }
+  hint_sql(expression) {
+    if (!this.constructor.QUERY_HINTS) {
+      this.unsupported("Hints are not supported");
+      return "";
+    }
+    return ` /*+ ${pyStrip(this.expressions(expression, null, { sep: this.constructor.QUERY_HINT_SEP }))} */`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1953
@@ -2805,11 +2844,133 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2525
-  _pivot_in_value_aliases(expression) { throw new NotPorted("_pivot_in_value_aliases", "sqlglot/generator.py:2525"); }
+  _pivot_in_value_aliases(expression) {
+    const columns = expression.args.columns;
+    if (!columns || !columns.length || expression.fields.length !== 1) return null;
+
+    const args = expression.args;
+    const parser_cls = this.dialect.parser_class;
+
+    const tgt_identify_pivot_strings = parser_cls.IDENTIFY_PIVOT_STRINGS;
+    const tgt_prefixed_pivot_columns = parser_cls.PREFIXED_PIVOT_COLUMNS;
+    const tgt_pivot_column_naming = parser_cls.PIVOT_COLUMN_NAMING;
+
+    const src_identify_pivot_strings = args.identify_pivot_strings ?? tgt_identify_pivot_strings;
+    const src_prefixed_pivot_columns = args.prefixed_pivot_columns ?? tgt_prefixed_pivot_columns;
+    const src_pivot_column_naming = args.pivot_column_naming ?? tgt_pivot_column_naming;
+
+    if (
+      src_identify_pivot_strings === tgt_identify_pivot_strings
+      && src_prefixed_pivot_columns === tgt_prefixed_pivot_columns
+      && src_pivot_column_naming === tgt_pivot_column_naming
+    ) {
+      return null;
+    }
+
+    const in_exprs = expression.fields[0].expressions;
+    const step = Math.floor(columns.length / in_exprs.length);
+
+    // Derive the per-value suffix from the first stored column vs the first IN-list value.
+    // This correctly handles dialects (e.g. Spark single-agg) that ignore agg aliases.
+    const first_base = src_identify_pivot_strings ? in_exprs[0].sql() : in_exprs[0].aliasOrName;
+    const first_stored = columns[0].name;
+
+    // exit if only suffix matches, not prefix. (e.g. BigQuery, which cannot be fixed)
+    if (!first_stored.startsWith(first_base)) return null;
+
+    const suffix = first_stored.slice(first_base.length);
+
+    // Whether the target dialect would append an agg-name suffix for this pivot.
+    // Spark single-agg uniquely drops the agg alias entirely.
+    const target_has_suffix = (expression.expressions.length > 1 || tgt_pivot_column_naming !== "agg_name_if_multiple")
+      && expression.expressions.some((a) => a.alias);
+    const source_has_suffix = suffix !== "";
+
+    const new_exprs = [];
+    let modified = false;
+    for (let val_idx = 0; val_idx < in_exprs.length; val_idx++) {
+      const e = in_exprs[val_idx];
+      if (e instanceof exp.PivotAlias) {
+        new_exprs.push(e);
+        continue;
+      }
+
+      const i = val_idx * step;
+      const stored_full = columns[i].name;
+      const stored_value = suffix ? stored_full.slice(0, stored_full.length - suffix.length) : stored_full;
+      const target_value = tgt_identify_pivot_strings ? e.sql() : e.aliasOrName;
+
+      // Source had a suffix, but target won't apply one
+      if (source_has_suffix && !target_has_suffix) {
+        new_exprs.push(new exp.PivotAlias({ this: e, alias: exp.toIdentifier(stored_full, true) }));
+        modified = true;
+        // Value-part mismatch (e.g. Snowflake's literal-style values vs others).
+      } else if (stored_value !== target_value) {
+        new_exprs.push(new exp.PivotAlias({ this: e, alias: exp.toIdentifier(stored_value, true) }));
+        modified = true;
+      } else {
+        new_exprs.push(e);
+      }
+    }
+
+    return modified ? new_exprs : null;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2600
-  pivot_sql(expression) { throw new NotPorted("pivot_sql", "sqlglot/generator.py:2600"); }
+  pivot_sql(expression) {
+    const expressions = this.expressions(expression, null, { flat: true });
+    const direction = expression.unpivot ? "UNPIVOT" : "PIVOT";
+
+    const group = this.sql(expression, "group");
+
+    if (expression.this) {
+      const this_ = this.sql(expression, "this");
+      let sql;
+      if (!expressions) {
+        sql = `UNPIVOT ${this_}`;
+      } else {
+        const on = `${this.seg("ON")} ${expressions}`;
+        let into = this.sql(expression, "into");
+        into = into ? `${this.seg("INTO")} ${into}` : "";
+        let using = this.expressions(expression, "using", { flat: true });
+        using = using ? `${this.seg("USING")} ${using}` : "";
+        sql = `${direction} ${this_}${on}${into}${using}${group}`;
+      }
+      return this.prepend_ctes(expression, sql);
+    }
+
+    if (!expression.unpivot) {
+      // Wrap IN-list values with explicit aliases where the target dialect would differ
+      const new_field_exprs = this._pivot_in_value_aliases(expression);
+      if (new_field_exprs !== null) {
+        expression.fields[0].set("expressions", new_field_exprs);
+      }
+    }
+
+    let alias = this.sql(expression, "alias");
+    if (alias) {
+      alias = this.constructor.PIVOT_ALIAS_WITH_AS ? ` AS ${alias}` : ` ${alias}`;
+    }
+
+    const fields = this.expressions(expression, "fields", {
+      sep: " ",
+      dynamic: true,
+      new_line: true,
+      skip_first: true,
+      skip_last: true,
+    });
+
+    const include_nulls = expression.args.include_nulls;
+    const nulls = include_nulls !== null && include_nulls !== undefined
+      ? (include_nulls ? " INCLUDE NULLS " : " EXCLUDE NULLS ")
+      : "";
+
+    let default_on_null = this.sql(expression, "default_on_null");
+    default_on_null = default_on_null ? ` DEFAULT ON NULL (${default_on_null})` : "";
+    const sql = `${this.seg(direction)}${nulls}(${expressions} FOR ${fields}${default_on_null}${group})${alias}`;
+    return this.prepend_ctes(expression, sql);
+  }
 
   /**
    * py: sqlglot/generator.py:2650
@@ -2976,7 +3137,10 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2769
-  rollup_sql(expression) { throw new NotPorted("rollup_sql", "sqlglot/generator.py:2769"); }
+  rollup_sql(expression) {
+    const expressions = this.expressions(expression, null, { indent: false });
+    return expressions ? `ROLLUP ${this.wrap(expressions)}` : "WITH ROLLUP";
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2773
@@ -4034,7 +4198,22 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3649
-  extract_sql(expression) { throw new NotPorted("extract_sql", "sqlglot/generator.py:3649"); }
+  extract_sql(expression) {
+    const this_ = this.constructor.NORMALIZE_EXTRACT_DATE_PARTS
+      ? _getDialectHelpers().map_date_part(expression.this, this.dialect)
+      : expression.this;
+    let this_sql;
+    if (this.constructor.EXTRACT_ALLOWS_QUOTES) {
+      this_sql = this.sql(this_);
+    } else if (this_ instanceof exp.WeekStart) {
+      this_sql = this.weekstart_name(this_);
+    } else {
+      this_sql = this_.name;
+    }
+    const expression_sql = this.sql(expression, "expression");
+
+    return `EXTRACT(${this_sql} FROM ${expression_sql})`;
+  }
 
   /**
    * py: sqlglot/generator.py:3667
@@ -4055,11 +4234,56 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3679
-  convert_concat_args(expression) { throw new NotPorted("convert_concat_args", "sqlglot/generator.py:3679"); }
+  convert_concat_args(expression) {
+    let args = expression.expressions;
+    if (expression instanceof exp.ConcatWs) {
+      args = args.slice(1); // Skip the delimiter
+    }
+
+    if (this.dialect.STRICT_STRING_CONCAT && expression.args.safe) {
+      args = args.map((e) => exp.cast(e, exp.DType.TEXT));
+    }
+
+    const concat_coalesce = expression instanceof exp.ConcatWs
+      ? this.dialect.CONCAT_WS_COALESCE
+      : this.dialect.CONCAT_COALESCE;
+
+    if (!concat_coalesce && expression.args.coalesce) {
+      const _wrap_with_coalesce = (e) => {
+        if (!e.type) {
+          e = _getAnnotateTypesModule().annotate_types(e, { dialect: this.dialect });
+        }
+
+        if (e.isString || e.isType(exp.DType.ARRAY)) return e;
+
+        return exp.func("coalesce", e, exp.Literal.string(""));
+      };
+
+      args = args.map(_wrap_with_coalesce);
+    }
+
+    return args;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3710
-  concat_sql(expression) { throw new NotPorted("concat_sql", "sqlglot/generator.py:3710"); }
+  concat_sql(expression) {
+    if (this.dialect.CONCAT_COALESCE && !expression.args.coalesce) {
+      // Dialect's CONCAT function coalesces NULLs to empty strings, but the expression does not.
+      // Transpile to double pipe operators, which typically returns NULL if any args are NULL
+      // instead of coalescing them to empty string.
+      return _getDialectHelpers().concat_to_dpipe_sql(this, expression);
+    }
+
+    const expressions = this.convert_concat_args(expression);
+
+    // Some dialects don't allow a single-argument CONCAT call
+    if (!this.constructor.SUPPORTS_SINGLE_ARG_CONCAT && expressions.length === 1) {
+      return this.sql(expressions[0]);
+    }
+
+    return this.func("CONCAT", ...expressions);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3727
@@ -4321,7 +4545,25 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4027
-  pivotalias_sql(expression) { throw new NotPorted("pivotalias_sql", "sqlglot/generator.py:4027"); }
+  pivotalias_sql(expression) {
+    const alias = expression.args.alias;
+
+    const parent = expression.parent;
+    const pivot = parent && parent.parent;
+
+    if (pivot instanceof exp.Pivot && pivot.unpivot) {
+      const identifier_alias = alias instanceof exp.Identifier;
+      const literal_alias = alias instanceof exp.Literal;
+
+      if (identifier_alias && !this.constructor.UNPIVOT_ALIASES_ARE_IDENTIFIERS) {
+        alias.replace(exp.Literal.string(alias.outputName));
+      } else if (!identifier_alias && literal_alias && this.constructor.UNPIVOT_ALIASES_ARE_IDENTIFIERS) {
+        alias.replace(exp.toIdentifier(alias.outputName));
+      }
+    }
+
+    return this.alias_sql(expression);
+  }
 
   /**
    * py: sqlglot/generator.py:4044
@@ -4485,7 +4727,10 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4160
-  currentdate_sql(expression) { throw new NotPorted("currentdate_sql", "sqlglot/generator.py:4160"); }
+  currentdate_sql(expression) {
+    const zone = this.sql(expression, "this");
+    return zone ? `CURRENT_DATE(${zone})` : "CURRENT_DATE";
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4164
@@ -4782,7 +5027,25 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4452
-  div_sql(expression) { throw new NotPorted("div_sql", "sqlglot/generator.py:4452"); }
+  div_sql(expression) {
+    const l = expression.left, r = expression.right;
+
+    if (!this.dialect.SAFE_DIVISION && expression.args.safe) {
+      r.replace(new exp.Nullif({ this: r.copy(), expression: exp.Literal.number(0) }));
+    }
+
+    if (this.dialect.TYPED_DIVISION && !expression.args.typed) {
+      if (!l.isType(...exp.DataType.REAL_TYPES) && !r.isType(...exp.DataType.REAL_TYPES)) {
+        l.replace(exp.cast(l.copy(), exp.DType.DOUBLE));
+      }
+    } else if (!this.dialect.TYPED_DIVISION && expression.args.typed) {
+      if (l.isType(...exp.DataType.INTEGER_TYPES) && r.isType(...exp.DataType.INTEGER_TYPES)) {
+        return this.sql(exp.cast(l.div(r), exp.DType.BIGINT));
+      }
+    }
+
+    return this.binary(expression, "/");
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4473
@@ -4802,7 +5065,9 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4487
-  dot_sql(expression) { throw new NotPorted("dot_sql", "sqlglot/generator.py:4487"); }
+  dot_sql(expression) {
+    return `${this.sql(expression, "this")}.${this.sql(expression, "expression")}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4490
@@ -5256,7 +5521,11 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4817
-  joinhint_sql(expression) { throw new NotPorted("joinhint_sql", "sqlglot/generator.py:4817"); }
+  joinhint_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const expressions = this.expressions(expression, null, { flat: true });
+    return `${this_}(${expressions})`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4822
@@ -5393,7 +5662,21 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4960
-  querytransform_sql(expression) { throw new NotPorted("querytransform_sql", "sqlglot/generator.py:4960"); }
+  querytransform_sql(expression) {
+    const transform = this.func("TRANSFORM", ...expression.expressions);
+    let row_format_before = this.sql(expression, "row_format_before");
+    row_format_before = row_format_before ? ` ${row_format_before}` : "";
+    let record_writer = this.sql(expression, "record_writer");
+    record_writer = record_writer ? ` RECORDWRITER ${record_writer}` : "";
+    const using = ` USING ${this.sql(expression, "command_script")}`;
+    let schema = this.sql(expression, "schema");
+    schema = schema ? ` AS ${schema}` : "";
+    let row_format_after = this.sql(expression, "row_format_after");
+    row_format_after = row_format_after ? ` ${row_format_after}` : "";
+    let record_reader = this.sql(expression, "record_reader");
+    record_reader = record_reader ? ` RECORDREADER ${record_reader}` : "";
+    return `${transform}${row_format_before}${record_writer}${using}${schema}${row_format_after}${record_reader}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4975
@@ -5517,7 +5800,9 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5249
-  dateadd_sql(expression) { throw new NotPorted("dateadd_sql", "sqlglot/generator.py:5249"); }
+  dateadd_sql(expression) {
+    return this.func("DATE_ADD", expression.this, expression.expression, _getDialectHelpers().unit_to_str(expression));
+  }
 
   /** @returns {string} */
   // py: sqlglot/generator.py:5259. See `having_sql`'s comment for why this landed now.

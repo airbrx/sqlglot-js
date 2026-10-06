@@ -126,23 +126,16 @@ function fingerprint(ast) {
 // `ast.sql()`, i.e. AFTER a real, comparable AST already exists. Counted separately
 // as GENERATOR_GAP (fingerprint-verified against the real CPython AST, never just
 // assumed) rather than silently folded into EXACT or miscounted as MISMATCH/ERROR.
-// `fuzz_optimizer.mjs` (R78)'s own seven `NotPorted` regexes are included unchanged
-// (the SAME base-Generator stubs, now reachable from a much larger query surface),
-// plus four more this round's own full tpc-h/tpc-ds/merge_subqueries/canonicalize
-// replay surfaced for the first time. `blockedBy` labels each for this round's own
-// ranked-blocker reporting.
+// `blockedBy` labels each for this round's own ranked-blocker reporting.
+//
+// AIR-2194 (PORT_PLAN.md) ported `div_sql`/`rollup_sql`/`hint_sql`/`dateadd_sql`/
+// `dot_sql`/`extract_sql`/`concat_sql`/`pivot_sql`/`currentdate_sql`/
+// `querytransform_sql` (plus `joinhint_sql`/`pivotalias_sql`, two render-side
+// siblings those ten's own un-stubbing surfaced next) — removed from this list, all
+// real now. `kwarg_sql` is the one base-Generator gap AIR-2194 explicitly left
+// un-fixed (out of its own named scope); still real, still named here.
 const KNOWN_GENERATOR_GAPS = [
-  { re: /^NotPorted: pivot_sql is not ported yet/, blockedBy: "pivot_sql" },
-  { re: /^NotPorted: hint_sql is not ported yet/, blockedBy: "hint_sql" },
-  { re: /^NotPorted: dot_sql is not ported yet/, blockedBy: "dot_sql" },
-  { re: /^NotPorted: currentdate_sql is not ported yet/, blockedBy: "currentdate_sql" },
-  { re: /^NotPorted: div_sql is not ported yet/, blockedBy: "div_sql" },
-  { re: /^NotPorted: querytransform_sql is not ported yet/, blockedBy: "querytransform_sql" },
   { re: /^NotPorted: kwarg_sql is not ported yet/, blockedBy: "kwarg_sql" },
-  { re: /^NotPorted: rollup_sql is not ported yet/, blockedBy: "rollup_sql" },
-  { re: /^NotPorted: dateadd_sql is not ported yet/, blockedBy: "dateadd_sql" },
-  { re: /^NotPorted: concat_sql is not ported yet/, blockedBy: "concat_sql" },
-  { re: /^NotPorted: extract_sql is not ported yet/, blockedBy: "extract_sql" },
   { re: /^PyValueError: Unsupported expression type JSONPathKey/, blockedBy: "JSONPathKey generator (colon-access)" },
 ];
 

@@ -23,10 +23,18 @@ for (const dialect of ['snowflake', 'databricks']) {
     }
     assert.notEqual(metadata(qualify(1), {dialect}).standardizedSql, metadata(qualify(2), {dialect}).standardizedSql);
   });
+  // AIR-2194 (PORT_PLAN.md) ported base `generator.js`'s `currentdate_sql`/
+  // `rollup_sql`/`pivot_sql`, so the three original examples here (CURRENT_DATE,
+  // ROLLUP, PIVOT) now generate successfully instead of failing over to the raw-SQL
+  // fallback this test exercises. Replaced with three constructs that still hit a
+  // real, named, currently-unported base-`Generator` stub on both dialects:
+  // colon-access (`JSONPathKey`, out of this port's jsonpath.js scope),
+  // `kwarg_sql` (named-argument `=>`, R78/R80's own un-fixed gap), and `connect_sql`
+  // (Oracle-style CONNECT BY, unrelated to either).
   for (const [a,b] of [
-    ['select CURRENT_DATE from T /* request=1 */', 'SELECT current_date FROM t -- request=2'],
-    ['SELECT A FROM T GROUP BY ROLLUP(A)', 'select a from t group by rollup ( a ) /* __AIRBRX_CACHE__ */'],
-    ["SELECT * FROM t PIVOT (SUM(v) FOR k IN ('a','b'))", "select * from T pivot (sum(V) for K in ('a', 'b')) -- request"],
+    ['select a:b from T /* request=1 */', 'SELECT a:b FROM t -- request=2'],
+    ['select func(x => 1) from T /* request=1 */', 'SELECT func(x => 1) FROM t /* __AIRBRX_CACHE__ */'],
+    ['select a from T connect by PRIOR id = parent /* request=1 */', 'SELECT a FROM t CONNECT BY PRIOR id = parent -- request=2'],
   ]) test(`AIR-2163: fallback convergence (${dialect}): ${a}`, () => {
     const first = metadata(a, {dialect}), second = metadata(b, {dialect});
     assert.equal(first.statementType, 'SELECT');
