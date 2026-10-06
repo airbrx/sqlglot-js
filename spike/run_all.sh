@@ -228,6 +228,14 @@ PYTHONHASHSEED=0 python3 spike/p7/gen_qualify_columns_ref.py > spike/out/qualify
 # COMPLETE checkout, not the lean one -- see `gen_normalize_ref.py`'s own header for
 # why (the lean ref's `tests/fixtures/optimizer/` has no `normalize.sql` at all).
 PYTHONHASHSEED=0 python3 spike/p10/gen_normalize_ref.py > spike/out/normalize.json || fail=1
+# P10 oracle (AIR-2111, epic AIR-2088). `optimizer/pushdown_projections.py` is also NOT
+# greenfield -- upstream ships a real fixture corpus, `tests/fixtures/optimizer/
+# pushdown_projections.sql` (74 pairs), reproduced through the exact
+# `TestOptimizer.test_pushdown_projection` pipeline (`qualify_tables()` with no kwargs
+# -> `qualify_columns(infer_schema=True, **kwargs)` -> `pushdown_projections(**kwargs)`),
+# same "fixture-driven, not hand-invented" call `gen_normalize_ref.py`/R68 made above.
+# Also default `SQLGLOT_REF`-is-the-complete-checkout, for the same reason.
+PYTHONHASHSEED=0 python3 spike/p10/gen_pushdown_projections_ref.py > spike/out/pushdown_projections.json || fail=1
 # P7 oracle (AIR-2099). Five per-dialect type-inference overlays -- `typing/
 # {postgres,redshift,duckdb,bigquery,tsql}.py` -- exercised through the same real
 # `TypeAnnotator` every other typing/*.js overlay above uses. One combined oracle
@@ -331,6 +339,7 @@ run "P7: eliminate_ctes.js vs CPython"        node spike/p7/fuzz_eliminate_ctes.
 run "P7: optimizer/simplify.js Simplifier vs CPython" node spike/p7/fuzz_simplify.mjs
 run "P7: optimizer/qualify_columns.js (core) vs CPython" node spike/p7/fuzz_qualify_columns.mjs
 run "P10: optimizer/normalize.js vs CPython"          node spike/p10/fuzz_normalize.mjs
+run "P10: optimizer/pushdown_projections.js vs CPython" node spike/p10/fuzz_pushdown_projections.mjs
 run "P7: typing/{postgres,redshift,duckdb,bigquery,tsql}.js vs CPython" node spike/p7/fuzz_typing_overlay_family.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an

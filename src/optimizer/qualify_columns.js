@@ -28,8 +28,10 @@
 // established convention for optimizer top-level defs (`qualify_tables.js`,
 // `merge_subqueries.js`, `resolver.py`'s own sibling files). Underscore-prefixed
 // helpers stay module-private and unexported. `qualify_columns`, `qualify_outputs`,
-// and `pushdown_cte_alias_columns` are the only public (upstream un-underscored)
-// names and are the only three exported.
+// and `pushdown_cte_alias_columns` are the three public (upstream un-underscored) names
+// this file itself defines; `Resolver` is additionally re-exported (not defined here)
+// for `pushdown_projections.js`'s own `from sqlglot.optimizer.qualify_columns import
+// Resolver` (AIR-2111, R71 — see the re-export at this file's end).
 //
 // Python-list/dict emptiness-vs-JS-truthiness (the recurring
 // `sqlglot-js-empty-array-truthy-vs-python-empty-list-falsy` defect class,
@@ -66,6 +68,11 @@ import { seqGet } from "../helper.js";
 import { pyUpper } from "../_py/str.js";
 import { fullmatch as pyReFullmatch, escape as pyReEscape, IGNORECASE } from "../_py/re.js";
 import { TypeAnnotator } from "./annotate_types.js";
+// py: `sqlglot.optimizer.qualify_columns` re-exports `Resolver` for
+// `pushdown_projections.py`'s own `from sqlglot.optimizer.qualify_columns import
+// Resolver` (AIR-2111, R71): re-exported below (near this file's other three public
+// exports) rather than having that file reach into `./resolver.js` directly, matching
+// upstream's own import path.
 import { Resolver } from "./resolver.js";
 import { Scope, buildScope, findAllInScope, findInScope, traverseScope, walkInScope } from "./scope.js";
 import { simplify_parens } from "./simplify.js";
@@ -1412,3 +1419,8 @@ export function pushdown_cte_alias_columns(scope) {
     }
   }
 }
+
+// py: `from sqlglot.optimizer.qualify_columns import Resolver` — the one re-export
+// upstream's own module surface makes available from this file (AIR-2111, R71's
+// `pushdown_projections.js` is the first and, as of this port, only consumer).
+export { Resolver };
