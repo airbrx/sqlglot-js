@@ -256,6 +256,37 @@ PYTHONHASHSEED=0 python3 spike/p10/gen_eliminate_joins_ref.py > spike/out/elimin
 # them independently of this module) -- see `gen_pushdown_predicates_ref.py`'s and
 # `src/optimizer/pushdown_predicates.js`'s own headers.
 PYTHONHASHSEED=0 python3 spike/p10/gen_pushdown_predicates_ref.py > spike/out/pushdown_predicates.json || fail=1
+# P10 oracle (AIR-2108, epic AIR-2087's LAST issue). `optimizer/qualify.py`'s single
+# `qualify()` function wires five already-ported steps together end to end --
+# `normalize_identifiers`/`qualify_tables`/`isolate_table_selects`/`qualify_columns`/
+# `quote_identifiers`/`validate_qualify_columns` -- under its real kwarg surface, never
+# exercised in composition before this file. Replays the real upstream fixtures
+# `tests/fixtures/optimizer/{qualify_columns,qualify_columns_ddl,
+# qualify_columns__with_invisible,qualify_tables,qualify_columns__invalid}.sql` through
+# the actual `optimizer.qualify.qualify` entry point (never the narrower functions
+# directly), skipping dialect rows this port doesn't implement (clickhouse/mysql/
+# oracle/presto/risingwave/starrocks) with a named, counted skip, plus a hand-picked
+# kwarg-surface battery and four Snowflake positional-column scenarios. See
+# `gen_qualify_ref.py`'s own header for a genuine, CONFIRMED composition finding (row
+# 13 of `qualify_columns__invalid.sql` legitimately does NOT raise under the full
+# `qualify()` pipeline, unlike the narrower two-step call its own upstream test uses)
+# and for the two real, FIXED port bugs this oracle surfaced along the way:
+# `Selectable.named_selects`'s base-class fallback (query.py:85-87) was installed only
+# for `Query`-trait classes, leaving `Values`/`Unnest`/`Lateral` with no
+# `namedSelects` getter at all (`src/expressions/query_methods.js`); and
+# `Unnest.selects` (`src/expressions/focused_methods.js`) read its own array
+# arguments instead of `super().selects` (`alias?.columns || []`), a literal mis-port.
+# A third, pre-existing "stub outlived its stated blocker" (`src/parsers/bigquery.js`'s
+# `_parse_unnest`) called a LOCAL `annotate_types` stub instead of the real whole-file
+# `optimizer/annotate_types.js` port that landed at R54, breaking BigQuery UNNEST
+# parsing entirely whenever the unnested expression was non-null. 49 rows this
+# fixture replay reaches are pre-existing, UNRELATED base-Generator/parser gaps
+# (`dot_sql`/`pivot_sql`/`parameter_sql`/etc. `NotPorted` stubs, `TableColumn`/
+# `JSONPathKey` unsupported types, one narrow STACK-function multi-alias scope gap) --
+# named and counted by the JS fuzzer as `KNOWN_GAP`, not `ERROR`, the same
+# "structural/excluded, not silently ignored" treatment `gen_qualify_columns_ref.py`'s
+# own `STRUCTURAL` set already established.
+PYTHONHASHSEED=0 python3 spike/p10/gen_qualify_ref.py > spike/out/qualify.json || fail=1
 # P7 oracle (AIR-2099). Five per-dialect type-inference overlays -- `typing/
 # {postgres,redshift,duckdb,bigquery,tsql}.py` -- exercised through the same real
 # `TypeAnnotator` every other typing/*.js overlay above uses. One combined oracle
@@ -362,6 +393,7 @@ run "P10: optimizer/normalize.js vs CPython"          node spike/p10/fuzz_normal
 run "P10: optimizer/pushdown_projections.js vs CPython" node spike/p10/fuzz_pushdown_projections.mjs
 run "P10: optimizer/eliminate_joins.js vs CPython"    node spike/p10/fuzz_eliminate_joins.mjs
 run "P10: optimizer/pushdown_predicates.js vs CPython" node spike/p10/fuzz_pushdown_predicates.mjs
+run "P10: optimizer/qualify.js vs CPython (end-to-end)" node spike/p10/fuzz_qualify.mjs
 run "P7: typing/{postgres,redshift,duckdb,bigquery,tsql}.js vs CPython" node spike/p7/fuzz_typing_overlay_family.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
