@@ -673,6 +673,46 @@ export function setDialectResolver(fn) {
   _dialectResolver = fn;
 }
 
+/**
+ * Exposes the same injected resolver to OTHER files facing the identical circular-
+ * dependency shape this one documents above (`Tokenizer`'s own constructor note) --
+ * first reused by `optimizer/canonicalize.js` (AIR-2117), which cannot import
+ * `dialects/dialect.js` directly: `canonicalize.js` is itself reached FROM
+ * `dialect.js` (via `generator.js` -> `transforms.js`, R43's `ensure_bools`), so a
+ * top-level `import { Dialect }` there would close a real two-directional ES-module
+ * cycle, one that (unlike this file's own one-directional case) is NOT safely
+ * resolved by deferring the read into a function body -- `dialect.js`'s own static
+ * class fields (e.g. `generator_class = Generator`) are read eagerly at module-
+ * evaluation time, so the cycle breaks during import linking, before any function
+ * ever runs.
+ * @returns {((dialect: any) => any) | null}
+ */
+export function getDialectResolver() {
+  return _dialectResolver;
+}
+
+/**
+ * Same relay, for `optimizer/annotate_types.js` instead of `dialects/dialect.js`.
+ * `canonicalize.js` needs the real `annotate_types`/`TypeAnnotator` (not just
+ * `Dialect`) and `annotate_types.js` itself imports `dialect.js` directly — so even
+ * with the `Dialect` access above routed around the cycle, a top-level `import {
+ * annotate_types } from "../optimizer/annotate_types.js"` in `canonicalize.js` would
+ * STILL pull `dialect.js` in transitively and crash the same way (verified: this was
+ * the actual residual failure after fixing the `Dialect` import alone). Installed once
+ * by `optimizer/annotate_types.js` itself, at the bottom of that file, after
+ * `TypeAnnotator`/`annotate_types` are fully defined.
+ * @type {{ annotate_types: Function, TypeAnnotator: Function } | null}
+ */
+let _annotateTypesRef = null;
+
+export function setAnnotateTypesRef(ref) {
+  _annotateTypesRef = ref;
+}
+
+export function getAnnotateTypesRef() {
+  return _annotateTypesRef;
+}
+
 function resolveDialect(dialect) {
   if (_dialectResolver) return _dialectResolver(dialect);
   if (dialect === null || dialect === undefined) return BASE_DIALECT_TOKENIZER_SETTINGS;

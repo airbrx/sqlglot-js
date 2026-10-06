@@ -48,6 +48,7 @@ import { Dialect } from "../dialects/dialect.js";
 import { OptimizeError } from "../errors.js";
 import { logger } from "../logging.js";
 import { ensureList, isDateUnit, isIsoDate, isIsoDatetime, seqGet } from "../helper.js";
+import { setAnnotateTypesRef } from "../tokens.js";
 
 // py:37-43 `BIGINT_EXTRACT_DATE_PARTS` — EXTRACT/DATE_PART specifiers that return
 // BIGINT instead of INT.
@@ -1288,3 +1289,10 @@ export function annotate_types(expression, options = {}) {
     overwriteTypes,
   }).annotate(expression);
 }
+
+// Installs this module's own `annotate_types`/`TypeAnnotator` into `tokens.js`'s relay
+// so `optimizer/canonicalize.js` (AIR-2117) can reach them without a top-level import
+// that would transitively re-import `dialects/dialect.js` through a live ES-module
+// cycle -- see `tokens.js`'s own `setAnnotateTypesRef` header and `canonicalize.js`'s
+// module header for the full circular-import story.
+setAnnotateTypesRef({ annotate_types, TypeAnnotator });
