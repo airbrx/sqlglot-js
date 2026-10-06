@@ -356,6 +356,9 @@ PYTHONHASHSEED=0 python3 spike/p10/gen_optimize_e2e_ref.py > spike/out/optimize_
 # same PR: `generator.js`'s `tag_sql` (generator.py:4794) was a `NotPorted` stub --
 # the sole blocker for `Node#toHtml`'s non-Table render branch.
 PYTHONHASHSEED=0 python3 spike/p10/gen_lineage_ref.py > spike/out/lineage.json || fail=1
+# AIR-2123 oracle. `anonymize.py` is NOT greenfield either -- own new oracle,
+# reproducing every assertion in tests/test_anonymize.py.
+PYTHONHASHSEED=0 python3 spike/p10/gen_anonymize_ref.py > spike/out/anonymize.json || fail=1
 # P7 oracle (AIR-2099). Five per-dialect type-inference overlays -- `typing/
 # {postgres,redshift,duckdb,bigquery,tsql}.py` -- exercised through the same real
 # `TypeAnnotator` every other typing/*.js overlay above uses. One combined oracle
@@ -467,6 +470,7 @@ run "P10: optimizer/canonicalize.js vs CPython"        node spike/p10/fuzz_canon
 run "P10: optimizer/optimizer.js vs CPython (RULES + optimize())" node spike/p10/fuzz_optimizer.mjs
 run "AIR-2119: optimize() end-to-end (tpc-h/tpc-ds + more) vs CPython" node spike/p10/fuzz_optimize_e2e.mjs
 run "AIR-2121: lineage.js vs CPython (end-to-end)"     node spike/p10/fuzz_lineage.mjs
+run "AIR-2123: anonymize.js vs CPython (tests/test_anonymize.py)" node spike/p10/fuzz_anonymize.mjs
 run "P7: typing/{postgres,redshift,duckdb,bigquery,tsql}.js vs CPython" node spike/p7/fuzz_typing_overlay_family.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an

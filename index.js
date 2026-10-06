@@ -48,6 +48,12 @@ import { optimize, RULES } from "./src/optimizer/optimizer.js";
 // this port has no npm-published subpath-import story yet, so the package root is the
 // only public entry point a caller outside this repo has.
 import { lineage, Node } from "./src/lineage.js";
+// `anonymize`/`render` are NOT re-exported from upstream's own `sqlglot/__init__.py`
+// (callers reach them as `sqlglot.anonymize.anonymize`/`.render` there) -- re-exported
+// here anyway for the same reason `RULES` is (see this file's own note on it above):
+// this port has no npm-published subpath-import story yet, so the package root is the
+// only import path a caller has.
+import { anonymize, render } from "./src/anonymize.js";
 
 export { Dialect, ErrorLevel, ParseError, TokenError, UnsupportedError, exp, parseOne, Schema, MappingSchema };
 // `optimize` matches upstream's own root re-export name exactly (no snake_case to
@@ -60,6 +66,7 @@ export { Dialect, ErrorLevel, ParseError, TokenError, UnsupportedError, exp, par
 // `ensureSchema` et al.).
 export { optimize, RULES };
 export { lineage, Node };
+export { anonymize, render };
 
 /**
  * py: sqlglot/__init__.py:83 `tokenize`.
