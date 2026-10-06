@@ -280,6 +280,41 @@ export function pyStrip(s, chars) {
   return pyRstrip(pyLstrip(s, chars), chars);
 }
 
+/**
+ * py: str.rjust(width[, fillchar]) — right-justifies to a CODE-POINT width, not a
+ * UTF-16 width (corpus/deny/py_builtins.json: `anonymize.py:178,255`). Unlike
+ * `pyZfill`, there is no sign-moving special case and no default pad of `"0"`.
+ */
+export function pyRjust(s, width, fillchar = " ") {
+  const fillArr = [...fillchar];
+  if (fillArr.length !== 1) {
+    throw new PyTypeError("The fill character must be exactly one character long");
+  }
+  const n = cpLen(s);
+  if (n >= width) return s;
+  return fillArr[0].repeat(width - n) + s;
+}
+
+// py: str.partition(sep) — ALWAYS a 3-element [before, sep, after], even when `sep`
+// is not found ([s, "", ""]); JS `split(sep, 2)` drops the separator and can return
+// fewer than 3 pieces (corpus/deny/py_builtins.json: `anonymize.py:205,211`).
+export function pyPartition(s, sep) {
+  if (sep === "") {
+    throw new PyValueError("empty separator");
+  }
+  const i = s.indexOf(sep);
+  if (i === -1) return [s, "", ""];
+  return [s.slice(0, i), sep, s.slice(i + sep.length)];
+}
+
+// py: str.startswith(prefix) — `prefix` may be a single string or a TUPLE of
+// strings; JS `startsWith` only takes one (corpus/deny/py_builtins.json:
+// `anonymize.py:207`). A Python tuple argument is passed here as a plain JS array.
+export function pyStartswith(s, prefix) {
+  if (Array.isArray(prefix)) return prefix.some((p) => s.startsWith(p));
+  return s.startsWith(prefix);
+}
+
 // py: str.zfill(width) — left-pads with '0', moving a leading sign to the front.
 export function pyZfill(s, width) {
   const a = [...s];
