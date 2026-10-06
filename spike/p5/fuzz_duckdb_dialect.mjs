@@ -79,13 +79,15 @@ function check(what, got, want) {
 // ---------------------------------------------------------------------------
 // 1. The 105 resolved settings
 // ---------------------------------------------------------------------------
-const KNOWN_GAPS = new Map([
-  [
-    "EXPRESSION_METADATA",
-    "sqlglot/typing/duckdb.py's own 16-entry overlay is unported (AIR-2098+); " +
-      "the base 294-entry table (AIR-2096/AIR-2097) is real and inherited from Dialect",
-  ],
-]);
+const KNOWN_GAPS = new Map([]);
+
+// `EXPRESSION_METADATA`'s values are closures (`{annotator: fn}`)/plain option records
+// (`{returns: DType}`), neither of which `enc()` can encode — same unencodable-lambda
+// problem `gen_duckdb_dialect_ref.py`'s own `COUNT_ONLY` set solves on the CPython
+// side. AIR-2099 wired this from an empty Map to the real 310-entry `typing/duckdb.js`
+// table, so this is now a real count comparison (310 vs 310) rather than a
+// `KNOWN_GAPS` skip — the same transition `fuzz_snowflake_dialect.mjs` made at R66.
+const COUNT_ONLY = new Set(["EXPRESSION_METADATA"]);
 
 for (const [name, want] of Object.entries(ref.attrs)) {
   if (KNOWN_GAPS.has(name)) {
@@ -98,6 +100,10 @@ for (const [name, want] of Object.entries(ref.attrs)) {
   if (!(name in DuckDB)) {
     checks += 1;
     fails.push(`${name}\n       got  <ABSENT from the port>\n       want ${trunc(JSON.stringify(want))}`);
+    continue;
+  }
+  if (COUNT_ONLY.has(name)) {
+    check(name, { $count: DuckDB[name].size }, want);
     continue;
   }
   const got = want !== null && typeof want === "object" && "$e" in want
@@ -121,10 +127,14 @@ for (let k = DuckDB; k && k !== Function.prototype; k = Object.getPrototypeOf(k)
 // value-by-value pass cannot: if the port had silently mutated the BASE class instead
 // of subclassing it, every value above would still match while `Dialect` was corrupted.
 const gotOverrides = Object.keys(ref.attrs)
-  .filter((n) => !KNOWN_GAPS.has(n))
+  .filter((n) => !KNOWN_GAPS.has(n) && !COUNT_ONLY.has(n))
   .filter((n) => JSON.stringify(enc(DuckDB[n])) !== JSON.stringify(enc(Dialect[n])))
   .sort();
-check("settings that differ from the base Dialect", gotOverrides, ref.overrides.filter((n) => !KNOWN_GAPS.has(n)));
+check(
+  "settings that differ from the base Dialect",
+  gotOverrides,
+  ref.overrides.filter((n) => !KNOWN_GAPS.has(n) && !COUNT_ONLY.has(n)),
+);
 
 // ---------------------------------------------------------------------------
 // 2. The nested Tokenizer subclass
