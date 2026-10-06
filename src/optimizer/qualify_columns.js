@@ -1,16 +1,20 @@
-// py: sqlglot/optimizer/qualify_columns.py @ 91119bc (AIR-2106, epic AIR-2087) --
-// column qualification + star expansion CORE only. `validate_qualify_columns`
-// (py:128-170) and `quote_identifiers` (py:1288-1298) are deliberately NOT ported
-// here -- they are AIR-2107 (4.4), a separate follow-up issue, so this file's own
-// public surface omits them entirely (not even as `NotPorted` stubs) to keep the two
-// PRs independent. The `qualify()` end-to-end orchestrator that wires this file,
-// `qualify_tables.js`, and (eventually) `quote_identifiers`/`validate_qualify_columns`
-// together is `optimizer/qualify.py`, a DIFFERENT upstream file entirely (AIR-2108/4.5,
-// also out of scope here).
+// py: sqlglot/optimizer/qualify_columns.py @ 91119bc (AIR-2106/AIR-2107, epic
+// AIR-2087) -- column qualification, star expansion, `validate_qualify_columns`
+// (py:128-170, AIR-2107/4.4), and `quote_identifiers` (py:1288-1298, AIR-2107/4.4).
+// `validate_qualify_columns` depends only on already-real surface this file's own
+// R67 core already verified: `traverse_scope` and `Scope#externalColumns`/
+// `#isCorrelatedSubquery`/`#pivots`/`#unqualifiedColumns` (`./scope.js`), plus
+// `Expr#metaGet` and `highlightSql`/`OptimizeError` (`../errors.js`). `quote_identifiers`
+// depends on `Dialect.get_or_raise` and the real `Dialect#quote_identifier`
+// (`../dialects/dialect.js:2201`) plus `Expr#walk` -- both real, pre-existing ports
+// checked against the current files rather than taken on faith. The `qualify()`
+// end-to-end orchestrator that wires this file and `qualify_tables.js` together is
+// `optimizer/qualify.py`, a DIFFERENT upstream file entirely (AIR-2108/4.5, still out
+// of scope here).
 //
-// All three named dependencies are real, verified ports, checked against the current
-// files rather than taken on faith: `Resolver` (`./resolver.js`, R48, its own
-// differential oracle EXACT 34/MISMATCH 0/ERROR 0), the real `Scope` class plus
+// The CORE's own three named dependencies are real, verified ports, checked against
+// the current files rather than taken on faith: `Resolver` (`./resolver.js`, R48, its
+// own differential oracle EXACT 34/MISMATCH 0/ERROR 0), the real `Scope` class plus
 // `traverse_scope`/`build_scope`/`walk_in_scope`/`find_all_in_scope`/`find_in_scope`
 // (`./scope.js`, R44/R46), and `simplify_parens` (`./simplify.js`, part of R59's whole-
 // file `optimizer/simplify.js` port, EXACT 83/MISMATCH 0/ERROR 0). `TypeAnnotator`
@@ -27,11 +31,12 @@
 // Module-level function names stay snake_case verbatim, matching this project's
 // established convention for optimizer top-level defs (`qualify_tables.js`,
 // `merge_subqueries.js`, `resolver.py`'s own sibling files). Underscore-prefixed
-// helpers stay module-private and unexported. `qualify_columns`, `qualify_outputs`,
-// and `pushdown_cte_alias_columns` are the three public (upstream un-underscored) names
-// this file itself defines; `Resolver` is additionally re-exported (not defined here)
-// for `pushdown_projections.js`'s own `from sqlglot.optimizer.qualify_columns import
-// Resolver` (AIR-2111, R71 — see the re-export at this file's end).
+// helpers stay module-private and unexported. `qualify_columns`, `validate_qualify_columns`,
+// `qualify_outputs`, `quote_identifiers`, and `pushdown_cte_alias_columns` are the
+// five public (upstream un-underscored) names this file itself defines; `Resolver` is
+// additionally re-exported (not defined here) for `pushdown_projections.js`'s own
+// `from sqlglot.optimizer.qualify_columns import Resolver` (AIR-2111, R71 — see the
+// re-export at this file's end).
 //
 // Python-list/dict emptiness-vs-JS-truthiness (the recurring
 // `sqlglot-js-empty-array-truthy-vs-python-empty-list-falsy` defect class,
@@ -59,11 +64,11 @@
 // 1182) route through `_py/re.js`, not JS `RegExp`, per this project's standing
 // Python-regex-semantics rule (`python-regex-semantics-differ-in-js`).
 //
-// @ported-ranges sqlglot/optimizer/qualify_columns.py 28-125 173-1285 1301-1319
+// @ported-ranges sqlglot/optimizer/qualify_columns.py 28-1319
 
 import * as exp from "../expressions/index.js";
 import { Dialect } from "../dialects/dialect.js";
-import { OptimizeError } from "../errors.js";
+import { OptimizeError, highlightSql } from "../errors.js";
 import { seqGet } from "../helper.js";
 import { pyUpper } from "../_py/str.js";
 import { fullmatch as pyReFullmatch, escape as pyReEscape, IGNORECASE } from "../_py/re.js";
@@ -160,6 +165,58 @@ export function qualify_columns(expression, schema, options = {}) {
     _expand_order_by_and_distinct_on(scope, resolver);
 
     if (dialect.ANNOTATE_ALL_SCOPES) annotator.annotate_scope(scope);
+  }
+
+  return expression;
+}
+
+/**
+ * py: qualify_columns.py:128 `validate_qualify_columns(expression, sql=None)`.
+ * Raise an `OptimizeError` if any columns aren't qualified.
+ */
+export function validate_qualify_columns(expression, sql = null) {
+  const all_unqualified_columns = [];
+  for (const scope of traverseScope(expression)) {
+    if (scope.expression instanceof exp.Select) {
+      const unqualified_columns = scope.unqualifiedColumns;
+
+      if (scope.externalColumns.length && !scope.isCorrelatedSubquery && !scope.pivots.length) {
+        const column = scope.externalColumns[0];
+        const for_table = column.table ? ` for table: '${column.table}'` : "";
+        const line = column.this.metaGet("line");
+        const col = column.this.metaGet("col");
+        const start = column.this.metaGet("start");
+        const end = column.this.metaGet("end");
+
+        let error_msg = `Column '${column.name}' could not be resolved${for_table}.`;
+        if (line && col) error_msg += ` Line: ${line}, Col: ${col}`;
+        if (sql && start !== null && end !== null) {
+          const formatted_sql = highlightSql(sql, [[start, end]])[0];
+          error_msg += `\n  ${formatted_sql}`;
+        }
+
+        throw new OptimizeError(error_msg);
+      }
+
+      all_unqualified_columns.push(...unqualified_columns);
+    }
+  }
+
+  if (all_unqualified_columns.length) {
+    const first_column = all_unqualified_columns[0];
+    const line = first_column.this.metaGet("line");
+    const col = first_column.this.metaGet("col");
+    const start = first_column.this.metaGet("start");
+    const end = first_column.this.metaGet("end");
+
+    let error_msg = `Ambiguous column '${first_column.name}'`;
+    if (line && col) error_msg += ` (Line: ${line}, Col: ${col})`;
+    if (sql && start !== null && end !== null) {
+      const formatted_sql = highlightSql(sql, [[start, end]])[0];
+      error_msg += `\n  ${formatted_sql}`;
+    }
+
+    throw new OptimizeError(error_msg);
   }
 
   return expression;
@@ -1388,6 +1445,24 @@ export function qualify_outputs(scope_or_expression, dialect) {
   if (new_selections.length && expression instanceof exp.Select) {
     expression.set("expressions", new_selections);
   }
+}
+
+/**
+ * py: qualify_columns.py:1288 `quote_identifiers(expression, dialect=None, identify=True)`.
+ * Makes sure all identifiers that need to be quoted are quoted.
+ */
+export function quote_identifiers(expression, dialect = null, identify = true) {
+  dialect = Dialect.get_or_raise(dialect);
+
+  // `quote_identifier` only mutates identifiers in place, so we avoid `transform` here
+  // because its node replacement machinery is wasteful for this case.
+  for (const node of expression.walk()) {
+    if (node instanceof exp.Identifier) {
+      dialect.quote_identifier(node, identify);
+    }
+  }
+
+  return expression;
 }
 
 /**
