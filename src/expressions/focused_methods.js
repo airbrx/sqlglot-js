@@ -265,8 +265,18 @@ export function installFocusedMethods() {
   getter(C.Map, "values", function () { return this.args.values?.expressions || []; });
   getter(C.VarMap, "keys", function () { return this.args.keys.expressions; });
   getter(C.VarMap, "values", function () { return this.args.values.expressions; });
+  // py: expressions/array.py:276 `Unnest.selects` -- `super().selects` is `UDTF.selects`
+  // (`self.args.get("alias"); alias.columns if alias else []`), NOT `self.args.expressions`
+  // (the UNNEST's own array arguments, a previous mis-port -- `Expression.selects`/
+  // `.expressions` are different upstream properties entirely, and this file's own class
+  // has no real JS superclass to fall back to automatically). Found via
+  // `optimizer/qualify.js`'s end-to-end oracle (AIR-2108): a bare, unaliased
+  // `UNNEST(ARRAY<STRUCT<...>>[...])` under BigQuery's `UNNEST_COLUMN_ONLY` star
+  // expansion returned the array's own Cast expression as a spurious extra "selected"
+  // column (rendered as an empty-named `` AS _col_0`) instead of the empty list
+  // `alias`-less UDTFs correctly report.
   getter(C.Unnest, "selects", function () {
-    const columns = [...(this.args.expressions || [])], offset = this.args.offset;
+    const columns = [...(this.args.alias?.columns || [])], offset = this.args.offset;
     if (offset) columns.push(offset === true ? new C.Identifier({ this: "offset", quoted: false }) : offset);
     return columns;
   });
