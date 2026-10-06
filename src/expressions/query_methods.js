@@ -303,7 +303,7 @@ export function installQueryMethods(classes) {
   }
 
   get("Select", "selects", function () { return this.expressions; });
-  get("Select", "namedSelects", function () { const out = []; for (const e of this.expressions) { if (value(e, "aliasOrName", "alias_or_name")) out.push(value(e, "outputName", "output_name")); else if (e.constructor?.name === "Aliases") for (const a of e.args.aliases || []) out.push(value(a, "name")); } return out; }, "named_selects");
+  get("Select", "namedSelects", function () { const out = []; for (const e of this.expressions) { if (value(e, "aliasOrName", "alias_or_name")) out.push(value(e, "outputName", "output_name")); else if (e.constructor?.name === "Aliases") for (const a of e.expressions) out.push(value(a, "name")); } return out; }, "named_selects");
   get("Select", "isStar", function () { return this.expressions.some(e => !!value(e, "isStar", "is_star")); }, "is_star");
   method(C("Select"), "select", function (...xs) { const o=options(xs); return applyListBuilder(xs,this,"expressions",o,Expr); });
   method(C("Select"), "lateral", function (...xs) { const o=options(xs); return applyListBuilder(xs,this,"laterals",{prefix:"LATERAL VIEW",...o},C("Lateral")); });

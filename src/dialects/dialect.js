@@ -55,30 +55,24 @@ import * as exp from "../expressions/index.js";
 import { SAFE_IDENTIFIER_RE, registerAstDialects, registerGenerator, registerParser } from "../expressions/core.js";
 import { findAllInScope } from "../optimizer/scope.js";
 import { EXPRESSION_METADATA } from "../typing/index.js";
-
-/**
- * py: sqlglot/optimizer/annotate_types.py — ported (AIR-2097) into
- * `src/optimizer/annotate_types.js`'s `TypeAnnotator`/`annotate_types`, but
- * DELIBERATELY NOT wired here.
- *
- * `build_trunc` and `build_timetostr_or_tochar` call it to decide date-vs-numeric
- * truncation and TimeToStr-vs-ToChar from the ANNOTATED type of an argument. Wiring
- * this local stub to the real implementation would require this file to `import` from
- * `../optimizer/annotate_types.js` — but that file itself imports `Dialect` FROM this
- * one (the same no-cycle shape `optimizer/resolver.js`/R48 and `schema.js`/R41 already
- * use safely), so a top-level import here would close a real two-directional ES-module
- * cycle, the exact hazard class R32/R42/R43 already named for `generator.js`<->
- * `dialect.js` and the `tsql.js` parser/dialect/generator trio. Resolving it the same
- * way those rounds did (a `Dialect.get_or_raise`-style runtime handoff) is a genuine
- * option, but it changes these two call sites' own behavior (partial vs. full
- * annotation, scope-awareness) and is therefore left as a stated follow-up rather than
- * folded into AIR-2097's stated "core engine, no existing call sites" scope. The two
- * call sites still announce themselves as stubs rather than guessing a type and
- * silently building the wrong node.
- */
-function annotate_types(_expression, _dialect) {
-  throw new NotPorted("annotate_types", "sqlglot/optimizer/annotate_types.py");
-}
+// py: sqlglot/optimizer/annotate_types.py — `build_trunc`, `build_timetostr_or_tochar`,
+// and `no_timestamp_sql` import this INSIDE their own bodies upstream
+// (dialects/dialect.py:1733/1938/2610) specifically to avoid a module-level cycle:
+// `optimizer/annotate_types.js` itself imports `Dialect` FROM this file. AIR-2193:
+// confirmed empirically (not assumed) that a static top-level import here does NOT
+// recreate that cycle at runtime the way R32/R42/R43's `generator.js`<->`dialect.js`
+// and `tsql.js` cases did -- `annotate_types.js` only dereferences the `Dialect`
+// binding INSIDE a function body (`ensureSchema`'s `new Dialect()` default), never at
+// its own module top level, so by the time either module's exported functions are
+// actually CALLED (always after both finish loading), the live ES-module binding
+// already resolves to the fully-initialized `Dialect` class -- verified via
+// `node --check` and a real `import("./index.js")` with no `ReferenceError`, per this
+// issue's own instructions. This was the third, previously left-as-a-follow-up
+// instance (alongside `parsers/bigquery.js`, fixed at R75, and `parsers/postgres.js`,
+// fixed earlier in this same round) of the "stubs outlive their stated blocker"
+// defect class R68 named: `optimizer/annotate_types.js` landed whole at R54, long
+// before this stub's own comment's stated blocker reasoning stopped applying.
+import { annotate_types } from "../optimizer/annotate_types.js";
 
 /** py: sqlglot/dialects/dialect.py:1916 */
 export function binary_from_function(expr_type) {
@@ -313,8 +307,8 @@ export function build_trunc(args, dialect, options = {}) {
   let this_ = seqGet(args, 0);
   let second = seqGet(args, 1);
 
-  if (this_ && !this_.type) this_ = annotate_types(this_, dialect);
-  if (second && !second.type) second = annotate_types(second, dialect);
+  if (this_ && !this_.type) this_ = annotate_types(this_, { dialect });
+  if (second && !second.type) second = annotate_types(second, { dialect });
 
   // Date truncation
   if (
@@ -365,7 +359,7 @@ export function build_like(expr_type, not_like = false) {
 export function build_timetostr_or_tochar(args, dialect) {
   if (args.length === 2) {
     const this_ = args[0];
-    if (!this_.type) annotate_types(this_, dialect);
+    if (!this_.type) annotate_types(this_, { dialect });
 
     if (this_.isType(...exp.DataType.TEMPORAL_TYPES)) {
       return build_formatted_time(exp.TimeToStr, null, true)(args, dialect);
@@ -824,7 +818,7 @@ export function no_time_sql(self, expression) {
 export function no_timestamp_sql(self, expression) {
   const zone = expression.args.zone;
   if (!zone) {
-    const target_type = annotate_types(expression, self.dialect).type || exp.DType.TIMESTAMP;
+    const target_type = annotate_types(expression, { dialect: self.dialect }).type || exp.DType.TIMESTAMP;
     return self.sql(exp.cast(expression.this, target_type));
   }
   if (TIMEZONES.has(zone.name.toLowerCase())) {
@@ -1194,8 +1188,9 @@ export function date_delta_to_binary_interval_op(cast = true) {
  *
  * The `is_end_exclusive` branch calls `self._simplify_unless_literal`
  * (generator.js), still a live `NotPorted` guard: it needs
- * `sqlglot/optimizer/simplify.py` (P6+, unported), same status as `annotate_types`
- * above. Ported whole regardless, per this project's precedent of announcing a
+ * `sqlglot/optimizer/simplify.py`'s own `gen`/`FunctionFromTemplate` machinery
+ * (P6+, unported; distinct from `optimizer/annotate_types.js`, wired above as of
+ * AIR-2193). Ported whole regardless, per this project's precedent of announcing a
  * narrow unreached-by-most-rows gap rather than declining to port the function
  * that contains it.
  */

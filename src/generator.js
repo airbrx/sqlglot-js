@@ -4323,9 +4323,13 @@ export class Generator {
   // py: sqlglot/generator.py:4027
   pivotalias_sql(expression) { throw new NotPorted("pivotalias_sql", "sqlglot/generator.py:4027"); }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:4044
+   * @param {exp.Aliases} expression
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:4044
-  aliases_sql(expression) { throw new NotPorted("aliases_sql", "sqlglot/generator.py:4044"); }
+  aliases_sql(expression) { return `${this.sql(expression, "this")} AS (${this.expressions(expression, null, { flat: true })})`; }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4047

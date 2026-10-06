@@ -55,19 +55,18 @@ import {
   build_json_extract_path,
   build_timestamp_trunc,
 } from "../dialects/dialect.js";
-
-/**
- * py: sqlglot/optimizer/annotate_types.py — NOT PORTED.
- *
- * `_build_regexp_replace` imports this INSIDE its own body upstream
- * (`parsers/postgres.py:56`), so a file-local stub mirrors upstream's own structure
- * rather than widening `dialects/dialect.js`'s export surface with a member that is
- * not part of `dialects/dialect.py` at all. Same reasoning, and same P6+ scope, as
- * the identically-named stub there.
- */
-function annotate_types(_expression, _dialect) {
-  throw new NotPorted("annotate_types", "sqlglot/optimizer/annotate_types.py");
-}
+// `_build_regexp_replace` imports this INSIDE its own body upstream
+// (`parsers/postgres.py:56`) specifically to avoid a module-level cycle; a static
+// top-level import here is safe for the same reason `parsers/bigquery.js`'s own
+// identically-shaped fix (PORT_PLAN.md R75) already established: `optimizer/
+// annotate_types.js` reaches back only as far as `dialects/dialect.js`, and
+// `dialects/dialect.js` imports `parsers/base.js` (the BASE class), never this
+// Postgres-specific file. AIR-2193: this stub had outlived its own stated blocker
+// (`optimizer/annotate_types.js` landed whole at R54) -- the same "stubs outlive
+// their stated blocker" defect class R68's `DataType.from_str` finding and R75's
+// BigQuery fix already named -- found by grepping every named instance of that
+// stale stub that R75 left as a follow-up.
+import { annotate_types } from "../optimizer/annotate_types.js";
 
 /**
  * py: sqlglot/parsers/postgres.py:21
@@ -138,7 +137,7 @@ function _build_regexp_replace(args, dialect = null) {
     let last = args[args.length - 1];
     if (!isInt(last.name)) {
       if (!last.type || last.isType(exp.DType.UNKNOWN, exp.DType.NULL)) {
-        last = annotate_types(last, dialect);
+        last = annotate_types(last, { dialect });
       }
 
       if (last.isType(...exp.DataType.TEXT_TYPES)) {
