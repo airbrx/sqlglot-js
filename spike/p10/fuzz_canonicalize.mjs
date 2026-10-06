@@ -23,14 +23,12 @@
 // class-name fingerprint (CPython's generator always succeeds, so computing both costs
 // nothing there). On the JS side, `.sql()` is tried first; a `NotPorted` error falls
 // back to comparing the fingerprint instead, counted separately as a GENERATOR_GAP hit
-// rather than silently folded into EXACT. Two such gaps surfaced by this round's own
-// battery (pre-existing, unrelated to `canonicalize.js`'s own logic, NOT fixed here per
-// the task brief -- recorded in PORT_PLAN.md instead): base `Generator.concat_sql`/
-// `convert_concat_args` (generator.py:3710/:3679, hit by `add_text_to_concat`'s own
-// output) and base `Generator.dateadd_sql` (generator.py:5249, hit by any `DATE_ADD`
-// fixture, independently of canonicalize -- `coerce_type` only casts an *argument* of
-// an already-existing `DateAdd` node, it doesn't even touch the node that fails to
-// render). Any OTHER `.sql()` error is a real ERROR, not a gap.
+// rather than silently folded into EXACT. AIR-2194 (PORT_PLAN.md) ported base
+// `Generator.concat_sql`/`convert_concat_args` and `Generator.dateadd_sql` — the two
+// gaps this battery used to name here — so this probe's own GENERATOR_GAP count is 0
+// now; the regex is kept (empty) as the established slot for the next one, rather than
+// dropped, so a future real gap has an obvious place to land. Any OTHER `.sql()` error
+// is a real ERROR, not a gap.
 
 import { readFileSync } from "node:fs";
 import { parseOne } from "../../src/dialects/dialect.js";
@@ -90,7 +88,7 @@ function runPipeline(sql, dialect, bare, schema) {
 // exclusion, classified by the underlying stub name rather than by row id" shape
 // `fuzz_qualify.mjs`'s own `KNOWN_GAPS` regex list already established, reused here
 // rather than a bespoke mechanism.
-const KNOWN_GENERATOR_GAPS = [/^NotPorted: (concat_sql|dateadd_sql) is not ported yet/];
+const KNOWN_GENERATOR_GAPS = [];
 
 function isKnownGeneratorGap(e) {
   return KNOWN_GENERATOR_GAPS.some((re) => re.test(`${e.constructor.name}: ${e.message}`));
@@ -159,7 +157,7 @@ for (const row of ref) {
 
 console.log();
 console.log("  src/optimizer/canonicalize.js vs CPython sqlglot.optimizer.canonicalize");
-console.log(`    EXACT ${exact}    GENERATOR_GAP ${generatorGap} (concat_sql/dateadd_sql, pre-existing)    MISMATCH ${mismatch}    ERROR ${error}    SKIPPED ${skipped} (mysql, unported)`);
+console.log(`    EXACT ${exact}    GENERATOR_GAP ${generatorGap}    MISMATCH ${mismatch}    ERROR ${error}    SKIPPED ${skipped} (mysql, unported)`);
 if (samples.length) {
   console.log();
   for (const s of samples) console.log(VERBOSE ? `  ${s}\n` : `  ${s.split("\n")[0]}`);

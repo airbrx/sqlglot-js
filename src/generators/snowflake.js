@@ -2,18 +2,18 @@
 //
 // @ported-ranges sqlglot/generators/snowflake.py 1-43 62-118 203-1222
 //
-// Five upstream ranges are excluded, each a module-level helper reachable ONLY through
-// one of the five still-blocked `TRANSFORMS` entries this file's header explains below
+// Four upstream ranges are excluded, each a module-level helper reachable ONLY through
+// one of the four still-blocked `TRANSFORMS` entries this file's header explains below
 // (`sqlglot/transforms.py` functions not yet ported, and/or `sqlglot/optimizer/scope.py`,
 // unported):
 //   44-61   _build_datediff, _build_date_time_add       (-> _unnest_generate_date_array)
-//   75-99   _unqualify_pivot_columns                     (-> exp.Pivot)
 //   119-178 _unnest_generate_date_array                  (-> _transform_generate_date_array)
 //   179-202 _transform_generate_date_array                (-> exp.Select)
 //   246-341 _qualify_unnested_columns                     (-> exp.Select)
 //   342-375 _eliminate_dot_variant_lookup                 (-> exp.Select)
-// (100-118, `_flatten_structured_types_unless_iceberg`, is now PORTED — see below.)
-// Porting any of the remaining five would be dead code with no caller. Checked against
+// (75-99, `_unqualify_pivot_columns`, and 100-118,
+// `_flatten_structured_types_unless_iceberg`, are now PORTED — see below.)
+// Porting any of the remaining four would be dead code with no caller. Checked against
 // `corpus/deny/{operators,implicit_str}.json`: none of them carries a deny-listed site,
 // so excluding them does not silently skip an unacknowledged one.
 //
@@ -51,7 +51,7 @@
 
 import { NotPorted } from "../errors.js";
 import { seqGet } from "../helper.js";
-import { preprocess } from "../transforms.js";
+import { preprocess, unqualify_columns } from "../transforms.js";
 import * as exp from "../expressions/index.js";
 import { TokenType } from "../tokens.js";
 import { Generator, unsupported_args } from "../generator.js";
@@ -99,9 +99,35 @@ function _regexpilike_sql(self, expression) {
   return self.func("REGEXP_LIKE", expression.this, expression.expression, exp.Literal.string(flag));
 }
 
-// py:75 `_unqualify_pivot_columns` — blocked on `transforms.unqualify_columns`
-// (sqlglot/transforms.py, unported, parallel branch). The only caller is the
-// `exp.Pivot` TRANSFORMS entry below, itself commented out for the same reason.
+/**
+ * py: sqlglot/generators/snowflake.py:75 `_unqualify_pivot_columns(expression)`
+ *
+ * Was blocked pending `transforms.unqualify_columns` (unported, parallel branch);
+ * `src/transforms.js` landed with it (PORT_PLAN.md R24-ish, already present by
+ * AIR-2194/R-current), so it is real now. Surfaced as a real two-row MISMATCH
+ * (AIR-2194, PORT_PLAN.md) the moment base `generator.js`'s `pivot_sql` stopped being
+ * a stub: Snowflake doesn't allow columns referenced in UNPIVOT to be qualified, so
+ * they need to be unqualified here. Same goes for ANY ORDER BY <column> (the
+ * `exp.PivotAny` branch below).
+ */
+function _unqualify_pivot_columns(expression) {
+  if (expression instanceof exp.Pivot) {
+    if (expression.unpivot) {
+      expression = unqualify_columns(expression);
+    } else {
+      for (const field of expression.fields) {
+        const field_expr = seqGet(field ? field.expressions : [], 0);
+
+        if (field_expr instanceof exp.PivotAny) {
+          const unqualified_field_expr = unqualify_columns(field_expr);
+          field.set("expressions", unqualified_field_expr, 0);
+        }
+      }
+    }
+  }
+
+  return expression;
+}
 
 /**
  * py: sqlglot/generators/snowflake.py:100
@@ -383,7 +409,7 @@ export class SnowflakeGenerator extends Generator {
     [exp.PartitionedByProperty, (self, e) => `PARTITION BY ${self.sql(e, "this")}`],
     // py:540 [exp.PercentileCont, transforms.preprocess([transforms.add_within_group_for_percentiles])] — blocked, transforms.js
     // py:541 [exp.PercentileDisc, transforms.preprocess([transforms.add_within_group_for_percentiles])] — blocked, transforms.js
-    // py:542 [exp.Pivot, transforms.preprocess([_unqualify_pivot_columns])] — blocked, transforms.js
+    [exp.Pivot, preprocess([_unqualify_pivot_columns])],
     [exp.RegexpExtract, _regexpextract_sql],
     [exp.RegexpExtractAll, _regexpextract_sql],
     [exp.RegexpILike, _regexpilike_sql],

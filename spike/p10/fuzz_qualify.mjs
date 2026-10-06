@@ -49,21 +49,25 @@ const samples = [];
 const gapSamples = [];
 
 // Pre-existing, unrelated gaps this fixture replay reaches but `qualify.js` itself
-// cannot fix: base-Generator `NotPorted` stubs for rendering (`dot_sql`/`pivot_sql`/
-// `parameter_sql`/`tablesample_sql`/`pseudocolumn_sql`/`hint_sql`/`copy_sql`/
-// `addconstraint_sql`/`userdefinedfunction_sql`) and two rare unsupported expression
-// types (`TableColumn`, `JSONPathKey`) the generator/parser layer doesn't handle yet.
+// cannot fix: base-Generator `NotPorted` stubs for rendering (`parameter_sql`/
+// `tablesample_sql`/`pseudocolumn_sql`/`copy_sql`/`addconstraint_sql`/
+// `userdefinedfunction_sql`) and two rare unsupported expression types
+// (`TableColumn`, `JSONPathKey`) the generator/parser layer doesn't handle yet.
 // (AIR-2193 fixed the third, previously-listed gap here -- a multi-column `AS (a, b)`
 // alias over a table-generating function (`STACK`) -- by fixing `Select.namedSelects`'
 // `Aliases` branch, which read a nonexistent `args.aliases` instead of `expressions`,
 // plus porting the base-Generator `aliases_sql` stub it then exposed; that row is now
-// EXACT, not a gap.) Same "named, counted exclusion" shape `gen_qualify_columns_ref.py`'s
+// EXACT, not a gap. AIR-2194 removed `dot_sql`/`pivot_sql`/`hint_sql` from this list --
+// all three are real now; the fixture that used to surface `pivot_sql`'s own gap
+// instead surfaced a real, now-fixed `generators/duckdb.js` TRANSFORMS gap, `exp.Pivot`
+// -> `transforms.unqualify_columns`, R32's own named deferral — see that file's
+// header.) Same "named, counted exclusion" shape `gen_qualify_columns_ref.py`'s
 // own `STRUCTURAL` set and `gen_pushdown_predicates_ref.py`'s dialect skip already
 // established -- classified by the underlying stub/type name, not by row id, so a
 // NEW unrelated gap of the same shape is still caught by name rather than silently
 // matched.
 const KNOWN_GAPS = [
-  /^NotPorted: (dot_sql|pivot_sql|parameter_sql|tablesample_sql|pseudocolumn_sql|hint_sql|copy_sql|addconstraint_sql|userdefinedfunction_sql) is not ported yet/,
+  /^NotPorted: (parameter_sql|tablesample_sql|pseudocolumn_sql|copy_sql|addconstraint_sql|userdefinedfunction_sql) is not ported yet/,
   /^PyValueError: Unsupported expression type (TableColumn|JSONPathKey)$/,
 ];
 

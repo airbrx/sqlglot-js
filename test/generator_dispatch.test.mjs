@@ -82,14 +82,21 @@ test("the only gap versus CPython is the deliberately-unseeded TRANSFORMS", () =
   // through to `function_fallback_sql`'s class-name-to-SNAKE_CASE-plus-`_FUNC`
   // fallback (`SAFE_FUNC(...)` instead of `SAFE.(...)`). Both are base-`Generator`
   // entries, not BigQuery-specific overrides, so every dialect gets them for free.
-  assert.equal(Generator.TRANSFORMS.size, 80, "TRANSFORMS has 80 real entries after the properties-dispatch step");
+  // +1 from AIR-2194 (PORT_PLAN.md): `exp.PivotAny` (py:238, `f"ANY{self.sql(e,
+  // 'this')}"`) — a one-line lambda, real ever since the base table existed, but
+  // never reached until `pivot_sql`'s own `_pivot_in_value_aliases` port made a real
+  // Snowflake dynamic-pivot (`PIVOT(... FOR k IN (ANY ORDER BY ...))`) query reach
+  // this far through `optimizer/qualify.js`'s own end-to-end probe for the first
+  // time, surfacing an `Unsupported expression type PivotAny` error that was always
+  // latent (the entry was commented out, not a stub).
+  assert.equal(Generator.TRANSFORMS.size, 81, "TRANSFORMS has 81 real entries after AIR-2194's PivotAny wiring");
 
   const wantTransform = Object.entries(WANT).filter(([, h]) => h === "transform");
   assert.equal(wantTransform.length, 143);
 
   const got = _buildDispatch(Generator);
   assert.equal(got.size, Object.keys(WANT).length - wantTransform.length + Generator.TRANSFORMS.size);
-  assert.equal(got.size, 497);
+  assert.equal(got.size, 498);
 });
 
 test("TRANSFORMS beats a same-named *_sql method", () => {
@@ -411,7 +418,22 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // branch reading a nonexistent `args.aliases` instead of `args.expressions` -- was
   // fixed; a Hive `STACK(...) AS (a, b)` multi-column alias previously failed to
   // qualify at all, masking this render-side gap underneath.
-  assert.equal(bodied.length, 120, "exactly 120 *_sql methods have a real body");
+  // +10 from AIR-2194 (epic AIR-2091, PORT_PLAN.md): `div_sql`, `rollup_sql`,
+  // `hint_sql`, `dateadd_sql`, `dot_sql`, `extract_sql`, `concat_sql`, `pivot_sql`,
+  // `currentdate_sql`, `querytransform_sql` — the base-Generator stubs AIR-2119's
+  // own end-to-end `optimize()` oracle named as its biggest GENERATOR_GAP blockers.
+  // `convert_concat_args` (a `concat_sql` dependency) and `_pivot_in_value_aliases`
+  // (a `pivot_sql` dependency), ported in the same step, are not `*_sql`-suffixed
+  // and so not counted here either. +1 more for `joinhint_sql`: porting `hint_sql`
+  // let 7 `merge_subqueries` fixture rows progress past it for the first time and
+  // hit this sibling stub next (`exp.Hint` vs `exp.JoinHint`, both reached by the
+  // same TABLE-hint feature family) — a newly-surfaced blocker, not a dependency of
+  // any of the ten, ported in the same round rather than left as a fresh ERROR.
+  // +1 more for `pivotalias_sql`: once `_pivot_in_value_aliases` started building real
+  // `PivotAlias` nodes (the non-UNPIVOT, snowflake-style-columns case), the R78
+  // `optimizer.js` probe's own fixture-40 hit this render-side sibling next — same
+  // "porting the stub surfaces its own caller's caller" shape as `joinhint_sql`.
+  assert.equal(bodied.length, 132, "exactly 132 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -443,7 +465,24 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // neg_sql on a missing operand raises IndexError, not NotPorted.
   // +1 for `aliases_sql` (AIR-2193): reads no Dialect state either, so it also runs on
   // the bare stand-in (`this.sql`/`this.expressions` both tolerate the missing args).
-  assert.equal(432 - stubs.length, 119, "119 of those 120 also run without a resolved Dialect");
+  // +10 for AIR-2194's ten new bodies: none throws the `NotPorted`-named error. Eight
+  // of them (`div_sql`, `rollup_sql`, `hint_sql`, `dot_sql`, `extract_sql`,
+  // `concat_sql`, `pivot_sql`, `currentdate_sql`) read only Dialect/class-settings
+  // FIELDS (or nothing at all) and so tolerate the frozen stand-in the same way
+  // `hexstring_sql` does. `querytransform_sql` reads no Dialect state either. Only
+  // `dateadd_sql` would need the `dialects/dialect.js`-populated relay this round adds
+  // (`unit_to_str`, unconditionally) — but this test imports `generator.js` directly,
+  // never `dialects/dialect.js`, so the relay is empty and `dateadd_sql` throws this
+  // file's own plain `Error("...dialect helpers not loaded yet...")` instead, which is
+  // not named `NotPorted` either, so it still lands in the "ran" bucket this
+  // assertion counts, not the `stubs` one below. +1 for `joinhint_sql`: reads no
+  // Dialect state, so it runs on the bare stand-in too. +1 for `pivotalias_sql`
+  // (same AIR-2194 round: `pivot_sql`'s own `_pivot_in_value_aliases` builds real
+  // `PivotAlias` nodes for the first time, surfacing this sibling render stub next):
+  // on a bare `new exp.Expr({})` its `expression.parent` is `null`, so the body falls
+  // straight through to `this.alias_sql(expression)` without touching any Dialect
+  // state.
+  assert.equal(432 - stubs.length, 131, "131 of those 132 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],
