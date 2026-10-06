@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
-"""CPython oracle for `sqlglot/optimizer/qualify_columns.py` -- CORE only (AIR-2106).
+"""CPython oracle for `sqlglot/optimizer/qualify_columns.py` (AIR-2106 CORE +
+AIR-2107 remainder).
 
-`src/optimizer/qualify_columns.js` ports `qualify_columns`, `qualify_outputs`,
-`pushdown_cte_alias_columns`, and every `_`-prefixed helper EXCEPT
-`validate_qualify_columns` and `quote_identifiers` (those are AIR-2107, a separate
-follow-up issue; the `qualify()` end-to-end orchestrator that wires this file,
-`qualify_tables.js`, and those two together is a DIFFERENT upstream file,
-`optimizer/qualify.py`, AIR-2108, also out of scope). Same "no `corpus/atoms.jsonl`
-tie-in" shape `resolver.js`/R48, `merge_subqueries.js`/R52, and `simplify.js`/R59
-already established for this project's optimizer tier: nothing in `src/` calls
-`qualify_columns` yet, so this hand-written scenario battery is the only differential
-signal on it. Comparison is plain `.sql()` string equality (or, for the error-path
-scenarios, exception class + message) -- simpler than an AST-dump diff and just as
-strict, since this port's own parser+generator are independently verified elsewhere
-(PORT_PLAN.md P1-P5) and any AST-shape divergence here would show up as different SQL
-text.
+`src/optimizer/qualify_columns.js` ports `qualify_columns`, `validate_qualify_columns`,
+`qualify_outputs`, `quote_identifiers`, `pushdown_cte_alias_columns`, and every
+`_`-prefixed helper. The `qualify()` end-to-end orchestrator that wires this file and
+`qualify_tables.js` together is a DIFFERENT upstream file, `optimizer/qualify.py`,
+AIR-2108, still out of scope. Same "no `corpus/atoms.jsonl` tie-in" shape
+`resolver.js`/R48, `merge_subqueries.js`/R52, and `simplify.js`/R59 already established
+for this project's optimizer tier: nothing in `src/` calls `qualify_columns` yet, so
+this hand-written scenario battery is the only differential signal on it. Comparison
+is plain `.sql()` string equality (or, for the error-path scenarios, exception class +
+message) -- simpler than an AST-dump diff and just as strict, since this port's own
+parser+generator are independently verified elsewhere (PORT_PLAN.md P1-P5) and any
+AST-shape divergence here would show up as different SQL text.
+
+Every record carries an explicit `"fn"` tag (`qualify_columns`, `validate_qualify_columns`,
+or `quote_identifiers`) so the JS fuzzer can dispatch each scenario to the right
+top-level export instead of assuming one function for the whole file.
 
 This module reads schema (column existence AND, via `TypeAnnotator`, column TYPE for
 struct-star expansion) far more than any other greenfield P7 oracle, so most scenarios
@@ -66,6 +69,23 @@ named after:
   qualify_outputs: an unnamed arithmetic expression (`_col_N`), a bare Subquery
   PROJECTION (not a FROM-clause derived table) getting a synthetic alias
 
+  validate_qualify_columns: a qualified-but-unresolvable column raising "could not be
+  resolved" both with and without a `for table: '...'` suffix (the latter is the
+  common unqualified-column case, not just a quirk -- an unqualified column's empty
+  table text never matches a real source name, so it is ALWAYS also an "external"
+  column; only `scope.pivots`/`is_correlated_subquery` gate which of the two error
+  branches -- "could not be resolved" vs. "Ambiguous column" -- actually fires), a
+  PIVOT scope's unqualified column taking the "Ambiguous column" branch instead (the
+  pivot's presence is what skips the immediate per-scope raise), a clean pass once
+  `qualify_columns` has already run, and the `sql=` kwarg's ANSI-highlighted snippet
+  appended to the message
+
+  quote_identifiers: default double-quote identify=True, an already-quoted identifier
+  left alone, Snowflake's case-sensitive quoting, BigQuery's backtick quoting,
+  Postgres/DuckDB double-quote quoting, and identify=False still quoting identifiers
+  that NEED it regardless (a reserved word, a case-sensitive dialect's mixed-case
+  identifier) while leaving a plain lowercase one unquoted
+
     PYTHONHASHSEED=0 python3 spike/p7/gen_qualify_columns_ref.py > spike/out/qualify_columns.json
     node spike/p7/fuzz_qualify_columns.mjs
 """
@@ -78,7 +98,11 @@ sys.path.insert(0, REF)
 os.chdir(REF)
 
 from sqlglot import parse_one  # noqa: E402
-from sqlglot.optimizer.qualify_columns import qualify_columns  # noqa: E402
+from sqlglot.optimizer.qualify_columns import (  # noqa: E402
+    qualify_columns,
+    quote_identifiers,
+    validate_qualify_columns,
+)
 
 # (name, sql, schema_dict, kwargs, dialect)
 SCENARIOS = [
@@ -235,10 +259,68 @@ def run_one(name, sql, schema, kwargs, dialect):
         return {"error": type(e).__name__, "message": str(e)}
 
 
+# --- validate_qualify_columns (AIR-2107): (name, sql, pre_qualify_schema, dialect, sql_arg) ---
+# `pre_qualify_schema`, when not None, is run through `qualify_columns` first (the real
+# pipeline order, qualify.py:107-117) so `validate_qualify_columns` sees an
+# already-qualified tree instead of a raw parse.
+VALIDATE_SCENARIOS = [
+    ("validate-could-not-be-resolved-for-table", "SELECT x.a FROM t", None, None, None),
+    ("validate-could-not-be-resolved-no-table", "SELECT a FROM t1, t2", None, None, None),
+    ("validate-ambiguous-column-via-pivot",
+     "SELECT a FROM t PIVOT (SUM(revenue) FOR quarter IN ('Q1'))", None, None, None),
+    ("validate-passes-after-qualify-columns", "SELECT a FROM t", {"t": {"a": "INT"}}, None, None),
+    ("validate-sql-highlight-formatting", "SELECT x.a FROM t", None, None, "SELECT x.a FROM t"),
+]
+
+
+def run_validate(name, sql, pre_qualify_schema, dialect, sql_arg):
+    try:
+        ast = parse_one(sql, dialect=dialect)
+        if pre_qualify_schema is not None:
+            ast = qualify_columns(ast, pre_qualify_schema, dialect=dialect)
+        out = validate_qualify_columns(ast, sql=sql_arg)
+        return {"ok": out.sql(dialect=dialect)}
+    except Exception as e:  # noqa: BLE001
+        return {"error": type(e).__name__, "message": str(e)}
+
+
+# --- quote_identifiers (AIR-2107): (name, sql, dialect, identify) ---
+QUOTE_SCENARIOS = [
+    ("quote-default-identify-true", "SELECT a FROM t", None, True),
+    ("quote-already-quoted-stays", 'SELECT "a" FROM "t"', None, True),
+    ("quote-mixed-case-needs-quote", 'SELECT a, "B" FROM t', None, True),
+    ("quote-snowflake-case-sensitive", 'SELECT a, "B" FROM t', "snowflake", True),
+    ("quote-bigquery-backtick", "SELECT a FROM t", "bigquery", True),
+    ("quote-postgres", "SELECT a FROM t", "postgres", True),
+    ("quote-duckdb", "SELECT a FROM t", "duckdb", True),
+    ("quote-identify-false-plain-lower-no-quote", "SELECT a FROM t", None, False),
+    ("quote-identify-false-reserved-word-quoted", 'SELECT a AS "select" FROM t', None, False),
+    ("quote-identify-false-snowflake-mixed-case-quoted", 'SELECT "FooBar" FROM t', "snowflake", False),
+]
+
+
+def run_quote(name, sql, dialect, identify):
+    try:
+        ast = parse_one(sql, dialect=dialect)
+        out = quote_identifiers(ast, dialect=dialect, identify=identify)
+        return {"ok": out.sql(dialect=dialect)}
+    except Exception as e:  # noqa: BLE001
+        return {"error": type(e).__name__, "message": str(e)}
+
+
 records = [
-    {"name": name, "sql": sql, "schema": schema, "kwargs": kwargs, "dialect": dialect,
-     "result": run_one(name, sql, schema, kwargs, dialect)}
+    {"fn": "qualify_columns", "name": name, "sql": sql, "schema": schema, "kwargs": kwargs,
+     "dialect": dialect, "result": run_one(name, sql, schema, kwargs, dialect)}
     for name, sql, schema, kwargs, dialect in SCENARIOS
+] + [
+    {"fn": "validate_qualify_columns", "name": name, "sql": sql,
+     "pre_qualify_schema": pre_qualify_schema, "dialect": dialect, "sql_arg": sql_arg,
+     "result": run_validate(name, sql, pre_qualify_schema, dialect, sql_arg)}
+    for name, sql, pre_qualify_schema, dialect, sql_arg in VALIDATE_SCENARIOS
+] + [
+    {"fn": "quote_identifiers", "name": name, "sql": sql, "dialect": dialect, "identify": identify,
+     "result": run_quote(name, sql, dialect, identify)}
+    for name, sql, dialect, identify in QUOTE_SCENARIOS
 ]
 
 print(json.dumps({"scenarios": records}))
