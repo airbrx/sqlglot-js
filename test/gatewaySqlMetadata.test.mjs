@@ -682,19 +682,25 @@ test("standardizedSql: whitespace-collapsing, keyword-normalizing regeneration f
 });
 
 test("standardizedSql: falls back to the raw original SQL (not null) with extractionError set when the generator can't render this construct yet, other fields stay populated", () => {
-  // Deviation / known gap: `currentdate_sql` is not yet ported in this
-  // port's base Generator (verified — a real NotPorted throw, not silently
-  // wrong output), so any query containing CURRENT_DATE cannot regenerate
+  // Deviation / known gap: `connect_sql` (Oracle-style CONNECT BY) is not yet ported
+  // in this port's base Generator (verified — a real NotPorted throw, not silently
+  // wrong output), so any query containing CONNECT BY cannot regenerate
   // standardizedSql on Databricks or Snowflake today. This degrades ONLY
   // standardizedSql; tables/nonDeterministic/etc. are computed before
   // generation is attempted and are unaffected. See contrib/README.md.
+  //
+  // (AIR-2194, PORT_PLAN.md: the original example here was CURRENT_DATE, but base
+  // `generator.js`'s `currentdate_sql` is real now, so it no longer demonstrates this
+  // fallback — CONNECT BY still does, and CURRENT_DATE stays in the query only to
+  // keep exercising the `nonDeterministic` assertion below.)
   //
   // standardizedSql falls back to the raw sql text rather than null: this
   // field feeds a cache key, and null is a WORSE cache-key input than the
   // query's own text — every currently-unfixable query would otherwise
   // collide on the same null key instead of keying on their own SQL.
-  const r = extractSqlMetadata("SELECT * FROM orders WHERE order_date = CURRENT_DATE", { dialect: "databricks" });
-  assert.equal(r.standardizedSql, "SELECT * FROM orders WHERE order_date = CURRENT_DATE");
+  const sql = "SELECT * FROM orders WHERE order_date = CURRENT_DATE AND id CONNECT BY PRIOR id = parent_id";
+  const r = extractSqlMetadata(sql, { dialect: "databricks" });
+  assert.equal(r.standardizedSql, sql);
   assert.match(r.extractionError, /standardizedSql generation failed/);
   assert.deepEqual(r.tables, [{ catalog: null, schema: null, table: "orders", fullyQualifiedName: "orders", operation: "SELECT" }]);
   assert.equal(r.nonDeterministic.hasNonDeterministicFunctions, true);

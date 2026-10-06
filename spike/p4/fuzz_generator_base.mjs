@@ -64,6 +64,9 @@ const DEFERRED_TABLES = new Set([]);
 // unseeded (still nobody's caller). Same reason this table gets its own entry here as
 // `AFTER_HAVING_MODIFIER_TRANSFORMS` below: neither `DEFERRED_TABLES` (demands exactly
 // 0) nor a full-map comparison (demands the full 143-key set) fits "correctly SOME".
+// +1 from AIR-2194 (PORT_PLAN.md): `exp.PivotAny` (py:238, `f"ANY{self.sql(e,
+// 'this')}"`) — real ever since this table existed, but `pivot_sql` becoming real is
+// what first let a query reach it (`optimizer/qualify.js`'s own end-to-end probe).
 const PARTIALLY_SEEDED_MAP_KEYS = new Map([
   [
     "TRANSFORMS",
@@ -79,7 +82,7 @@ const PARTIALLY_SEEDED_MAP_KEYS = new Map([
       "exp.JSONBContainsAllTopKeys", "exp.JSONBContainsTopKey", "exp.JSONBDeleteAtPath", "exp.JSONBPathExists",
       "exp.LanguageProperty", "exp.LocationProperty", "exp.LogProperty", "exp.MaskingProperty",
       "exp.MaterializedProperty", "exp.NetFunc", "exp.NetworkProperty", "exp.NoPrimaryIndexProperty", "exp.OnCommitProperty",
-      "exp.OnProperty", "exp.Operator", "exp.OutputModelProperty", "exp.RemoteWithConnectionModelProperty",
+      "exp.OnProperty", "exp.Operator", "exp.OutputModelProperty", "exp.PivotAny", "exp.RemoteWithConnectionModelProperty",
       "exp.ReturnsProperty", "exp.RowAccessProperty", "exp.SafeFunc", "exp.SampleProperty", "exp.SecureProperty",
       "exp.SecurityIntegrationProperty", "exp.SetConfigProperty", "exp.SetProperty", "exp.SettingsProperty",
       "exp.SharingProperty", "exp.SqlReadWriteProperty", "exp.SqlSecurityProperty", "exp.StabilityProperty",

@@ -48,7 +48,7 @@ import { PyTypeError, PyValueError } from "../_py/errors.js";
 import { pyTruthy } from "../_py/truthy.js";
 import { formatTime, subsecondPrecision, TIMEZONES } from "../time.js";
 import { newTrie } from "../trie.js";
-import { TokenType, Tokenizer, initTokenizerSubclass, setDialectResolver } from "../tokens.js";
+import { TokenType, Tokenizer, initTokenizerSubclass, setDialectResolver, setDialectHelpersRef } from "../tokens.js";
 import { BaseParser } from "../parsers/base.js";
 import { ALL_JSON_PATH_PARTS, Generator, unsupported_args } from "../generator.js";
 import * as exp from "../expressions/index.js";
@@ -2546,6 +2546,13 @@ registerAstDialects(DIALECT_CLASSES_BY_NAME);
 // "once by `dialects/dialect.js` when it lands". This is that call; from here on
 // `new Tokenizer("snowflake")` resolves a NAME instead of throwing.
 setDialectResolver((dialect) => Dialect.get_or_raise(dialect));
+
+// AIR-2194/PORT_PLAN.md R32's own named hazard, same relay shape as the resolver just
+// above: `generator.js`'s base `dateadd_sql`/`extract_sql`/`concat_sql` need
+// `unit_to_str`/`map_date_part`/`concat_to_dpipe_sql` (all three defined earlier in
+// this file) but cannot import this module directly (it already imports `Generator`
+// FROM `generator.js`). See `tokens.js`'s own `getDialectHelpersRef` header.
+setDialectHelpersRef({ unit_to_str, map_date_part, concat_to_dpipe_sql });
 
 /**
  * py: sqlglot/__init__.py:134 `parse_one`.
