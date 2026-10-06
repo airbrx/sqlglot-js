@@ -8,11 +8,17 @@ import assert from "node:assert/strict";
 import {
   Dialect,
   ErrorLevel,
+  Insert,
+  Keep,
   MappingSchema,
+  Move,
   ParseError,
   RULES,
+  Remove,
   TokenError,
+  Update,
   UnsupportedError,
+  diff,
   exp,
   optimize,
   parse,
@@ -133,6 +139,18 @@ test("optimize qualifies columns and folds constants against a real schema", () 
   const schema = new MappingSchema({ x: { a: "INT", b: "INT" } });
   const result = optimize("SELECT * FROM x WHERE 1 = 1 AND a = 1", { schema });
   assert.equal(result.sql(), 'SELECT "x"."a" AS "a", "x"."b" AS "b" FROM "x" AS "x" WHERE "x"."a" = 1');
+});
+
+test("diff and its edit classes are re-exported from the package root", () => {
+  // Regression for AIR-2122: `diff`/`Insert`/`Remove`/`Move`/`Update`/`Keep`
+  // (src/diff.js) were real but unreachable from `index.js` until this fix, the same
+  // class of gap the dialect-registration test above already guards for.
+  assert.equal(typeof diff, "function");
+  for (const C of [Insert, Remove, Move, Update, Keep]) assert.equal(typeof C, "function");
+
+  const edits = diff(parseOne("SELECT a + b"), parseOne("SELECT a - b"), { delta_only: true });
+  assert.ok(edits.some((e) => e instanceof Remove && e.expression.sql() === "a + b"));
+  assert.ok(edits.some((e) => e instanceof Insert && e.expression.sql() === "a - b"));
 });
 
 test("error classes are re-exported and structured", () => {

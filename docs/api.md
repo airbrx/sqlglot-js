@@ -2,8 +2,9 @@
 
 > **Status:** the public surface described below is real (`index.js`, the package root) for
 > seven dialects, plus `Schema`/`MappingSchema` (dialect-agnostic — column-type-aware
-> table/column metadata, no dependency on how many dialects have landed); each section also
-> says exactly what's still missing (mainly: the other ~42 harvested dialects, and `diff`).
+> table/column metadata, no dependency on how many dialects have landed) and `diff` (also
+> dialect-agnostic); each section also says exactly what's still missing (mainly: the other
+> ~42 harvested dialects).
 > Function names and option shapes mirror upstream sqlglot's
 > own `sqlglot/__init__.py` as closely as JS naming allows: a name that collides with a JS
 > reserved word gets a trailing underscore (`from_`, `case_`), a multi-word `snake_case` name
@@ -276,9 +277,50 @@ optimized.sql();
 predicate folded away — both require a schema to do fully; without one, `qualify` still runs
 but can't resolve `*` or an unqualified column against anything.
 
+## `diff(source, target, options?)`
+
+**Real today** (`src/diff.js`, port of `sqlglot/diff.py`'s Chawathe et al./Change-Distiller
+tree-edit-distance algorithm), re-exported from the package root as
+`import { diff, Insert, Remove, Move, Update, Keep } from "sqlglot-js"`. The edit classes are
+not part of upstream's own top-level re-export surface (upstream reaches them as
+`sqlglot.diff.Insert` etc.) but are re-exported here anyway, for the same
+no-subpath-import-yet reason `RULES` is under `optimize` above — a caller needs them for
+`instanceof` checks on `diff()`'s own return value.
+
+```ts
+function diff(source: Expr, target: Expr, options?: {
+  matchings?: [Expr, Expr][];  // pre-matched node pairs; must reference the SAME node
+                                 // objects as in source/target, not copies
+  delta_only?: boolean;         // excludes all Keep edits from the result
+  f?: number;                   // dice-coefficient threshold (default 0.6)
+  t?: number;                   // leaf-similarity threshold (default 0.6)
+  dialect?: string | Dialect | null;  // used only to render nodes for bigram similarity
+}): (Insert | Remove | Move | Update | Keep)[]
+```
+
+Returns the list of edits needed to turn `source` into `target`: `Insert`/`Remove` carry a
+single `expression`; `Move`/`Update`/`Keep` carry `source`/`target`. Edit-script ORDER is not
+part of the contract — upstream's own `tests/test_diff.py` asserts `set(actual) ==
+set(expected)`, never list equality, because the algorithm's internal `Remove`/`Insert`/`Keep`
+loops iterate Python `set`s/`dict`s built from `id()` (object-identity) keys, whose order
+depends on CPython memory addresses and isn't stable across runs even with
+`PYTHONHASHSEED` pinned. Compare diff results as a set (or multiset) of edits, not a list.
+
+```js
+import { diff, Remove, Insert } from "sqlglot-js";
+import { parseOne } from "sqlglot-js"; // same package
+
+const edits = diff(parseOne("SELECT a + b"), parseOne("SELECT a - b"), { delta_only: true });
+// [Remove(a + b), Insert(a - b), Move(a, a), Move(b, b)] (as a set)
+```
+
+**What it does NOT do:** `ChangeDistiller`'s `dialect` option only affects how nodes are
+rendered to SQL text for the dice-coefficient similarity score — it does not make `diff()`
+aware of a dialect's own parsing quirks, and does not require `source`/`target` to have been
+parsed under that same dialect.
+
 ## Not yet designed / documented here
 
-- **`diff`** — structural AST diffing; no target doc yet.
 - **Every dialect beyond the seven listed above** — no real `Parser`, `Dialect`, or
   `Generator`; `Dialect.get_or_raise("bigquery")` (for example), and therefore
   `parse`/`parseOne`/`transpile`/`tokenize` given `read`/`write: "bigquery"`, throws
