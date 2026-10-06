@@ -58,6 +58,8 @@ python3 spike/p10/gen_optimizer_ref.py > spike/out/optimizer.json
 node spike/p10/fuzz_optimizer.mjs
 python3 spike/p10/gen_optimize_e2e_ref.py > spike/out/optimize_e2e.json
 node spike/p10/fuzz_optimize_e2e.mjs
+python3 spike/p10/gen_lineage_ref.py > spike/out/lineage.json
+node spike/p10/fuzz_lineage.mjs
 python3 tools/bridge/proof.py
 python3 tools/corpus_control.py --report spike/out/python-control.jsonl
 node spike/p5/fuzz_dialect_parse.mjs --report spike/out/production-parse.jsonl

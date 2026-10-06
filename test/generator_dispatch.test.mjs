@@ -411,7 +411,10 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // branch reading a nonexistent `args.aliases` instead of `args.expressions` -- was
   // fixed; a Hive `STACK(...) AS (a, b)` multi-column alias previously failed to
   // qualify at all, masking this render-side gap underneath.
-  assert.equal(bodied.length, 120, "exactly 120 *_sql methods have a real body");
+  // +1 from AIR-2121 (lineage.js, PORT_PLAN.md): `tag_sql` (generator.py:4794), the
+  // sole blocker for `Node#toHtml`'s non-Table render branch, which wraps the traced
+  // expression in an `exp.Tag` to bold it in the rendered source.
+  assert.equal(bodied.length, 121, "exactly 121 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -443,7 +446,10 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // neg_sql on a missing operand raises IndexError, not NotPorted.
   // +1 for `aliases_sql` (AIR-2193): reads no Dialect state either, so it also runs on
   // the bare stand-in (`this.sql`/`this.expressions` both tolerate the missing args).
-  assert.equal(432 - stubs.length, 119, "119 of those 120 also run without a resolved Dialect");
+  // +1 for `tag_sql` (AIR-2121, lineage.js): reads no Dialect state either; on a bare
+  // `new exp.Expr({})` it returns `""` (missing `.this`/`prefix`/`postfix` all fall
+  // back to empty) rather than throwing.
+  assert.equal(432 - stubs.length, 120, "120 of those 121 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],

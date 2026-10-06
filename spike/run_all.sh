@@ -339,6 +339,23 @@ PYTHONHASHSEED=0 python3 spike/p10/gen_optimizer_ref.py > spike/out/optimizer.js
 # inventory and `fuzz_optimize_e2e.mjs`'s own header for the fingerprint fallback's
 # own associativity/insertion-order canonicalization (non-observable in rendered SQL).
 PYTHONHASHSEED=0 python3 spike/p10/gen_optimize_e2e_ref.py > spike/out/optimize_e2e.json || fail=1
+# AIR-2121 (epic AIR-2092, "9.1 lineage.js" -- stretch scope, outside the RULES
+# pipeline): every assertion-bearing `lineage(...)` call in upstream's real
+# `tests/test_lineage.py`, driving the real `sqlglot.lineage.lineage` entry point.
+# Full Node-DAG structural dump per scenario (memoized by node identity), not a few
+# hand-picked field checks -- see `gen_lineage_ref.py`'s own header. One confirmed,
+# named finding: `to_node`'s `for c in source_columns:` loop iterates a Python `set`
+# whose order depends on CPython's content-based `Expression.__hash__`, not
+# reproducible from (and not a contract upstream's own test suite expects of) a JS
+# `Set` -- 3 rows affected, classified as a counted GAP via a content-only (order-
+# insensitive) fallback comparison, not a MISMATCH. 49 further GAP rows are pre-
+# existing, unrelated base-Generator/parser stubs this test file's own real PIVOT/
+# UNPIVOT/LATERAL FLATTEN/TABLE() coverage reaches (`pivot_sql`/`kwarg_sql`/
+# `tablefromrows_sql`/`JSONPathRoot`), and one row (`test_ddl_lineage`, dialect=
+# "oracle") is skipped: this port implements no Oracle dialect. Also fixed, in this
+# same PR: `generator.js`'s `tag_sql` (generator.py:4794) was a `NotPorted` stub --
+# the sole blocker for `Node#toHtml`'s non-Table render branch.
+PYTHONHASHSEED=0 python3 spike/p10/gen_lineage_ref.py > spike/out/lineage.json || fail=1
 # P7 oracle (AIR-2099). Five per-dialect type-inference overlays -- `typing/
 # {postgres,redshift,duckdb,bigquery,tsql}.py` -- exercised through the same real
 # `TypeAnnotator` every other typing/*.js overlay above uses. One combined oracle
@@ -449,6 +466,7 @@ run "P10: optimizer/qualify.js vs CPython (end-to-end)" node spike/p10/fuzz_qual
 run "P10: optimizer/canonicalize.js vs CPython"        node spike/p10/fuzz_canonicalize.mjs
 run "P10: optimizer/optimizer.js vs CPython (RULES + optimize())" node spike/p10/fuzz_optimizer.mjs
 run "AIR-2119: optimize() end-to-end (tpc-h/tpc-ds + more) vs CPython" node spike/p10/fuzz_optimize_e2e.mjs
+run "AIR-2121: lineage.js vs CPython (end-to-end)"     node spike/p10/fuzz_lineage.mjs
 run "P7: typing/{postgres,redshift,duckdb,bigquery,tsql}.js vs CPython" node spike/p7/fuzz_typing_overlay_family.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
