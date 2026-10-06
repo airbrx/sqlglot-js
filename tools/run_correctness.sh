@@ -44,6 +44,8 @@ for name in scope optimize_joins resolver unnest_subqueries qualify_tables isola
 done
 python3 spike/p10/gen_normalize_ref.py > spike/out/normalize.json
 node spike/p10/fuzz_normalize.mjs
+python3 spike/p10/gen_pushdown_predicates_ref.py > spike/out/pushdown_predicates.json
+node spike/p10/fuzz_pushdown_predicates.mjs
 python3 tools/bridge/proof.py
 python3 tools/corpus_control.py --report spike/out/python-control.jsonl
 node spike/p5/fuzz_dialect_parse.mjs --report spike/out/production-parse.jsonl
