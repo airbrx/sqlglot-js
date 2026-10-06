@@ -50,17 +50,24 @@
 // read straight off `k.<python_name>` even for keys that were never present in
 // `possibleKwargs`, with no extra "was this key provided" branching needed.
 //
-// A caller-supplied `rules` override containing a function OTHER than one of these 14
-// (upstream itself does this in `test_merge_subqueries`/`test_canonicalize`, overriding
-// with `qualify_tables`/`qualify_columns`/`quote_identifiers`/`annotate_types`/
-// `canonicalize` directly) falls through `ADAPTERS.get(rule)` to a NO-KWARGS call,
-// `rule(optimized)` — a real, documented limitation, not a silent bug: closing it
-// would require either a second hand-written adapter per override (unbounded, since
-// upstream lets ANY function through) or genuine reflection (which JS does not have).
-// This round's own oracle never exercises a `rules` override — AIR-2118's brief scopes
-// this file to the RULES tuple + optimize() entry point itself, not the broader
-// tpc-h/tpc-ds corpus (AIR-2119) or package/gateway wiring (AIR-2120) — so closing the
-// override case is left to whichever follow-up actually needs it.
+// A caller-supplied `rules` override naming a function with NO `ADAPTERS` entry at
+// all falls through `ADAPTERS.get(rule)` to a NO-KWARGS call, `rule(optimized)` — a
+// real, documented limitation, not a silent bug: closing it for an ARBITRARY function
+// would require either a second hand-written adapter per possible override (unbounded,
+// since upstream lets ANY function through) or genuine reflection (which JS does not
+// have). AIR-2118 originally left this entirely open, reasoning its own oracle never
+// exercised a `rules` override. AIR-2119's end-to-end oracle DOES exercise it —
+// upstream's own `test_merge_subqueries`/`test_canonicalize` override with
+// `qualify_tables`/`qualify_columns`/`quote_identifiers`/`annotate_types`/
+// `canonicalize` directly — and found the no-kwargs fallback silently WRONG, not just
+// incomplete, for `qualify_columns` specifically: its real signature's 2nd positional
+// `schema` is REQUIRED, not optional, so calling it with zero extra args doesn't just
+// drop an optional refinement, it runs column qualification with no schema at all.
+// `qualify_tables`/`qualify_columns` (both reachable here only via an explicit
+// `rules=` override — neither is a `RULES` member on its own) now have real
+// `ADAPTERS` entries below, closing exactly the two overrides upstream's own test
+// suite actually uses. The general "arbitrary function" case remains open, same
+// reasoning as above.
 //
 // A second, deliberate deviation from upstream: an unrecognized top-level `**kwargs`
 // entry (one that matches NO rule's real parameter name) is upstream's own silent
@@ -92,6 +99,7 @@ import { ensureSchema } from "../schema.js";
 import { PyValueError } from "../errors.js";
 
 import { qualify } from "./qualify.js";
+import { qualify_tables } from "./qualify_tables.js";
 import { pushdown_projections } from "./pushdown_projections.js";
 import { normalize } from "./normalize.js";
 import { unnest_subqueries } from "./unnest_subqueries.js";
@@ -101,7 +109,7 @@ import { eliminate_subqueries } from "./eliminate_subqueries.js";
 import { merge_subqueries } from "./merge_subqueries.js";
 import { eliminate_joins } from "./eliminate_joins.js";
 import { eliminate_ctes } from "./eliminate_ctes.js";
-import { quote_identifiers } from "./qualify_columns.js";
+import { qualify_columns, quote_identifiers } from "./qualify_columns.js";
 import { annotate_types } from "./annotate_types.js";
 import { canonicalize } from "./canonicalize.js";
 import { simplify } from "./simplify.js";
@@ -155,6 +163,35 @@ const ADAPTERS = new Map([
     canonicalizeTableAliases: k.canonicalize_table_aliases,
     onQualify: k.on_qualify,
     sql: k.sql,
+  })],
+
+  // py: qualify_tables.py:16 `qualify_tables(expression, db, catalog, on_qualify,
+  // dialect, canonicalize_table_aliases)`. NOT a `RULES` member on its own (`qualify`
+  // calls it internally) -- added here because AIR-2119's own end-to-end oracle found
+  // `test_merge_subqueries`'s `rules=[qualify_tables, qualify_columns,
+  // merge_subqueries]` override (upstream does this in its own real test suite)
+  // falling through to a no-kwargs `rule(optimized)` call without this entry, which
+  // for `qualify_columns` right below is not a mere missing-option gap but a missing
+  // REQUIRED positional argument (`schema`) -- silently wrong, not silently unchanged.
+  [qualify_tables, (expression, k) => qualify_tables(expression, {
+    db: k.db,
+    catalog: k.catalog,
+    onQualify: k.on_qualify,
+    dialect: k.dialect,
+    canonicalizeTableAliases: k.canonicalize_table_aliases,
+  })],
+
+  // py: qualify_columns.py:28 `qualify_columns(expression, schema, expand_alias_refs,
+  // expand_stars, infer_schema, allow_partial_qualification, dialect)`. Same
+  // not-a-`RULES`-member rationale as `qualify_tables` just above. `schema` is this
+  // port's own 2nd POSITIONAL argument, matching upstream's own parameter order
+  // (same shape `pushdown_projections`'s adapter below already uses).
+  [qualify_columns, (expression, k) => qualify_columns(expression, k.schema, {
+    expandAliasRefs: k.expand_alias_refs,
+    expandStars: k.expand_stars,
+    inferSchema: k.infer_schema,
+    allowPartialQualification: k.allow_partial_qualification,
+    dialect: k.dialect,
   })],
 
   // py: pushdown_projections.py:15 `pushdown_projections(expression, schema,
