@@ -70,9 +70,14 @@ function fingerprint(ast) {
 // `KNOWN_GENERATOR_GAPS` established. Filled in from this round's real findings (see
 // PORT_PLAN.md's own entry for the row-by-row detail); a `.sql()`/optimize() error
 // NOT matching one of these is a real ERROR, not a gap.
-const KNOWN_GENERATOR_GAPS = [
-  /^NotPorted: (hint_sql|dot_sql|pivot_sql|currentdate_sql|div_sql|querytransform_sql|kwarg_sql) is not ported yet/,
-];
+//
+// AIR-2194 (PORT_PLAN.md) ported `hint_sql`/`dot_sql`/`pivot_sql`/`currentdate_sql`/
+// `div_sql`/`querytransform_sql` — removed here, all real now (also fixing
+// `pivotalias_sql`, the render-side sibling `pivot_sql`'s own un-stubbing surfaced
+// next, needed for this probe's own fixture-40). `kwarg_sql` is the one
+// base-Generator gap AIR-2194 explicitly left un-fixed (out of its own named scope);
+// still real, still named here.
+const KNOWN_GENERATOR_GAPS = [/^NotPorted: kwarg_sql is not ported yet/];
 
 function isKnownGeneratorGap(e) {
   return KNOWN_GENERATOR_GAPS.some((re) => re.test(`${e.constructor.name}: ${e.message}`));

@@ -55,6 +55,7 @@
 
 import * as exp from "../expressions/index.js";
 import { Generator, unsupported_args } from "../generator.js";
+import { preprocess, unqualify_columns } from "../transforms.js";
 import {
   approx_count_distinct_sql,
   array_append_sql,
@@ -321,8 +322,13 @@ export class DuckDBGenerator extends Generator {
     // yet checked against this file's needs; `_day_navigation_sql` (68 lines) out of scope this pass
     [exp.PercentileCont, rename_func("QUANTILE_CONT")],
     [exp.PercentileDisc, rename_func("QUANTILE_DISC")],
-    // py:1739 [exp.Pivot, transforms.preprocess([transforms.unqualify_columns])] — blocked, `exp.Pivot` DuckDB
-    // qualification quirk needs its own verification pass, deferred with the rest of transforms.preprocess entries
+    // py:1739 [exp.Pivot, transforms.preprocess([transforms.unqualify_columns])] — real now (AIR-2194,
+    // PORT_PLAN.md): base `generator.js`'s own `pivot_sql` becoming real surfaced this exact entry as a live
+    // MISMATCH (`#dialect: duckdb`'s "Expand PIVOT column combinations" qualify_columns.js fixture — the pivot's
+    // aggregate args AND its FOR-list both stay table-qualified through `optimizer/qualify_columns.js`, same as
+    // every other column, and this is the dialect-specific GENERATE-time strip that removes it again), verified
+    // directly against that fixture, not merely transliterated on faith.
+    [exp.Pivot, preprocess([unqualify_columns])],
     [exp.RegexpSplit, rename_func("STR_SPLIT_REGEX")],
     // py:1741-1743,1745-1746 [exp.RegexpILike, exp.RegrValx, exp.RegrValy] — blocked, local helpers out of scope
     // py:1747-1748 [exp.Return, exp.ReturnsProperty] — real, wired below

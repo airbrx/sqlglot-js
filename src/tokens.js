@@ -713,6 +713,28 @@ export function getAnnotateTypesRef() {
   return _annotateTypesRef;
 }
 
+/**
+ * Same relay shape, for the three module-level GENERATOR-side helpers
+ * `dialects/dialect.py` defines that `generator.js`'s base `dateadd_sql`/
+ * `extract_sql`/`concat_sql` call (`unit_to_str`, `map_date_part`,
+ * `concat_to_dpipe_sql`) — AIR-2194/PORT_PLAN.md R32's own named hazard:
+ * `generator.js` cannot import `dialects/dialect.js` at all, regardless of which
+ * export it names, because `dialect.js` already imports `Generator` FROM
+ * `generator.js` (a one-directional cycle, same shape as this file's own `Dialect`
+ * relay above). Installed once by `dialects/dialect.js` itself, after the three
+ * functions are defined.
+ * @type {{ unit_to_str: Function, map_date_part: Function, concat_to_dpipe_sql: Function } | null}
+ */
+let _dialectHelpersRef = null;
+
+export function setDialectHelpersRef(ref) {
+  _dialectHelpersRef = ref;
+}
+
+export function getDialectHelpersRef() {
+  return _dialectHelpersRef;
+}
+
 function resolveDialect(dialect) {
   if (_dialectResolver) return _dialectResolver(dialect);
   if (dialect === null || dialect === undefined) return BASE_DIALECT_TOKENIZER_SETTINGS;
