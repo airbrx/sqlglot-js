@@ -433,7 +433,10 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // `PivotAlias` nodes (the non-UNPIVOT, snowflake-style-columns case), the R78
   // `optimizer.js` probe's own fixture-40 hit this render-side sibling next — same
   // "porting the stub surfaces its own caller's caller" shape as `joinhint_sql`.
-  assert.equal(bodied.length, 132, "exactly 132 *_sql methods have a real body");
+  // +1 from AIR-2121 (lineage.js, PORT_PLAN.md): `tag_sql` (generator.py:4794), the
+  // sole blocker for `Node#toHtml`'s non-Table render branch, which wraps the traced
+  // expression in an `exp.Tag` to bold it in the rendered source.
+  assert.equal(bodied.length, 133, "exactly 133 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -482,7 +485,10 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // on a bare `new exp.Expr({})` its `expression.parent` is `null`, so the body falls
   // straight through to `this.alias_sql(expression)` without touching any Dialect
   // state.
-  assert.equal(432 - stubs.length, 131, "131 of those 132 also run without a resolved Dialect");
+  // +1 for `tag_sql` (AIR-2121, lineage.js): reads no Dialect state either; on a bare
+  // `new exp.Expr({})` it returns `""` (missing `.this`/`prefix`/`postfix` all fall
+  // back to empty) rather than throwing.
+  assert.equal(432 - stubs.length, 132, "132 of those 133 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],

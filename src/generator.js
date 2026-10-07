@@ -5489,9 +5489,19 @@ export class Generator {
     return `${property_name} ${this.sql(expression, "this")}`;
   }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:4794
-  tag_sql(expression) { throw new NotPorted("tag_sql", "sqlglot/generator.py:4794"); }
+  // py: sqlglot/generator.py:4794 `tag_sql`. Found during AIR-2121 (lineage.js):
+  // `Node.to_html`'s non-Table branch wraps the node's own expression in an `exp.Tag`
+  // to bold it within the rendered source, so this was the sole blocker for that path.
+  //
+  // deny:implicit_str sqlglot/generator.py:4795 -- `expression.this` IS routed through
+  // an explicit `this.sql(...)` call (genuinely an Expr arg). `prefix`/`postfix` are
+  // the other two `.args.get(...)` the deny scanner flagged, generically, as "could be
+  // an Expr arg" -- but the only constructor of an `exp.Tag` anywhere this port
+  // reaches (`src/lineage.js`'s `toHtml`) always passes plain JS strings
+  // (`"<b>"`/`"</b>"`) for both, never an `Expr`, so no `.sql()` call is needed there.
+  tag_sql(expression) {
+    return `${expression.args.prefix ?? ""}${this.sql(expression.this)}${expression.args.postfix ?? ""}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4797
