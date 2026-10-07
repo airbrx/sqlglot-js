@@ -113,21 +113,23 @@ test("test_node_position_changed", () => {
   // `diff.js` bug. See that test's own comment.
 });
 
-test("test_node_position_changed — CONCAT sub-cases (named pre-existing generator gap)", () => {
-  // `ChangeDistiller._bigram_histo` renders every candidate node with the real
-  // Generator for its dice-coefficient similarity score (see src/diff.js), and
-  // `Generator.prototype.concat_sql` is `NotPorted` (`src/generator.js:4062`,
-  // `sqlglot/generator.py:3710`) — a pre-existing, unrelated gap also named in
-  // `spike/p10/fuzz_diff.mjs`'s `NAMED_GENERATOR_GAPS`. These two upstream scenarios
-  // can't run end to end in this port yet; asserting the exact failure keeps this
-  // gap visible instead of silently vanishing if something about it changes.
+test("test_node_position_changed — CONCAT sub-cases (py:130-151)", () => {
+  // Formerly asserted a `NotPorted: concat_sql` throw (a named pre-existing
+  // base-Generator gap); `concat_sql` was ported at R82 (AIR-2194), so these two
+  // upstream scenarios now run end to end and are asserted for real.
   const exprSrc = parseOne("SELECT a, b FROM t WHERE CONCAT('a', 'b') = 'ab'");
   const exprTgt = parseOne("SELECT a FROM t WHERE CONCAT('a', 'b', b) = 'ab'");
-  assert.throws(() => diffDeltaOnly(exprSrc, exprTgt), { name: "NotPorted", message: /concat_sql/ });
+  assertDeltaSet(diffDeltaOnly(exprSrc, exprTgt), [
+    new Move(exprSrc.selects[1], exprTgt.find(exp.Concat).expressions.at(-1)),
+  ]);
 
   const exprSrc2 = parseOne("SELECT a as a, b as b FROM t WHERE CONCAT('a', 'b') = 'ab'");
   const exprTgt2 = parseOne("SELECT a as a FROM t WHERE CONCAT('a', 'b', b) = 'ab'");
-  assert.throws(() => diffDeltaOnly(exprSrc2, exprTgt2), { name: "NotPorted", message: /concat_sql/ });
+  const bAlias = exprSrc2.selects[1];
+  assertDeltaSet(diffDeltaOnly(exprSrc2, exprTgt2), [
+    new Remove(bAlias),
+    new Move(bAlias.this, exprTgt2.find(exp.Concat).expressions.at(-1)),
+  ]);
 });
 
 test("test_cte", () => {

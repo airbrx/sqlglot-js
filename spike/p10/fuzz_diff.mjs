@@ -68,8 +68,6 @@ function runDiff(source, target, options) {
 // exact error message is still checked so a future real fix here is caught as a
 // (happy) MISMATCH rather than silently staying excluded.
 const NAMED_GENERATOR_GAPS = new Map([
-  ["position-concat-move", /NotPorted: concat_sql is not ported yet/],
-  ["position-alias-remove-and-move", /NotPorted: concat_sql is not ported yet/],
 ]);
 
 function check(name, got, expected) {
@@ -215,7 +213,7 @@ console.log();
 console.log("  src/diff.js vs CPython sqlglot.diff");
 console.log(
   `    EXACT ${exact}    MISMATCH ${mismatch}    ERROR ${error}    SKIPPED ${skipped}` +
-    " (2 oracle-dialect-not-ported + 2 concat_sql-not-ported, both named pre-existing gaps)",
+    " (2 oracle-dialect-not-ported, named pre-existing gap; concat_sql ported at R82 so those 2 rows are now asserted for real)",
 );
 if (samples.length) {
   console.log();
