@@ -277,6 +277,63 @@ optimized.sql();
 predicate folded away — both require a schema to do fully; without one, `qualify` still runs
 but can't resolve `*` or an unqualified column against anything.
 
+## `lineage(column, sql, options?)`
+
+**Real today** (`src/lineage.js`, port of `sqlglot/lineage.py`), re-exported from the
+package root as `import { lineage, Node } from "sqlglot-js"`. Like `RULES` above, upstream
+itself does not re-export this from its own package root (`from sqlglot.lineage import
+lineage` there) — re-exported here anyway for the same no-subpath-import-story reason.
+
+```ts
+function lineage(column: string | null, sql: string | Expr, options?: {
+  schema?: Schema | object | Map;
+  sources?: { [name: string]: string | Expr } | Map<string, string | Expr>;
+  dialect?: string;
+  scope?: Scope;                    // pre-built Scope; skips qualify()+buildScope() internally
+  trimSelects?: boolean;            // default true
+  copy?: boolean;                   // default true
+  onNode?: (node: Node) => void;    // fires once per unique Node, after its downstream is set
+  // ...plus any qualify() kwarg (e.g. `expandStars`, `isolateTables`)
+}): Node | { [name: string]: Node }
+```
+
+Builds a column-level lineage DAG by qualifying `sql` (unless a pre-built `scope` is given)
+and recursively tracing each output column back through every join/subquery/CTE/PIVOT it's
+derived from. Pass a column name (or `exp.Column`) to get a single `Node`; pass `null` to get
+every top-level output column as `{ name: Node }`, with a shared cache so columns that
+reference the same upstream data (e.g. a CTE joined with itself) share the same `Node`
+object rather than each re-deriving it.
+
+```js
+import { lineage } from "sqlglot-js";
+
+const node = lineage("a", "SELECT a FROM z", {
+  schema: { x: { a: "int" } },
+  sources: { y: "SELECT * FROM x", z: "SELECT a FROM y" },
+});
+
+node.source.sql();
+// 'SELECT z.a AS a FROM (SELECT y.a AS a FROM (SELECT x.a AS a FROM x AS x) AS y /* source: y */) AS z /* source: z */'
+
+node.downstream[0].sourceName; // 'z'
+```
+
+`Node` (plain object, not frozen): `.name`, `.expression` (the traced `Expr`), `.source` (the
+containing query/table `Expr`), `.downstream` (`Node[]`), `.sourceName`, `.referenceNodeName`,
+`.payload` (caller-populated via `onNode`). `Node#walk()` is an iterable DFS pre-order
+traversal over the reachable DAG, visiting each unique node once. `Node#toHtml(dialect?,
+opts?)` returns a `GraphHTML` (`.toString()`/`._repr_html_()`) for a vis.js-rendered page —
+real as of this PR (`src/generator.js`'s `tag_sql`, the one base-Generator method it needed,
+was a `NotPorted` stub fixed alongside this file).
+
+**Known gap:** `source_columns`'s iteration order inside `to_node` (which column of a
+multi-column expression like `a + b` gets traced first) is, in upstream CPython, the order
+of a `set` of `exp.Column` nodes — dependent on CPython's own content-based
+`Expression.__hash__`, not reproducible from (and not a contract upstream's own test suite
+relies on either — it explicitly sorts before asserting) a JS `Set`. In the rare case where
+this affects relative `downstream` order, this port's own order is internally consistent but
+not guaranteed to match CPython's. See `spike/p10/fuzz_lineage.mjs`'s own header.
+
 ## `anonymize(sqlOrTokens, dialect?)` / `render(sql, tokens, dialect?)`
 
 **Real today** (`src/anonymize.js`, port of `sqlglot/anonymize.py`), re-exported from the
