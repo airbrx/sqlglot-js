@@ -54,6 +54,14 @@ import { lineage, Node } from "./src/lineage.js";
 // this port has no npm-published subpath-import story yet, so the package root is the
 // only import path a caller has.
 import { anonymize, render } from "./src/anonymize.js";
+// py: sqlglot/__init__.py:18 `from sqlglot.diff import diff as diff` (upstream's own
+// root re-export). `Insert`/`Remove`/`Move`/`Update`/`Keep` are NOT part of upstream's
+// own `sqlglot/__init__.py` surface (upstream reaches them as `sqlglot.diff.Insert`
+// etc. — `tests/test_diff.py` does exactly that) but are re-exported here anyway for
+// the same reason `RULES` is above: this port has no npm-published subpath-import
+// story yet, and a caller needs these classes for `instanceof` checks on `diff()`'s
+// own return value.
+import { diff, Insert, Remove, Move, Update, Keep } from "./src/diff.js";
 
 export { Dialect, ErrorLevel, ParseError, TokenError, UnsupportedError, exp, parseOne, Schema, MappingSchema };
 // `optimize` matches upstream's own root re-export name exactly (no snake_case to
@@ -67,6 +75,7 @@ export { Dialect, ErrorLevel, ParseError, TokenError, UnsupportedError, exp, par
 export { optimize, RULES };
 export { lineage, Node };
 export { anonymize, render };
+export { diff, Insert, Remove, Move, Update, Keep };
 
 /**
  * py: sqlglot/__init__.py:83 `tokenize`.

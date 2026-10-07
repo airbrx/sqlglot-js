@@ -359,6 +359,15 @@ PYTHONHASHSEED=0 python3 spike/p10/gen_lineage_ref.py > spike/out/lineage.json |
 # AIR-2123 oracle. `anonymize.py` is NOT greenfield either -- own new oracle,
 # reproducing every assertion in tests/test_anonymize.py.
 PYTHONHASHSEED=0 python3 spike/p10/gen_anonymize_ref.py > spike/out/anonymize.json || fail=1
+# AIR-2122: `diff.js`, greenfield, zero optimizer dependency. Reproduces every
+# `tests/test_diff.py` CALL (not its hand-written `expected` values -- see
+# `gen_diff_ref.py`'s own header), comparing a canonicalized SET of
+# `(type, a.sql(), b.sql())` edits per scenario, since edit-script order/duplication is
+# not part of upstream's own contract (its test asserts `set(actual) == set(expected)`).
+# EXACT 28/28 of applicable rows, SKIPPED 4 (2 unported Oracle dialect, 2 pre-existing
+# unrelated `concat_sql` base-Generator stub -- both named, not by row id), MISMATCH 0,
+# ERROR 0.
+PYTHONHASHSEED=0 python3 spike/p10/gen_diff_ref.py > spike/out/diff.json || fail=1
 # P7 oracle (AIR-2099). Five per-dialect type-inference overlays -- `typing/
 # {postgres,redshift,duckdb,bigquery,tsql}.py` -- exercised through the same real
 # `TypeAnnotator` every other typing/*.js overlay above uses. One combined oracle
@@ -471,6 +480,7 @@ run "P10: optimizer/optimizer.js vs CPython (RULES + optimize())" node spike/p10
 run "AIR-2119: optimize() end-to-end (tpc-h/tpc-ds + more) vs CPython" node spike/p10/fuzz_optimize_e2e.mjs
 run "AIR-2121: lineage.js vs CPython (end-to-end)"     node spike/p10/fuzz_lineage.mjs
 run "AIR-2123: anonymize.js vs CPython (tests/test_anonymize.py)" node spike/p10/fuzz_anonymize.mjs
+run "AIR-2122: diff.js vs CPython sqlglot.diff"       node spike/p10/fuzz_diff.mjs
 run "P7: typing/{postgres,redshift,duckdb,bigquery,tsql}.js vs CPython" node spike/p7/fuzz_typing_overlay_family.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
