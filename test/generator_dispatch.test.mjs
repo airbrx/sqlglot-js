@@ -457,7 +457,13 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // these three previously-unreached render stubs one layer down; the TRANSFORMS
   // wiring above is what routes `JSONObject`/`JSONObjectAgg` to `_jsonobject_sql`
   // instead of the buggy class-name-derived fallback.
-  assert.equal(bodied.length, 137, "exactly 137 *_sql methods have a real body");
+  // +3 from AIR-2240 (PORT_PLAN.md R85, the transaction-control cluster, merged
+  // concurrently with AIR-2280's own R86 and combined here): `transaction_sql`,
+  // `commit_sql`, `rollback_sql` (generator.py:4202/4207/4214) — Postgres `BEGIN`/
+  // `COMMIT`/`ROLLBACK` previously failed `standardizedSql` generation in
+  // `contrib/gatewaySqlMetadata.js` with a `NotPorted` error; the parser side
+  // (`_parse_transaction`/`_parse_commit_or_rollback`) was already real.
+  assert.equal(bodied.length, 140, "exactly 140 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -515,7 +521,11 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // +3 for `_jsonobject_sql`/`jsonkeyvalue_sql`/`formatjson_sql` (AIR-2280): none
   // reads Dialect state either, so all three return a (nonsensical but non-throwing)
   // string on the bare stand-in (`"JSON_OBJECTAGG()"`, `": "`, `" FORMAT JSON"`).
-  assert.equal(432 - stubs.length, 136, "136 of those 137 also run without a resolved Dialect");
+  // +3 for AIR-2240's three new bodies (merged concurrently with AIR-2280's own R86
+  // and combined here): none reads `this.dialect` or any other Dialect-hosted state,
+  // so `transaction_sql`/`commit_sql`/`rollback_sql` all run on the bare stand-in too
+  // (`"BEGIN"`/`"COMMIT"`/`"ROLLBACK"` with every optional arg missing).
+  assert.equal(432 - stubs.length, 139, "139 of those 140 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],

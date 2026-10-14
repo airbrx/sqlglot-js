@@ -4781,17 +4781,42 @@ export class Generator {
   // py: sqlglot/generator.py:4191
   mergetreettl_sql(expression) { throw new NotPorted("mergetreettl_sql", "sqlglot/generator.py:4191"); }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:4202
+   * @param {exp.Transaction} expression
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:4202
-  transaction_sql(expression) { throw new NotPorted("transaction_sql", "sqlglot/generator.py:4202"); }
+  transaction_sql(expression) {
+    let modes = this.expressions(expression, "modes");
+    modes = modes ? ` ${modes}` : "";
+    return `BEGIN${modes}`;
+  }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:4207
+   * @param {exp.Commit} expression
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:4207
-  commit_sql(expression) { throw new NotPorted("commit_sql", "sqlglot/generator.py:4207"); }
+  commit_sql(expression) {
+    let chain = expression.args.chain;
+    if (chain !== null && chain !== undefined) chain = chain ? " AND CHAIN" : " AND NO CHAIN";
+    return `COMMIT${chain || ""}`;
+  }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:4214
+   * @param {exp.Rollback} expression
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:4214
-  rollback_sql(expression) { throw new NotPorted("rollback_sql", "sqlglot/generator.py:4214"); }
+  rollback_sql(expression) {
+    // py: `savepoint = f" TO {savepoint}"` implicitly calls `Expression.__str__` (self.sql()).
+    // This port's `toString()` is a debug repr, not `sql()` — must go through `this.sql()`.
+    const savepoint = expression.args.savepoint;
+    return `ROLLBACK${savepoint ? ` TO ${this.sql(savepoint)}` : ""}`;
+  }
 
   /**
    * py: sqlglot/generator.py:4219
@@ -4833,6 +4858,10 @@ export class Generator {
       return `ALTER COLUMN${exists} ${this_} COMMENT ${comment}`;
     }
 
+    // deny:implicit_str sqlglot/generator.py:4253 -- the deny scanner flags `visible` as
+    // "could be an Expr arg" from its `.args.get(...)` shape alone, but the only two
+    // sites that ever set it (parser.py:9137/9141) assign the plain string literal
+    // "VISIBLE"/"INVISIBLE", never an `exp.Expr` -- a bare template literal is correct.
     const visible = expression.args.visible;
     if (visible) {
       return `ALTER COLUMN${exists} ${this_} SET ${visible}`;
