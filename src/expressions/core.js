@@ -15,12 +15,43 @@ import { pyDecimal, pyIntFromStr, decNeg } from "../_py/num.js";
 import { PyValueError } from "../_py/errors.js";
 import { pyIsAlnum } from "../_py/str.js";
 
-// py: str.splitlines (the JS newline regexes omit several CPython boundaries).
-function pySplitlines(s) { return String(s).split(/\r\n|[\n\r\v\f\x1c-\x1e\x85\u2028\u2029]/); }
-function dedent(s) {
-  const lines = pySplitlines(s); let margin = Infinity;
-  for (const line of lines) if (line.trim()) margin = Math.min(margin, line.match(/^[ \t]*/)[0].length);
-  return lines.map(x => x.slice(Number.isFinite(margin) ? margin : 0)).join("\n");
+// py: str.splitlines() -- the general Unicode line-boundary set `toS`'s own final
+// join uses. Python never emits a trailing empty segment for a string that ends with
+// a line terminator (and emits [] for ""), unlike a naive regex `.split()`, which
+// produces one extra trailing "" per terminator consumed entirely by the match.
+function pySplitlines(s) {
+  const parts = String(s).split(/\r\n|[\n\r\v\f\x1c-\x1e\x85\u2028\u2029]/);
+  if (parts.length && parts[parts.length - 1] === "") parts.pop();
+  return parts;
+}
+// py: textwrap.dedent(text) -- operates on `\n`-ONLY lines (`re.MULTILINE`'s `^`/`$`
+// recognize only `\n`, not the wider `pySplitlines` set above -- a real divergence:
+// JS regex `^`/`$` in multiline mode also treats `\r`/U+2028/U+2029 as boundaries,
+// Python's does not), so this must split on literal "\n" by hand rather than reuse
+// `pySplitlines` or a `/m`-flagged regex. Two phases, both from CPython's own source:
+// (1) blank out any line that is ENTIRELY spaces/tabs (`_whitespace_only_re`) --
+// without this, a key text of a single tab/space dedents to itself instead of "";
+// (2) find the longest common leading run of spaces/tabs across every remaining
+// non-blank line and strip it (`_leading_whitespace_re` + margin reconciliation).
+function dedent(text) {
+  const lines = String(text).split("\n");
+  const blanked = lines.map((l) => (/^[ \t]+$/.test(l) ? "" : l));
+  let margin = null;
+  for (const l of blanked) {
+    const m = l.match(/^([ \t]*)[^ \t]/);
+    if (!m) continue;
+    const indent = m[1];
+    if (margin === null) margin = indent;
+    else if (indent.startsWith(margin)) { /* current line more deeply indented: no change */ }
+    else if (margin.startsWith(indent)) margin = indent;
+    else {
+      let i = 0;
+      while (i < margin.length && i < indent.length && margin[i] === indent[i]) i++;
+      margin = margin.slice(0, i);
+    }
+  }
+  if (!margin) return blanked.join("\n");
+  return blanked.map((l) => (l.startsWith(margin) ? l.slice(margin.length) : l)).join("\n");
 }
 
 let CLASS_REGISTRY = new Map();
@@ -440,13 +471,15 @@ function pyScalar(v, reprStr = false) {
     return `${quote}${escaped}${quote}`;
   }
   if (typeof v === "string") {
-    // py: expressions/core.py:2622 — dedent/strip-newlines/splitlines. This is
-    // observable for ByteString containing only indentation whitespace.
-    const stripped = v.replace(/^\n+|\n+$/g, "");
-    const lines = stripped.split(/\r\n|\r|\n|\v|\f|\x1c|\x1d|\x1e|\x85|\u2028|\u2029/);
-    const nonblank = lines.filter((line) => line.trim()).map((line) => line.match(/^[ \t]*/)[0].length);
-    const margin = nonblank.length ? Math.min(...nonblank) : (lines[0]?.length ?? 0);
-    return lines.map((line) => line.slice(margin)).join("\n");
+    // py: expressions/core.py:2622 is `str(node)` at this point -- the dedent/
+    // strip-newlines/splitlines chain is `toS`'s own job, ONE line below (core.py's
+    // own `_to_s` applies it exactly once, after this conversion, never twice). A
+    // second pass here used to re-run splitlines on an ALREADY-splitlines'd-and-
+    // "\n"-rejoined string, which corrupts any non-"\n" line boundary (`\r`, `\v`,
+    // ...) into plain "\n" before `toS`'s real dedent/join ever sees it -- observable
+    // on any string arg containing a raw `\r` (e.g. a `JSONPathKey`/`JSONPathRecursive`
+    // whose text came straight from the source path, `src/jsonpath.js`).
+    return v;
   }
   if (v && v.__dialect__) {
     const module = v.__dialect__.toLowerCase();

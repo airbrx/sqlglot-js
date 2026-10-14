@@ -125,14 +125,19 @@ export function parse(path, dialect = null) {
     if (number_token) number += number_token.text;
 
     if (number) {
-      // py: `int(number)` — raises ValueError (NOT ParseError) for the single
-      // malformed case this can reach, a lone "-" with no digit after it. Faithfully
-      // uncaught here: `to_json_path`'s caller only catches `ParseError`.
+      // py: `int(number)` — a Python int is arbitrary-precision, so this returns the
+      // BigInt itself (never narrowed to `Number`): `json_path_part`'s `typeof
+      // expression === "bigint"` branch already renders it via `String(...)`, with no
+      // precision loss for an out-of-`Number.MAX_SAFE_INTEGER` array index (cts.json
+      // exercises exactly that — a 78-digit subscript). Raises ValueError (NOT
+      // ParseError) for the single malformed case this can reach, a lone "-" with no
+      // digit after it. Faithfully uncaught here: `to_json_path`'s caller only catches
+      // `ParseError`.
       const parsed = pyIntFromStr(number);
       if (parsed === null) {
         throw new PyValueError(`invalid literal for int() with base 10: '${number}'`);
       }
-      return Number(parsed);
+      return parsed;
     }
 
     return false;
