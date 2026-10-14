@@ -9,6 +9,19 @@ set -uo pipefail
 export PYTHONHASHSEED=0
 cd "$(dirname "$0")/.."
 
+# Preflight (R85 coordinator addendum): every spike/*/gen_*_ref.py puts
+# ${SQLGLOT_REF:-/tmp/sqlglot-ref} at sys.path[0]. If that checkout is incomplete
+# (no sqlglot/__init__.py), CPython resolves `sqlglot` as a namespace package rooted
+# there and SHADOWS the real pinned install, and all ~32 CPython-comparison probes go
+# red for an environmental reason that looks exactly like 32 regressions. Fail loudly.
+_ref="${SQLGLOT_REF:-/tmp/sqlglot-ref}"
+if [ ! -f "$_ref/sqlglot/__init__.py" ] || [ ! -f "$_ref/sqlglot/dialects/dialect.py" ]; then
+  echo "FATAL: reference checkout '$_ref' is incomplete (sqlglot/__init__.py or" >&2
+  echo "       sqlglot/dialects/dialect.py missing). Set SQLGLOT_REF to a complete pinned" >&2
+  echo "       checkout (e.g. /tmp/sqlglot-complete-pin) or rebuild '$_ref' from it." >&2
+  exit 2
+fi
+
 mkdir -p spike/out
 fail=0
 # Prints an explicit marker on failure. Without it a red probe is invisible in the
