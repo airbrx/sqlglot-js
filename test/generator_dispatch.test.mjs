@@ -436,7 +436,12 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // +1 from AIR-2121 (lineage.js, PORT_PLAN.md): `tag_sql` (generator.py:4794), the
   // sole blocker for `Node#toHtml`'s non-Table render branch, which wraps the traced
   // expression in an `exp.Tag` to bold it in the rendered source.
-  assert.equal(bodied.length, 133, "exactly 133 *_sql methods have a real body");
+  // +3 from AIR-2240 (PORT_PLAN.md R85, the transaction-control cluster): `transaction_sql`,
+  // `commit_sql`, `rollback_sql` (generator.py:4202/4207/4214) — Postgres `BEGIN`/
+  // `COMMIT`/`ROLLBACK` previously failed `standardizedSql` generation in
+  // `contrib/gatewaySqlMetadata.js` with a `NotPorted` error; the parser side
+  // (`_parse_transaction`/`_parse_commit_or_rollback`) was already real.
+  assert.equal(bodied.length, 136, "exactly 136 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -488,7 +493,11 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // +1 for `tag_sql` (AIR-2121, lineage.js): reads no Dialect state either; on a bare
   // `new exp.Expr({})` it returns `""` (missing `.this`/`prefix`/`postfix` all fall
   // back to empty) rather than throwing.
-  assert.equal(432 - stubs.length, 132, "132 of those 133 also run without a resolved Dialect");
+  // +3 for AIR-2240's three new bodies: none reads `this.dialect` or any other
+  // Dialect-hosted state, so `transaction_sql`/`commit_sql`/`rollback_sql` all run on
+  // the bare stand-in too (`"BEGIN"`/`"COMMIT"`/`"ROLLBACK"` with every optional arg
+  // missing).
+  assert.equal(432 - stubs.length, 135, "135 of those 136 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],
