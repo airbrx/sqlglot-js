@@ -443,7 +443,12 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // +1 from AIR-2274 (`src/jsonpath.js`): `_jsonpathsubscript_sql` (generator.py:5383),
   // the last `JSONPathPart` generator method left as a stub — a two-line body
   // (`json_path_part` plus a bracket wrap) that depended on nothing but itself.
-  assert.equal(bodied.length, 134, "exactly 134 *_sql methods have a real body");
+  // +3 from AIR-2240 (PORT_PLAN.md R85, the transaction-control cluster): `transaction_sql`,
+  // `commit_sql`, `rollback_sql` (generator.py:4202/4207/4214) — Postgres `BEGIN`/
+  // `COMMIT`/`ROLLBACK` previously failed `standardizedSql` generation in
+  // `contrib/gatewaySqlMetadata.js` with a `NotPorted` error; the parser side
+  // (`_parse_transaction`/`_parse_commit_or_rollback`) was already real.
+  assert.equal(bodied.length, 137, "exactly 137 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -498,7 +503,11 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // +1 for `_jsonpathsubscript_sql` (AIR-2274): reads no Dialect state; on a bare
   // `new exp.Expr({})` its `expression.this` is `undefined`, so `json_path_part`
   // throws a plain `TypeError` (not `NotPorted`) calling `.replaceAll` on it.
-  assert.equal(432 - stubs.length, 133, "133 of those 134 also run without a resolved Dialect");
+  // +3 for AIR-2240's three new bodies: none reads `this.dialect` or any other
+  // Dialect-hosted state, so `transaction_sql`/`commit_sql`/`rollback_sql` all run on
+  // the bare stand-in too (`"BEGIN"`/`"COMMIT"`/`"ROLLBACK"` with every optional arg
+  // missing).
+  assert.equal(432 - stubs.length, 136, "136 of those 137 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],

@@ -9,6 +9,19 @@ set -uo pipefail
 export PYTHONHASHSEED=0
 cd "$(dirname "$0")/.."
 
+# Preflight (R85 coordinator addendum): every spike/*/gen_*_ref.py puts
+# ${SQLGLOT_REF:-/tmp/sqlglot-ref} at sys.path[0]. If that checkout is incomplete
+# (no sqlglot/__init__.py), CPython resolves `sqlglot` as a namespace package rooted
+# there and SHADOWS the real pinned install, and all ~32 CPython-comparison probes go
+# red for an environmental reason that looks exactly like 32 regressions. Fail loudly.
+_ref="${SQLGLOT_REF:-/tmp/sqlglot-ref}"
+if [ ! -f "$_ref/sqlglot/__init__.py" ] || [ ! -f "$_ref/sqlglot/dialects/dialect.py" ]; then
+  echo "FATAL: reference checkout '$_ref' is incomplete (sqlglot/__init__.py or" >&2
+  echo "       sqlglot/dialects/dialect.py missing). Set SQLGLOT_REF to a complete pinned" >&2
+  echo "       checkout (e.g. /tmp/sqlglot-complete-pin) or rebuild '$_ref' from it." >&2
+  exit 2
+fi
+
 mkdir -p spike/out
 fail=0
 # Prints an explicit marker on failure. Without it a red probe is invisible in the
@@ -405,6 +418,7 @@ run "LINT: py: anchors point at defs"     node tools/lint_anchors.mjs
 # or the stub-seeding design that makes P3+ parallel is defeated.
 run "SELFTEST: claim-overlap units"       node tools/claim_overlap.mjs --selftest
 run "SELFTEST: closure calculator"        node tools/closure.mjs --selftest
+run "SELFTEST: parser closure maths"      node tools/closure_parser.mjs --selftest
 run "SELFTEST: ratchet rules 1-5"         node tools/ratchet.mjs --selftest
 run "SELFTEST: corpus runner"             node test/runner.mjs --selftest
 run "CORPUS: integrity"                   node tools/check_corpus.mjs
