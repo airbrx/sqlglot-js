@@ -87,6 +87,7 @@ import { registerGenerator } from "./expressions/core.js";
 import { formatTime } from "./time.js";
 import { pyTruthy } from "./_py/truthy.js";
 import { ensure_bools, move_ctes_to_top_level } from "./transforms.js";
+import { JSON_PATH_PART_TRANSFORMS } from "./jsonpath.js";
 import { getAnnotateTypesRef, getDialectHelpersRef } from "./tokens.js";
 
 /**
@@ -461,11 +462,10 @@ export class Generator {
   static TRANSFORMS = new Map([
     // py:137  SPREAD `**JSON_PATH_PART_TRANSFORMS` — TEN entries, not one:
     //         JSONPath{Filter,Key,Recursive,Root,Script,Selector,Slice,Subscript,Union,
-    //         Wildcard} (jsonpath.py:219, verified against the pin). Spelled out because
-    //         a lone "SPREAD" line reads as ONE seeded item while standing for ten
-    //         unseeded ones — R14's shape. 133 explicit entries below + these 10 = the
-    //         143 that `Generator.TRANSFORMS` resolves to upstream. Fill from
-    //         `src/jsonpath.js`'s own table when it lands, never by hand.
+    //         Wildcard} (jsonpath.py:219, verified against the pin). 133 explicit
+    //         entries below + these 10 = the 143 that `Generator.TRANSFORMS` resolves
+    //         to upstream. Filled from `src/jsonpath.js`'s own table, never by hand.
+    ...JSON_PATH_PART_TRANSFORMS,
     // py:138 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4): reached by
     // corpus rows like `NUMRANGE(...) -|- NUMRANGE(...)`, which previously threw
     // "Unsupported expression type Adjacent" (no dispatch entry at all).
@@ -5897,9 +5897,16 @@ export class Generator {
       : `.${this_}`;
   }
 
-  /** @returns {*} */
+  /**
+   * py: sqlglot/generator.py:5383
+   * @param {exp.JSONPathSubscript} expression
+   * @returns {string}
+   */
   // py: sqlglot/generator.py:5383
-  _jsonpathsubscript_sql(expression) { throw new NotPorted("_jsonpathsubscript_sql", "sqlglot/generator.py:5383"); }
+  _jsonpathsubscript_sql(expression) {
+    const this_ = this.json_path_part(expression.this);
+    return this_ ? `[${this_}]` : "";
+  }
 
   // py: sqlglot/generator.py:5387 — the `isinstance(expression, exp.Literal)` guard is
   // ported for real; the `sqlglot.optimizer.simplify.simplify` branch it guards stays a

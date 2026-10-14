@@ -89,14 +89,18 @@ test("the only gap versus CPython is the deliberately-unseeded TRANSFORMS", () =
   // this far through `optimizer/qualify.js`'s own end-to-end probe for the first
   // time, surfacing an `Unsupported expression type PivotAny` error that was always
   // latent (the entry was commented out, not a stub).
-  assert.equal(Generator.TRANSFORMS.size, 81, "TRANSFORMS has 81 real entries after AIR-2194's PivotAny wiring");
+  // +10 from AIR-2274 (PORT_PLAN.md, `src/jsonpath.js`'s own whole-file port): the
+  // `**JSON_PATH_PART_TRANSFORMS` spread (py:137) finally resolves to its real ten
+  // entries — `JSONPath{Filter,Key,Recursive,Root,Script,Selector,Slice,Subscript,
+  // Union,Wildcard}` — instead of the placeholder comment R21 left in its place.
+  assert.equal(Generator.TRANSFORMS.size, 91, "TRANSFORMS has 91 real entries after jsonpath.js wiring");
 
   const wantTransform = Object.entries(WANT).filter(([, h]) => h === "transform");
   assert.equal(wantTransform.length, 143);
 
   const got = _buildDispatch(Generator);
   assert.equal(got.size, Object.keys(WANT).length - wantTransform.length + Generator.TRANSFORMS.size);
-  assert.equal(got.size, 498);
+  assert.equal(got.size, 508);
 });
 
 test("TRANSFORMS beats a same-named *_sql method", () => {
@@ -436,7 +440,10 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // +1 from AIR-2121 (lineage.js, PORT_PLAN.md): `tag_sql` (generator.py:4794), the
   // sole blocker for `Node#toHtml`'s non-Table render branch, which wraps the traced
   // expression in an `exp.Tag` to bold it in the rendered source.
-  assert.equal(bodied.length, 133, "exactly 133 *_sql methods have a real body");
+  // +1 from AIR-2274 (`src/jsonpath.js`): `_jsonpathsubscript_sql` (generator.py:5383),
+  // the last `JSONPathPart` generator method left as a stub — a two-line body
+  // (`json_path_part` plus a bracket wrap) that depended on nothing but itself.
+  assert.equal(bodied.length, 134, "exactly 134 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -488,7 +495,10 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // +1 for `tag_sql` (AIR-2121, lineage.js): reads no Dialect state either; on a bare
   // `new exp.Expr({})` it returns `""` (missing `.this`/`prefix`/`postfix` all fall
   // back to empty) rather than throwing.
-  assert.equal(432 - stubs.length, 132, "132 of those 133 also run without a resolved Dialect");
+  // +1 for `_jsonpathsubscript_sql` (AIR-2274): reads no Dialect state; on a bare
+  // `new exp.Expr({})` its `expression.this` is `undefined`, so `json_path_part`
+  // throws a plain `TypeError` (not `NotPorted`) calling `.replaceAll` on it.
+  assert.equal(432 - stubs.length, 133, "133 of those 134 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],

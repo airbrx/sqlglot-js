@@ -31,16 +31,14 @@
 //   scope. Declared explicitly below rather than omitted, so the attribute EXISTS with
 //   the right shape and a gap that states its own size (PORT_PLAN.md R19).
 //
-//   `class JSONPathTokenizer(jsonpath.JSONPathTokenizer)` (py:163) is NOT declared, for
-//   the same reason `Dialect.jsonpath_tokenizer_class` is null: `sqlglot/jsonpath.py` is
-//   unported. Omitting it leaves `jsonpath_tokenizer_class` null (registerDialect's own
-//   fallback) and `jsonpath_tokenizer()` throwing, rather than handing `to_json_path` a
-//   scanner that lexes JSON paths as SQL.
+// `class JSONPathTokenizer(jsonpath.JSONPathTokenizer)` (py:163) IS now declared below
+// (AIR-2274, `src/jsonpath.js`) — `BigQueryJSONPathTokenizer`.
 //
 // Every setting below is diffed value-by-value against CPython by
 // `spike/p5/fuzz_dialect_parse.mjs`'s BIGQUERY row.
 
 import { Tokenizer, TokenType, initTokenizerSubclass } from "../tokens.js";
+import { JSONPathTokenizer } from "../jsonpath.js";
 import { BigQueryParser } from "../parsers/bigquery.js";
 import { BigQueryGenerator } from "../generators/bigquery.js";
 import * as exp from "../expressions/index.js";
@@ -52,6 +50,12 @@ import {
   registerDialect,
 } from "./dialect.js";
 import { EXPRESSION_METADATA as BIGQUERY_EXPRESSION_METADATA } from "../typing/bigquery.js";
+
+/** py: sqlglot/dialects/bigquery.py:163 `class JSONPathTokenizer(jsonpath.JSONPathTokenizer)`. */
+class BigQueryJSONPathTokenizer extends JSONPathTokenizer {
+  static VAR_TOKENS = new Set([...JSONPathTokenizer.VAR_TOKENS, TokenType.DASH, TokenType.NUMBER]);
+}
+initTokenizerSubclass(BigQueryJSONPathTokenizer);
 
 /**
  * py: sqlglot/dialects/bigquery.py:170 `class Tokenizer(tokens.Tokenizer)`.
@@ -233,6 +237,9 @@ export class BigQuery extends Dialect {
 
   /** py:170 `class Tokenizer(tokens.Tokenizer)`; see `BigQueryTokenizer` above. */
   static Tokenizer = BigQueryTokenizer;
+
+  /** py:163 `class JSONPathTokenizer(jsonpath.JSONPathTokenizer)`; see above. */
+  static JSONPathTokenizer = BigQueryJSONPathTokenizer;
 
   /**
    * py: sqlglot/dialects/bigquery.py:134
