@@ -405,6 +405,7 @@ run "LINT: py: anchors point at defs"     node tools/lint_anchors.mjs
 # or the stub-seeding design that makes P3+ parallel is defeated.
 run "SELFTEST: claim-overlap units"       node tools/claim_overlap.mjs --selftest
 run "SELFTEST: closure calculator"        node tools/closure.mjs --selftest
+run "SELFTEST: parser closure maths"      node tools/closure_parser.mjs --selftest
 run "SELFTEST: ratchet rules 1-5"         node tools/ratchet.mjs --selftest
 run "SELFTEST: corpus runner"             node test/runner.mjs --selftest
 run "CORPUS: integrity"                   node tools/check_corpus.mjs
