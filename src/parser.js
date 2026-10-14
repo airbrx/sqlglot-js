@@ -1367,19 +1367,22 @@ export class Parser {
 
   /** py: sqlglot/parser.py:1285 */
   static PIPE_SYNTAX_TRANSFORM_PARSERS = new Map([
-    // py:1286  ["AGGREGATE", /* TODO lambda */],
-    // py:1287  ["AS", /* TODO lambda */],
-    // py:1290  ["DISTINCT", /* TODO lambda */],
-    // py:1291  ["EXTEND", /* TODO lambda */],
-    // py:1292  ["LIMIT", /* TODO lambda */],
+    /* py:1286 */ ["AGGREGATE", (self, query) => self._parse_pipe_syntax_aggregate(query)],
+    /* py:1287 */ ["AS", (self, query) => self._build_pipe_cte(query, [new exp.Star()], self._parse_table_alias())],
+    // py:1290 `self._advance() or query.distinct(copy=False)` -- `_advance()` always
+    // returns `None`, so the `or` is really just sequencing; a block body is the exact
+    // JS spelling instead of relying on `_advance()`'s return value being falsy.
+    /* py:1290 */ ["DISTINCT", (self, query) => { self._advance(); return query.distinct({ copy: false }); }],
+    /* py:1291 */ ["EXTEND", (self, query) => self._parse_pipe_syntax_extend(query)],
+    /* py:1292 */ ["LIMIT", (self, query) => self._parse_pipe_syntax_limit(query)],
     // py:1293 Every entry is invoked as `parser(this, query)` (py:10361) and must RETURN
     // the rebuilt query. This one took only `self` and returned a bare `_parse_order(...)`,
     // so `FROM x |> ORDER BY y` died on "Required keyword: 'expressions' missing for Order".
     /* py:1293 */ ["ORDER BY", (self, query) => query.order_by(self._parse_order(), { append: false, copy: false })],
-    // py:1296  ["PIVOT", /* TODO lambda */],
-    // py:1297  ["SELECT", /* TODO lambda */],
+    /* py:1296 */ ["PIVOT", (self, query) => self._parse_pipe_syntax_pivot(query)],
+    /* py:1297 */ ["SELECT", (self, query) => self._parse_pipe_syntax_select(query)],
     /* py:1298 */ ["TABLESAMPLE", (self, query) => self._parse_pipe_syntax_tablesample(query)],
-    // py:1299  ["UNPIVOT", /* TODO lambda */],
+    /* py:1299 */ ["UNPIVOT", (self, query) => self._parse_pipe_syntax_pivot(query)],
     /* py:1300 */ ["WHERE", (self, query) => query.where(self._parse_where(), { copy: false })],
   ]);
 
@@ -1613,8 +1616,8 @@ export class Parser {
     /* py:1576 */ ["FLOOR", (self) => self._parse_ceil_floor(exp.Floor)],
     // py:1577  ["GAP_FILL", ...]  — `_parse_gap_fill` is still a NotPorted stub
     /* py:1578 */ ["INITCAP", (self) => self._parse_initcap()],
-    // py:1579  ["JSON_OBJECT", ...]     — `_parse_json_object` is still a NotPorted stub
-    // py:1580  ["JSON_OBJECTAGG", ...]  — `_parse_json_object` is still a NotPorted stub
+    /* py:1579 */ ["JSON_OBJECT", (self) => self._parse_json_object()],
+    /* py:1580 */ ["JSON_OBJECTAGG", (self) => self._parse_json_object(true)],
     // py:1581  ["JSON_TABLE", ...]      — `_parse_json_table` is still a NotPorted stub
     /* py:1582 */ ["MATCH", (self) => self._parse_match_against()],
     // py:1583  ["NORMALIZE", ...]  — `_parse_normalize` is still a NotPorted stub
@@ -3132,7 +3135,14 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3155
-  _parse_procedure_option() { throw new NotPorted("_parse_procedure_option", "sqlglot/parser.py:3155"); }
+  _parse_procedure_option() {
+    if (this._match_text_seq("EXECUTE", "AS")) {
+      return this.expression(new exp.ExecuteAsProperty({
+        this: this._parse_var_from_options(this.constructor.EXECUTE_AS_OPTIONS, false) || this._parse_string(),
+      }));
+    }
+    return this._parse_var_from_options(this.constructor.PROCEDURE_OPTIONS);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3169
@@ -4458,7 +4468,7 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5611
-  _parse_grouping_set() { throw new NotPorted("_parse_grouping_set", "sqlglot/parser.py:5611"); }
+  _parse_grouping_set() { return this._parse_grouping_sets() || this._parse_cube_or_rollup() || this._parse_bitwise(); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5614
@@ -4843,7 +4853,13 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:6352
-  _normalize_collate(collate) { throw new NotPorted("_normalize_collate", "sqlglot/parser.py:6352"); }
+  _normalize_collate(collate) {
+    const expr = collate.expression;
+    if (expr instanceof exp.Column && expr.parts.length === 1) {
+      const ident = expr.this;
+      if (ident instanceof exp.Identifier) collate.set("expression", ident.quoted ? ident : exp.var(ident.name));
+    }
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:6362
@@ -4917,7 +4933,25 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:6739
-  _parse_json_type_arg() { throw new NotPorted("_parse_json_type_arg", "sqlglot/parser.py:6739"); }
+  /** Parse a single argument to ClickHouse's JSON type. */
+  _parse_json_type_arg() {
+    if (this._match_text_seq("SKIP")) {
+      const regexp = this._match(TokenType.RLIKE);
+      let arg = this._parse_column();
+      if (arg instanceof exp.Column) arg = arg.to_dot();
+      return this.expression(new exp.SkipJSONColumn({ regexp, expression: arg }));
+    }
+    const param_or_col = this._parse_column();
+    if (!(param_or_col instanceof exp.Column)) return null;
+    if (param_or_col.parts.length === 1 && this._match(TokenType.EQ)) {
+      const param = param_or_col.name;
+      const value = this._parse_primary();
+      return this.expression(new exp.EQ({ this: exp.var(param), expression: value }));
+    }
+    const col = param_or_col.to_dot();
+    const kind = this._parse_types(false, false, false);
+    return this.expression(new exp.ColumnDef({ this: col, kind }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:6765
@@ -5318,7 +5352,10 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7654
-  _parse_auto_property() { throw new NotPorted("_parse_auto_property", "sqlglot/parser.py:7654"); }
+  _parse_auto_property() {
+    if (!this._match_text_seq("REFRESH")) { this._retreat(this._index - 1); return null; }
+    return this.expression(new exp.AutoRefreshProperty({ this: this._parse_var(false, null, true) }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7660
@@ -5517,7 +5554,16 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8105
-  _parse_next_value_for() { throw new NotPorted("_parse_next_value_for", "sqlglot/parser.py:8105"); }
+  _parse_next_value_for() {
+    if (!this._match_text_seq("VALUE", "FOR")) { this._retreat(this._index - 1); return null; }
+    return this.expression(new exp.NextValueFor({
+      this: this._parse_column(),
+      // py: `self._match(TokenType.OVER) and self._parse_wrapped(self._parse_order)` --
+      // `_match` is a strict bool, so a non-matching OVER stores `order: false`, not
+      // `null`; `&&` reproduces that short-circuit exactly.
+      order: this._match(TokenType.OVER) && this._parse_wrapped(this._parse_order.bind(this)),
+    }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8117
@@ -5585,7 +5631,15 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8325
-  _parse_xml_namespace() { throw new NotPorted("_parse_xml_namespace", "sqlglot/parser.py:8325"); }
+  _parse_xml_namespace() {
+    const namespaces = [];
+    while (true) {
+      const uri = this._match(TokenType.DEFAULT) ? this._parse_string() : this._parse_alias(this._parse_string());
+      namespaces.push(this.expression(new exp.XMLNamespace({ this: uri })));
+      if (!this._match(TokenType.COMMA)) break;
+    }
+    return namespaces;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8339
@@ -5603,12 +5657,23 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8347
-  _parse_json_key_value() { throw new NotPorted("_parse_json_key_value", "sqlglot/parser.py:8347"); }
+  _parse_json_key_value() {
+    this._match_text_seq("KEY");
+    const key = this._parse_column();
+    this._match_set(this.constructor.JSON_KEY_VALUE_SEPARATOR_TOKENS);
+    this._match_text_seq("VALUE");
+    const value = this._parse_bitwise();
+    if (!key && !value) return null;
+    return this.expression(new exp.JSONKeyValue({ this: key, expression: value }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8358
   // note: param `this` renamed to `this_` (JS reserved word)
-  _parse_format_json(this_) { throw new NotPorted("_parse_format_json", "sqlglot/parser.py:8358"); }
+  _parse_format_json(this_) {
+    if (!this_ || !this._match_text_seq("FORMAT", "JSON")) return this_;
+    return this.expression(new exp.FormatJson({ this: this_ }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8364
@@ -5623,7 +5688,21 @@ export class Parser {
   // note: parser.py:8396/8399 are `@t.overload` type-only signatures (body `...`),
   // not real methods -- only this one (the undecorated definition) has a runtime
   // body upstream. Duplicate stubs removed 2026-08-28 (PR #8's claim-overlap audit).
-  _parse_json_object(agg) { throw new NotPorted("_parse_json_object", "sqlglot/parser.py:8402"); }
+  _parse_json_object(agg = false) {
+    const star = this._parse_star();
+    const expressions = star ? [star] : this._parse_csv(() => this._parse_format_json(this._parse_json_key_value()));
+    const null_handling = this._parse_on_handling("NULL", "NULL", "ABSENT");
+    let unique_keys = null;
+    if (this._match_text_seq("WITH", "UNIQUE")) unique_keys = true;
+    else if (this._match_text_seq("WITHOUT", "UNIQUE")) unique_keys = false;
+    this._match_text_seq("KEYS");
+    // py: both `and self._match_text_seq(...)` style fields below are strict bools
+    // short-circuited exactly like `_parse_next_value_for`'s `order` -- see its note.
+    const return_type = this._match_text_seq("RETURNING") && this._parse_format_json(this._parse_type());
+    const encoding = this._match_text_seq("ENCODING") && this._parse_var();
+    const Kls = agg ? exp.JSONObjectAgg : exp.JSONObject;
+    return this.expression(new Kls({ expressions, null_handling, unique_keys, return_type, encoding }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8435
@@ -6741,39 +6820,134 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10170
-  _build_pipe_cte(query, expressions, alias_cte) { throw new NotPorted("_build_pipe_cte", "sqlglot/parser.py:10170"); }
+  _build_pipe_cte(query, expressions, alias_cte = null) {
+    let new_cte;
+    if (alias_cte) new_cte = alias_cte;
+    else { this._pipe_cte_counter += 1; new_cte = `__tmp${this._pipe_cte_counter}`; }
+    const with_ = query.args.with_;
+    const ctes = with_ ? with_.pop() : null;
+    const new_select = exp.select(...expressions, { copy: false }).from_(new_cte, { copy: false });
+    if (ctes) new_select.set("with_", ctes);
+    return new_select.with_(new_cte, query, { copy: false });
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10192
-  _parse_pipe_syntax_select(query) { throw new NotPorted("_parse_pipe_syntax_select", "sqlglot/parser.py:10192"); }
+  _parse_pipe_syntax_select(query) {
+    const select = this._parse_select(false, false, true, true, false);
+    if (!select) return query;
+    return this._build_pipe_cte(query.select(...select.expressions, { append: false }), [new exp.Star()]);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10201
-  _parse_pipe_syntax_limit(query) { throw new NotPorted("_parse_pipe_syntax_limit", "sqlglot/parser.py:10201"); }
+  _parse_pipe_syntax_limit(query) {
+    const limit = this._parse_limit();
+    const offset = this._parse_offset();
+    if (limit) {
+      const curr_limit = query.args.limit ?? limit;
+      if (curr_limit.expression.toPy() >= limit.expression.toPy()) query.limit(limit, { copy: false });
+    }
+    if (offset) {
+      const curr_offset_node = query.args.offset;
+      // py: `to_py()` is an arbitrary-precision Python int for a plain integer
+      // LIMIT/OFFSET literal, ported here as BigInt (core.js toPy) -- `0` would throw
+      // mixing with BigInt in the `+` below, so the fallback must be `0n` too.
+      const curr_offset = curr_offset_node ? curr_offset_node.expression.toPy() : 0n;
+      query.offset(exp.Literal.number(curr_offset + offset.expression.toPy()), { copy: false });
+    }
+    return query;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10215
-  _parse_pipe_syntax_aggregate_fields() { throw new NotPorted("_parse_pipe_syntax_aggregate_fields", "sqlglot/parser.py:10215"); }
+  _parse_pipe_syntax_aggregate_fields() {
+    let this_ = this._parse_disjunction();
+    if (this._match_text_seq("GROUP", "AND", { advance: false })) return this_;
+    this_ = this._parse_alias(this_);
+    if (this._match_set(new Set([TokenType.ASC, TokenType.DESC]), false)) return this._parse_ordered(() => this_);
+    return this_;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10227
-  _parse_pipe_syntax_aggregate_group_order_by(query, group_by_exists) { throw new NotPorted("_parse_pipe_syntax_aggregate_group_order_by", "sqlglot/parser.py:10227"); }
+  _parse_pipe_syntax_aggregate_group_order_by(query, group_by_exists = true) {
+    const expr = this._parse_csv(() => this._parse_pipe_syntax_aggregate_fields());
+    const aggregates_or_groups = [], orders = [];
+    for (const element of expr) {
+      let this_;
+      if (element instanceof exp.Ordered) {
+        this_ = element.this;
+        if (this_ instanceof exp.Alias) element.set("this", this_.args.alias);
+        orders.push(element);
+      } else {
+        this_ = element;
+      }
+      aggregates_or_groups.push(this_);
+    }
+    if (group_by_exists) {
+      query.select(...aggregates_or_groups, ...query.expressions, { append: false, copy: false })
+        .group_by(...aggregates_or_groups.map((projection) => projection.args.alias ?? projection), { copy: false });
+    } else {
+      query.select(...aggregates_or_groups, { append: false, copy: false });
+    }
+    if (orders.length) return query.order_by(...orders, { append: false, copy: false });
+    return query;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10257
-  _parse_pipe_syntax_aggregate(query) { throw new NotPorted("_parse_pipe_syntax_aggregate", "sqlglot/parser.py:10257"); }
+  _parse_pipe_syntax_aggregate(query) {
+    this._match_text_seq("AGGREGATE");
+    query = this._parse_pipe_syntax_aggregate_group_order_by(query, false);
+    if (this._match(TokenType.GROUP_BY) || (this._match_text_seq("GROUP", "AND") && this._match(TokenType.ORDER_BY))) {
+      query = this._parse_pipe_syntax_aggregate_group_order_by(query);
+    }
+    return this._build_pipe_cte(query, [new exp.Star()]);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10268
-  _parse_pipe_syntax_set_operator(query) { throw new NotPorted("_parse_pipe_syntax_set_operator", "sqlglot/parser.py:10268"); }
+  _parse_pipe_syntax_set_operator(query) {
+    const first_setop = this.parse_set_operation(query);
+    if (!first_setop) return null;
+    const parse_and_unwrap_query = () => {
+      const expr = this._parse_paren();
+      return expr ? expr.assertIs(exp.Subquery).unnest() : null;
+    };
+    first_setop.this.pop();
+    const setops = [
+      first_setop.expression.pop().assertIs(exp.Subquery).unnest(),
+      ...this._parse_csv(parse_and_unwrap_query),
+    ];
+    query = this._build_pipe_cte(query, [new exp.Star()]);
+    const with_ = query.args.with_;
+    const ctes = with_ ? with_.pop() : null;
+    if (first_setop instanceof exp.Union) query = query.union(...setops, { copy: false, ...first_setop.args });
+    else if (first_setop instanceof exp.Except) query = query.except_(...setops, { copy: false, ...first_setop.args });
+    else query = query.intersect(...setops, { copy: false, ...first_setop.args });
+    query.set("with_", ctes);
+    return this._build_pipe_cte(query, [new exp.Star()]);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10299
-  _parse_pipe_syntax_join(query) { throw new NotPorted("_parse_pipe_syntax_join", "sqlglot/parser.py:10299"); }
+  _parse_pipe_syntax_join(query) {
+    const join = this._parse_join();
+    if (!join) return null;
+    if (query instanceof exp.Select) return query.join(join, { copy: false });
+    return query;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10309
-  _parse_pipe_syntax_pivot(query) { throw new NotPorted("_parse_pipe_syntax_pivot", "sqlglot/parser.py:10309"); }
+  _parse_pipe_syntax_pivot(query) {
+    const pivots = this._parse_pivots();
+    if (!pivots) return query;
+    const from_ = query.args.from_;
+    if (from_) from_.this.set("pivots", pivots);
+    return this._build_pipe_cte(query, [new exp.Star()]);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10320

@@ -89,14 +89,22 @@ test("the only gap versus CPython is the deliberately-unseeded TRANSFORMS", () =
   // this far through `optimizer/qualify.js`'s own end-to-end probe for the first
   // time, surfacing an `Unsupported expression type PivotAny` error that was always
   // latent (the entry was commented out, not a stub).
-  assert.equal(Generator.TRANSFORMS.size, 81, "TRANSFORMS has 81 real entries after AIR-2194's PivotAny wiring");
+  // +2 from AIR-2280 (the P3 parser-stubs round, PORT_PLAN.md): `exp.JSONObject` and
+  // `exp.JSONObjectAgg` (py:212/213) were each still a `// TODO lambda` placeholder,
+  // so the base Func fallback derived their SQL name from the class name via the
+  // per-capital-letter split (the "J_S_O_N_B_..." shape the two Postgres entries
+  // above already describe), producing `J_S_O_N_OBJECT(...)` instead of
+  // `JSON_OBJECT(...)` — latent for the same reason as `PivotAny` above: nothing
+  // could construct a real `JSONObject` node until `_parse_json_object` was wired
+  // into `FUNCTION_PARSERS`, which is this round's own parser.js change.
+  assert.equal(Generator.TRANSFORMS.size, 83, "TRANSFORMS has 83 real entries after AIR-2280's JSONObject/JSONObjectAgg wiring");
 
   const wantTransform = Object.entries(WANT).filter(([, h]) => h === "transform");
   assert.equal(wantTransform.length, 143);
 
   const got = _buildDispatch(Generator);
   assert.equal(got.size, Object.keys(WANT).length - wantTransform.length + Generator.TRANSFORMS.size);
-  assert.equal(got.size, 498);
+  assert.equal(got.size, 500);
 });
 
 test("TRANSFORMS beats a same-named *_sql method", () => {
@@ -436,7 +444,20 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // +1 from AIR-2121 (lineage.js, PORT_PLAN.md): `tag_sql` (generator.py:4794), the
   // sole blocker for `Node#toHtml`'s non-Table render branch, which wraps the traced
   // expression in an `exp.Tag` to bold it in the rendered source.
-  assert.equal(bodied.length, 133, "exactly 133 *_sql methods have a real body");
+  // +1 from AIR-2280 (the P3 parser-stubs round, PORT_PLAN.md): `groupingsets_sql`
+  // (generator.py:2765) -- not itself a parser.js method, but porting
+  // `_parse_grouping_set` let a `merge_subqueries` optimize() end-to-end fixture
+  // parse a `GROUPING SETS (...)` tuple for the first time and reach this
+  // previously-unreached base-Generator render stub next, the same "porting the
+  // parser surfaces the generator's own caller" shape R78/R82 already established.
+  // +3 more from the same round: `_jsonobject_sql`/`jsonkeyvalue_sql`/
+  // `formatjson_sql` (generator.py:3835/3793/3825) -- wiring `_parse_json_object`
+  // into `FUNCTION_PARSERS` let real `JSON_OBJECT(...)` corpus rows construct
+  // `JSONObject`/`JSONKeyValue`/`FormatJson` nodes for the first time, surfacing
+  // these three previously-unreached render stubs one layer down; the TRANSFORMS
+  // wiring above is what routes `JSONObject`/`JSONObjectAgg` to `_jsonobject_sql`
+  // instead of the buggy class-name-derived fallback.
+  assert.equal(bodied.length, 137, "exactly 137 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -488,7 +509,13 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // +1 for `tag_sql` (AIR-2121, lineage.js): reads no Dialect state either; on a bare
   // `new exp.Expr({})` it returns `""` (missing `.this`/`prefix`/`postfix` all fall
   // back to empty) rather than throwing.
-  assert.equal(432 - stubs.length, 132, "132 of those 133 also run without a resolved Dialect");
+  // +1 for `groupingsets_sql` (AIR-2280): reads no Dialect state either, so
+  // `this.expressions(expression, null, {indent: false})` + `this.wrap(...)` both
+  // tolerate the missing `expressions` arg and return `"GROUPING SETS ()"`.
+  // +3 for `_jsonobject_sql`/`jsonkeyvalue_sql`/`formatjson_sql` (AIR-2280): none
+  // reads Dialect state either, so all three return a (nonsensical but non-throwing)
+  // string on the bare stand-in (`"JSON_OBJECTAGG()"`, `": "`, `" FORMAT JSON"`).
+  assert.equal(432 - stubs.length, 136, "136 of those 137 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],

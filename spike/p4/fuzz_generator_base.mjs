@@ -67,6 +67,10 @@ const DEFERRED_TABLES = new Set([]);
 // +1 from AIR-2194 (PORT_PLAN.md): `exp.PivotAny` (py:238, `f"ANY{self.sql(e,
 // 'this')}"`) — real ever since this table existed, but `pivot_sql` becoming real is
 // what first let a query reach it (`optimizer/qualify.js`'s own end-to-end probe).
+// +2 from AIR-2280 (the P3 parser-stubs round, PORT_PLAN.md): `exp.JSONObject`/
+// `exp.JSONObjectAgg` (py:212/213) — wiring `_parse_json_object` into
+// `FUNCTION_PARSERS` is what first let a real `JSON_OBJECT(...)`/`JSON_OBJECTAGG(...)`
+// corpus row construct one of these nodes and reach this table.
 const PARTIALLY_SEEDED_MAP_KEYS = new Map([
   [
     "TRANSFORMS",
@@ -80,6 +84,7 @@ const PARTIALLY_SEEDED_MAP_KEYS = new Map([
       "exp.GlobalProperty", "exp.HeapProperty", "exp.HybridProperty", "exp.IcebergProperty",
       "exp.InheritsProperty", "exp.InputModelProperty", "exp.Intersect", "exp.JSONBContainsAnyTopKeys",
       "exp.JSONBContainsAllTopKeys", "exp.JSONBContainsTopKey", "exp.JSONBDeleteAtPath", "exp.JSONBPathExists",
+      "exp.JSONObject", "exp.JSONObjectAgg",
       "exp.LanguageProperty", "exp.LocationProperty", "exp.LogProperty", "exp.MaskingProperty",
       "exp.MaterializedProperty", "exp.NetFunc", "exp.NetworkProperty", "exp.NoPrimaryIndexProperty", "exp.OnCommitProperty",
       "exp.OnProperty", "exp.Operator", "exp.OutputModelProperty", "exp.PivotAny", "exp.RemoteWithConnectionModelProperty",

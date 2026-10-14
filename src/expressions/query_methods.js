@@ -115,10 +115,16 @@ export function installQueryMethods(classes) {
     return inst;
   };
 
-  // py: core.py:2796 _apply_set_operation
-  const applySetOperation = (xs, o, Op) =>
-    xs.map(x => parsed(x, { ...o, copy: o.copy ?? true }))
-      .reduce((x, y) => new Op({ this: x, expression: y, distinct: o.distinct ?? true }));
+  // py: core.py:2796 _apply_set_operation. `**opts` upstream forwards anything beyond
+  // copy/dialect/distinct (e.g. `by_name`/`side`/`kind`/`on`, as reused verbatim by
+  // `_parse_pipe_syntax_set_operator`'s `**first_setop.args` spread, parser.py:10290)
+  // straight into the constructed node -- dropped here previously since no caller
+  // needed it yet.
+  const applySetOperation = (xs, o, Op) => {
+    const { copy, dialect, distinct, ...rest } = o;
+    return xs.map(x => parsed(x, { ...o, copy: copy ?? true }))
+      .reduce((x, y) => new Op({ this: x, expression: y, distinct: distinct ?? true, ...rest }));
+  };
 
   // py: query.py:47 _cte_helper.  `materialized` and `scalar` are always passed to the
   // CTE constructor, so both keys exist in args even when null (repr hides them, but

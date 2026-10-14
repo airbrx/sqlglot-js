@@ -553,8 +553,13 @@ export class Generator {
     // py:211 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4): a real
     // corpus mismatch (`J_S_O_N_B_PATH_EXISTS(...)` fallback vs CPython's `@?`).
     [exp.JSONBPathExists, (self, e) => self.binary(e, "@?")],
-    // py:212  [exp.JSONObject, /* TODO lambda */],
-    // py:213  [exp.JSONObjectAgg, /* TODO lambda */],
+    // py:212/213 — without these, the base Func fallback derives the SQL name from the
+    // class name via a per-capital-letter split (the same "J_S_O_N_B_..." shape as the
+    // two Postgres entries just above), producing "J_S_O_N_OBJECT(...)" instead of
+    // "JSON_OBJECT(...)"; AIR-2280 wired `_parse_json_object` into FUNCTION_PARSERS,
+    // which is what first let a real corpus row construct one of these nodes.
+    [exp.JSONObject, (self, e) => self._jsonobject_sql(e)],
+    [exp.JSONObjectAgg, (self, e) => self._jsonobject_sql(e)],
     [exp.LanguageProperty, (self, e) => self.naked_property(e)], // py:214
     [exp.LocationProperty, (self, e) => self.naked_property(e)], // py:215
     [exp.LogProperty, (_, e) => `${e.args.no ? "NO " : ""}LOG`], // py:216
@@ -3133,7 +3138,10 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2765
-  groupingsets_sql(expression) { throw new NotPorted("groupingsets_sql", "sqlglot/generator.py:2765"); }
+  groupingsets_sql(expression) {
+    const grouping_sets = this.expressions(expression, null, { indent: false });
+    return `GROUPING SETS ${this.wrap(grouping_sets)}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2769
@@ -4316,7 +4324,9 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3793
-  jsonkeyvalue_sql(expression) { throw new NotPorted("jsonkeyvalue_sql", "sqlglot/generator.py:3793"); }
+  jsonkeyvalue_sql(expression) {
+    return `${this.sql(expression, "this")}${this.constructor.JSON_KEY_VALUE_PAIR_SEP} ${this.sql(expression, "expression")}`;
+  }
 
   /**
    * py: sqlglot/generator.py:3796
@@ -4373,7 +4383,7 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3825
-  formatjson_sql(expression) { throw new NotPorted("formatjson_sql", "sqlglot/generator.py:3825"); }
+  formatjson_sql(expression) { return `${this.sql(expression, "this")} FORMAT JSON`; }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3828
@@ -4381,7 +4391,20 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3835
-  _jsonobject_sql(expression, name) { throw new NotPorted("_jsonobject_sql", "sqlglot/generator.py:3835"); }
+  _jsonobject_sql(expression, name = "") {
+    let null_handling = expression.args.null_handling;
+    null_handling = null_handling ? ` ${null_handling}` : "";
+    const unique_keys_raw = expression.args.unique_keys;
+    const unique_keys = unique_keys_raw !== undefined && unique_keys_raw !== null
+      ? ` ${unique_keys_raw ? "WITH" : "WITHOUT"} UNIQUE KEYS`
+      : "";
+    let return_type = this.sql(expression, "return_type");
+    return_type = return_type ? ` RETURNING ${return_type}` : "";
+    let encoding = this.sql(expression, "encoding");
+    encoding = encoding ? ` ENCODING ${encoding}` : "";
+    if (!name) name = expression instanceof exp.JSONObject ? "JSON_OBJECT" : "JSON_OBJECTAGG";
+    return this.func(name, ...expression.expressions, { suffix: `${null_handling}${unique_keys}${return_type}${encoding})` });
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3861
