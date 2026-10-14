@@ -38,7 +38,8 @@ import { existsSync, readFileSync } from "node:fs";
 const argv = process.argv.slice(2);
 const flag = (name) => {
   const i = argv.indexOf(name);
-  return i === -1 ? null : argv[i + 1];
+  if (i === -1) return null;
+  return i + 1 < argv.length ? argv[i + 1] : undefined;
 };
 
 /* --------------------------------------------------------------------------- *
@@ -205,6 +206,43 @@ export function curve(rows, have) {
   return steps;
 }
 
+/**
+ * Top `limit` remaining blockers, each with BOTH its blocking count and its real
+ * marginal (rows it would open on its own). This is the "stub → blocks → marginal"
+ * table AIR-2293 asks every brief to run on — blocking count alone ranks tasks that
+ * open zero rows above tasks that open hundreds (R13/R21).
+ */
+export function rankedBlockers(rows, have, limit = 30) {
+  const base = closedBy(rows, have);
+  const openRows = rows.filter((r) => !r.every((u) => have.has(u)));
+  const blockers = new Map();
+  for (const r of openRows) {
+    for (const u of r) if (!have.has(u)) blockers.set(u, (blockers.get(u) || 0) + 1);
+  }
+  const ranked = [...blockers.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([unit, blocks]) => {
+      const withIt = new Set([...have, unit]);
+      return { unit, blocks, marginal: closedBy(rows, withIt) - base, kind: unitKind(unit) };
+    });
+  return { base, openCount: openRows.length, distinct: blockers.size, ranked };
+}
+
+function printRankedTable(rows, have, limit = 30) {
+  const { base, openCount, distinct, ranked } = rankedBlockers(rows, have, limit);
+  console.log(`\n  corpus rows                ${rows.length}`);
+  console.log(
+    `  generate-oracle rows closed  ${base} (${((100 * base) / rows.length).toFixed(2)}%)`,
+  );
+  console.log(`\n  ${distinct} distinct units block the remaining ${openCount} rows.`);
+  console.log(`  Ranked by rows BLOCKED, with the real MARGINAL alongside:`);
+  console.log(`  ${"blocks".padStart(8)} ${"marginal".padStart(10)}  unit`);
+  for (const { unit, blocks, marginal, kind } of ranked) {
+    console.log(`  ${String(blocks).padStart(8)} ${String(marginal).padStart(10)}  ${unit}   [${kind}]`);
+  }
+}
+
 /* --------------------------------------------------------------------------- *
  * self-test — the maths is verifiable without the harvested corpus              *
  * --------------------------------------------------------------------------- */
@@ -245,6 +283,26 @@ async function selftest() {
   eq("curve is monotone", steps.every((s, i) => i === 0 || s.closed >= steps[i - 1].closed), true);
   // Achievable order takes the cheapest open row first: {e} or {b}, never {b,c} first.
   eq("curve's first step adds one unit", steps[0].added.length, 1);
+
+  // The ranked table reports both numbers per unit, not just blocking count.
+  const ranked = rankedBlockers(rows, have, 30).ranked;
+  const bEntry = ranked.find((r) => r.unit === "b");
+  const cEntry = ranked.find((r) => r.unit === "c");
+  eq("ranked table: b blocks 2", bEntry?.blocks, 2);
+  eq("ranked table: b opens 1 (marginal)", bEntry?.marginal, 1);
+  eq("ranked table: c opens 0 (marginal)", cEntry?.marginal, 0);
+
+  // The no-target --brief bug this tool was repaired for: `flag("--brief")` must return
+  // `undefined` (not throw, not silently coerce) when no target follows the flag, so the
+  // caller can tell "no target given" apart from a real (if oddly named) unit — this is
+  // exactly the distinction `unitKind(undefined)` used to crash on instead of making.
+  const bareArgv = ["--brief"];
+  const bareFlag = (name) => {
+    const i = bareArgv.indexOf(name);
+    if (i === -1) return null;
+    return i + 1 < bareArgv.length ? bareArgv[i + 1] : undefined;
+  };
+  eq("bare --brief yields undefined target", bareFlag("--brief"), undefined);
 
   // Unit taxonomy — the classification the default view's honesty rests on.
   eq("base method", unitKind("select_sql"), "base-method");
@@ -323,6 +381,13 @@ const base = closedBy(rows, have);
 
 if (argv.includes("--brief")) {
   const target = flag("--brief");
+  if (target === undefined || target === null) {
+    // No target given: `--brief` alone used to crash here (`unitKind(undefined)`) and
+    // print "undefined" with every count at 0 in the sibling parser tool instead of
+    // refusing or falling back. Print the same ranked table the bare invocation prints.
+    printRankedTable(rows, have, 30);
+    process.exit(0);
+  }
   const blocks = rows.filter((r) => r.includes(target)).length;
   const withIt = new Set([...have, target]);
   const marginal = closedBy(rows, withIt) - base;
@@ -385,8 +450,7 @@ for (const u of UNITS) {
   byKind.set(k, e);
 }
 
-console.log(`\n  corpus rows                ${rows.length}`);
-console.log(`  distinct units demanded    ${UNITS.length}`);
+console.log(`\n  distinct units demanded    ${UNITS.length}`);
 for (const [k, e] of byKind) {
   console.log(`    ${k.padEnd(16)} ${String(e.have).padStart(5)} / ${String(e.total).padEnd(5)} available`);
 }
@@ -406,18 +470,9 @@ if (!state.hasTransformsModule) {
       (ok === 0 ? "  — P5 registers these; until then a named-dialect row cannot be generated at all." : ""),
   );
 }
-console.log(`  generate-oracle rows closed  ${base} (${((100 * base) / rows.length).toFixed(2)}%)`);
+printRankedTable(rows, have, 30);
 
 const openRows = rows.filter((r) => !r.every((u) => have.has(u)));
-const blockers = new Map();
-for (const r of openRows) {
-  for (const u of r) if (!have.has(u)) blockers.set(u, (blockers.get(u) || 0) + 1);
-}
-console.log(`\n  ${blockers.size} distinct units block the remaining ${openRows.length} rows.`);
-console.log(`  Ranked by rows BLOCKED (note: this is NOT the marginal — see --brief):`);
-for (const [u, c] of [...blockers].sort((a, b) => b[1] - a[1]).slice(0, 15)) {
-  console.log(`    ${String(c).padStart(6)}  ${u}   [${unitKind(u)}]`);
-}
 
 // How many rows are one single unit away? Those are the genuinely cheap wins.
 const oneAway = new Map();
