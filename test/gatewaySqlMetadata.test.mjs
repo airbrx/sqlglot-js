@@ -943,3 +943,90 @@ test('empty and unsupported fallback results retain a stable mutation metadata s
     assert.equal(r.statementCount,sql ? null : 0);
   }
 });
+
+// ---------------------------------------------------------------------------
+// AIR-2240: transaction control (BEGIN/COMMIT/ROLLBACK) standardizedSql
+// ---------------------------------------------------------------------------
+//
+// Michael (gateway production logs): Postgres BEGIN/COMMIT/ROLLBACK failed
+// standardizedSql generation with "transaction_sql is not ported yet"
+// (sqlglot/generator.py:4202), so extractSqlMetadata() returned an
+// extractionError and those statements vanished from dashboards. Fixed by
+// porting transaction_sql/commit_sql/rollback_sql in src/generator.js — the
+// parser side (_parse_transaction/_parse_commit_or_rollback) was already
+// real. These must NOT become cacheable/isReadOnly: a transaction-control
+// statement is neither a read nor a classified mutation type (it is not in
+// READ_ONLY_TYPES, DATA_CHANGE_TYPES, DDL_TYPES, or DCL_TYPES in
+// contrib/gatewaySqlMetadata.js), so it keeps the "unsafe-by-default"
+// classification the contrib layer already assigns it — this is asserted
+// explicitly below, not assumed.
+
+test('AIR-2240: BEGIN/COMMIT/ROLLBACK standardize cleanly on Postgres, no extractionError', () => {
+  const cases = [
+    ['BEGIN', 'TRANSACTION', 'BEGIN'],
+    ['COMMIT', 'COMMIT', 'COMMIT'],
+    ['ROLLBACK', 'ROLLBACK', 'ROLLBACK'],
+  ];
+  for (const [sql, statementType, standardizedSql] of cases) {
+    const r = extractSqlMetadata(sql, { dialect: 'postgres' });
+    assert.equal(r.extractionError, null, sql);
+    assert.equal(r.statementType, statementType, sql);
+    assert.equal(r.standardizedSql, standardizedSql, sql);
+    // Not a read, not a classified mutation type — matches the gateway's
+    // existing "unsafe by default" posture for anything outside both lists.
+    assert.equal(r.isReadOnly, false, `${sql} isReadOnly`);
+    assert.equal(r.cacheable, false, `${sql} cacheable`);
+    assert.equal(r.isDataChange, false, `${sql} isDataChange`);
+    assert.equal(r.isDDL, false, `${sql} isDDL`);
+    assert.equal(r.isDCL, false, `${sql} isDCL`);
+  }
+});
+
+test('AIR-2240: BEGIN ISOLATION LEVEL READ COMMITTED and ROLLBACK TO SAVEPOINT standardize cleanly on Postgres', () => {
+  let r = extractSqlMetadata('BEGIN ISOLATION LEVEL READ COMMITTED', { dialect: 'postgres' });
+  assert.equal(r.extractionError, null);
+  assert.equal(r.statementType, 'TRANSACTION');
+  assert.equal(r.standardizedSql, 'BEGIN ISOLATION LEVEL READ COMMITTED');
+  assert.equal(r.isReadOnly, false);
+  assert.equal(r.cacheable, false);
+
+  r = extractSqlMetadata('ROLLBACK TO SAVEPOINT sp1', { dialect: 'postgres' });
+  assert.equal(r.extractionError, null);
+  assert.equal(r.statementType, 'ROLLBACK');
+  // rollback_sql never re-emits the SAVEPOINT keyword (sqlglot/generator.py:4214 only
+  // interpolates the savepoint name), matching upstream's own round-trip exactly.
+  assert.equal(r.standardizedSql, 'ROLLBACK TO sp1');
+  assert.equal(r.isReadOnly, false);
+  assert.equal(r.cacheable, false);
+});
+
+test('AIR-2240: START TRANSACTION is not recognized as BEGIN under Postgres/Snowflake/Databricks — upstream sqlglot only maps the "START" keyword to BEGIN for mysql/oracle/presto, none of which this port has, so this is faithful, not a gap', () => {
+  for (const dialect of ['postgres', 'snowflake', 'databricks']) {
+    const r = extractSqlMetadata('START TRANSACTION', { dialect });
+    assert.equal(r.extractionError, null, dialect);
+    // Degenerate but real: parses as an alias of column START to TRANSACTION,
+    // exactly like CPython sqlglot does at this pin for every one of these
+    // three dialects (verified directly against /tmp/sqlglot-complete-pin).
+    assert.equal(r.statementType, 'ALIAS', dialect);
+    assert.equal(r.standardizedSql, 'START AS TRANSACTION', dialect);
+  }
+});
+
+test('AIR-2240: BEGIN/COMMIT/ROLLBACK also standardize cleanly on Snowflake and Databricks', () => {
+  for (const dialect of ['snowflake', 'databricks']) {
+    for (const [sql, statementType, standardizedSql] of [
+      ['BEGIN', 'TRANSACTION', 'BEGIN'],
+      ['COMMIT', 'COMMIT', 'COMMIT'],
+      ['ROLLBACK', 'ROLLBACK', 'ROLLBACK'],
+      ['BEGIN ISOLATION LEVEL READ COMMITTED', 'TRANSACTION', 'BEGIN ISOLATION LEVEL READ COMMITTED'],
+      ['ROLLBACK TO SAVEPOINT sp1', 'ROLLBACK', 'ROLLBACK TO sp1'],
+    ]) {
+      const r = extractSqlMetadata(sql, { dialect });
+      assert.equal(r.extractionError, null, `${dialect} ${sql}`);
+      assert.equal(r.statementType, statementType, `${dialect} ${sql}`);
+      assert.equal(r.standardizedSql, standardizedSql, `${dialect} ${sql}`);
+      assert.equal(r.isReadOnly, false, `${dialect} ${sql} isReadOnly`);
+      assert.equal(r.cacheable, false, `${dialect} ${sql} cacheable`);
+    }
+  }
+});
