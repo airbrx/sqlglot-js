@@ -336,6 +336,38 @@ function _array_sort_sql(self, expression) {
   return self.func("ARRAY_SORT", expression.this);
 }
 
+/**
+ * py:565 `_array_overlaps_sql(self, expression)`.
+ *
+ * Translates Snowflake's NULL-safe ARRAYS_OVERLAP to DuckDB.
+ *
+ * DuckDB's native && operator is not NULL-safe: [1,NULL,3] && [NULL,4,5] returns FALSE.
+ * Snowflake returns TRUE when both arrays contain NULL (NULLs are treated as known values).
+ *
+ * Generated SQL: (arr1 && arr2) OR (ARRAY_LENGTH(arr1) <> LIST_COUNT(arr1) AND ARRAY_LENGTH(arr2) <> LIST_COUNT(arr2))
+ *
+ * ARRAY_LENGTH counts all elements (including NULLs); LIST_COUNT counts only non-NULLs.
+ * When they differ, the array contains at least one NULL, matching Snowflake's NULL-safe semantics.
+ */
+function _array_overlaps_sql(self, expression) {
+  if (!expression.args.null_safe) return self.binary(expression, "&&");
+
+  const arr1 = expression.this;
+  const arr2 = expression.expression;
+
+  const check_nulls = exp.and_(
+    new exp.NEQ({ this: new exp.ArraySize({ this: arr1.copy() }), expression: exp.func("LIST_COUNT", arr1.copy()) }),
+    new exp.NEQ({ this: new exp.ArraySize({ this: arr2.copy() }), expression: exp.func("LIST_COUNT", arr2.copy()) }),
+    { copy: false },
+  );
+
+  const overlap = new exp.ArrayOverlaps({ this: arr1.copy(), expression: arr2.copy() });
+
+  return self.sql(
+    exp.or_(exp.paren(overlap, false), exp.paren(check_nulls, false), { copy: false, wrap: false }),
+  );
+}
+
 /** py:549 */
 function _array_contains_sql(self, expression) {
   const this_ = expression.this;
@@ -1546,7 +1578,8 @@ export class DuckDBGenerator extends Generator {
     // py:1607 [exp.ArrayContains, _array_contains_sql] — NOTE: real DuckDB `ArrayContains` (Snowflake-sourced,
     // `check_null` flag) is ported above as `_array_contains_sql`, wired below.
     [exp.ArrayContains, _array_contains_sql],
-    // py:1608 [exp.ArrayOverlaps, _array_overlaps_sql] — blocked, `_array_overlaps_sql` (42 lines) out of scope this pass
+    // py:1608 `ArrayOverlaps`
+    [exp.ArrayOverlaps, _array_overlaps_sql],
     [exp.ArrayFilter, rename_func("LIST_FILTER")],
     [exp.ArrayInsert, _array_insert_sql],
     // py:1611 `ArrayPosition`
@@ -3692,6 +3725,40 @@ export class DuckDBGenerator extends Generator {
         .when(new exp.LT({ this: new exp.Length({ this: matches }), expression: occurrence }), exp.Literal.number(0))
         .else_(base_pos),
     );
+  }
+
+  /** py:3231 `length_sql(self, expression)`. */
+  length_sql(expression) {
+    const arg = expression.this;
+
+    // Dialects like BQ and Snowflake also accept binary values as args, so
+    // DDB will attempt to infer the type or resort to case/when resolution
+    if (!expression.args.binary || arg.isString) return this.func("LENGTH", arg);
+
+    let arg_ = arg;
+    if (!arg_.type) arg_ = annotate_types(arg_, { dialect: this.dialect });
+
+    if (arg_.isType(...exp.DataType.TEXT_TYPES)) return this.func("LENGTH", arg_);
+
+    // We need these casts to make duckdb's static type checker happy
+    const blob = exp.cast(arg_, exp.DType.VARBINARY);
+    const varchar = exp.cast(arg_, exp.DType.VARCHAR);
+
+    const case_ = exp.case(new exp.Anonymous({ this: "TYPEOF", expressions: [arg_] }))
+      .when(exp.Literal.string("BLOB"), new exp.ByteLength({ this: blob }))
+      .else_(new exp.Anonymous({ this: "LENGTH", expressions: [varchar] }));
+    return this.sql(case_);
+  }
+
+  /** py:3746 `bytelength_sql(self, expression)`. */
+  bytelength_sql(expression) {
+    const arg = expression.this;
+
+    // Check if it's a text type (handles both literals and annotated expressions)
+    if (arg.isType(...exp.DataType.TEXT_TYPES)) return this.func("OCTET_LENGTH", new exp.Encode({ this: arg }));
+
+    // Default: pass through as-is (conservative for DuckDB, handles binary and unannotated)
+    return this.func("OCTET_LENGTH", arg);
   }
 
   /** py:2822 `checkjson_sql(self, expression)`. */
