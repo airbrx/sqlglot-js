@@ -66,14 +66,14 @@ const KNOWN_ORDER_NONDETERMINISM = new Set([
 // PIVOT/UNPIVOT/LATERAL FLATTEN/TABLE() coverage happens to reach but `lineage.js`
 // itself cannot fix (same "named, counted exclusion by stub/type name" shape every
 // prior end-to-end oracle in this port already established, e.g.
-// `fuzz_qualify.mjs`'s own `KNOWN_GAPS`): `pivot_sql`/`kwarg_sql`/`tablefromrows_sql`
-// are `NotPorted` stubs in `src/generator.js` (base `Generator` rendering methods for
-// PIVOT/UNPIVOT, the `=>` keyword-argument syntax `LATERAL FLATTEN(INPUT => ...)`
-// uses, and Snowflake's `TABLE(FLATTEN(...))` row-set syntax, respectively). The
+// `fuzz_qualify.mjs`'s own `KNOWN_GAPS`): `pivot_sql` is a `NotPorted` stub in
+// `src/generator.js` (base `Generator` rendering method for PIVOT/UNPIVOT). The
 // former `JSONPathRoot` entry (hit by `FLATTENED.VALUE:field::text`'s JSON-path
 // colon syntax) is removed — AIR-2274's `src/jsonpath.js` renders it for real now —
-// and `tablefromrows_sql` is removed since AIR-2275 (R88) ported it.
-const KNOWN_GAPS = [/^NotPorted: (pivot_sql|kwarg_sql) is not ported yet/];
+// `tablefromrows_sql` is removed since AIR-2275 (R88) ported it, and `kwarg_sql` is
+// removed since AIR-2277 ported it (the `=>` keyword-argument syntax
+// `LATERAL FLATTEN(INPUT => ...)` uses).
+const KNOWN_GAPS = [/^NotPorted: pivot_sql is not ported yet/];
 
 function isKnownGap(got) {
   if (!("error" in got)) return false;

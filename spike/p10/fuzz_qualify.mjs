@@ -61,14 +61,15 @@ const gapSamples = [];
 // instead surfaced a real, now-fixed `generators/duckdb.js` TRANSFORMS gap, `exp.Pivot`
 // -> `transforms.unqualify_columns`, R32's own named deferral — see that file's
 // header. AIR-2274's `src/jsonpath.js` removed `JSONPathKey` from this list -- it
-// renders for real now. AIR-2278 removed `addconstraint_sql` -- it renders for real
-// now too.) Same "named, counted exclusion" shape `gen_qualify_columns_ref.py`'s
-// own `STRUCTURAL` set and `gen_pushdown_predicates_ref.py`'s dialect skip already
+// renders for real now. AIR-2276 removed `parameter_sql`/`copy_sql` -- both real now.
+// AIR-2278 removed `addconstraint_sql` -- it renders for real now too.) Same "named,
+// counted exclusion" shape `gen_qualify_columns_ref.py`'s own `STRUCTURAL` set and
+// `gen_pushdown_predicates_ref.py`'s dialect skip already
 // established -- classified by the underlying stub/type name, not by row id, so a
 // NEW unrelated gap of the same shape is still caught by name rather than silently
 // matched.
 const KNOWN_GAPS = [
-  /^NotPorted: (parameter_sql|pseudocolumn_sql|copy_sql) is not ported yet/,
+  /^NotPorted: pseudocolumn_sql is not ported yet/,
   /^PyValueError: Unsupported expression type (TableColumn)$/,
 ];
 
@@ -179,11 +180,37 @@ function runFixturePairs(rows, schema) {
   }
 }
 
+// AIR-2295: a per-real-fixture-file breakdown, for tools/fixture_rollup.mjs. Snapshots
+// the same exact/mismatch/error/gap counters the rest of this file already maintains
+// around each named upstream fixture's own rows, so this adds information without
+// changing how any row is judged or any pre-existing line is printed.
+function snapshotCounts() {
+  return { exact, mismatch, error, gap };
+}
+function countsDelta(before, after) {
+  return {
+    exact: after.exact - before.exact,
+    mismatch: after.mismatch - before.mismatch,
+    error: after.error - before.error,
+    gap: after.gap - before.gap,
+  };
+}
+const fixtureBreakdown = [];
+
+let _before = snapshotCounts();
 runFixturePairs(ref.qualify_columns, SCHEMA);
+fixtureBreakdown.push(["qualify_columns.sql", countsDelta(_before, snapshotCounts())]);
+
+_before = snapshotCounts();
 runFixturePairs(ref.qualify_columns_ddl, SCHEMA);
+fixtureBreakdown.push(["qualify_columns_ddl.sql", countsDelta(_before, snapshotCounts())]);
+
+_before = snapshotCounts();
 runFixturePairs(ref.qualify_columns__with_invisible, WITH_INVISIBLE_SCHEMA);
+fixtureBreakdown.push(["qualify_columns__with_invisible.sql", countsDelta(_before, snapshotCounts())]);
 
 // --- 1d: qualify_tables -- db="db", catalog="c", qualifyColumns=false, quoteIdentifiers=false. ---
+_before = snapshotCounts();
 for (const record of ref.qualify_tables) {
   const name = record.title || `#${record.id}`;
   const options = toOptions(record.kwargs);
@@ -196,9 +223,11 @@ for (const record of ref.qualify_tables) {
   }
   compare(name, record.sql, record.result, got, samples);
 }
+fixtureBreakdown.push(["qualify_tables.sql", countsDelta(_before, snapshotCounts())]);
 
 // --- 1e: qualify_columns__invalid -- default kwargs, schema=SCHEMA; row 13 (see this
 // file's own header) legitimately does NOT raise. ---
+_before = snapshotCounts();
 for (const record of ref.qualify_columns__invalid) {
   const name = `invalid#${record.id}`;
   let got;
@@ -209,6 +238,7 @@ for (const record of ref.qualify_columns__invalid) {
   }
   compare(name, record.sql, record.result, got, samples);
 }
+fixtureBreakdown.push(["qualify_columns__invalid.sql", countsDelta(_before, snapshotCounts())]);
 
 // --- 2: hand-picked kwarg-surface battery + Snowflake positional-column scenarios.
 // `onQualifyProbe` scenarios also assert the `on_qualify` callback's own observed
@@ -274,6 +304,14 @@ if (samples.length) {
 if (gapSamples.length && VERBOSE) {
   console.log();
   for (const s of gapSamples) console.log(`  ${s}\n`);
+}
+
+console.log();
+console.log("    per-fixture-file breakdown (AIR-2295):");
+for (const [name, d] of fixtureBreakdown) {
+  console.log(
+    `      ${name.padEnd(36)} EXACT ${d.exact}  MISMATCH ${d.mismatch}  ERROR ${d.error}  KNOWN_GAP ${d.gap}`,
+  );
 }
 
 process.exit(mismatch === 0 && error === 0 ? 0 : 1);
