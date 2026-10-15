@@ -131,6 +131,63 @@ const _SEQ_SIGNED = exp.maybeParse(
   + "ELSE :base % :max_val END)",
 );
 
+// py:62-63 — RANDSTR constants used by `randstr_sql` below.
+const RANDSTR_CHAR_POOL = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+const RANDSTR_SEED = 123456;
+
+// py:1954 `ZIPF_TEMPLATE` — CDF-based inverse sampling for Snowflake's ZIPF.
+const ZIPF_TEMPLATE = exp.maybeParse(`
+  WITH rand AS (SELECT :random_expr AS r),
+  weights AS (
+      SELECT i, 1.0 / POWER(i, :s) AS w
+      FROM RANGE(1, :n + 1) AS t(i)
+  ),
+  cdf AS (
+      SELECT i, SUM(w) OVER (ORDER BY i) / SUM(w) OVER () AS p
+      FROM weights
+  )
+  SELECT MIN(i)
+  FROM cdf
+  WHERE p >= (SELECT r FROM rand)
+`);
+
+// py:1973 `NORMAL_TEMPLATE` — Box-Muller transform:
+// mean + (stddev * sqrt(-2 * ln(u1)) * cos(2 * pi * u2))
+const NORMAL_TEMPLATE = exp.maybeParse(
+  ":mean + (:stddev * SQRT(-2 * LN(GREATEST(:u1, 1e-10))) * COS(2 * PI() * :u2))",
+);
+
+// py:1978 `SEEDED_RANDOM_TEMPLATE` — a seeded pseudo-random value in [0, 1) from a hash.
+const SEEDED_RANDOM_TEMPLATE = exp.maybeParse("(ABS(HASH(:seed)) % 1000000) / 1000000.0");
+
+// py:1990 `MAPCAT_TEMPLATE` — Snowflake MAP_CAT semantics: NULL if either input is NULL,
+// COALESCE(m2[k], m1[k]) for duplicate keys, NULL-valued entries filtered out.
+const MAPCAT_TEMPLATE = exp.maybeParse(`
+  CASE
+      WHEN :map1 IS NULL OR :map2 IS NULL THEN NULL
+      ELSE MAP_FROM_ENTRIES(LIST_FILTER(LIST_TRANSFORM(
+          LIST_DISTINCT(LIST_CONCAT(MAP_KEYS(:map1), MAP_KEYS(:map2))),
+          __k -> STRUCT_PACK(key := __k, value := COALESCE(:map2[__k], :map1[__k]))
+      ), __x -> __x.value IS NOT NULL))
+  END
+`);
+
+// py:2081 `RANDSTR_TEMPLATE`.
+const RANDSTR_TEMPLATE = exp.maybeParse(`
+  SELECT LISTAGG(
+      SUBSTRING(
+          '${RANDSTR_CHAR_POOL}',
+          1 + CAST(FLOOR(random_value * 62) AS INT),
+          1
+      ),
+      ''
+  )
+  FROM (
+      SELECT (ABS(HASH(i + :seed)) % 1000) / 1000.0 AS random_value
+      FROM RANGE(:length) AS t(i)
+  )
+`);
+
 /** py:670 `_build_seq_expression(base, byte_width, signed)`. */
 function _build_seq_expression(base, byte_width, signed) {
   const bits = byte_width * 8;
@@ -2118,6 +2175,250 @@ export class DuckDBGenerator extends Generator {
     }
 
     return this.func("TRUNC", expression.this, decimals);
+  }
+
+  /**
+   * py:2472 `randstr_sql(self, expression)`.
+   *
+   * Transpile Snowflake's RANDSTR to DuckDB equivalent using deterministic hash-based random.
+   * Uses a pre-parsed template with placeholders replaced by expression nodes.
+   *
+   * RANDSTR(length, generator) generates a random string of specified length.
+   * - With numeric seed: Use HASH(i + seed) for deterministic output (same seed = same result)
+   * - With RANDOM(): Use RANDOM() in the hash for non-deterministic output
+   * - No generator: Use default seed value
+   */
+  randstr_sql(expression) {
+    const length = expression.this;
+    const generator = expression.args.generator;
+
+    let seed_value;
+    if (generator) {
+      if (generator instanceof exp.Rand) {
+        // If it's RANDOM(), use its seed if available, otherwise use RANDOM() itself
+        seed_value = generator.this || generator;
+      } else {
+        // Const/int or other expression - use as seed directly
+        seed_value = generator;
+      }
+    } else {
+      // No generator specified, use default seed (arbitrary but deterministic)
+      seed_value = exp.Literal.number(RANDSTR_SEED);
+    }
+
+    const replacements = { seed: seed_value, length };
+    return `(${this.sql(exp.replacePlaceholders(RANDSTR_TEMPLATE, replacements))})`;
+  }
+
+  /**
+   * py:2510 `zipf_sql(self, expression)`.
+   *
+   * Transpile Snowflake's ZIPF to DuckDB using CDF-based inverse sampling.
+   * Uses a pre-parsed template with placeholders replaced by expression nodes.
+   */
+  zipf_sql(expression) {
+    const s = expression.this;
+    const n = expression.args.elementcount;
+    const gen = expression.args.gen;
+
+    let random_expr;
+    if (!(gen instanceof exp.Rand)) {
+      // (ABS(HASH(seed)) % 1000000) / 1000000.0
+      random_expr = new exp.Div({
+        this: exp.paren(
+          new exp.Mod({
+            this: new exp.Abs({ this: new exp.Anonymous({ this: "HASH", expressions: [gen.copy()] }) }),
+            expression: exp.Literal.number(1000000),
+          }),
+        ),
+        expression: exp.Literal.number("1000000.0"),
+      });
+    } else {
+      // Use RANDOM() for non-deterministic output
+      random_expr = new exp.Rand();
+    }
+
+    const replacements = { s, n, random_expr };
+    return `(${this.sql(exp.replacePlaceholders(ZIPF_TEMPLATE, replacements))})`;
+  }
+
+  /**
+   * py:2871 `normal_sql(self, expression)`.
+   *
+   * Transpile Snowflake's NORMAL(mean, stddev, gen) to DuckDB.
+   * Uses the Box-Muller transform via NORMAL_TEMPLATE.
+   */
+  normal_sql(expression) {
+    const mean = expression.this;
+    const stddev = expression.args.stddev;
+    const gen = expression.args.gen;
+
+    // Build two uniform random values [0, 1) for Box-Muller transform
+    let u1, u2;
+    if (gen instanceof exp.Rand && (gen.this === null || gen.this === undefined)) {
+      u1 = new exp.Rand();
+      u2 = new exp.Rand();
+    } else {
+      // Seeded: derive two values using HASH with different inputs
+      const seed = gen instanceof exp.Rand ? gen.this : gen;
+      u1 = exp.replacePlaceholders(SEEDED_RANDOM_TEMPLATE, { seed });
+      u2 = exp.replacePlaceholders(SEEDED_RANDOM_TEMPLATE, {
+        seed: new exp.Add({ this: seed.copy(), expression: exp.Literal.number(1) }),
+      });
+    }
+
+    const replacements = { mean, stddev, u1, u2 };
+    return this.sql(exp.replacePlaceholders(NORMAL_TEMPLATE, replacements));
+  }
+
+  /**
+   * py:2897 `uniform_sql(self, expression)`.
+   *
+   * Transpile Snowflake's UNIFORM(min, max, gen) to DuckDB.
+   *
+   * UNIFORM returns a random value in [min, max]:
+   * - Integer result if both min and max are integers
+   * - Float result if either min or max is a float
+   */
+  uniform_sql(expression) {
+    const min_val = expression.this;
+    const max_val = expression.expression;
+    const gen = expression.args.gen;
+
+    // Determine if result should be integer (both bounds are integers).
+    // We do this to emulate Snowflake's behavior, INT -> INT, FLOAT -> FLOAT
+    const is_int_result = min_val.isInt && max_val.isInt;
+
+    // Build the random value expression [0, 1)
+    let random_expr;
+    if (!(gen instanceof exp.Rand)) {
+      // Seed value: (ABS(HASH(seed)) % 1000000) / 1000000.0
+      random_expr = new exp.Div({
+        this: exp.paren(
+          new exp.Mod({
+            this: new exp.Abs({ this: new exp.Anonymous({ this: "HASH", expressions: [gen] }) }),
+            expression: exp.Literal.number(1000000),
+          }),
+        ),
+        expression: exp.Literal.number("1000000.0"),
+      });
+    } else {
+      random_expr = new exp.Rand();
+    }
+
+    // Build: min + random * (max - min [+ 1 for int])
+    let range_expr = new exp.Sub({ this: max_val, expression: min_val });
+    if (is_int_result) range_expr = new exp.Add({ this: range_expr, expression: exp.Literal.number(1) });
+
+    let result = new exp.Add({
+      this: min_val,
+      expression: new exp.Mul({ this: random_expr, expression: exp.paren(range_expr) }),
+    });
+
+    if (is_int_result) {
+      result = new exp.Cast({ this: new exp.Floor({ this: result }), to: exp.DType.BIGINT.intoExpr() });
+    }
+
+    return this.sql(result);
+  }
+
+  /** py:3842 `mapcat_sql(self, expression)`. */
+  mapcat_sql(expression) {
+    const result = exp.replacePlaceholders(MAPCAT_TEMPLATE.copy(), {
+      map1: expression.this,
+      map2: expression.expression,
+    });
+    return this.sql(result);
+  }
+
+  /** py:3850 `mapcontainskey_sql(self, expression)`. */
+  mapcontainskey_sql(expression) {
+    return this.func("ARRAY_CONTAINS", exp.func("MAP_KEYS", expression.args.key), expression.this);
+  }
+
+  /** py:3855 `mapdelete_sql(self, expression)`. */
+  mapdelete_sql(expression) {
+    const map_arg = expression.this;
+    const keys_to_delete = expression.expressions;
+
+    const x_dot_key = new exp.Dot({ this: exp.toIdentifier("x"), expression: exp.toIdentifier("key") });
+
+    const lambda_expr = new exp.Lambda({
+      this: new exp.In({ this: x_dot_key, expressions: keys_to_delete }).not_(),
+      expressions: [exp.toIdentifier("x")],
+    });
+    const result = exp.func(
+      "MAP_FROM_ENTRIES",
+      new exp.ArrayFilter({ this: exp.func("MAP_ENTRIES", map_arg), expression: lambda_expr }),
+    );
+    return this.sql(result);
+  }
+
+  /** py:3871 `mappick_sql(self, expression)`. */
+  mappick_sql(expression) {
+    const map_arg = expression.this;
+    const keys_to_pick = expression.expressions;
+
+    const x_dot_key = new exp.Dot({ this: exp.toIdentifier("x"), expression: exp.toIdentifier("key") });
+
+    let lambda_expr;
+    if (keys_to_pick.length === 1 && keys_to_pick[0].isType(exp.DType.ARRAY)) {
+      lambda_expr = new exp.Lambda({
+        this: exp.func("ARRAY_CONTAINS", keys_to_pick[0], x_dot_key),
+        expressions: [exp.toIdentifier("x")],
+      });
+    } else {
+      lambda_expr = new exp.Lambda({
+        this: new exp.In({ this: x_dot_key, expressions: keys_to_pick }),
+        expressions: [exp.toIdentifier("x")],
+      });
+    }
+
+    const result = exp.func(
+      "MAP_FROM_ENTRIES",
+      exp.func("LIST_FILTER", exp.func("MAP_ENTRIES", map_arg), lambda_expr),
+    );
+    return this.sql(result);
+  }
+
+  /** py:3894 `mapsize_sql(self, expression)`. */
+  mapsize_sql(expression) {
+    return this.func("CARDINALITY", expression.this);
+  }
+
+  /** py:3897-3898 `@unsupported_args("update_flag") mapinsert_sql(self, expression)`. */
+  mapinsert_sql(expression) {
+    if (expression.args.update_flag) {
+      this.unsupported(
+        `Argument 'update_flag' is not supported for expression '${expression.constructor.name}' when targeting ${this.dialect.constructor.name}.`,
+      );
+    }
+
+    const map_arg = expression.this;
+    const key = expression.args.key;
+    let value = expression.args.value;
+
+    const map_type = map_arg.type;
+
+    if (value !== null && value !== undefined) {
+      if (map_type && map_type.expressions && map_type.expressions.length > 1) {
+        // Extract the value type from MAP(key_type, value_type)
+        const value_type = map_type.expressions[1];
+        // Cast value to match the map's value type to avoid type conflicts
+        value = exp.cast(value, value_type);
+      }
+      // else: polymorphic MAP case - no type parameters available, use value as-is
+    }
+
+    // Create a single-entry map for the new key-value pair
+    const new_entry_struct = new exp.Struct({ expressions: [new exp.PropertyEQ({ this: key, expression: value })] });
+    const new_entry = new exp.ToMap({ this: new_entry_struct });
+
+    // Use MAP_CONCAT to merge the original map with the new entry
+    // This automatically handles both insert and update cases
+    const result = exp.func("MAP_CONCAT", map_arg, new_entry);
+
+    return this.sql(result);
   }
 
   /** py:3726 `rand_sql(self, expression)`. */
