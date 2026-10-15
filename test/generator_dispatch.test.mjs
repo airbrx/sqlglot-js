@@ -519,7 +519,22 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // reaches (also not `*_sql`-suffixed): 40 - 2 + 1 = 39, plus +1 coordinator at merge
   // (R93): `indexparameters_sql` (generator.py:1953), reached by the qualify oracle's
   // `alter table` fixture once `addconstraint_sql` went real — 39 + 1 = 40.
-  assert.equal(bodied.length, 244, "exactly 244 *_sql methods have a real body");
+  // +188 from AIR-2279 (epic AIR-2270, "10.6 Generator stubs cluster D2", PORT_PLAN.md
+  // — the LAST stub cluster): every remaining base-Generator `*_sql` method that was
+  // still a lone `throw new NotPorted`, named individually in that PR's own
+  // description (187 stubs discovered via `grep -n 'new NotPorted(' src/generator.js`
+  // on main, which is more than the task's own enumerated census list because that
+  // list only named rows with nonzero corpus weight — ownership was "every remaining
+  // stub" regardless of weight) plus 3 more (`fromiso8601date_sql`/
+  // `fromiso8601timestamp_sql`/`fromiso8601timestampnanos_sql`) the same sweep's own
+  // extraction script initially missed and a follow-up grep caught. 244 + 188 = 432 —
+  // every one of the 432 `*_sql` methods on the prototype now has a real body; the
+  // four remaining `grep -c 'new NotPorted(' src/generator.js` hits are pre-existing,
+  // deliberately GUARDED branches inside otherwise-bodied methods (`_resolveDialect`'s
+  // string-dialect branch, `BASE_DIALECT_GENERATOR_SETTINGS.can_quote`,
+  // `_simplify_unless_literal`, `_embed_ignore_nulls`'s `IGNORE_NULLS_BEFORE_ORDER`
+  // branch) — none of them a `*_sql`-named method itself, so none affects this count.
+  assert.equal(bodied.length, 432, "every *_sql method now has a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -664,7 +679,19 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // `scoperesolution_sql` (every one reads only class/Dialect FIELDS and the
   // `tokens.js` relay getters, never a Dialect METHOD, so none needs the
   // `identifier_sql`-style exception).
-  assert.equal(432 - stubs.length, 243, "243 of those 244 also run without a resolved Dialect");
+  // +188 for AIR-2279's 188 new bodies (the same set `bodied.length` above gained):
+  // empirically verified (`node -e`, after the same dynamic `dialects/dialect.js`
+  // import test #15 above already performs in this same process — that import's
+  // side effect is what registers the real parser `maybe_parse`/`exp.cast`/`exp.func`
+  // route through, which several of these 188 reach on a bare `new exp.Expr({})` with
+  // every optional arg `undefined`). None throws `NotPorted`; most return a string
+  // outright (reading only class/Dialect FIELDS, or nothing at all), and a handful
+  // throw a plain `TypeError` instead on the bare node's missing `.this`/
+  // `.expression` (e.g. `tsordstotimestamp_sql`'s `.isType(...)`,
+  // `getextract_sql`'s `.type`) — the same "runs, just not usefully, on made-up
+  // input" outcome this assertion already counts for `arrayagg_sql`/`tsordstodate_sql`
+  // above. 243 + 188 = 431.
+  assert.equal(432 - stubs.length, 431, "431 of those 432 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],

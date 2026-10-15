@@ -704,23 +704,22 @@ test("standardizedSql: whitespace-collapsing, keyword-normalizing regeneration f
   assert.equal(r.extractionError, null);
 });
 
-test("standardizedSql: falls back to the raw original SQL (not null) with extractionError set when the generator can't render this construct yet, other fields stay populated", () => {
-  // Deviation / known gap: `connect_sql` (Oracle-style CONNECT BY) is not yet ported
-  // in this port's base Generator (verified — a real NotPorted throw, not silently
-  // wrong output), so any query containing CONNECT BY cannot regenerate
-  // standardizedSql on Databricks or Snowflake today. This degrades ONLY
-  // standardizedSql; tables/nonDeterministic/etc. are computed before
-  // generation is attempted and are unaffected. See contrib/README.md.
-  //
-  // (AIR-2194, PORT_PLAN.md: the original example here was CURRENT_DATE, but base
-  // `generator.js`'s `currentdate_sql` is real now, so it no longer demonstrates this
-  // fallback — CONNECT BY still does, and CURRENT_DATE stays in the query only to
-  // keep exercising the `nonDeterministic` assertion below.)
+test("standardizedSql: falls back to the raw original SQL (not null) with extractionError set when the generator can't render this construct yet, other fields stay populated", (t) => {
+  // This test's job is the raw-SQL fallback path itself, not any particular unported
+  // stub: it used to lean on `connect_sql` (Oracle-style CONNECT BY) throwing
+  // NotPorted, but AIR-2279 (P4 generator stubs cluster D2) ported `connect_sql`
+  // along with the rest of the base-Generator stub inventory, so CONNECT BY no
+  // longer demonstrates this. Force the fallback directly instead (same approach as
+  // test/gatewaySqlIdentity.test.mjs's "fallback retains literals..." /
+  // "fallback convergence" tests) — tables/nonDeterministic/etc. are computed
+  // before generation is attempted, so they stay unaffected by the mock. See
+  // contrib/README.md.
   //
   // standardizedSql falls back to the raw sql text rather than null: this
   // field feeds a cache key, and null is a WORSE cache-key input than the
   // query's own text — every currently-unfixable query would otherwise
   // collide on the same null key instead of keying on their own SQL.
+  t.mock.method(Dialect.prototype, "generate", () => { throw new Error("forced fallback"); });
   const sql = "SELECT * FROM orders WHERE order_date = CURRENT_DATE AND id CONNECT BY PRIOR id = parent_id";
   const r = extractSqlMetadata(sql, { dialect: "databricks" });
   assert.equal(r.standardizedSql, sql);
