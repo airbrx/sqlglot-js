@@ -1,6 +1,6 @@
 // py: sqlglot/generators/duckdb.py — `class DuckDBGenerator(generator.Generator)`.
 //
-// @ported-ranges sqlglot/generators/duckdb.py 50-50 213-214 217-229 320-357 545-547 549-563 607-648 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 4419-4497
+// @ported-ranges sqlglot/generators/duckdb.py 50-50 213-214 217-229 320-357 545-547 549-563 607-648 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 4349-4406 4419-4497
 //
 // SCOPE — a deliberately small, honest slice of a 4,788-line file (PORT_PLAN.md,
 // "DuckDB generator is an outlier size" — ~4x every other single-file dialect
@@ -96,6 +96,7 @@ import {
   weekstart_unit_to_str,
 } from "../dialects/dialect.js";
 import { isDateUnit } from "../helper.js";
+import { annotate_types } from "../optimizer/annotate_types.js";
 
 // py:50 — used only by `_implicit_datetime_cast` below.
 const TIMEZONE_PATTERN = /:\d{2}.*?[+\-]\d{2}(?::\d{2})?/;
@@ -884,5 +885,54 @@ export class DuckDBGenerator extends Generator {
     }
 
     return super.extract_sql(expression);
+  }
+
+  /**
+   * py:4349 `addmonths_sql(self, expression)`.
+   *
+   * Handles three key issues:
+   * 1. Float/decimal months: e.g., Snowflake rounds, whereas DuckDB INTERVAL requires integers
+   * 2. End-of-month preservation: If input is last day of month, result is last day of result month
+   * 3. Type preservation: Maintains DATE/TIMESTAMPTZ types (DuckDB defaults to TIMESTAMP)
+   */
+  addmonths_sql(expression) {
+    let this_ = expression.this;
+    if (!this_.type) this_ = annotate_types(this_, { dialect: this.dialect });
+
+    if (this_.isType(...exp.DataType.TEXT_TYPES)) {
+      this_ = new exp.Cast({ this: this_, to: new exp.DataType({ this: exp.DType.TIMESTAMP }) });
+    }
+
+    // Detect float/decimal months to apply rounding (Snowflake behavior)
+    // DuckDB INTERVAL syntax doesn't support non-integer expressions, so use TO_MONTHS
+    let months_expr = expression.expression;
+    if (!months_expr.type) months_expr = annotate_types(months_expr, { dialect: this.dialect });
+
+    // Build interval or to_months expression based on type
+    // Float/decimal case: Round and use TO_MONTHS(CAST(ROUND(value) AS INT))
+    const interval_or_to_months = months_expr.isType(exp.DType.FLOAT, exp.DType.DOUBLE, exp.DType.DECIMAL)
+      ? exp.func("TO_MONTHS", exp.cast(exp.func("ROUND", months_expr), "INT"))
+      // Integer case: standard INTERVAL N MONTH syntax
+      : new exp.Interval({ this: months_expr, unit: exp.var("MONTH") });
+
+    const date_add_expr = new exp.Add({ this: this_, expression: interval_or_to_months });
+
+    // Apply end-of-month preservation if Snowflake flag is set
+    // CASE WHEN LAST_DAY(date) = date THEN LAST_DAY(result) ELSE result END
+    const preserve_eom = expression.args.preserve_end_of_month;
+    const result_expr = preserve_eom
+      ? exp.case()
+          .when(new exp.EQ({ this: exp.func("LAST_DAY", this_), expression: this_ }), exp.func("LAST_DAY", date_add_expr))
+          .else_(date_add_expr)
+      : date_add_expr;
+
+    // DuckDB's DATE_ADD function returns TIMESTAMP/DATETIME by default, even when the input is DATE
+    // To match for example Snowflake's ADD_MONTHS behavior (which preserves the input type)
+    // We need to cast the result back to the original type when the input is DATE or TIMESTAMPTZ
+    // Example: ADD_MONTHS('2023-01-31'::date, 1) should return DATE, not TIMESTAMP
+    if (this_.isType(exp.DType.DATE, exp.DType.TIMESTAMPTZ)) {
+      return this.sql(new exp.Cast({ this: result_expr, to: this_.type }));
+    }
+    return this.sql(result_expr);
   }
 }
