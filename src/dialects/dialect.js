@@ -2553,8 +2553,10 @@ setDialectResolver((dialect) => Dialect.get_or_raise(dialect));
 // above: `generator.js`'s base `dateadd_sql`/`extract_sql`/`concat_sql` need
 // `unit_to_str`/`map_date_part`/`concat_to_dpipe_sql` (all three defined earlier in
 // this file) but cannot import this module directly (it already imports `Generator`
-// FROM `generator.js`). See `tokens.js`'s own `getDialectHelpersRef` header.
-setDialectHelpersRef({ unit_to_str, map_date_part, concat_to_dpipe_sql });
+// FROM `generator.js`). AIR-2276 adds `WEEK_START_DAY_TO_DOW`/`week_offset_to_dow`
+// (both also defined earlier in this file) to the same payload for `weekstart_name`'s
+// identical reach. See `tokens.js`'s own `getDialectHelpersRef` header.
+setDialectHelpersRef({ unit_to_str, map_date_part, concat_to_dpipe_sql, WEEK_START_DAY_TO_DOW, week_offset_to_dow });
 
 /**
  * py: sqlglot/__init__.py:134 `parse_one`.

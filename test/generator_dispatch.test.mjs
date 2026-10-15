@@ -480,7 +480,19 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // FIELDS, which the frozen stand-in either hosts or safely returns `undefined` for),
   // so every one of the 13 also lands in the "runs without a resolved Dialect" bucket
   // below, not the `identifier_sql`-style exception.
-  assert.equal(bodied.length, 154, "exactly 154 *_sql methods have a real body");
+  // +26 from AIR-2276 (epic AIR-2270, "10.3 Generator stubs cluster B", PORT_PLAN.md):
+  // the fifteen named base-Generator stubs (`rawstring_sql`, `lastday_sql`,
+  // `parameter_sql`, `triggerproperties_sql`, `respectnulls_sql`, `decodecase_sql`,
+  // `grant_sql`, `weekstart_sql`, `revoke_sql`, `strtotime_sql`, `analyze_sql`,
+  // `rand_sql`, `convert_sql`, `copy_sql`, `bytestring_sql`) plus eleven `*_sql`
+  // siblings each one reaches and un-stubs along the way: `_grant_or_revoke_sql`/
+  // `grantprivilege_sql`/`grantprincipal_sql` (grant/revoke), `analyzesample_sql`/
+  // `analyzestatistics_sql`/`analyzehistogram_sql`/`analyzedelete_sql`/
+  // `analyzelistchainedrows_sql`/`analyzevalidate_sql` (analyze), `copyparameter_sql`/
+  // `credentials_sql` (copy). `weekstart_name` (weekstart's own twelfth sibling) is
+  // also ported in the same round but does not end in `_sql`, so `sqlMethods` never
+  // counts it here.
+  assert.equal(bodied.length, 180, "exactly 180 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -559,7 +571,25 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // and combined here): none reads `this.dialect` or any other Dialect-hosted state,
   // so `transaction_sql`/`commit_sql`/`rollback_sql` all run on the bare stand-in too
   // (`"BEGIN"`/`"COMMIT"`/`"ROLLBACK"` with every optional arg missing).
-  assert.equal(432 - stubs.length, 153, "153 of those 154 also run without a resolved Dialect");
+  // +26 for AIR-2276's twenty-six new `*_sql` bodies: empirically verified (`node -e`
+  // against a bare `new Generator()`), none throws `NotPorted`. Twenty-two return a
+  // string outright (`bytestring_sql`/`parameter_sql`/`triggerproperties_sql`/
+  // `respectnulls_sql`/`decodecase_sql`/`_grant_or_revoke_sql`/`grant_sql`/
+  // `revoke_sql`/`grantprivilege_sql`/`grantprincipal_sql`/`strtotime_sql`/
+  // `rand_sql`/`analyzesample_sql`/`analyzestatistics_sql`/`analyzehistogram_sql`/
+  // `analyzedelete_sql`/`analyzelistchainedrows_sql`/`analyzevalidate_sql`/
+  // `analyze_sql`/`convert_sql`/`copyparameter_sql`/`credentials_sql`/`copy_sql` read
+  // only class/Dialect FIELDS, never a METHOD, or nothing at all). `rawstring_sql`
+  // and `lastday_sql` each throw a plain `TypeError` on a bare `new exp.Expr({})`
+  // (missing `.this`/`expression.constructor.sqlName`) — the same "runs, just not
+  // usefully, on made-up input" outcome `tsordstodate_sql`/`arrayagg_sql` already
+  // established this assertion counts. `weekstart_sql` throws this file's own plain
+  // `Error("...dialect helpers not loaded yet...")` from the `WEEK_START_DAY_TO_DOW`/
+  // `week_offset_to_dow` relay this round adds (via its own `weekstart_name` helper,
+  // which is ported in the same round but is not itself `_sql`-suffixed and so not
+  // counted here) — same not-`NotPorted` "ran" outcome `dateadd_sql` already
+  // established for the sibling relay.
+  assert.equal(432 - stubs.length, 179, "179 of those 180 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],
