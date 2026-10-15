@@ -831,6 +831,23 @@ function _unix_to_time_sql(self, expression) {
 }
 
 /** py:1023 `_is_binary(arg)`. */
+/**
+ * py:1414 `_maybe_corr_null_to_false(expression)`.
+ *
+ * Unwraps a `Window`/`Filter`-wrapped `exp.Corr` and, if it has
+ * `null_on_zero_variance` set, clears the flag and returns the (unwrapped-then-
+ * rewrapped) expression; otherwise returns `null`.
+ */
+function _maybe_corr_null_to_false(expression) {
+  let corr = expression;
+  while (corr instanceof exp.Window || corr instanceof exp.Filter) corr = corr.this;
+
+  if (!(corr instanceof exp.Corr) || !corr.args.null_on_zero_variance) return null;
+
+  corr.set("null_on_zero_variance", false);
+  return expression;
+}
+
 function _is_binary(arg) {
   return arg.isType(exp.DType.BINARY, exp.DType.VARBINARY, exp.DType.BLOB);
 }
@@ -1186,7 +1203,8 @@ export class DuckDBGenerator extends Generator {
     [exp.BitwiseXorAgg, _bitwise_agg_sql],
     [exp.BoolxorAgg, _boolxor_agg_sql],
     [exp.CommentColumnConstraint, no_comment_column_constraint_sql],
-    // py:1639 [exp.Corr, lambda self._corr_sql] — blocked, `_corr_sql` is a DuckDBGenerator method not ported this pass
+    // py:1639 `Corr`
+    [exp.Corr, (self, e) => self._corr_sql(e)],
     [exp.CosineDistance, rename_func("LIST_COSINE_DISTANCE")],
     [exp.CurrentTime, () => "CURRENT_TIME"],
     [exp.CurrentSchemas, (self, e) => self.func("current_schemas", e.this || exp.true_())],
@@ -2020,6 +2038,99 @@ export class DuckDBGenerator extends Generator {
     return timestamp;
   }
 
+  /** py:3492 `arrayuniqueagg_sql(self, expression)`. */
+  arrayuniqueagg_sql(expression) {
+    return this.sql(
+      new exp.Filter({
+        this: exp.func("LIST", new exp.Distinct({ expressions: [expression.this] })),
+        expression: new exp.Where({ this: expression.this.copy().is_(exp.null_()).not_() }),
+      }),
+    );
+  }
+
+  /** py:3500 `arrayconcatagg_sql(self, expression)`. */
+  arrayconcatagg_sql(expression) {
+    let this_ = expression.this;
+
+    if (this_ instanceof exp.Limit) {
+      this.unsupported("LIMIT in ARRAY_CONCAT_AGG cannot be transpiled to DuckDB");
+      this_ = this_.this;
+    }
+
+    const inner = this_ instanceof exp.Order ? this_.this : this_;
+
+    return this.func(
+      "FLATTEN",
+      new exp.Filter({
+        this: new exp.ArrayAgg({ this: this_ }),
+        expression: new exp.Where({ this: inner.copy().is_(exp.null_()).not_() }),
+      }),
+    );
+  }
+
+  /** py:3521 `arraydistinct_sql(self, expression)`. */
+  arraydistinct_sql(expression) {
+    const arr = expression.this;
+    const func = this.func("LIST_DISTINCT", arr);
+
+    if (expression.args.check_null) {
+      const add_null_to_array = exp.func(
+        "LIST_APPEND",
+        exp.func("LIST_DISTINCT", new exp.ArrayCompact({ this: arr })),
+        new exp.Null(),
+      );
+      return this.sql(
+        new exp.If({
+          this: new exp.NEQ({ this: new exp.ArraySize({ this: arr }), expression: exp.func("LIST_COUNT", arr) }),
+          true: add_null_to_array,
+          false: func,
+        }),
+      );
+    }
+
+    return func;
+  }
+
+  /** py:4093 `arraytostring_sql(self, expression)`. */
+  arraytostring_sql(expression) {
+    const null_ = expression.args.null;
+
+    if (expression.args.null_is_empty) {
+      const x = exp.toIdentifier("x");
+      const list_transform = new exp.Transform({
+        this: expression.this.copy(),
+        expression: new exp.Lambda({
+          this: new exp.Coalesce({ this: exp.cast(x, "TEXT"), expressions: [exp.Literal.string("")] }),
+          expressions: [x],
+        }),
+      });
+      const array_to_string = new exp.ArrayToString({ this: list_transform, expression: expression.expression });
+      if (expression.args.null_delim_is_null) {
+        return this.sql(
+          exp.case()
+            .when(expression.expression.copy().is_(exp.null_()), exp.null_())
+            .else_(array_to_string),
+        );
+      }
+      return this.sql(array_to_string);
+    }
+
+    if (null_) {
+      const x = exp.toIdentifier("x");
+      return this.sql(
+        new exp.ArrayToString({
+          this: new exp.Transform({
+            this: expression.this,
+            expression: new exp.Lambda({ this: new exp.Coalesce({ this: x, expressions: [null_] }), expressions: [x] }),
+          }),
+          expression: expression.expression,
+        }),
+      );
+    }
+
+    return this.func("ARRAY_TO_STRING", expression.this, expression.expression);
+  }
+
   /** py:2692 `strposition_sql(self, expression)`. */
   strposition_sql(expression) {
     const this_ = expression.this;
@@ -2175,6 +2286,39 @@ export class DuckDBGenerator extends Generator {
     }
 
     return this.func("TRUNC", expression.this, decimals);
+  }
+
+  /** py:4743 `window_sql(self, expression)`. */
+  window_sql(expression) {
+    const this_ = expression.this;
+    if (this_ instanceof exp.Corr || (this_ instanceof exp.Filter && this_.this instanceof exp.Corr)) {
+      return this._corr_sql(expression);
+    }
+
+    return super.window_sql(expression);
+  }
+
+  /** py:4752 `filter_sql(self, expression)`. */
+  filter_sql(expression) {
+    if (expression.this instanceof exp.Corr) return this._corr_sql(expression);
+
+    return super.filter_sql(expression);
+  }
+
+  /** py:4758 `_corr_sql(self, expression)`. */
+  _corr_sql(expression) {
+    if (expression instanceof exp.Corr && !expression.args.null_on_zero_variance) {
+      return this.func("CORR", expression.this, expression.expression);
+    }
+
+    let corr_expr = _maybe_corr_null_to_false(expression);
+    if (corr_expr === null) {
+      if (expression instanceof exp.Window) return super.window_sql(expression);
+      if (expression instanceof exp.Filter) return super.filter_sql(expression);
+      corr_expr = expression;
+    }
+
+    return this.sql(exp.case().when(new exp.IsNan({ this: corr_expr }), exp.null_()).else_(corr_expr));
   }
 
   /** py:3189 `withingroup_sql(self, expression)`. */
