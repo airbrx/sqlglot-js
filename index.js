@@ -30,6 +30,7 @@ import "./src/dialects/bigquery.js";
 import "./src/dialects/tsql.js";
 import "./src/dialects/mysql.js";
 import "./src/dialects/presto.js";
+import "./src/dialects/clickhouse.js";
 
 import { Dialect, parseOne } from "./src/dialects/dialect.js";
 import { ErrorLevel, ParseError, TokenError, UnsupportedError } from "./src/errors.js";

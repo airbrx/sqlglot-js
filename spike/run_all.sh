@@ -105,6 +105,11 @@ PYTHONHASHSEED=0 python3 spike/p5/gen_mysql_dialect_ref.py > spike/out/mysql_dia
 # overrides at all -- the first dialect-settings oracle in this family with no
 # section 4.
 PYTHONHASHSEED=0 python3 spike/p5/gen_presto_dialect_ref.py > spike/out/presto_dialect.json || fail=1
+# P5 oracle, same shape, ClickHouse (AIR-2288). `dialects/clickhouse.py` is ~17
+# resolved settings, a nested Tokenizer with ~35 added keywords plus one post-merge
+# `KEYWORDS.pop("/*+")`, and one method override (`generate_values_aliases`) -- the
+# first dialect in this family since Snowflake/DuckDB with a real section 4.
+PYTHONHASHSEED=0 python3 spike/p5/gen_clickhouse_dialect_ref.py > spike/out/clickhouse_dialect.json || fail=1
 # P6 oracle. `schema.py`'s `MappingSchema` is greenfield -- nothing in the port depends
 # on it yet, so unlike every oracle above it has no corpus/atoms.jsonl tie-in at all.
 # 24 scenarios / 53 checks of column/type lookups, add_table, dialect-aware identifier
