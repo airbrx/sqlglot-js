@@ -295,6 +295,21 @@ export function pyRjust(s, width, fillchar = " ") {
   return fillArr[0].repeat(width - n) + s;
 }
 
+/**
+ * py: str.ljust(width[, fillchar]) — left-justifies (pads on the RIGHT) to a
+ * CODE-POINT width, not a UTF-16 width (corpus/deny/py_builtins.json:
+ * `clickhouse.py:106`: `ts_frac_parts[0].ljust(6, "0")`). Mirror of `pyRjust` above.
+ */
+export function pyLjust(s, width, fillchar = " ") {
+  const fillArr = [...fillchar];
+  if (fillArr.length !== 1) {
+    throw new PyTypeError("The fill character must be exactly one character long");
+  }
+  const n = cpLen(s);
+  if (n >= width) return s;
+  return s + fillArr[0].repeat(width - n);
+}
+
 // py: str.partition(sep) — ALWAYS a 3-element [before, sep, after], even when `sep`
 // is not found ([s, "", ""]); JS `split(sep, 2)` drops the separator and can return
 // fewer than 3 pieces (corpus/deny/py_builtins.json: `anonymize.py:205,211`).

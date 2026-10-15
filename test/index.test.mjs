@@ -86,7 +86,7 @@ test("every dialect index.js imports for its registration side effect actually r
   // on 2026-09-15. This test only proves the import list is internally consistent
   // with what get_or_raise can resolve -- it can't catch a dialect that's real but
   // simply missing from BOTH this list and this test, so keep it in sync by hand.
-  for (const name of ["hive", "spark2", "spark", "databricks", "snowflake", "duckdb", "postgres", "redshift", "bigquery", "tsql", "mysql", "presto", "starrocks", "doris", "trino", "athena", "dune"]) {
+  for (const name of ["hive", "spark2", "spark", "databricks", "snowflake", "duckdb", "postgres", "redshift", "bigquery", "tsql", "mysql", "presto", "clickhouse", "starrocks", "doris", "trino", "athena", "dune"]) {
     assert.equal(Dialect.get_or_raise(name).parse("SELECT 1")[0].constructor.name, "Select", `dialect '${name}' should resolve`);
   }
 });

@@ -30,6 +30,7 @@ import "./src/dialects/bigquery.js";
 import "./src/dialects/tsql.js";
 import "./src/dialects/mysql.js";
 import "./src/dialects/presto.js";
+import "./src/dialects/clickhouse.js";
 import "./src/dialects/starrocks.js";
 import "./src/dialects/doris.js";
 import "./src/dialects/trino.js";

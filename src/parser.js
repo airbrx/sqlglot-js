@@ -1467,7 +1467,18 @@ export class Parser {
     /* py:1369 */ ["MULTISET", (self) => self.expression(new exp.SetProperty({ multi: true }))],
     /* py:1370 */ ["NO", (self) => self._parse_no_property()],
     /* py:1371 */ ["ON", (self) => self._parse_on_property()],
-    /* py:1372 */ ["ORDER BY", (self) => self._parse_order(null, true)],
+    /**
+     * py:1372 `lambda self: self._parse_order(skip_order_token=True)`.
+     *
+     * BUG FIX (found porting ClickHouse, AIR-2288): this key was DECLARED but left as
+     * a placeholder "TODO lambda" comment instead of a real callable, so a trailing
+     * `ORDER BY` after a table's schema/ENGINE (ClickHouse's own `CREATE TABLE t
+     * (...) ENGINE=MergeTree ORDER BY a`, but not specific to ClickHouse -- any
+     * dialect reaching this PROPERTY_PARSERS entry hit the same gap) went
+     * unconsumed, tripping the generic "leftover tokens" fallback to a bare
+     * `Command` for the whole statement.
+     */
+    ["ORDER BY", (self) => self._parse_order(null, true)],
     /* py:1373 */ ["OUTPUT", (self) => self.expression(new exp.OutputModelProperty({ this: self._parse_schema() }))],
     /* py:1374 */ ["PARTITION", (self) => self._parse_partitioned_of()],
     /* py:1375 */ ["PARTITION BY", (self) => self._parse_partitioned_by()],
@@ -5443,11 +5454,28 @@ export class Parser {
     return this.expression(new exp.AutoRefreshProperty({ this: this._parse_var(false, null, true) }));
   }
 
-  /** @returns {*} */
+  /**
+   * @returns {*}
+   *
+   * BUG FIX (found porting ClickHouse, AIR-2288): this previously parsed the
+   * COMPRESS/CODEC argument list as a CSV of STRING literals (`_parse_string`) behind
+   * a plain `_match(L_PAREN)` (which ADVANCES past it), so a codec with a
+   * function-call-shaped argument -- `CODEC(LZ4HC(9), ZSTD, DELTA)`, real ClickHouse
+   * syntax -- raised "Expecting )" on the first non-string token. Upstream's actual
+   * body parses each argument as a general expression (`_parse_bitwise`, matching
+   * `LZ4HC(9)` as an `Anonymous` call and `ZSTD`/`DELTA` as bare `Column`s) behind a
+   * NON-advancing `_match(..., advance=false)` + `_parse_wrapped_csv`, which also
+   * consumes the closing paren itself instead of a separate `if (this_) ...` step.
+   */
   // py: sqlglot/parser.py:7660
   _parse_compress() {
-    const this_ = this._match(TokenType.L_PAREN) ? this._parse_csv(this._parse_string.bind(this)) : null;
-    if (this_) this._match_r_paren(); return this.expression(new exp.CompressColumnConstraint({ this: this_ }));
+    if (this._match(TokenType.L_PAREN, false)) {
+      return this.expression(new exp.CompressColumnConstraint({
+        this: this._parse_wrapped_csv(this._parse_bitwise.bind(this)),
+      }));
+    }
+
+    return this.expression(new exp.CompressColumnConstraint({ this: this._parse_bitwise() }));
   }
 
   /** @returns {*} */
