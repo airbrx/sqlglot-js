@@ -53,7 +53,7 @@ import { BaseParser } from "../parsers/base.js";
 import { ALL_JSON_PATH_PARTS, Generator, unsupported_args } from "../generator.js";
 import { JSONPathTokenizer, parse as parse_json_path } from "../jsonpath.js";
 import * as exp from "../expressions/index.js";
-import { SAFE_IDENTIFIER_RE, registerAstDialects, registerGenerator, registerParser } from "../expressions/core.js";
+import { SAFE_IDENTIFIER_RE, registerAstDialects, registerGenerator, registerParser, registerDialectResolver } from "../expressions/core.js";
 import { findAllInScope } from "../optimizer/scope.js";
 import { EXPRESSION_METADATA } from "../typing/index.js";
 import { logger } from "../logging.js";
@@ -2598,6 +2598,14 @@ export function parseOne(sql, opts = {}) {
 // produces `Star()`, and every pipe-syntax method plus every `/*+ hint */` funnels
 // through it. This call is the whole fix; it needs `parse_one`, which needs a resolved
 // base `Dialect`, which is why it could not land before this file.
+// `expressions/builders.js`'s `func()` (py: expressions/builders.py:964 `dialect =
+// Dialect.get_or_raise(dialect)`) needs a REAL resolved Dialect instance even when
+// called with no explicit dialect, to read `dialect.parser_class.FUNCTIONS` for the
+// base/default dialect's own function builders (e.g. `exp.func("date_add", ...)`
+// inside `transforms.js`, which never passes a dialect). Registered here for the same
+// import-direction reason as `registerParser` just below.
+registerDialectResolver((dialect) => Dialect.get_or_raise(dialect));
+
 registerParser((sqlOrExpression, options = {}) => {
   if (sqlOrExpression === null || sqlOrExpression === undefined) {
     throw new ParseError("SQL cannot be None");
