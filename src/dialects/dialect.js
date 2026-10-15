@@ -581,18 +581,6 @@ export function inline_array_unless_query(self, expression) {
 }
 
 /**
- * py: sqlglot/dialects/dialect.py:1268 `arrow_json_extract_sql(self, expression)`.
- * `expression` is one of JSONExtract/JSONExtractScalar/JSONBExtract/JSONBExtractScalar.
- */
-export function arrow_json_extract_sql(self, expression) {
-  const this_ = expression.this;
-  if (self.constructor.JSON_TYPE_REQUIRED_FOR_EXTRACTION && this_ instanceof exp.Literal && this_.isString) {
-    this_.replace(exp.cast(this_, exp.DType.JSON));
-  }
-  return self.binary(expression, expression instanceof exp.JSONExtract ? "->" : "->>");
-}
-
-/**
  * py: sqlglot/dialects/dialect.py:1339
  * `strposition_sql(self, expression, func_name="STRPOS", supports_position=False, supports_occurrence=False, use_ansi_position=True)`
  */
