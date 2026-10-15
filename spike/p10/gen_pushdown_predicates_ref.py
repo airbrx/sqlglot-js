@@ -20,14 +20,15 @@ normalize's) two-step pipeline.
 Six of the 56 pairs are gated behind `# dialect: presto|trino|athena` (two pairs each)
 and exercise `unnest_requires_cross_join` (py:41 `isinstance(dialect, (Athena,
 Presto))`) -- the special case where Presto-family dialects can't push a predicate
-into an UNNEST's CROSS JOIN. None of Presto, Trino or Athena are ported in this JS
-codebase yet (no `src/dialects/{presto,trino,athena}.js`), so `parse_one(sql,
-read="presto")` already fails at the FIRST step on the JS side, independently of
+into an UNNEST's CROSS JOIN. `Presto` now exists in this JS codebase (AIR-2287,
+`src/dialects/presto.js`), so its 2 pairs are real coverage; `Trino`/`Athena` remain
+unported (no `src/dialects/{trino,athena}.js`), so `parse_one(sql, read="trino")`
+still fails at the FIRST step on the JS side, independently of
 `pushdown_predicates.js` itself -- the same "real parser/generator can't yet reach
 this scenario" situation R51's typing overlays document, not a `pushdown_predicates.js`
-defect. Those 6 pairs are captured here (so the CPython-side expectation is on record)
-but flagged `"dialect_unported": true"` so the JS fuzzer can skip them with a named
-reason instead of counting them as ERROR.
+defect. Those 4 remaining pairs are captured here (so the CPython-side expectation is
+on record) but flagged `"dialect_unported": true"` so the JS fuzzer can skip them with
+a named reason instead of counting them as ERROR.
 
     python3 spike/p10/gen_pushdown_predicates_ref.py > spike/out/pushdown_predicates.json
     node spike/p10/fuzz_pushdown_predicates.mjs
@@ -75,7 +76,10 @@ def load_sql_fixture_pairs(path):
             yield meta, sql, expected
 
 
-UNPORTED_DIALECTS = {"presto", "trino", "athena"}
+# "presto" removed (AIR-2287): `src/dialects/presto.js` now exists, so the 2
+# `# dialect: presto` pairs are real coverage, not a skip. `trino`/`athena` remain
+# unported.
+UNPORTED_DIALECTS = {"trino", "athena"}
 
 
 def pushdown_pipeline(sql, dialect):
