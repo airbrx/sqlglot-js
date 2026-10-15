@@ -404,6 +404,98 @@ function _ceil_floor(self, expression) {
   return self.ceil_floor(expression);
 }
 
+/**
+ * py:107 `_apply_base64_alphabet_replacements(result, alphabet, reverse=False)`.
+ *
+ * Apply base64 alphabet character replacements.
+ *
+ * Base64 alphabet can be 1-3 chars: 1st = index 62 ('+'), 2nd = index 63 ('/'), 3rd = padding ('=').
+ * `zip` truncates to the shorter string, so a 1-char alphabet only replaces '+', 2-char replaces '+/', etc.
+ *
+ * `reverse`: if False, replace default with custom (encode); if True, replace custom with default (decode).
+ */
+function _apply_base64_alphabet_replacements(result, alphabet, reverse = false) {
+  if (alphabet instanceof exp.Literal && alphabet.isString) {
+    const defaults = [..."+/="];
+    const news = [...alphabet.this];
+    const n = Math.min(defaults.length, news.length);
+    for (let i = 0; i < n; i++) {
+      const default_char = defaults[i], new_char = news[i];
+      if (new_char !== default_char) {
+        const [find, replace] = reverse ? [new_char, default_char] : [default_char, new_char];
+        result = new exp.Replace({ this: result, expression: exp.Literal.string(find), replacement: exp.Literal.string(replace) });
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * py:136 `_base64_decode_sql(self, expression, to_string)`.
+ *
+ * Transpile Snowflake BASE64_DECODE_STRING/BINARY to DuckDB.
+ *
+ * DuckDB uses FROM_BASE64() which returns BLOB. For string output, wrap with DECODE().
+ * Custom alphabets require REPLACE() calls to convert to standard base64.
+ */
+function _base64_decode_sql(self, expression, to_string) {
+  let input_expr = expression.this;
+  const alphabet = expression.args.alphabet;
+
+  // Handle custom alphabet by replacing non-standard chars with standard ones
+  input_expr = _apply_base64_alphabet_replacements(input_expr, alphabet, true);
+
+  // FROM_BASE64 returns BLOB
+  input_expr = new exp.FromBase64({ this: input_expr });
+
+  if (to_string) input_expr = new exp.Decode({ this: input_expr });
+
+  return self.sql(input_expr);
+}
+
+/**
+ * py:234 `_to_boolean_sql(self, expression)`.
+ *
+ * Transpile TO_BOOLEAN and TRY_TO_BOOLEAN functions from Snowflake to DuckDB equivalent.
+ *
+ * DuckDB's CAST to BOOLEAN supports most of Snowflake's TO_BOOLEAN strings except 'on'/'off'.
+ * We need to handle the 'on'/'off' cases explicitly.
+ *
+ * For TO_BOOLEAN (safe=False): NaN and INF values cause errors. We use DuckDB's native ERROR()
+ * function to replicate this behavior with a clear error message.
+ *
+ * For TRY_TO_BOOLEAN (safe=True): Use DuckDB's TRY_CAST for conversion, which returns NULL
+ * for invalid inputs instead of throwing errors.
+ */
+function _to_boolean_sql(self, expression) {
+  const arg = expression.this;
+  const is_safe = expression.args.safe || false;
+
+  const base_case_expr = exp.case()
+    // Handle 'on' -> TRUE (case insensitive)
+    .when(new exp.Upper({ this: exp.cast(arg, exp.DType.VARCHAR) }).eq(exp.Literal.string("ON")), exp.true_())
+    // Handle 'off' -> FALSE (case insensitive)
+    .when(new exp.Upper({ this: exp.cast(arg.copy(), exp.DType.VARCHAR) }).eq(exp.Literal.string("OFF")), exp.false_());
+
+  let case_expr;
+  if (is_safe) {
+    // TRY_TO_BOOLEAN: handle 'on'/'off' and use TRY_CAST for everything else
+    case_expr = base_case_expr.else_(exp.func("TRY_CAST", arg.copy(), exp.DType.BOOLEAN.intoExpr()));
+  } else {
+    // TO_BOOLEAN: handle NaN/INF errors, 'on'/'off', and use regular CAST
+    const cast_to_real = exp.func("TRY_CAST", arg.copy(), exp.DType.FLOAT.intoExpr());
+
+    // Check for NaN and INF values
+    const nan_inf_check = new exp.Or({ this: exp.func("ISNAN", cast_to_real), expression: exp.func("ISINF", cast_to_real.copy()) });
+
+    case_expr = base_case_expr
+      .when(nan_inf_check, exp.func("ERROR", exp.Literal.string("TO_BOOLEAN: Non-numeric values NaN and INF are not supported")))
+      .else_(exp.cast(arg.copy(), exp.DType.BOOLEAN));
+  }
+
+  return self.sql(case_expr);
+}
+
 function _date_sql(self, expression) {
   let this_ = expression.this;
   const zone = self.sql(expression, "zone");
@@ -1315,7 +1407,9 @@ export class DuckDBGenerator extends Generator {
     [exp.ArraySum, rename_func("LIST_SUM")],
     [exp.ArrayMax, rename_func("LIST_MAX")],
     [exp.ArrayMin, rename_func("LIST_MIN")],
-    // py:1628-1629 [exp.Base64DecodeBinary/String, lambda] — blocked, needs this file's own `_base64_decode_sql`
+    // py:1628-1629 `Base64DecodeBinary`/`Base64DecodeString`
+    [exp.Base64DecodeBinary, (self, e) => _base64_decode_sql(self, e, false)],
+    [exp.Base64DecodeString, (self, e) => _base64_decode_sql(self, e, true)],
     // py:1630 `BitwiseAnd`
     [exp.BitwiseAnd, (self, e) => self._bitwise_op(e, "&")],
     [exp.BitwiseAndAgg, _bitwise_agg_sql],
@@ -1481,7 +1575,8 @@ export class DuckDBGenerator extends Generator {
       (self, e) => self.func("EPOCH", exp.cast(e.this, exp.DType.TIMESTAMP)),
     ],
     [exp.TimeToStr, (self, e) => self.func("STRFTIME", e.this, self.format_time(e))],
-    // py:1770 [exp.ToBoolean, _to_boolean_sql] — blocked, 54-line local helper out of scope this pass
+    // py:1770 `ToBoolean`
+    [exp.ToBoolean, _to_boolean_sql],
     [
       exp.ToVariant,
       (self, e) => self.sql(exp.cast(e.this, exp.DataType.build("VARIANT", { dialect: "duckdb" }))),
@@ -3067,6 +3162,58 @@ export class DuckDBGenerator extends Generator {
     }
 
     return this.func(func, this_, decimals, truncate);
+  }
+
+  /** py:3756 `base64encode_sql(self, expression)`. */
+  base64encode_sql(expression) {
+    // DuckDB TO_BASE64 requires BLOB input
+    // Snowflake BASE64_ENCODE accepts both VARCHAR and BINARY - for VARCHAR it implicitly
+    // encodes UTF-8 bytes. We add ENCODE unless the input is a binary type.
+    let result = expression.this;
+
+    // Check if input is a string type - ENCODE only accepts VARCHAR
+    if (result.isType(...exp.DataType.TEXT_TYPES)) result = new exp.Encode({ this: result });
+
+    result = new exp.ToBase64({ this: result });
+
+    const max_line_length = expression.args.max_line_length;
+    const alphabet = expression.args.alphabet;
+
+    // Handle custom alphabet by replacing standard chars with custom ones
+    result = _apply_base64_alphabet_replacements(result, alphabet);
+
+    // Handle max_line_length by inserting newlines every N characters
+    const line_length =
+      max_line_length instanceof exp.Literal && max_line_length.isNumber ? Number(max_line_length.toPy()) : 0;
+    if (line_length > 0) {
+      const newline = new exp.Chr({ expressions: [exp.Literal.number(10)] });
+      result = new exp.Trim({
+        this: new exp.RegexpReplace({
+          this: result,
+          expression: exp.Literal.string(`(.{${line_length}})`),
+          replacement: new exp.Concat({ expressions: [exp.Literal.string("\\1"), newline.copy()] }),
+        }),
+        expression: newline,
+        position: "TRAILING",
+      });
+    }
+
+    return this.sql(result);
+  }
+
+  /** py:3794 `hex_sql(self, expression)`. */
+  hex_sql(expression) {
+    const case_ = expression.args.case;
+
+    if (!case_) return this.func("HEX", expression.this);
+
+    const hex_expr = new exp.Hex({ this: expression.this });
+    return this.sql(
+      exp.case()
+        .when(case_.is_(exp.null_()), exp.null_())
+        .when(case_.copy().eq(0), new exp.Lower({ this: hex_expr.copy() }))
+        .else_(hex_expr),
+    );
   }
 
   /** py:2822 `checkjson_sql(self, expression)`. */
