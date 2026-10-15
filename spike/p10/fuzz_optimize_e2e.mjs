@@ -182,6 +182,25 @@ function bump(map, key) {
   map.set(key, (map.get(key) || 0) + 1);
 }
 
+// AIR-2295: a per-real-fixture-file breakdown, for tools/fixture_rollup.mjs. `row.name`
+// is produced by `gen_optimize_e2e_ref.py`'s own `sql_row`/`type_row`/`error_row`
+// callers with a fixed, documented prefix per named upstream fixture (see this file's
+// own header comment, items 1-3) -- grouping by that prefix adds information without
+// changing how any row is judged or any pre-existing counter/line.
+const fixtureCounts = new Map();
+function groupOf(name) {
+  if (name.startsWith("tpc-h/tpc-h-")) return "tpc-h/tpc-h.sql";
+  if (name.startsWith("tpc-ds/tpc-ds-")) return "tpc-ds/tpc-ds.sql";
+  if (name.startsWith("merge_subqueries-")) return "merge_subqueries.sql";
+  if (name.startsWith("canonicalize-")) return "canonicalize.sql";
+  return "ad-hoc (no named fixture file)";
+}
+function bumpGroup(group, kind) {
+  const row = fixtureCounts.get(group) || { exact: 0, generatorGap: 0, mismatch: 0, error: 0, skipped: 0 };
+  row[kind]++;
+  fixtureCounts.set(group, row);
+}
+
 function resolveSchema(kwargs) {
   if (kwargs.schema === "SELF") return SELF_SCHEMA;
   if (kwargs.schema_kind === "mapping_bigquery") {
@@ -241,9 +260,11 @@ function buildOptions(row) {
 
 for (const row of ref) {
   const name = row.name;
+  const group = groupOf(name);
 
   if ((row.read_dialect || "").startsWith("mysql")) {
     skipped++;
+    bumpGroup(group, "skipped");
     bump(skipCounts, "dialects/mysql.js (unported)");
     continue;
   }
@@ -257,9 +278,11 @@ for (const row of ref) {
     const blockedBy = matchKnownBlocker(e);
     if (blockedBy) {
       skipped++;
+      bumpGroup(group, "skipped");
       bump(skipCounts, blockedBy);
     } else {
       error++;
+      bumpGroup(group, "error");
       bump(errorCounts, `${e.constructor.name}: ${e.message.slice(0, 80)}`);
       samples.push(`ERROR    ${name}: ${e.constructor.name}: ${e.message} (at parse)\n  sql: ${row.sql}`);
     }
@@ -307,30 +330,38 @@ for (const row of ref) {
 
   if (outcome.skip) {
     skipped++;
+    bumpGroup(group, "skipped");
     bump(skipCounts, outcome.skip);
     continue;
   }
 
   if (outcome.thrown) {
     error++;
+    bumpGroup(group, "error");
     bump(errorCounts, `${outcome.thrown.constructor.name}: ${outcome.thrown.message.slice(0, 80)}`);
     samples.push(`ERROR    ${name}: ${outcome.thrown.constructor.name}: ${outcome.thrown.message}\n  sql: ${row.sql}`);
     continue;
   }
 
   if (row.kind === "error") {
-    if (outcome.raised && outcome.ok) exact++;
-    else {
+    if (outcome.raised && outcome.ok) {
+      exact++;
+      bumpGroup(group, "exact");
+    } else {
       mismatch++;
+      bumpGroup(group, "mismatch");
       samples.push(`MISMATCH ${name}: expected OptimizeError matching ${JSON.stringify(row.must_contain)}, raised=${outcome.raised}`);
     }
     continue;
   }
 
   if (row.kind === "type") {
-    if (outcome.typeName === row.expected_type_name) exact++;
-    else {
+    if (outcome.typeName === row.expected_type_name) {
+      exact++;
+      bumpGroup(group, "exact");
+    } else {
       mismatch++;
+      bumpGroup(group, "mismatch");
       samples.push(`MISMATCH ${name}: type ${outcome.typeName} != expected ${row.expected_type_name}`);
     }
     continue;
@@ -342,15 +373,19 @@ for (const row of ref) {
     const have = JSON.stringify(outcome.fingerprint);
     if (want === have) {
       generatorGap++;
+      bumpGroup(group, "generatorGap");
       bump(gapCounts, outcome.gap);
     } else {
       mismatch++;
+      bumpGroup(group, "mismatch");
       samples.push(`MISMATCH ${name} (fingerprint, gap=${outcome.gap})\n  sql: ${row.sql}`);
     }
   } else if (outcome.output === row.output) {
     exact++;
+    bumpGroup(group, "exact");
   } else {
     mismatch++;
+    bumpGroup(group, "mismatch");
     samples.push(`MISMATCH ${name}\n  sql:      ${row.sql}\n  expected: ${row.output}\n  got:      ${outcome.output}`);
   }
 }
@@ -385,6 +420,14 @@ if (errorCounts.size) {
 if (samples.length) {
   console.log();
   for (const s of samples) console.log(VERBOSE ? `  ${s}\n` : `  ${s.split("\n")[0]}`);
+}
+
+console.log();
+console.log("    per-fixture-file breakdown (AIR-2295):");
+for (const [name, d] of fixtureCounts) {
+  console.log(
+    `      ${name.padEnd(36)} EXACT ${d.exact}  GENERATOR_GAP ${d.generatorGap}  MISMATCH ${d.mismatch}  ERROR ${d.error}  SKIPPED ${d.skipped}`,
+  );
 }
 
 process.exit(mismatch === 0 && error === 0 ? 0 : 1);
