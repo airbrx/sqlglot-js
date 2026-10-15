@@ -1213,6 +1213,9 @@ export class DuckDBGenerator extends Generator {
   static JSON_KEY_VALUE_PAIR_SEP = ",";
   static IGNORE_NULLS_IN_FUNC = true;
   static IGNORE_NULLS_BEFORE_ORDER = false;
+
+  /** py:1951 `IGNORE_RESPECT_NULLS_WINDOW_FUNCTIONS` — py:84 `_IGNORE_RESPECT_NULLS_WINDOW_FUNCTIONS`. */
+  static IGNORE_RESPECT_NULLS_WINDOW_FUNCTIONS = [exp.FirstValue, exp.Lag, exp.LastValue, exp.Lead, exp.NthValue];
   static JSON_PATH_BRACKETED_KEY_SUPPORTED = false;
   static SUPPORTS_CREATE_TABLE_LIKE = false;
   static MULTI_ARG_DISTINCT = false;
@@ -2848,6 +2851,152 @@ export class DuckDBGenerator extends Generator {
     }
 
     return this.func("STRUCT_INSERT", this_, kv_sql);
+  }
+
+  /** py:2574 `tonumber_sql(self, expression)`. */
+  tonumber_sql(expression) {
+    const fmt = expression.args.format;
+    const precision = expression.args.precision;
+    const scale = expression.args.scale;
+
+    if (!fmt && precision && scale) {
+      return this.sql(exp.cast(expression.this, `DECIMAL(${precision.name}, ${scale.name})`, { dialect: "duckdb" }));
+    }
+
+    return super.tonumber_sql(expression);
+  }
+
+  /** py:2679 `install_sql(self, expression)`. */
+  install_sql(expression) {
+    const force = expression.args.force ? "FORCE " : "";
+    const this_ = this.sql(expression, "this");
+    let from_clause = this.sql(expression, "from_");
+    from_clause = from_clause ? ` FROM ${from_clause}` : "";
+    return `${force}INSTALL ${this_}${from_clause}`;
+  }
+
+  /** py:3138 `join_sql(self, expression)`. */
+  join_sql(expression) {
+    if (
+      !expression.args.using
+      && !expression.args.on
+      && !expression.method
+      && ["", "INNER", "OUTER"].includes(expression.kind)
+    ) {
+      // Some dialects support `LEFT/INNER JOIN UNNEST(...)` without an explicit ON clause
+      // DuckDB doesn't, but we can just add a dummy ON clause that is always true
+      if (expression.this instanceof exp.Unnest) {
+        return super.join_sql(expression.on(exp.true_()));
+      }
+
+      expression.set("side", null);
+      expression.set("kind", null);
+    }
+
+    return super.join_sql(expression);
+  }
+
+  /** py:3939 `tablefromrows_sql(self, expression)`. */
+  tablefromrows_sql(expression) {
+    // For GENERATOR, unwrap TABLE() - just emit the Generator (becomes RANGE)
+    if (expression.this instanceof exp.Generator) {
+      // Preserve alias, joins, and other table-level args
+      const table = new exp.Table({
+        this: expression.this,
+        alias: expression.args.alias,
+        joins: expression.args.joins,
+      });
+      return this.sql(table);
+    }
+
+    return super.tablefromrows_sql(expression);
+  }
+
+  /** py:3974 `arrayagg_sql(self, expression)`. */
+  arrayagg_sql(expression) {
+    if (expression.this instanceof exp.Limit) {
+      this.unsupported("LIMIT inside ARRAY_AGG is not supported in DuckDB");
+    }
+
+    return super.arrayagg_sql(expression);
+  }
+
+  /** py:3980 `ignorenulls_sql(self, expression)`. */
+  ignorenulls_sql(expression) {
+    let this_ = expression.this;
+
+    if (this.constructor.IGNORE_RESPECT_NULLS_WINDOW_FUNCTIONS.some((cls) => this_ instanceof cls)) {
+      // DuckDB should render IGNORE NULLS only for the general-purpose
+      // window functions that accept it e.g. FIRST_VALUE(... IGNORE NULLS) OVER (...)
+      return super.ignorenulls_sql(expression);
+    }
+
+    // For ARRAY_AGG(expr IGNORE NULLS ...), convert IGNORE NULLS to a
+    // FILTER(WHERE expr IS NOT NULL) clause by setting nulls_excluded on
+    // the ArrayAgg.  The existing _add_arrayagg_null_filter method will
+    // emit the FILTER clause during arrayagg_sql / withingroup_sql.
+    if (this_ instanceof exp.ArrayAgg) {
+      this_.set("nulls_excluded", true);
+      return this.sql(this_);
+    }
+
+    if (this_ instanceof exp.First) this_ = new exp.AnyValue({ this: this_.this });
+
+    if (!(this_ instanceof exp.AnyValue || this_ instanceof exp.ApproxQuantiles)) {
+      this.unsupported("IGNORE NULLS is not supported for non-window functions.");
+    }
+
+    return this.sql(this_);
+  }
+
+  /** py:4004 `split_sql(self, expression)`. */
+  split_sql(expression) {
+    const base_func = exp.func("STR_SPLIT", expression.this, expression.expression);
+
+    let case_expr = exp.case().else_(base_func);
+    let needs_case = false;
+
+    if (expression.args.null_returns_null) {
+      case_expr = case_expr.when(expression.expression.is_(exp.null_()), exp.null_());
+      needs_case = true;
+    }
+
+    if (expression.args.empty_delimiter_returns_whole) {
+      // When delimiter is empty string, return input string as single array element
+      const array_with_input = exp.array(expression.this);
+      case_expr = case_expr.when(expression.expression.eq(exp.Literal.string("")), array_with_input);
+      needs_case = true;
+    }
+
+    return this.sql(needs_case ? case_expr : base_func);
+  }
+
+  /** py:4084 `respectnulls_sql(self, expression)`. */
+  respectnulls_sql(expression) {
+    if (this.constructor.IGNORE_RESPECT_NULLS_WINDOW_FUNCTIONS.some((cls) => expression.this instanceof cls)) {
+      // DuckDB should render RESPECT NULLS only for the general-purpose
+      // window functions that accept it e.g. FIRST_VALUE(... RESPECT NULLS) OVER (...)
+      return super.respectnulls_sql(expression);
+    }
+
+    this.unsupported("RESPECT NULLS is not supported for non-window functions.");
+    return this.sql(expression, "this");
+  }
+
+  /** py:2612 `generator_sql(self, expression)`. */
+  generator_sql(expression) {
+    // Transpile Snowflake GENERATOR to DuckDB range()
+    const rowcount = expression.args.rowcount;
+    const time_limit = expression.args.time_limit;
+
+    if (time_limit) this.unsupported("GENERATOR TIMELIMIT parameter is not supported in DuckDB");
+
+    if (!rowcount) {
+      this.unsupported("GENERATOR without ROWCOUNT is not supported in DuckDB");
+      return this.func("range", exp.Literal.number(0));
+    }
+
+    return this.func("range", rowcount);
   }
 
   /** py:2822 `checkjson_sql(self, expression)`. */
