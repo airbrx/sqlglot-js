@@ -1467,7 +1467,7 @@ export class Parser {
     /* py:1369 */ ["MULTISET", (self) => self.expression(new exp.SetProperty({ multi: true }))],
     /* py:1370 */ ["NO", (self) => self._parse_no_property()],
     /* py:1371 */ ["ON", (self) => self._parse_on_property()],
-    // py:1372  ["ORDER BY", /* TODO lambda */],
+    /* py:1372 */ ["ORDER BY", (self) => self._parse_order(null, true)],
     /* py:1373 */ ["OUTPUT", (self) => self.expression(new exp.OutputModelProperty({ this: self._parse_schema() }))],
     /* py:1374 */ ["PARTITION", (self) => self._parse_partitioned_of()],
     /* py:1375 */ ["PARTITION BY", (self) => self._parse_partitioned_by()],
