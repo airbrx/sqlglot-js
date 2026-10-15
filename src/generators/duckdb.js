@@ -193,10 +193,12 @@ const RANDSTR_TEMPLATE = exp.maybeParse(`
 /** py:670 `_build_seq_expression(base, byte_width, signed)`. */
 function _build_seq_expression(base, byte_width, signed) {
   const bits = byte_width * 8;
-  const max_val = exp.Literal.number(2 ** bits);
+  // `2 ** bits` as a JS float loses precision for bits=64 (2^64 doesn't fit in a
+  // double's 53-bit mantissa); BigInt exponentiation keeps the exact integer.
+  const max_val = exp.Literal.number(2n ** BigInt(bits));
 
   if (signed) {
-    const half = exp.Literal.number(2 ** (bits - 1));
+    const half = exp.Literal.number(2n ** BigInt(bits - 1));
     return exp.replacePlaceholders(_SEQ_SIGNED.copy(), { base, max_val, half });
   }
   return exp.replacePlaceholders(_SEQ_UNSIGNED.copy(), { base, max_val });
@@ -3391,6 +3393,35 @@ export class DuckDBGenerator extends Generator {
     }
 
     return this.function_fallback_sql(expression);
+  }
+
+  /**
+   * py:3558 `arrayslice_sql(self, expression)`.
+   *
+   * Transpiles Snowflake's ARRAY_SLICE (0-indexed, exclusive end) to DuckDB's
+   * ARRAY_SLICE (1-indexed, inclusive end) by wrapping start and end in CASE
+   * expressions that adjust the index at query time:
+   *   - start: CASE WHEN start >= 0 THEN start + 1 ELSE start END
+   *   - end:   CASE WHEN end < 0 THEN end - 1 ELSE end END
+   */
+  arrayslice_sql(expression) {
+    let start = expression.args.start;
+    let end = expression.args.end;
+
+    if (expression.args.zero_based) {
+      if (start !== null && start !== undefined) {
+        start = exp.case()
+          .when(new exp.GTE({ this: start.copy(), expression: exp.Literal.number(0) }), new exp.Add({ this: start.copy(), expression: exp.Literal.number(1) }))
+          .else_(start);
+      }
+      if (end !== null && end !== undefined) {
+        end = exp.case()
+          .when(new exp.LT({ this: end.copy(), expression: exp.Literal.number(0) }), new exp.Sub({ this: end.copy(), expression: exp.Literal.number(1) }))
+          .else_(end);
+      }
+    }
+
+    return this.func("ARRAY_SLICE", expression.this, start, end, expression.args.step);
   }
 
   /** py:2822 `checkjson_sql(self, expression)`. */
