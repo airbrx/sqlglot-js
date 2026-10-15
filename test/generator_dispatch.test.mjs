@@ -436,6 +436,11 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // +1 from AIR-2121 (lineage.js, PORT_PLAN.md): `tag_sql` (generator.py:4794), the
   // sole blocker for `Node#toHtml`'s non-Table render branch, which wraps the traced
   // expression in an `exp.Tag` to bold it in the rendered source.
+  // +3 from AIR-2240 (PORT_PLAN.md R85, the transaction-control cluster): `transaction_sql`,
+  // `commit_sql`, `rollback_sql` (generator.py:4202/4207/4214) — Postgres `BEGIN`/
+  // `COMMIT`/`ROLLBACK` previously failed `standardizedSql` generation in
+  // `contrib/gatewaySqlMetadata.js` with a `NotPorted` error; the parser side
+  // (`_parse_transaction`/`_parse_commit_or_rollback`) was already real.
   // +13 from AIR-2275 (epic AIR-2270, "10.2 Generator stubs cluster A", PORT_PLAN.md):
   // the ten named base-Generator stubs (`userdefinedfunction_sql`, `matchrecognize_sql`,
   // `forclause_sql`, `pad_sql`, `tsordstodate_sql`, `parsejson_sql`, `tablesample_sql`,
@@ -445,7 +450,7 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // FIELDS, which the frozen stand-in either hosts or safely returns `undefined` for),
   // so every one of the 13 also lands in the "runs without a resolved Dialect" bucket
   // below, not the `identifier_sql`-style exception.
-  assert.equal(bodied.length, 146, "exactly 146 *_sql methods have a real body");
+  assert.equal(bodied.length, 149, "exactly 149 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -497,6 +502,10 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // +1 for `tag_sql` (AIR-2121, lineage.js): reads no Dialect state either; on a bare
   // `new exp.Expr({})` it returns `""` (missing `.this`/`prefix`/`postfix` all fall
   // back to empty) rather than throwing.
+  // +3 for AIR-2240's three new bodies: none reads `this.dialect` or any other
+  // Dialect-hosted state, so `transaction_sql`/`commit_sql`/`rollback_sql` all run on
+  // the bare stand-in too (`"BEGIN"`/`"COMMIT"`/`"ROLLBACK"` with every optional arg
+  // missing).
   // +13 for AIR-2275's thirteen new bodies: empirically verified (`node -e` against a
   // bare `new Generator()`), none throws `NotPorted`. Twelve return a string outright
   // (`pad_sql`/`log_sql`/`parsejson_sql`/`tablesample_sql`/`tablefromrows_sql`/
@@ -507,7 +516,7 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // so `.isType(...)` has nothing to call itself on) — the same "runs, just not
   // usefully, on made-up input" outcome `arrayagg_sql`/`arrayany_sql` already
   // established this assertion counts.
-  assert.equal(432 - stubs.length, 145, "145 of those 146 also run without a resolved Dialect");
+  assert.equal(432 - stubs.length, 148, "148 of those 149 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],
