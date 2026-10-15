@@ -81,7 +81,11 @@ function _generated_to_auto_increment(expression) {
 
   // Only rewrite true identity columns. Expression-bearing forms are computed
   // columns (GENERATED ALWAYS AS (expr)) and must keep their expression.
-  if (generated && generated.expression === null) {
+  //
+  // py: `generated.expression is None` — when the field was never set, this port's
+  // `Expr.expression` getter reads `undefined` (a plain JS object property), not
+  // `null`, so the check below is deliberately `== null` (loose), not `=== null`.
+  if (generated && generated.expression == null) {
     generated.parent.pop();
 
     const not_null = expression.find(exp.NotNullColumnConstraint);

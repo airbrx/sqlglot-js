@@ -7677,34 +7677,21 @@ export class Generator {
     return this_ ? `[${this_}]` : "";
   }
 
-  // py: sqlglot/generator.py:5387 — the `isinstance(expression, exp.Literal)` guard is
-  // ported for real; the `sqlglot.optimizer.simplify.simplify` branch it guards stays a
-  // `NotPorted` throw for anything that could actually need folding (P6+, unported
-  // optimizer module — same status as `sequence_sql`'s identical call in
-  // `src/dialects/dialect.js`), EXCEPT one additional exact, provable no-op: an
-  // `exp.Interval` whose amount is already a bare `Literal`. `simplify()` only ever
-  // folds arithmetic *inside* a node; `Interval.arg_types` is `{this, unit}` and `unit`
-  // is never touched, so if `this` is already a `Literal` there is nothing left for
-  // `simplify()` to fold and it is a verified identity — checked directly against the
-  // pinned CPython (`simplify(parse_one("INTERVAL '1' day")) == parse_one("INTERVAL '1' day")`).
-  // A `Paren`/`Add`/etc. amount (e.g. `INTERVAL (1+2) day`) does NOT take this branch
-  // and still throws, because CPython's `simplify()` DOES fold that one (verified: it
-  // becomes `Literal(3)`) — approximating that case would be a silent-wrong risk, not
-  // an identity.
-  //
-  // Ported alongside `generators/postgres.js`'s `_date_add_sql`, which calls this
-  // UNCONDITIONALLY on every `DATE_ADD`/`DATE_SUB`/`TS_OR_DS_ADD` interval amount —
-  // before this fix the stub threw even for `DATE_ADD(x, INTERVAL '1' day)`, the most
-  // common shape there is.
+  /**
+   * py: sqlglot/generator.py:5387 `_simplify_unless_literal(self, expression)`.
+   *
+   * `sqlglot.optimizer.simplify.simplify` is real now (Track 2 optimizer, all 9
+   * epics done) — this stub outlived its stated blocker (PORT_PLAN.md R22/R68/
+   * R75/AIR-2193's defect class) and is replaced with the real call, found while
+   * porting Teradata (AIR-2291): `generators/teradata.js`'s own `_date_add_sql`
+   * calls this unconditionally on every `DATE_ADD`/`DATE_SUB` interval amount.
+   * Reached through `_getSimplifyFn()` (this file's own relay, R32) rather than a
+   * direct import, since `optimizer/simplify.js` imports `dialects/dialect.js`,
+   * which imports `Generator` FROM here.
+   */
   _simplify_unless_literal(expression) {
-    if (
-      !(expression instanceof exp.Literal)
-      && !(expression instanceof exp.Interval && expression.this instanceof exp.Literal)
-    ) {
-      throw new NotPorted(
-        "_simplify_unless_literal (sqlglot.optimizer.simplify.simplify)",
-        "sqlglot/generator.py:5387",
-      );
+    if (!(expression instanceof exp.Literal)) {
+      expression = _getSimplifyFn()(expression, { dialect: this.dialect });
     }
     return expression;
   }
