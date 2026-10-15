@@ -190,6 +190,79 @@ const RANDSTR_TEMPLATE = exp.maybeParse(`
   )
 `);
 
+/**
+ * py:2181 `ARRAY_BAG_TEMPLATE` — shared bag semantics outer frame for ARRAY_EXCEPT
+ * and ARRAY_INTERSECTION.
+ *
+ * Each element is paired with its 1-based position via LIST_ZIP, then filtered
+ * by a comparison operator (supplied via :cond) that determines the operation:
+ *   EXCEPT (>):        keep the N-th occurrence only if N > count in arr2
+ *                      e.g. [2,2,2] EXCEPT [2,2] -> [2]
+ *   INTERSECTION (<=): keep the N-th occurrence only if N <= count in arr2
+ *                      e.g. [2,2,2] INTERSECT [2,2] -> [2,2]
+ * IS NOT DISTINCT FROM is used for NULL-safe element comparison.
+ */
+const ARRAY_BAG_TEMPLATE = exp.maybeParse(`
+  CASE
+      WHEN :arr1 IS NULL OR :arr2 IS NULL THEN NULL
+      ELSE LIST_TRANSFORM(
+          LIST_FILTER(
+              LIST_ZIP(:arr1, GENERATE_SERIES(1, LEN(:arr1))),
+              pair -> :cond
+          ),
+          pair -> pair[0]
+      )
+  END
+`);
+
+// py:2196 `ARRAY_EXCEPT_CONDITION`.
+const ARRAY_EXCEPT_CONDITION = exp.maybeParse(
+  "LEN(LIST_FILTER(:arr1[1:pair[1]], e -> e IS NOT DISTINCT FROM pair[0]))"
+  + " > LEN(LIST_FILTER(:arr2, e -> e IS NOT DISTINCT FROM pair[0]))",
+);
+
+// py:2201 `ARRAY_INTERSECTION_CONDITION`.
+const ARRAY_INTERSECTION_CONDITION = exp.maybeParse(
+  "LEN(LIST_FILTER(:arr1[1:pair[1]], e -> e IS NOT DISTINCT FROM pair[0]))"
+  + " <= LEN(LIST_FILTER(:arr2, e -> e IS NOT DISTINCT FROM pair[0]))",
+);
+
+/**
+ * py:2210 `ARRAY_EXCEPT_SET_TEMPLATE` — set semantics for ARRAY_EXCEPT. Deduplicates
+ * arr1 via LIST_DISTINCT, then filters out any element that appears at least once in
+ * arr2.
+ *   e.g. [1,1,2,3] EXCEPT [1] -> [2,3]
+ * IS NOT DISTINCT FROM is used for NULL-safe element comparison.
+ */
+const ARRAY_EXCEPT_SET_TEMPLATE = exp.maybeParse(`
+  CASE
+      WHEN :arr1 IS NULL OR :arr2 IS NULL THEN NULL
+      ELSE LIST_FILTER(
+          LIST_DISTINCT(:arr1),
+          e -> LEN(LIST_FILTER(:arr2, x -> x IS NOT DISTINCT FROM e)) = 0
+      )
+  END
+`);
+
+/**
+ * py:2230 `IN_UNNEST_TEMPLATE` — BigQuery's `x IN UNNEST(arr)` NULL semantics:
+ *   NULL IN UNNEST([1, 2])  -> NULL
+ *   3 IN UNNEST([1, NULL])  -> NULL
+ *   3 IN UNNEST([1, 2])     -> FALSE
+ *   1 IN UNNEST(NULL)       -> FALSE (not NULL)
+ *   1 IN UNNEST([])         -> FALSE
+ * The default `IN (SELECT UNNEST(...))` rewrite creates a correlated subquery
+ * that DuckDB rejects inside non-inner joins, so a CASE expression is used instead.
+ */
+const IN_UNNEST_TEMPLATE = exp.maybeParse(`
+  CASE
+      WHEN :arr IS NULL OR ARRAY_LENGTH(:arr) = 0 THEN FALSE
+      WHEN ARRAY_CONTAINS(:arr, :value) THEN TRUE
+      WHEN :value IS NULL OR ARRAY_LENGTH(:arr) <> LIST_COUNT(:arr) THEN NULL
+      ELSE FALSE
+  END
+`);
+
 /** py:670 `_build_seq_expression(base, byte_width, signed)`. */
 function _build_seq_expression(base, byte_width, signed) {
   const bits = byte_width * 8;
@@ -3422,6 +3495,36 @@ export class DuckDBGenerator extends Generator {
     }
 
     return this.func("ARRAY_SLICE", expression.this, start, end, expression.args.step);
+  }
+
+  /** py:2311 `_array_bag_sql(self, condition, arr1, arr2)`. */
+  _array_bag_sql(condition, arr1, arr2) {
+    const cond = new exp.Paren({ this: exp.replacePlaceholders(condition, { arr1, arr2 }) });
+    return this.sql(exp.replacePlaceholders(ARRAY_BAG_TEMPLATE, { arr1, arr2, cond }));
+  }
+
+  /** py:3541 `arrayintersect_sql(self, expression)`. */
+  arrayintersect_sql(expression) {
+    if (expression.args.is_multiset && expression.expressions.length === 2) {
+      return this._array_bag_sql(ARRAY_INTERSECTION_CONDITION, expression.expressions[0], expression.expressions[1]);
+    }
+    return this.function_fallback_sql(expression);
+  }
+
+  /** py:3550 `arrayexcept_sql(self, expression)`. */
+  arrayexcept_sql(expression) {
+    const arr1 = expression.this, arr2 = expression.expression;
+    if (expression.args.is_multiset) return this._array_bag_sql(ARRAY_EXCEPT_CONDITION, arr1, arr2);
+    return this.sql(exp.replacePlaceholders(ARRAY_EXCEPT_SET_TEMPLATE, { arr1, arr2 }));
+  }
+
+  /** py:3128 `in_sql(self, expression)`. */
+  in_sql(expression) {
+    const unnest = expression.args.unnest;
+    if (unnest) {
+      return this.sql(exp.replacePlaceholders(IN_UNNEST_TEMPLATE, { arr: unnest.expressions[0], value: expression.this }));
+    }
+    return super.in_sql(expression);
   }
 
   /** py:2822 `checkjson_sql(self, expression)`. */
