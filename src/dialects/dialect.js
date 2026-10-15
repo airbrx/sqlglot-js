@@ -1409,6 +1409,19 @@ export function generate_series_sql(func_name, exclusive_func_name = null) {
   };
 }
 
+/**
+ * py: sqlglot/dialects/dialect.py:1810 `encode_decode_sql(self, expression, name, replace=True)`.
+ * Used for Presto and DuckDB which use functions that don't support charset, and assume utf-8.
+ */
+export function encode_decode_sql(self, expression, name, replace = true) {
+  const charset = expression.args.charset;
+  if (charset && !["utf-8", "utf8"].includes(charset.name.toLowerCase())) {
+    self.unsupported(`Expected utf-8 character set, got ${charset}.`);
+  }
+
+  return self.func(name, expression.this, replace ? expression.args.replace : null);
+}
+
 /** py: sqlglot/dialects/dialect.py:1830 */
 export function count_if_to_sum(self, expression) {
   let cond = expression.this;

@@ -83,7 +83,9 @@ import {
   array_concat_sql,
   arrow_json_extract_sql,
   date_delta_to_binary_interval_op,
+  count_if_to_sum,
   datestrtodate_sql,
+  encode_decode_sql,
   explode_to_unnest_sql,
   generate_series_sql,
   groupconcat_sql,
@@ -1161,9 +1163,13 @@ export class DuckDBGenerator extends Generator {
     [exp.DatetimeSub, _date_delta_to_binary_interval_op()],
     [exp.DatetimeAdd, _date_delta_to_binary_interval_op()],
     // py:1679-1681 [exp.DateToDi, lambda] — skipped, low value (DI = Julian "date-as-int" legacy format)
-    // py:1682-1683 [exp.Decode, exp.HexDecodeString] — blocked, dialect.js does not yet export `encode_decode_sql`
+    // py:1682 `Decode`
+    [exp.Decode, (self, e) => encode_decode_sql(self, e, "DECODE", false)],
+    // py:1683 `HexDecodeString`
+    [exp.HexDecodeString, (self, e) => self.sql(new exp.Decode({ this: new exp.Unhex({ this: e.this }) }))],
     // py:1684-1686 [exp.DiToDate, lambda] — skipped, pairs with the excluded DateToDi above
-    // py:1687 [exp.Encode, lambda] — blocked, same as Decode above
+    // py:1687 `Encode`
+    [exp.Encode, (self, e) => encode_decode_sql(self, e, "ENCODE", false)],
     [
       exp.EqualNull,
       (self, e) => self.sql(new exp.NullSafeEQ({ this: e.this, expression: e.expression })),
@@ -1362,6 +1368,13 @@ export class DuckDBGenerator extends Generator {
     [exp.DType.TIMESTAMP_MS, "TIMESTAMP_MS"],
     [exp.DType.TIMESTAMP_NS, "TIMESTAMP_NS"],
     [exp.DType.BIGDECIMAL, "DECIMAL"],
+  ]);
+
+  /** py:1846 `TYPE_PARAM_SETTINGS`. */
+  static TYPE_PARAM_SETTINGS = new Map([
+    ...Generator.TYPE_PARAM_SETTINGS,
+    [exp.DType.BIGDECIMAL, [[38, 5], [38, 38]]],
+    [exp.DType.DECFLOAT, [[38, 5], [38, 38]]],
   ]);
 
   /**
@@ -1981,6 +1994,26 @@ export class DuckDBGenerator extends Generator {
     return strposition_sql(this, expression);
   }
 
+  /** py:3108 `tablesample_sql(self, expression, tablesample_keyword=None)`. */
+  tablesample_sql(expression, tablesample_keyword = null) {
+    if (!(expression.parent instanceof exp.Select)) {
+      // This sample clause only applies to a single source, not the entire resulting relation
+      tablesample_keyword = "TABLESAMPLE";
+    }
+
+    if (expression.args.size) {
+      const method = expression.args.method;
+      if (method && method.name.toUpperCase() !== "RESERVOIR") {
+        this.unsupported(
+          `Sampling method ${method} is not supported with a discrete sample count, defaulting to reservoir sampling`,
+        );
+        expression.set("method", exp.var("RESERVOIR"));
+      }
+    }
+
+    return super.tablesample_sql(expression, tablesample_keyword);
+  }
+
   /** py:2860 `trunc_sql(self, expression)`. */
   trunc_sql(expression) {
     let decimals = expression.args.decimals;
@@ -2013,6 +2046,96 @@ export class DuckDBGenerator extends Generator {
 
     // Default DuckDB behavior - just return RANDOM() as float
     return "RANDOM()";
+  }
+
+  /**
+   * py:2588 `_greatest_least_sql(self, expression)`.
+   *
+   * Handle GREATEST/LEAST functions with dialect-aware NULL behavior.
+   *
+   * - If ignore_nulls=False (BigQuery-style): return NULL if any argument is NULL
+   * - If ignore_nulls=True (DuckDB/PostgreSQL-style): ignore NULLs, return greatest/least non-NULL value
+   */
+  _greatest_least_sql(expression) {
+    // Get all arguments
+    const all_args = [expression.this, ...expression.expressions];
+    const fallback_sql = this.function_fallback_sql(expression);
+
+    if (expression.args.ignore_nulls) {
+      // DuckDB/PostgreSQL behavior: use native GREATEST/LEAST (ignores NULLs)
+      return this.sql(fallback_sql);
+    }
+
+    // return NULL if any argument is NULL
+    const case_expr = exp.case().when(
+      exp.or_(...all_args.map((arg) => arg.is_(exp.null_())), { copy: false }),
+      exp.null_(),
+      { copy: false },
+    );
+    case_expr.set("default", fallback_sql);
+    return this.sql(case_expr);
+  }
+
+  /** py:2626 `greatest_sql(self, expression)`. */
+  greatest_sql(expression) {
+    return this._greatest_least_sql(expression);
+  }
+
+  /** py:2629 `least_sql(self, expression)`. */
+  least_sql(expression) {
+    return this._greatest_least_sql(expression);
+  }
+
+  /** py:2632 `lambda_sql(self, expression, arrow_sep="->", wrap=True)`. */
+  lambda_sql(expression, arrow_sep = "->", wrap = true) {
+    let prefix;
+    if (expression.args.colon) {
+      prefix = "LAMBDA ";
+      arrow_sep = ":";
+      wrap = false;
+    } else {
+      prefix = "";
+    }
+
+    const lambda_sql = super.lambda_sql(expression, arrow_sep, wrap);
+    return `${prefix}${lambda_sql}`;
+  }
+
+  /** py:2643 `show_sql(self, expression)`. */
+  show_sql(expression) {
+    let from_ = this.sql(expression, "from_");
+    from_ = from_ ? ` FROM ${from_}` : "";
+    return `SHOW ${expression.name}${from_}`;
+  }
+
+  /** py:2648 `soundex_sql(self, expression)`. */
+  soundex_sql(expression) {
+    this.unsupported("SOUNDEX is not supported in DuckDB");
+    return this.func("SOUNDEX", expression.this);
+  }
+
+  /** py:3155 `countif_sql(self, expression)`. */
+  countif_sql(expression) {
+    const v = this.dialect.version;
+    const at_least_1_2 = v[0] > 1n || (v[0] === 1n && v[1] >= 2n);
+    if (at_least_1_2) {
+      const this_ = expression.this;
+      if (expression.args.zero_on_all_null && !(this_ instanceof exp.Distinct)) {
+        expression = new exp.CountIf({ this: exp.paren(this_).is_(exp.true_()) });
+      }
+      return this.function_fallback_sql(expression);
+    }
+
+    // https://github.com/tobymao/sqlglot/pull/4749
+    return count_if_to_sum(this, expression);
+  }
+
+  /** py:3930 `space_sql(self, expression)`. */
+  space_sql(expression) {
+    // DuckDB's REPEAT requires BIGINT for the count parameter
+    return this.sql(
+      new exp.Repeat({ this: exp.Literal.string(" "), times: exp.cast(expression.this, exp.DType.BIGINT) }),
+    );
   }
 
   /** py:2822 `checkjson_sql(self, expression)`. */
