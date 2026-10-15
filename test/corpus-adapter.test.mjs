@@ -17,10 +17,16 @@ test('adapter respects omitted versus explicit default write dialect', () => {
   assert.equal(adapter(sql, { read: 'snowflake', write: '' }).sql, 'SELECT CASE WHEN x THEN 1 ELSE 2 END');
 });
 test('corpus multiple statements are a Block, never silently first-only or an array', () => {
+  // AIR-2278 ported `block_sql` for real; the adapter's single-string path now
+  // renders the Block instead of throwing NotPorted, so a one-statement `expected`
+  // against a two-statement `sql` still fails, but as a real SQL_MISMATCH, not an error.
   const result = adapter('SELECT 1; SELECT 2');
-  assert.equal(result.error?.method, 'block_sql'); // real remaining port gap
+  assert.equal(result.error, undefined);
+  assert.equal(result.sql, 'SELECT 1; SELECT 2');
   assert.deepEqual(library.transpile('SELECT 1; SELECT 2'), ['SELECT 1', 'SELECT 2']);
-  assert.equal(runAtom({sql:'SELECT 1; SELECT 2', expected:'SELECT 1', read:'', write:''}, adapter).ok, false);
+  const outcome = runAtom({sql:'SELECT 1; SELECT 2', expected:'SELECT 1', read:'', write:''}, adapter);
+  assert.equal(outcome.ok, false);
+  assert.equal(outcome.reason, 'SQL_MISMATCH');
 });
 test('pretty and identify flow through the real generator', () => {
   const options = { read: 'postgres', write: 'snowflake', pretty: true, identify: true };
