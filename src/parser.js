@@ -3234,7 +3234,8 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:3362
   _parse_partition_by() {
-    this._match(TokenType.PARTITION_BY);return this._parse_csv(()=>this._parse_assignment());
+    if (this._match(TokenType.PARTITION_BY)) return this._parse_csv(() => this._parse_disjunction());
+    return [];
   }
 
   /** @returns {*} */
@@ -5507,9 +5508,10 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:7904
   _parse_period_for_system_time() {
-    if (!this._match_text_seq("PERIOD", "FOR", "SYSTEM_TIME")) return null;
-    this._match(TokenType.L_PAREN); const start = this._parse_id_var(); this._match(TokenType.COMMA); const end = this._parse_id_var(); this._match(TokenType.R_PAREN);
-    return this.expression(new exp.PeriodForSystemTimeConstraint({ start, end }));
+    if (!this._match_text_seq("FOR", "SYSTEM_TIME")) { this._retreat(this._index - 1); return null; }
+
+    const id_vars = this._parse_wrapped_id_vars();
+    return this.expression(new exp.PeriodForSystemTimeConstraint({ this: seqGet(id_vars, 0), expression: seqGet(id_vars, 1) }));
   }
 
   /** @returns {*} */
