@@ -3626,6 +3626,74 @@ export class DuckDBGenerator extends Generator {
     return posexplode_sql;
   }
 
+  /** py:4209 `regexpinstr_sql(self, expression)`. */
+  regexpinstr_sql(expression) {
+    let this_ = expression.this;
+    let pattern = expression.expression;
+    const position = expression.args.position;
+    const orig_occ = expression.args.occurrence;
+    const occurrence = orig_occ || exp.Literal.number(1);
+    const option = expression.args.option;
+    const parameters = expression.args.parameters;
+
+    const validated_flags = this._validate_regexp_flags(parameters, "ims");
+    if (validated_flags) {
+      pattern = new exp.Concat({ expressions: [exp.Literal.string(`(?${validated_flags})`), pattern] });
+    }
+
+    // Handle starting position offset
+    let pos_offset = exp.Literal.number(0);
+    if (position && (!position.isInt || Number(position.toPy()) > 1)) {
+      this_ = new exp.Substring({ this: this_, start: position });
+      pos_offset = position.sub(exp.Literal.number(1));
+    }
+
+    // Helper: LIST_SUM(LIST_TRANSFORM(list[1:end], x -> LENGTH(x)))
+    const sum_lengths = (func_name, end) => {
+      const lst = new exp.Bracket({
+        this: new exp.Anonymous({ this: func_name, expressions: [this_, pattern] }),
+        expressions: [new exp.Slice({ this: exp.Literal.number(1), expression: end })],
+        offset: 1,
+      });
+      const transform = new exp.Anonymous({
+        this: "LIST_TRANSFORM",
+        expressions: [lst, new exp.Lambda({ this: new exp.Length({ this: exp.toIdentifier("x") }), expressions: [exp.toIdentifier("x")] })],
+      });
+      return new exp.Coalesce({ this: new exp.Anonymous({ this: "LIST_SUM", expressions: [transform] }), expressions: [exp.Literal.number(0)] });
+    };
+
+    // Position = 1 + sum(split_lengths[1:occ]) + sum(match_lengths[1:occ-1]) + offset
+    let base_pos = exp.Literal.number(1)
+      .add(sum_lengths("STRING_SPLIT_REGEX", occurrence))
+      .add(sum_lengths("REGEXP_EXTRACT_ALL", occurrence.sub(exp.Literal.number(1))))
+      .add(pos_offset);
+
+    // option=1: add match length for end position
+    if (option && option.isInt && Number(option.toPy()) === 1) {
+      const match_at_occ = new exp.Bracket({
+        this: new exp.Anonymous({ this: "REGEXP_EXTRACT_ALL", expressions: [this_, pattern] }),
+        expressions: [occurrence],
+        offset: 1,
+      });
+      base_pos = base_pos.add(new exp.Coalesce({ this: new exp.Length({ this: match_at_occ }), expressions: [exp.Literal.number(0)] }));
+    }
+
+    // NULL checks for all provided arguments
+    // .copy() is used strictly because .is_() alters the node's parent pointer, mutating the parsed AST
+    const null_args = [expression.this, expression.expression, position, orig_occ, option, parameters];
+    const null_checks = null_args.filter((arg) => arg).map((arg) => arg.copy().is_(exp.null_()));
+
+    const matches = new exp.Anonymous({ this: "REGEXP_EXTRACT_ALL", expressions: [this_, pattern] });
+
+    return this.sql(
+      exp.case()
+        .when(exp.or_(...null_checks), exp.null_())
+        .when(pattern.copy().eq(exp.Literal.string("")), exp.Literal.number(0))
+        .when(new exp.LT({ this: new exp.Length({ this: matches }), expression: occurrence }), exp.Literal.number(0))
+        .else_(base_pos),
+    );
+  }
+
   /** py:2822 `checkjson_sql(self, expression)`. */
   checkjson_sql(expression) {
     const arg = expression.this;
