@@ -581,6 +581,18 @@ export function inline_array_unless_query(self, expression) {
 }
 
 /**
+ * py: sqlglot/dialects/dialect.py:1268 `arrow_json_extract_sql(self, expression)`.
+ * `expression` is one of JSONExtract/JSONExtractScalar/JSONBExtract/JSONBExtractScalar.
+ */
+export function arrow_json_extract_sql(self, expression) {
+  const this_ = expression.this;
+  if (self.constructor.JSON_TYPE_REQUIRED_FOR_EXTRACTION && this_ instanceof exp.Literal && this_.isString) {
+    this_.replace(exp.cast(this_, exp.DType.JSON));
+  }
+  return self.binary(expression, expression instanceof exp.JSONExtract ? "->" : "->>");
+}
+
+/**
  * py: sqlglot/dialects/dialect.py:1339
  * `strposition_sql(self, expression, func_name="STRPOS", supports_position=False, supports_occurrence=False, use_ansi_position=True)`
  */
@@ -739,6 +751,59 @@ export function var_map_sql(self, expression, map_func_name = "MAP") {
   return self.func(map_func_name, ...args);
 }
 
+/**
+ * py: sqlglot/dialects/dialect.py:1557 `months_between_sql(self, expression)`.
+ *
+ * Transpile MONTHS_BETWEEN to dialects that don't have native support.
+ *
+ * Snowflake's MONTHS_BETWEEN returns whole months + fractional part where:
+ * - Fractional part = (DAY(date1) - DAY(date2)) / 31
+ * - Special case: If both dates are last day of month, fractional part = 0
+ *
+ * Formula: DATEDIFF('month', date2, date1) + (DAY(date1) - DAY(date2)) / 31.0
+ */
+export function months_between_sql(self, expression) {
+  const date1 = expression.this;
+  const date2 = expression.expression;
+
+  // Cast to DATE to ensure consistent behavior
+  const date1_cast = exp.cast(date1, exp.DType.DATE, { copy: false });
+  const date2_cast = exp.cast(date2, exp.DType.DATE, { copy: false });
+
+  // Whole months: DATEDIFF('month', date2, date1)
+  const whole_months = new exp.DateDiff({ this: date1_cast, expression: date2_cast, unit: exp.var("month") });
+
+  // Day components
+  const day1 = new exp.Day({ this: date1_cast.copy() });
+  const day2 = new exp.Day({ this: date2_cast.copy() });
+
+  // Last day of month components
+  const last_day_of_month1 = new exp.LastDay({ this: date1_cast.copy() });
+  const last_day_of_month2 = new exp.LastDay({ this: date2_cast.copy() });
+
+  const day_of_last_day1 = new exp.Day({ this: last_day_of_month1 });
+  const day_of_last_day2 = new exp.Day({ this: last_day_of_month2 });
+
+  // Check if both are last day of month
+  const last_day1 = new exp.EQ({ this: day1.copy(), expression: day_of_last_day1 });
+  const last_day2 = new exp.EQ({ this: day2.copy(), expression: day_of_last_day2 });
+  const both_last_day = new exp.And({ this: last_day1, expression: last_day2 });
+
+  // Fractional part: (DAY(date1) - DAY(date2)) / 31.0
+  const fractional = new exp.Div({
+    this: new exp.Paren({ this: new exp.Sub({ this: day1.copy(), expression: day2.copy() }) }),
+    expression: exp.Literal.number("31.0"),
+  });
+
+  // If both are last day of month, fractional = 0, else calculate fractional
+  const fractional_with_check = new exp.If({ this: both_last_day, true: exp.Literal.number("0"), false: fractional });
+
+  // Final result: whole_months + fractional
+  const result = new exp.Add({ this: whole_months, expression: fractional_with_check });
+
+  return self.sql(result);
+}
+
 /** py: sqlglot/dialects/dialect.py:2077 `unit_to_str(expression, default="DAY")` */
 export function unit_to_str(expression, default_ = "DAY") {
   const unit = expression.args.unit;
@@ -854,6 +919,24 @@ export function no_time_sql(self, expression) {
   const this_ = exp.cast(expression.this, exp.DType.TIMESTAMPTZ);
   const expr = exp.cast(new exp.AtTimeZone({ this: this_, zone: expression.args.zone }), exp.DType.TIME);
   return self.sql(expr);
+}
+
+/** py: sqlglot/dialects/dialect.py:1754 */
+export function no_datetime_sql(self, expression) {
+  let this_ = expression.this;
+  let expr = expression.expression;
+
+  if (TIMEZONES.has(expr.name.toLowerCase())) {
+    // Transpile BQ's DATETIME(timestamp, zone) to CAST(TIMESTAMPTZ <timestamp> AT TIME ZONE <zone> AS TIMESTAMP)
+    this_ = exp.cast(this_, exp.DType.TIMESTAMPTZ);
+    this_ = exp.cast(new exp.AtTimeZone({ this: this_, zone: expr }), exp.DType.TIMESTAMP);
+    return self.sql(this_);
+  }
+
+  this_ = exp.cast(this_, exp.DType.DATE);
+  expr = exp.cast(expr, exp.DType.TIME);
+
+  return self.sql(exp.cast(new exp.Add({ this: this_, expression: expr }), exp.DType.TIMESTAMP));
 }
 
 /** py: sqlglot/dialects/dialect.py:1730 */
@@ -1387,6 +1470,19 @@ export function generate_series_sql(func_name, exclusive_func_name = null) {
   };
 }
 
+/**
+ * py: sqlglot/dialects/dialect.py:1810 `encode_decode_sql(self, expression, name, replace=True)`.
+ * Used for Presto and DuckDB which use functions that don't support charset, and assume utf-8.
+ */
+export function encode_decode_sql(self, expression, name, replace = true) {
+  const charset = expression.args.charset;
+  if (charset && !["utf-8", "utf8"].includes(pyLower(charset.name))) {
+    self.unsupported(`Expected utf-8 character set, got ${self.sql(charset)}.`);
+  }
+
+  return self.func(name, expression.this, replace ? expression.args.replace : null);
+}
+
 /** py: sqlglot/dialects/dialect.py:1830 */
 export function count_if_to_sum(self, expression) {
   let cond = expression.this;
@@ -1552,6 +1648,47 @@ export function filter_array_using_unnest(self, expression) {
   const unnest = new exp.Unnest({ expressions: [expression.this] });
   const filtered = exp.select(alias).from_(exp.alias_(unnest, null, { table: [alias] })).where(cond);
   return self.sql(new exp.Array({ expressions: [filtered] }));
+}
+
+/** py: sqlglot/dialects/dialect.py:2326 `array_compact_sql(self, expression)`. */
+export function array_compact_sql(self, expression) {
+  const lambda_id = exp.toIdentifier("_u");
+  const cond = new exp.Is({ this: lambda_id, expression: exp.null_() }).not_();
+  return self.sql(
+    new exp.ArrayFilter({ this: expression.this, expression: new exp.Lambda({ this: cond, expressions: [lambda_id] }) }),
+  );
+}
+
+/** py: sqlglot/dialects/dialect.py:2337 `remove_from_array_using_filter(self, expression)`. */
+export function remove_from_array_using_filter(self, expression) {
+  const lambda_id = exp.toIdentifier("_u");
+  const cond = new exp.NEQ({ this: lambda_id, expression: expression.expression });
+
+  const filter_sql = self.sql(
+    new exp.ArrayFilter({ this: expression.this, expression: new exp.Lambda({ this: cond, expressions: [lambda_id] }) }),
+  );
+
+  // Handle NULL propagation for ArrayRemove
+  const source_null_propagation = Boolean(expression.args.null_propagation);
+  const target_null_propagation = self.dialect.ARRAY_FUNCS_PROPAGATES_NULLS;
+
+  // Source propagates NULLs (Snowflake), target doesn't (DuckDB):
+  // When removal value is NULL, return NULL instead of applying filter
+  if (source_null_propagation && !target_null_propagation) {
+    const removal_value = expression.expression;
+
+    // Optimization: skip wrapper if removal value is a non-NULL literal
+    // (e.g., 5, 'a', TRUE) or an array literal (e.g., [1, 2])
+    if ((removal_value instanceof exp.Literal && !(removal_value instanceof exp.Null)) || removal_value instanceof exp.Array) {
+      return filter_sql;
+    }
+
+    return self.sql(
+      new exp.If({ this: new exp.Is({ this: removal_value, expression: new exp.Null() }), true: new exp.Null(), false: filter_sql }),
+    );
+  }
+
+  return filter_sql;
 }
 
 /** py: sqlglot/dialects/dialect.py:2406 */

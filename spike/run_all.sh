@@ -99,6 +99,12 @@ PYTHONHASHSEED=0 python3 spike/p5/gen_duckdb_dialect_ref.py > spike/out/duckdb_d
 # DuckDB's `to_json_path` or Snowflake's `can_quote`) -- every reachable behavior lives
 # in the settings and the Tokenizer, so the oracle has no method-override section.
 PYTHONHASHSEED=0 python3 spike/p5/gen_mysql_dialect_ref.py > spike/out/mysql_dialect.json || fail=1
+# P5 oracle, same shape, Presto (AIR-2287). `dialects/presto.py` is 105 resolved
+# settings (11 of them Presto's own, two borrowed verbatim from MySQL's data tables),
+# a nested Tokenizer with two post-merge `KEYWORDS.pop(...)` calls, and no method
+# overrides at all -- the first dialect-settings oracle in this family with no
+# section 4.
+PYTHONHASHSEED=0 python3 spike/p5/gen_presto_dialect_ref.py > spike/out/presto_dialect.json || fail=1
 # P6 oracle. `schema.py`'s `MappingSchema` is greenfield -- nothing in the port depends
 # on it yet, so unlike every oracle above it has no corpus/atoms.jsonl tie-in at all.
 # 24 scenarios / 53 checks of column/type lookups, add_table, dialect-aware identifier
@@ -472,6 +478,7 @@ run "P5: real dialect generation row ratchet" node spike/p5/fuzz_dialect_generat
 
 run "P5: DuckDB dialect vs CPython"        node spike/p5/fuzz_duckdb_dialect.mjs
 run "P5: MySQL dialect vs CPython"         node spike/p5/fuzz_mysql_dialect.mjs
+run "P5: Presto dialect vs CPython"        node spike/p5/fuzz_presto_dialect.mjs
 run "P6: schema.js MappingSchema vs CPython" node spike/p6/fuzz_schema.mjs
 run "P7: optimizer/scope.js traverseScope/Scope vs CPython" node spike/p7/fuzz_scope.mjs
 run "P7: optimize_joins.js vs CPython"       node spike/p7/fuzz_optimize_joins.mjs

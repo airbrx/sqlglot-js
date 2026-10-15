@@ -6,9 +6,9 @@
 // "DuckDB generator is an outlier size" — ~4x every other single-file dialect
 // generator ported so far). This file does NOT attempt exhaustive coverage; see
 // PORT_PLAN.md's R32 entry for the marginal analysis that drove the cut and the
-// follow-on stub queue (139 methods, ~108 TRANSFORMS entries, PROPERTIES_LOCATION /
-// the CREATE-statement properties system, and every ClassVar SQL template are all
-// still NotPorted).
+// follow-on stub queue (139 methods, ~108 TRANSFORMS entries, and every ClassVar SQL
+// template are all still NotPorted). `PROPERTIES_LOCATION`/`UNWRAPPED_INTERVAL_VALUES`/
+// `TYPE_PARAM_SETTINGS` landed in later rounds (see AIR-2299 round 2, PORT_PLAN.md).
 //
 // AIR-2282/R85 (PORT_PLAN.md Epic 11, generator-fidelity census): re-examined because
 // `exp.Array`, `exp.SortArray`, and `exp.GenerateSeries` were the single biggest
@@ -53,16 +53,14 @@
 //
 // WHAT IS DELIBERATELY NOT HERE (left for a follow-on session, named rather than
 // silently skipped):
-//   - The remaining 139 `*_sql` method overrides (py:2311 onward, minus `sortarray_sql`
-//     above) — `create_sql`/`createable_sql`
-//     (base `Generator`, NotPorted — the CREATE-statement properties subsystem is its
-//     own multi-session port, not a DuckDB-generator task), `window_sql`/`tablesample_sql`/
-//     `pad_sql`/`parsejson_sql` (DuckDB overrides that `super()` into base methods this
-//     pass does not touch), `round_sql`/`ceil_floor` (chained through the unported
-//     `_scale_rounding_sql`), `TYPE_PARAM_SETTINGS`, `PROPERTIES_LOCATION`,
-//     `UNWRAPPED_INTERVAL_VALUES`, and every `t.ClassVar[exp.Expr] = exp.maybe_parse(...)`
-//     SQL-string template (ZIPF/NORMAL/SEEDED_RANDOM/MAPCAT/bitmap templates) — all are
-//     reachable only from methods this pass excludes.
+//   - The remaining ~115 `*_sql` method overrides (py:2311 onward, minus the ones named
+//     below as already landed). Base `Generator.create_sql`/`createable_sql` ARE already
+//     ported and DO consume this file's `PROPERTIES_LOCATION`; what's still NotPorted
+//     here is DuckDB's own property-specific overrides (`createable_sql` for CREATE
+//     FUNCTION/MACRO's `AS TABLE` ordering, individual `*Property.sql` renderers for
+//     anything not already driven to `""` via TRANSFORMS). Also still excluded: every
+//     `t.ClassVar[exp.Expr] = exp.maybe_parse(...)` SQL-string template this pass's
+//     ported methods don't reach.
 //
 // `generator_class` DOES NOT throw. The header this file replaces (removed from
 // `src/dialects/duckdb.js`) claimed `registerDialect` throws `NotPorted` "the moment
@@ -79,30 +77,43 @@ import { inherit_struct_field_names, preprocess, unqualify_columns } from "../tr
 import {
   approx_count_distinct_sql,
   array_append_sql,
+  array_compact_sql,
   array_concat_sql,
+  arrow_json_extract_sql,
   date_delta_to_binary_interval_op,
+  count_if_to_sum,
   datestrtodate_sql,
+  encode_decode_sql,
   explode_to_unnest_sql,
   generate_series_sql,
+  getbit_sql,
   groupconcat_sql,
   inline_array_unless_query,
   no_comment_column_constraint_sql,
+  no_datetime_sql,
   no_make_interval_sql,
   no_time_sql,
   no_timestamp_sql,
+  remove_from_array_using_filter,
   rename_func,
+  strposition_sql,
   timestrtotime_sql,
   unit_to_str,
   week_unit_to_dow,
   weekstart_unit_to_str,
+  WEEK_START_DAY_TO_DOW,
+  months_between_sql,
 } from "../dialects/dialect.js";
 import { isDateUnit, seqGet } from "../helper.js";
 import { annotate_types } from "../optimizer/annotate_types.js";
 import { decDiv, pyDecimal } from "../_py/num.js";
-import { pyRepr } from "../_py/str.js";
+import { pyRepr, pyRstrip, pyUpper } from "../_py/str.js";
 
 // py:50 — used only by `_implicit_datetime_cast` below.
 const TIMEZONE_PATTERN = /:\d{2}.*?[+\-]\d{2}(?::\d{2})?/;
+
+// py:74 — used only by `bitmapbitposition_sql` below.
+const MAX_BIT_POSITION = exp.Literal.number(32768);
 
 // py:93-101 — SEQ function constants, each a module-level `exp.maybe_parse(...)`
 // template parsed once at import time (mirrored here as module-level `maybeParse`
@@ -120,13 +131,160 @@ const _SEQ_SIGNED = exp.maybeParse(
   + "ELSE :base % :max_val END)",
 );
 
+// py:62-63 — RANDSTR constants used by `randstr_sql` below.
+const RANDSTR_CHAR_POOL = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+const RANDSTR_SEED = 123456;
+
+// py:1954 `ZIPF_TEMPLATE` — CDF-based inverse sampling for Snowflake's ZIPF.
+const ZIPF_TEMPLATE = exp.maybeParse(`
+  WITH rand AS (SELECT :random_expr AS r),
+  weights AS (
+      SELECT i, 1.0 / POWER(i, :s) AS w
+      FROM RANGE(1, :n + 1) AS t(i)
+  ),
+  cdf AS (
+      SELECT i, SUM(w) OVER (ORDER BY i) / SUM(w) OVER () AS p
+      FROM weights
+  )
+  SELECT MIN(i)
+  FROM cdf
+  WHERE p >= (SELECT r FROM rand)
+`);
+
+// py:1973 `NORMAL_TEMPLATE` — Box-Muller transform:
+// mean + (stddev * sqrt(-2 * ln(u1)) * cos(2 * pi * u2))
+const NORMAL_TEMPLATE = exp.maybeParse(
+  ":mean + (:stddev * SQRT(-2 * LN(GREATEST(:u1, 1e-10))) * COS(2 * PI() * :u2))",
+);
+
+// py:1978 `SEEDED_RANDOM_TEMPLATE` — a seeded pseudo-random value in [0, 1) from a hash.
+const SEEDED_RANDOM_TEMPLATE = exp.maybeParse("(ABS(HASH(:seed)) % 1000000) / 1000000.0");
+
+// py:1990 `MAPCAT_TEMPLATE` — Snowflake MAP_CAT semantics: NULL if either input is NULL,
+// COALESCE(m2[k], m1[k]) for duplicate keys, NULL-valued entries filtered out.
+const MAPCAT_TEMPLATE = exp.maybeParse(`
+  CASE
+      WHEN :map1 IS NULL OR :map2 IS NULL THEN NULL
+      ELSE MAP_FROM_ENTRIES(LIST_FILTER(LIST_TRANSFORM(
+          LIST_DISTINCT(LIST_CONCAT(MAP_KEYS(:map1), MAP_KEYS(:map2))),
+          __k -> STRUCT_PACK(key := __k, value := COALESCE(:map2[__k], :map1[__k]))
+      ), __x -> __x.value IS NOT NULL))
+  END
+`);
+
+// py:2081 `RANDSTR_TEMPLATE`.
+const RANDSTR_TEMPLATE = exp.maybeParse(`
+  SELECT LISTAGG(
+      SUBSTRING(
+          '${RANDSTR_CHAR_POOL}',
+          1 + CAST(FLOOR(random_value * 62) AS INT),
+          1
+      ),
+      ''
+  )
+  FROM (
+      SELECT (ABS(HASH(i + :seed)) % 1000) / 1000.0 AS random_value
+      FROM RANGE(:length) AS t(i)
+  )
+`);
+
+/**
+ * py:2181 `ARRAY_BAG_TEMPLATE` — shared bag semantics outer frame for ARRAY_EXCEPT
+ * and ARRAY_INTERSECTION.
+ *
+ * Each element is paired with its 1-based position via LIST_ZIP, then filtered
+ * by a comparison operator (supplied via :cond) that determines the operation:
+ *   EXCEPT (>):        keep the N-th occurrence only if N > count in arr2
+ *                      e.g. [2,2,2] EXCEPT [2,2] -> [2]
+ *   INTERSECTION (<=): keep the N-th occurrence only if N <= count in arr2
+ *                      e.g. [2,2,2] INTERSECT [2,2] -> [2,2]
+ * IS NOT DISTINCT FROM is used for NULL-safe element comparison.
+ */
+// py:2157 `UUID_V5_TEMPLATE` — UUID v5 (namespace + name), emulated via SHA1.
+const UUID_V5_TEMPLATE = exp.maybeParse(`
+  (SELECT
+      LOWER(
+          SUBSTR(h, 1, 8) || '-' ||
+          SUBSTR(h, 9, 4) || '-' ||
+          '5' || SUBSTR(h, 14, 3) || '-' ||
+          FORMAT('{:02x}', CAST('0x' || SUBSTR(h, 17, 2) AS INT) & 63 | 128) || SUBSTR(h, 19, 2) || '-' ||
+          SUBSTR(h, 21, 12)
+      )
+  FROM (
+      SELECT SUBSTR(SHA1(UNHEX(REPLACE(:namespace, '-', '')) || ENCODE(:name, 'utf8')), 1, 32) AS h
+  ))
+`);
+
+const ARRAY_BAG_TEMPLATE = exp.maybeParse(`
+  CASE
+      WHEN :arr1 IS NULL OR :arr2 IS NULL THEN NULL
+      ELSE LIST_TRANSFORM(
+          LIST_FILTER(
+              LIST_ZIP(:arr1, GENERATE_SERIES(1, LEN(:arr1))),
+              pair -> :cond
+          ),
+          pair -> pair[0]
+      )
+  END
+`);
+
+// py:2196 `ARRAY_EXCEPT_CONDITION`.
+const ARRAY_EXCEPT_CONDITION = exp.maybeParse(
+  "LEN(LIST_FILTER(:arr1[1:pair[1]], e -> e IS NOT DISTINCT FROM pair[0]))"
+  + " > LEN(LIST_FILTER(:arr2, e -> e IS NOT DISTINCT FROM pair[0]))",
+);
+
+// py:2201 `ARRAY_INTERSECTION_CONDITION`.
+const ARRAY_INTERSECTION_CONDITION = exp.maybeParse(
+  "LEN(LIST_FILTER(:arr1[1:pair[1]], e -> e IS NOT DISTINCT FROM pair[0]))"
+  + " <= LEN(LIST_FILTER(:arr2, e -> e IS NOT DISTINCT FROM pair[0]))",
+);
+
+/**
+ * py:2210 `ARRAY_EXCEPT_SET_TEMPLATE` — set semantics for ARRAY_EXCEPT. Deduplicates
+ * arr1 via LIST_DISTINCT, then filters out any element that appears at least once in
+ * arr2.
+ *   e.g. [1,1,2,3] EXCEPT [1] -> [2,3]
+ * IS NOT DISTINCT FROM is used for NULL-safe element comparison.
+ */
+const ARRAY_EXCEPT_SET_TEMPLATE = exp.maybeParse(`
+  CASE
+      WHEN :arr1 IS NULL OR :arr2 IS NULL THEN NULL
+      ELSE LIST_FILTER(
+          LIST_DISTINCT(:arr1),
+          e -> LEN(LIST_FILTER(:arr2, x -> x IS NOT DISTINCT FROM e)) = 0
+      )
+  END
+`);
+
+/**
+ * py:2230 `IN_UNNEST_TEMPLATE` — BigQuery's `x IN UNNEST(arr)` NULL semantics:
+ *   NULL IN UNNEST([1, 2])  -> NULL
+ *   3 IN UNNEST([1, NULL])  -> NULL
+ *   3 IN UNNEST([1, 2])     -> FALSE
+ *   1 IN UNNEST(NULL)       -> FALSE (not NULL)
+ *   1 IN UNNEST([])         -> FALSE
+ * The default `IN (SELECT UNNEST(...))` rewrite creates a correlated subquery
+ * that DuckDB rejects inside non-inner joins, so a CASE expression is used instead.
+ */
+const IN_UNNEST_TEMPLATE = exp.maybeParse(`
+  CASE
+      WHEN :arr IS NULL OR ARRAY_LENGTH(:arr) = 0 THEN FALSE
+      WHEN ARRAY_CONTAINS(:arr, :value) THEN TRUE
+      WHEN :value IS NULL OR ARRAY_LENGTH(:arr) <> LIST_COUNT(:arr) THEN NULL
+      ELSE FALSE
+  END
+`);
+
 /** py:670 `_build_seq_expression(base, byte_width, signed)`. */
 function _build_seq_expression(base, byte_width, signed) {
   const bits = byte_width * 8;
-  const max_val = exp.Literal.number(2 ** bits);
+  // `2 ** bits` as a JS float loses precision for bits=64 (2^64 doesn't fit in a
+  // double's 53-bit mantissa); BigInt exponentiation keeps the exact integer.
+  const max_val = exp.Literal.number(2n ** BigInt(bits));
 
   if (signed) {
-    const half = exp.Literal.number(2 ** (bits - 1));
+    const half = exp.Literal.number(2n ** BigInt(bits - 1));
     return exp.replacePlaceholders(_SEQ_SIGNED.copy(), { base, max_val, half });
   }
   return exp.replacePlaceholders(_SEQ_UNSIGNED.copy(), { base, max_val });
@@ -189,6 +347,38 @@ function _explode_to_unnest_sql(self, expression) {
 /** py:545 */
 function _array_sort_sql(self, expression) {
   return self.func("ARRAY_SORT", expression.this);
+}
+
+/**
+ * py:565 `_array_overlaps_sql(self, expression)`.
+ *
+ * Translates Snowflake's NULL-safe ARRAYS_OVERLAP to DuckDB.
+ *
+ * DuckDB's native && operator is not NULL-safe: [1,NULL,3] && [NULL,4,5] returns FALSE.
+ * Snowflake returns TRUE when both arrays contain NULL (NULLs are treated as known values).
+ *
+ * Generated SQL: (arr1 && arr2) OR (ARRAY_LENGTH(arr1) <> LIST_COUNT(arr1) AND ARRAY_LENGTH(arr2) <> LIST_COUNT(arr2))
+ *
+ * ARRAY_LENGTH counts all elements (including NULLs); LIST_COUNT counts only non-NULLs.
+ * When they differ, the array contains at least one NULL, matching Snowflake's NULL-safe semantics.
+ */
+function _array_overlaps_sql(self, expression) {
+  if (!expression.args.null_safe) return self.binary(expression, "&&");
+
+  const arr1 = expression.this;
+  const arr2 = expression.expression;
+
+  const check_nulls = exp.and_(
+    new exp.NEQ({ this: new exp.ArraySize({ this: arr1.copy() }), expression: exp.func("LIST_COUNT", arr1.copy()) }),
+    new exp.NEQ({ this: new exp.ArraySize({ this: arr2.copy() }), expression: exp.func("LIST_COUNT", arr2.copy()) }),
+    { copy: false },
+  );
+
+  const overlap = new exp.ArrayOverlaps({ this: arr1.copy(), expression: arr2.copy() });
+
+  return self.sql(
+    exp.or_(exp.paren(overlap, false), exp.paren(check_nulls, false), { copy: false, wrap: false }),
+  );
 }
 
 /** py:549 */
@@ -254,6 +444,26 @@ function _implicit_datetime_cast(arg, { type = exp.DType.DATE } = {}) {
   return arg;
 }
 
+/** py:981 `_generate_datetime_array_sql(self, expression)`. */
+function _generate_datetime_array_sql(self, expression) {
+  const is_generate_date_array = expression instanceof exp.GenerateDateArray;
+
+  const type = is_generate_date_array ? exp.DType.DATE : exp.DType.TIMESTAMP;
+  const start = _implicit_datetime_cast(expression.args.start, { type });
+  const end = _implicit_datetime_cast(expression.args.end, { type });
+
+  // BQ's GENERATE_DATE_ARRAY & GENERATE_TIMESTAMP_ARRAY are transformed to DuckDB'S GENERATE_SERIES
+  let gen_series = new exp.GenerateSeries({ start, end, step: expression.args.step });
+
+  if (is_generate_date_array) {
+    // The GENERATE_SERIES result type is TIMESTAMP array, so to match BQ's semantics for
+    // GENERATE_DATE_ARRAY we must cast it back to DATE array
+    gen_series = exp.cast(gen_series, exp.DataType.fromStr("ARRAY<DATE>"));
+  }
+
+  return self.sql(gen_series);
+}
+
 /** py:213 */
 function _is_nanosecond_unit(unit) {
   return (unit instanceof exp.Var || unit instanceof exp.Literal) && unit.name.toUpperCase() === "NANOSECOND";
@@ -267,6 +477,284 @@ function _handle_nanosecond_diff(self, end_time, start_time) {
   const end_ns = exp.cast(end_time, exp.DType.TIMESTAMP_NS);
   const start_ns = exp.cast(start_time, exp.DType.TIMESTAMP_NS);
   return self.sql(new exp.Sub({ this: self.func("EPOCH_NS", end_ns), expression: self.func("EPOCH_NS", start_ns) }));
+}
+
+// py:305-306 — BigQuery -> DuckDB conversion for the TIME_DIFF function
+/** py:306 `_timediff_sql(self, expression)`. */
+function _timediff_sql(self, expression) {
+  const unit = expression.args.unit;
+
+  if (_is_nanosecond_unit(unit)) return _handle_nanosecond_diff(self, expression.expression, expression.this);
+
+  const this_ = exp.cast(expression.this, exp.DType.TIME);
+  const expr = exp.cast(expression.expression, exp.DType.TIME);
+
+  // Although the 2 dialects share similar signatures, BQ seems to inverse
+  // the sign of the result so the start/end time operands are flipped
+  return self.func("DATE_DIFF", unit_to_str(expression), expr, this_);
+}
+
+/**
+ * py:1360 `_regr_val_sql(self, expression)`.
+ *
+ * Transpile Snowflake's REGR_VALX/REGR_VALY to DuckDB equivalent.
+ *
+ * REGR_VALX(y, x) returns NULL if y is NULL; otherwise returns x.
+ * REGR_VALY(y, x) returns NULL if x is NULL; otherwise returns y.
+ */
+function _regr_val_sql(self, expression) {
+  const y = expression.this;
+  const x = expression.expression;
+
+  // Determine which argument to check for NULL and which to return based on expression type
+  let check_for_null, return_value, return_value_attr;
+  if (expression instanceof exp.RegrValx) {
+    // REGR_VALX: check y for NULL, return x
+    check_for_null = y;
+    return_value = x;
+    return_value_attr = "expression";
+  } else {
+    // REGR_VALY: check x for NULL, return y
+    check_for_null = x;
+    return_value = y;
+    return_value_attr = "this";
+  }
+
+  // Get the type from the return argument
+  let result_type = return_value.type;
+
+  // If no type info, annotate the expression to infer types
+  if (!result_type || result_type.this === exp.DType.UNKNOWN) {
+    try {
+      const annotated = annotate_types(expression.copy(), { dialect: self.dialect });
+      result_type = annotated.args[return_value_attr].type;
+    } catch { /* fall through to the DOUBLE default below */ }
+  }
+
+  // Default to DOUBLE for regression functions if type still unknown
+  if (!result_type || result_type.this === exp.DType.UNKNOWN) {
+    result_type = exp.DType.DOUBLE.intoExpr();
+  }
+
+  // Cast NULL to the same type as return_value to avoid DuckDB type inference issues
+  const typed_null = new exp.Cast({ this: new exp.Null(), to: result_type });
+
+  return self.sql(
+    new exp.If({
+      this: new exp.Is({ this: check_for_null.copy(), expression: new exp.Null() }),
+      true: typed_null,
+      false: return_value.copy(),
+    }),
+  );
+}
+
+/**
+ * py:1312 `_scale_rounding_sql(self, expression, rounding_func)`.
+ *
+ * Handle scale parameter transformation for rounding functions.
+ *
+ * DuckDB doesn't support the scale parameter for certain functions (e.g., FLOOR, CEIL),
+ * so we transform: FUNC(x, n) to ROUND(FUNC(x * 10^n) / 10^n, n)
+ *
+ * Returns the transformed SQL string if decimals parameter exists, `null` otherwise.
+ */
+function _scale_rounding_sql(self, expression, rounding_func) {
+  const decimals = expression.args.decimals;
+
+  if (decimals === null || decimals === undefined || expression.args.to !== null && expression.args.to !== undefined) {
+    return null;
+  }
+
+  let this_ = expression.this;
+  if (this_ instanceof exp.Binary) this_ = new exp.Paren({ this: this_ });
+
+  let n_int = decimals;
+  if (!(decimals.isInt || decimals.isType(...exp.DataType.INTEGER_TYPES))) {
+    n_int = exp.cast(decimals, exp.DType.INT);
+  }
+
+  const pow_ = new exp.Pow({ this: exp.Literal.number("10"), expression: n_int });
+  const rounded = new rounding_func({ this: new exp.Mul({ this: this_, expression: pow_ }) });
+  const result = new exp.Div({ this: rounded, expression: pow_.copy() });
+
+  return self.round_sql(new exp.Round({ this: result, decimals, casts_non_integer_decimals: true }));
+}
+
+/** py:1353 `_ceil_floor(self, expression)`. */
+function _ceil_floor(self, expression) {
+  const scaled_sql = _scale_rounding_sql(self, expression, expression.constructor);
+  if (scaled_sql !== null) return scaled_sql;
+  return self.ceil_floor(expression);
+}
+
+/**
+ * py:107 `_apply_base64_alphabet_replacements(result, alphabet, reverse=False)`.
+ *
+ * Apply base64 alphabet character replacements.
+ *
+ * Base64 alphabet can be 1-3 chars: 1st = index 62 ('+'), 2nd = index 63 ('/'), 3rd = padding ('=').
+ * `zip` truncates to the shorter string, so a 1-char alphabet only replaces '+', 2-char replaces '+/', etc.
+ *
+ * `reverse`: if False, replace default with custom (encode); if True, replace custom with default (decode).
+ */
+function _apply_base64_alphabet_replacements(result, alphabet, reverse = false) {
+  if (alphabet instanceof exp.Literal && alphabet.isString) {
+    const defaults = [..."+/="];
+    const news = [...alphabet.this];
+    const n = Math.min(defaults.length, news.length);
+    for (let i = 0; i < n; i++) {
+      const default_char = defaults[i], new_char = news[i];
+      if (new_char !== default_char) {
+        const [find, replace] = reverse ? [new_char, default_char] : [default_char, new_char];
+        result = new exp.Replace({ this: result, expression: exp.Literal.string(find), replacement: exp.Literal.string(replace) });
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * py:136 `_base64_decode_sql(self, expression, to_string)`.
+ *
+ * Transpile Snowflake BASE64_DECODE_STRING/BINARY to DuckDB.
+ *
+ * DuckDB uses FROM_BASE64() which returns BLOB. For string output, wrap with DECODE().
+ * Custom alphabets require REPLACE() calls to convert to standard base64.
+ */
+function _base64_decode_sql(self, expression, to_string) {
+  let input_expr = expression.this;
+  const alphabet = expression.args.alphabet;
+
+  // Handle custom alphabet by replacing non-standard chars with standard ones
+  input_expr = _apply_base64_alphabet_replacements(input_expr, alphabet, true);
+
+  // FROM_BASE64 returns BLOB
+  input_expr = new exp.FromBase64({ this: input_expr });
+
+  if (to_string) input_expr = new exp.Decode({ this: input_expr });
+
+  return self.sql(input_expr);
+}
+
+/**
+ * py:234 `_to_boolean_sql(self, expression)`.
+ *
+ * Transpile TO_BOOLEAN and TRY_TO_BOOLEAN functions from Snowflake to DuckDB equivalent.
+ *
+ * DuckDB's CAST to BOOLEAN supports most of Snowflake's TO_BOOLEAN strings except 'on'/'off'.
+ * We need to handle the 'on'/'off' cases explicitly.
+ *
+ * For TO_BOOLEAN (safe=False): NaN and INF values cause errors. We use DuckDB's native ERROR()
+ * function to replicate this behavior with a clear error message.
+ *
+ * For TRY_TO_BOOLEAN (safe=True): Use DuckDB's TRY_CAST for conversion, which returns NULL
+ * for invalid inputs instead of throwing errors.
+ */
+function _to_boolean_sql(self, expression) {
+  const arg = expression.this;
+  const is_safe = expression.args.safe || false;
+
+  const base_case_expr = exp.case()
+    // Handle 'on' -> TRUE (case insensitive)
+    .when(new exp.Upper({ this: exp.cast(arg, exp.DType.VARCHAR) }).eq(exp.Literal.string("ON")), exp.true_())
+    // Handle 'off' -> FALSE (case insensitive)
+    .when(new exp.Upper({ this: exp.cast(arg.copy(), exp.DType.VARCHAR) }).eq(exp.Literal.string("OFF")), exp.false_());
+
+  let case_expr;
+  if (is_safe) {
+    // TRY_TO_BOOLEAN: handle 'on'/'off' and use TRY_CAST for everything else
+    case_expr = base_case_expr.else_(exp.func("TRY_CAST", arg.copy(), exp.DType.BOOLEAN.intoExpr()));
+  } else {
+    // TO_BOOLEAN: handle NaN/INF errors, 'on'/'off', and use regular CAST
+    const cast_to_real = exp.func("TRY_CAST", arg.copy(), exp.DType.FLOAT.intoExpr());
+
+    // Check for NaN and INF values
+    const nan_inf_check = new exp.Or({ this: exp.func("ISNAN", cast_to_real), expression: exp.func("ISINF", cast_to_real.copy()) });
+
+    case_expr = base_case_expr
+      .when(nan_inf_check, exp.func("ERROR", exp.Literal.string("TO_BOOLEAN: Non-numeric values NaN and INF are not supported")))
+      .else_(exp.cast(arg.copy(), exp.DType.BOOLEAN));
+  }
+
+  return self.sql(case_expr);
+}
+
+/** py:288 `_date_sql(self, expression)`. */
+function _date_sql(self, expression) {
+  let this_ = expression.this;
+  const zone = self.sql(expression, "zone");
+
+  if (zone) {
+    // BigQuery considers "this" at UTC, converts it to the specified
+    // time zone and then keeps only the DATE part
+    // To micmic that, we:
+    //   (1) Cast to TIMESTAMP to remove DuckDB's local tz
+    //   (2) Apply consecutive AtTimeZone calls for UTC -> zone conversion
+    this_ = exp.cast(this_, exp.DType.TIMESTAMP);
+    const at_utc = new exp.AtTimeZone({ this: this_, zone: exp.Literal.string("UTC") });
+    this_ = new exp.AtTimeZone({ this: at_utc, zone: expression.args.zone });
+  }
+
+  return self.sql(exp.cast(this_, exp.DType.DATE));
+}
+
+/**
+ * py:158 `_last_day_sql(self, expression)`.
+ *
+ * DuckDB's LAST_DAY only supports finding the last day of a month.
+ * For other date parts (year, quarter, week), we need to implement equivalent logic.
+ */
+function _last_day_sql(self, expression) {
+  const date_expr = expression.this;
+  const unit_expr = expression.args.unit;
+
+  const week_start = week_unit_to_dow(unit_expr);
+  if (week_start) {
+    // The week's last day precedes its start day; DuckDB DAYOFWEEK: Sunday=0, ..., Saturday=6
+    const last_dow = week_start - 1;
+    const dow = exp.func("EXTRACT", "DAYOFWEEK", date_expr);
+
+    // Days to the last day of week: (last_dow + 7 - dayofweek) % 7
+    const days_to_last_expr = new exp.Mod({
+      this: exp.paren(new exp.Sub({ this: exp.Literal.number(last_dow + 7), expression: dow })),
+      expression: exp.Literal.number(7),
+    });
+    const interval_expr = new exp.Interval({ this: days_to_last_expr, unit: exp.var("DAY") });
+    const add_expr = new exp.Add({ this: date_expr, expression: interval_expr });
+
+    return self.sql(exp.cast(add_expr, exp.DType.DATE));
+  }
+
+  const unit = expression.text("unit");
+
+  if (!unit || unit.toUpperCase() === "MONTH") {
+    // Default behavior - use DuckDB's native LAST_DAY
+    return self.func("LAST_DAY", date_expr);
+  }
+
+  if (unit.toUpperCase() === "YEAR") {
+    // Last day of year: December 31st of the same year
+    const year_expr = exp.func("EXTRACT", "YEAR", date_expr);
+    const make_date_expr = exp.func("MAKE_DATE", year_expr, exp.Literal.number(12), exp.Literal.number(31));
+    return self.sql(make_date_expr);
+  }
+
+  if (unit.toUpperCase() === "QUARTER") {
+    // Last day of quarter
+    const year_expr = exp.func("EXTRACT", "YEAR", date_expr);
+    const quarter_expr = exp.func("EXTRACT", "QUARTER", date_expr);
+
+    // Calculate last month of quarter: quarter * 3. Quarter can be 1 to 4
+    const last_month_expr = new exp.Mul({ this: quarter_expr, expression: exp.Literal.number(3) });
+    const first_day_last_month_expr = exp.func("MAKE_DATE", year_expr, last_month_expr, exp.Literal.number(1));
+
+    // Last day of the last month of the quarter
+    const last_day_expr = exp.func("LAST_DAY", first_day_last_month_expr);
+    return self.sql(last_day_expr);
+  }
+
+  self.unsupported(`Unsupported date part '${unit}' in LAST_DAY function`);
+  return self.function_fallback_sql(expression);
 }
 
 /**
@@ -626,10 +1114,238 @@ function _date_from_parts_sql(self, expression) {
   return self.func("MAKE_DATE", year_expr, month_expr, day_expr);
 }
 
+/** py:878 */
+const WRAPPED_JSON_EXTRACT_EXPRESSIONS = [exp.Binary, exp.Bracket, exp.In, exp.Not];
+
+/** py:881 `_arrow_json_extract_sql(self, expression)`. */
+function _arrow_json_extract_sql(self, expression) {
+  let arrow_sql = arrow_json_extract_sql(self, expression);
+  if (!expression.sameParent && WRAPPED_JSON_EXTRACT_EXPRESSIONS.some((cls) => expression.parent instanceof cls)) {
+    arrow_sql = self.wrap(arrow_sql);
+  }
+  return arrow_sql;
+}
+
+/** py:1003 `_json_extract_value_array_sql(self, expression)`. */
+function _json_extract_value_array_sql(self, expression) {
+  const json_extract = new exp.JSONExtract({ this: expression.this, expression: expression.expression });
+  const data_type = expression instanceof exp.JSONValueArray ? "ARRAY<STRING>" : "ARRAY<JSON>";
+  return self.sql(exp.cast(json_extract, exp.DataType.fromStr(data_type)));
+}
+
+/** py:665 `_json_format_sql(self, expression)`. */
+function _json_format_sql(self, expression) {
+  const sql = self.func("TO_JSON", expression.this, expression.args.options);
+  return `CAST(${sql} AS TEXT)`;
+}
+
+/** py:848 `_unix_to_time_sql(self, expression)`. */
+function _unix_to_time_sql(self, expression) {
+  const scale = expression.args.scale;
+  let timestamp = expression.this;
+  const target_type = expression.args.target_type;
+
+  // Check if we need NTZ (naive timestamp in UTC)
+  const is_ntz = target_type && (target_type.this === exp.DType.TIMESTAMP || target_type.this === exp.DType.TIMESTAMPNTZ);
+
+  if (scale && scale.equals(exp.UnixToTime.MILLIS)) {
+    // EPOCH_MS already returns TIMESTAMP (naive, UTC)
+    return self.func("EPOCH_MS", timestamp);
+  }
+  if (scale && scale.equals(exp.UnixToTime.MICROS)) {
+    // MAKE_TIMESTAMP already returns TIMESTAMP (naive, UTC)
+    return self.func("MAKE_TIMESTAMP", timestamp);
+  }
+
+  // Other scales: divide and use TO_TIMESTAMP
+  if (scale && !scale.equals(exp.UnixToTime.SECONDS)) {
+    timestamp = new exp.Div({ this: timestamp, expression: exp.func("POW", 10, scale) });
+  }
+
+  let to_timestamp = new exp.Anonymous({ this: "TO_TIMESTAMP", expressions: [timestamp] });
+
+  if (is_ntz) {
+    to_timestamp = new exp.AtTimeZone({ this: to_timestamp, zone: exp.Literal.string("UTC") });
+  }
+
+  return self.sql(to_timestamp);
+}
+
+/** py:1023 `_is_binary(arg)`. */
+/**
+ * py:1414 `_maybe_corr_null_to_false(expression)`.
+ *
+ * Unwraps a `Window`/`Filter`-wrapped `exp.Corr` and, if it has
+ * `null_on_zero_variance` set, clears the flag and returns the (unwrapped-then-
+ * rewrapped) expression; otherwise returns `null`.
+ */
+function _maybe_corr_null_to_false(expression) {
+  let corr = expression;
+  while (corr instanceof exp.Window || corr instanceof exp.Filter) corr = corr.this;
+
+  if (!(corr instanceof exp.Corr) || !corr.args.null_on_zero_variance) return null;
+
+  corr.set("null_on_zero_variance", false);
+  return expression;
+}
+
+/**
+ * Shared helper for this file's two `self.dialect.version >= (1, 2)` checks
+ * (py:3156 `countif_sql`, py:3168 `bracket_sql`). `dialect.version` is a 3-element
+ * BigInt array (PORT_PLAN.md's "non-2^63 sentinel" note); Python tuple comparison
+ * `(v0, v1, v2) >= (1, 2)` only ever inspects the first two elements.
+ */
+function _dialectAtLeast(dialect, major, minor) {
+  const v = dialect.version;
+  return v[0] > major || (v[0] === major && v[1] >= minor);
+}
+
+function _is_binary(arg) {
+  return arg.isType(exp.DType.BINARY, exp.DType.VARBINARY, exp.DType.BLOB);
+}
+
+/** py:1031 `_gen_with_cast_to_blob(self, expression, result_sql)`. */
+function _gen_with_cast_to_blob(self, expression, result_sql) {
+  if (_is_binary(expression)) {
+    const blob = exp.DataType.fromStr("BLOB", { dialect: "duckdb" });
+    result_sql = self.sql(new exp.Cast({ this: result_sql, to: blob }));
+  }
+  return result_sql;
+}
+
+/** py:1038 `_cast_to_bit(arg)`. */
+function _cast_to_bit(arg) {
+  if (!_is_binary(arg)) return arg;
+
+  if (arg instanceof exp.HexString) arg = new exp.Unhex({ this: exp.Literal.string(arg.this) });
+
+  return exp.cast(arg, exp.DType.BIT);
+}
+
+/** py:1048 `_prepare_binary_bitwise_args(expression)`. */
+function _prepare_binary_bitwise_args(expression) {
+  if (_is_binary(expression.this)) expression.set("this", _cast_to_bit(expression.this));
+  if (_is_binary(expression.expression)) expression.set("expression", _cast_to_bit(expression.expression));
+}
+
+/**
+ * py:1276 `_bitshift_sql(self, expression)`.
+ *
+ * Transform bitshift expressions for DuckDB by injecting BIT/INT128 casts.
+ *
+ * DuckDB's bitwise shift operators don't work with BLOB/BINARY types, so we cast
+ * them to BIT for the operation, then cast the result back to the original type.
+ *
+ * Note: Assumes type annotation has been applied with the source dialect.
+ */
+function _bitshift_sql(self, expression) {
+  const operator = expression instanceof exp.BitwiseLeftShift ? "<<" : ">>";
+  let result_is_blob = false;
+  const this_ = expression.this;
+
+  if (_is_binary(this_)) {
+    result_is_blob = true;
+    expression.set("this", exp.cast(this_, exp.DType.BIT));
+  } else if (expression.args.requires_int128) {
+    this_.replace(exp.cast(this_, exp.DType.INT128));
+  }
+
+  let result_sql = self.binary(expression, operator);
+
+  // Wrap in parentheses if parent is a bitwise operator to "fix" DuckDB precedence issue
+  // DuckDB parses: a << b | c << d  as  (a << b | c) << d
+  if (expression.parent instanceof exp.Binary) {
+    result_sql = self.sql(new exp.Paren({ this: result_sql }));
+  }
+
+  if (result_is_blob) {
+    result_sql = self.sql(new exp.Cast({ this: result_sql, to: exp.DataType.fromStr("BLOB", { dialect: "duckdb" }) }));
+  }
+
+  return result_sql;
+}
+
+/** py:1526 `_sha_sql(self, expression, hash_func, is_binary=False)`. */
+function _sha_sql(self, expression, hash_func, is_binary = false) {
+  let arg = expression.this;
+
+  // For SHA2 variants, check digest length (DuckDB only supports SHA256)
+  if (hash_func === "SHA256") {
+    const length = expression.text("length") || "256";
+    if (length !== "256") self.unsupported("DuckDB only supports SHA256 hashing algorithm.");
+  }
+
+  // Cast if type is incompatible with DuckDB
+  if (arg.type && arg.type.this !== exp.DType.UNKNOWN && !arg.isType(...exp.DataType.TEXT_TYPES) && !_is_binary(arg)) {
+    arg = exp.cast(arg, exp.DType.VARCHAR);
+  }
+
+  const result = self.func(hash_func, arg);
+  return is_binary ? self.func("UNHEX", result) : result;
+}
+
 /** py:1017 */
 function _cast_to_boolean(arg) {
   if (arg && !arg.isType(exp.DType.BOOLEAN)) return exp.cast(arg, exp.DType.BOOLEAN);
   return arg;
+}
+
+/**
+ * py:1055 `_day_navigation_sql(self, expression)`.
+ *
+ * Transpile Snowflake's NEXT_DAY / PREVIOUS_DAY to DuckDB using date arithmetic.
+ *
+ * Returns the DATE of the next/previous occurrence of the specified weekday.
+ *
+ * Formulas:
+ * - NEXT_DAY: (target_dow - current_dow + 6) % 7 + 1
+ * - PREVIOUS_DAY: (current_dow - target_dow + 6) % 7 + 1
+ */
+function _day_navigation_sql(self, expression) {
+  const date_expr = expression.this;
+  const day_name_expr = expression.expression;
+
+  // Build ISODOW call for current day of week
+  const isodow_call = exp.func("ISODOW", date_expr);
+
+  let target_dow;
+  if (day_name_expr instanceof exp.Literal) {
+    // Literal day name: lookup target_dow directly
+    const day_name_str = pyUpper(day_name_expr.name);
+    const matching_day = [...WEEK_START_DAY_TO_DOW.keys()].find((day) => day.startsWith(day_name_str));
+    if (matching_day) {
+      target_dow = exp.Literal.number(WEEK_START_DAY_TO_DOW.get(matching_day));
+    } else {
+      // Unrecognized day name, use fallback
+      return self.function_fallback_sql(expression);
+    }
+  } else {
+    // Non-literal day name: build CASE statement for runtime mapping
+    const upper_day_name = new exp.Upper({ this: day_name_expr });
+    target_dow = new exp.Case({
+      ifs: [...WEEK_START_DAY_TO_DOW].map(([day, dow_num]) =>
+        new exp.If({
+          this: exp.func("STARTS_WITH", upper_day_name.copy(), exp.Literal.string(day.slice(0, 2))),
+          true: exp.Literal.number(dow_num),
+        }),
+      ),
+    });
+  }
+
+  // Calculate days offset and apply interval based on direction
+  let date_with_offset;
+  if (expression instanceof exp.NextDay) {
+    // NEXT_DAY: (target_dow - current_dow + 6) % 7 + 1
+    const days_offset = exp.paren(target_dow.sub(isodow_call).add(6), false).mod(7).add(1);
+    date_with_offset = date_expr.add(new exp.Interval({ this: days_offset, unit: exp.var("DAY") }));
+  } else {
+    // PREVIOUS_DAY: (current_dow - target_dow + 6) % 7 + 1
+    const days_offset = exp.paren(isodow_call.sub(target_dow).add(6), false).mod(7).add(1);
+    date_with_offset = date_expr.sub(new exp.Interval({ this: days_offset, unit: exp.var("DAY") }));
+  }
+
+  // Build final: CAST(date_with_offset AS DATE)
+  return self.sql(exp.cast(date_with_offset, exp.DType.DATE));
 }
 
 /** py:1123 */
@@ -640,6 +1356,34 @@ function _anyvalue_sql(self, expression) {
     return self.func(func_name, having.this, having.expression);
   }
   return self.function_fallback_sql(expression);
+}
+
+/**
+ * py:1132 `_bitwise_agg_sql(self, expression)`.
+ *
+ * DuckDB's bitwise aggregate functions only accept integer types. For other types:
+ * - DECIMAL/STRING: Use CAST(arg AS INT) to convert directly, will round to nearest int
+ * - FLOAT/DOUBLE: Use ROUND(arg)::INT to round to nearest integer, required due to float precision loss
+ */
+function _bitwise_agg_sql(self, expression) {
+  let func_name;
+  if (expression instanceof exp.BitwiseOrAgg) func_name = "BIT_OR";
+  else if (expression instanceof exp.BitwiseAndAgg) func_name = "BIT_AND";
+  else func_name = "BIT_XOR";
+
+  let arg = expression.this;
+
+  if (!arg.type) arg = annotate_types(arg, { dialect: self.dialect });
+
+  if (arg.isType(...exp.DataType.REAL_TYPES, ...exp.DataType.TEXT_TYPES)) {
+    if (arg.isType(...exp.DataType.FLOAT_TYPES)) {
+      // float types need to be rounded first due to precision loss
+      arg = exp.func("ROUND", arg);
+    }
+    arg = exp.cast(arg, exp.DType.INT);
+  }
+
+  return self.func(func_name, arg);
 }
 
 /** py:1261 */
@@ -801,6 +1545,30 @@ export class DuckDBGenerator extends Generator {
   static JSON_KEY_VALUE_PAIR_SEP = ",";
   static IGNORE_NULLS_IN_FUNC = true;
   static IGNORE_NULLS_BEFORE_ORDER = false;
+
+  /** py:1933 `UNWRAPPED_INTERVAL_VALUES = (exp.Literal, exp.Paren)` — narrower than the base
+   * class's (Column, Literal, Neg, Paren): DuckDB does NOT unwrap a `Neg`, so `interval_sql`
+   * paren-wraps negative interval amounts (`INTERVAL (-1) MONTH`, not `INTERVAL -1 MONTH`). */
+  static UNWRAPPED_INTERVAL_VALUES = [exp.Literal, exp.Paren];
+
+  /**
+   * py:1939 `PROPERTIES_LOCATION` — DuckDB doesn't generally support CREATE TABLE ..
+   * properties (https://duckdb.org/docs/sql/statements/create_table.html). There are a few
+   * exceptions (e.g. temporary tables) which are supported or can be transpiled to DuckDB,
+   * so they're explicitly overridden below; everything else inherited from the base class
+   * becomes UNSUPPORTED (dropped rather than emitted as a bogus WITH(...) clause).
+   */
+  static PROPERTIES_LOCATION = new Map([
+    ...[...Generator.PROPERTIES_LOCATION.keys()].map((k) => [k, exp.Properties.Location.UNSUPPORTED]),
+    [exp.LikeProperty, exp.Properties.Location.POST_SCHEMA],
+    [exp.TemporaryProperty, exp.Properties.Location.POST_CREATE],
+    [exp.ReturnsProperty, exp.Properties.Location.POST_ALIAS],
+    [exp.SequenceProperties, exp.Properties.Location.POST_EXPRESSION],
+    [exp.IcebergProperty, exp.Properties.Location.POST_CREATE],
+  ]);
+
+  /** py:1951 `IGNORE_RESPECT_NULLS_WINDOW_FUNCTIONS` — py:84 `_IGNORE_RESPECT_NULLS_WINDOW_FUNCTIONS`. */
+  static IGNORE_RESPECT_NULLS_WINDOW_FUNCTIONS = [exp.FirstValue, exp.Lag, exp.LastValue, exp.Lead, exp.NthValue];
   static JSON_PATH_BRACKETED_KEY_SUPPORTED = false;
   static SUPPORTS_CREATE_TABLE_LIKE = false;
   static MULTI_ARG_DISTINCT = false;
@@ -836,18 +1604,28 @@ export class DuckDBGenerator extends Generator {
     // this entry was still commented out as "blocked" despite both existing.
     [exp.Array, preprocess([inherit_struct_field_names], inline_array_unless_query)],
     [exp.ArrayAppend, array_append_sql("LIST_APPEND")],
-    // py:1602 [exp.ArrayCompact, array_compact_sql] — blocked, dialect.js does not yet export `array_compact_sql`
-    // py:1603 [exp.ArrayConstructCompact, lambda] — blocked, depends on the excluded ArrayCompact entry
+    // py:1602 `ArrayCompact`
+    [exp.ArrayCompact, array_compact_sql],
+    // py:1603 `ArrayConstructCompact`
+    [exp.ArrayConstructCompact, (self, e) => self.sql(new exp.ArrayCompact({ this: new exp.Array({ expressions: e.expressions }) }))],
     [exp.ArrayConcat, array_concat_sql("LIST_CONCAT")],
     // py:1607 [exp.ArrayContains, _array_contains_sql] — NOTE: real DuckDB `ArrayContains` (Snowflake-sourced,
     // `check_null` flag) is ported above as `_array_contains_sql`, wired below.
     [exp.ArrayContains, _array_contains_sql],
-    // py:1608 [exp.ArrayOverlaps, _array_overlaps_sql] — blocked, `_array_overlaps_sql` (42 lines) out of scope this pass
+    // py:1608 `ArrayOverlaps`
+    [exp.ArrayOverlaps, _array_overlaps_sql],
     [exp.ArrayFilter, rename_func("LIST_FILTER")],
     [exp.ArrayInsert, _array_insert_sql],
-    // py:1611 [exp.ArrayPosition, lambda] — blocked, needs `zero_based` arg semantics not yet checked against a base method this pass touches
+    // py:1611 `ArrayPosition`
+    [
+      exp.ArrayPosition,
+      (self, e) => e.args.zero_based
+        ? self.sql(new exp.Sub({ this: new exp.ArrayPosition({ this: e.this, expression: e.expression }), expression: exp.Literal.number(1) }))
+        : self.func("ARRAY_POSITION", e.this, e.expression),
+    ],
     [exp.ArrayRemoveAt, _array_remove_at_sql],
-    // py:1622 [exp.ArrayRemove, remove_from_array_using_filter] — blocked, dialect.js does not yet export `remove_from_array_using_filter`
+    // py:1622 `ArrayRemove`
+    [exp.ArrayRemove, remove_from_array_using_filter],
     [exp.ArraySort, _array_sort_sql],
     // py:2652 `sortarray_sql` — a `*_sql` METHOD override upstream, not a TRANSFORMS
     // lambda, so it sits outside this file's py:1590-1814 anchor range; ported here as
@@ -858,18 +1636,25 @@ export class DuckDBGenerator extends Generator {
     [exp.ArraySum, rename_func("LIST_SUM")],
     [exp.ArrayMax, rename_func("LIST_MAX")],
     [exp.ArrayMin, rename_func("LIST_MIN")],
-    // py:1628-1629 [exp.Base64DecodeBinary/String, lambda] — blocked, needs this file's own `_base64_decode_sql`
-    // py:1630 [exp.BitwiseAnd, lambda self._bitwise_op] — blocked, `_bitwise_op` is a DuckDBGenerator method not ported this pass
-    // py:1631 [exp.BitwiseAndAgg, _bitwise_agg_sql] — blocked, 33-line local helper out of scope this pass
+    // py:1628-1629 `Base64DecodeBinary`/`Base64DecodeString`
+    [exp.Base64DecodeBinary, (self, e) => _base64_decode_sql(self, e, false)],
+    [exp.Base64DecodeString, (self, e) => _base64_decode_sql(self, e, true)],
+    // py:1630 `BitwiseAnd`
+    [exp.BitwiseAnd, (self, e) => self._bitwise_op(e, "&")],
+    [exp.BitwiseAndAgg, _bitwise_agg_sql],
     [exp.BitwiseCount, rename_func("BIT_COUNT")],
-    // py:1633 [exp.BitwiseLeftShift, _bitshift_sql] — blocked, 36-line local helper out of scope this pass
-    // py:1634 [exp.BitwiseOr, lambda self._bitwise_op] — blocked, same as BitwiseAnd above
-    // py:1635 [exp.BitwiseOrAgg, _bitwise_agg_sql] — blocked, same as BitwiseAndAgg above
-    // py:1636 [exp.BitwiseRightShift, _bitshift_sql] — blocked, same as BitwiseLeftShift above
-    // py:1637 [exp.BitwiseXorAgg, _bitwise_agg_sql] — blocked, same as BitwiseAndAgg above
+    // py:1633 `BitwiseLeftShift`
+    [exp.BitwiseLeftShift, _bitshift_sql],
+    // py:1634 `BitwiseOr`
+    [exp.BitwiseOr, (self, e) => self._bitwise_op(e, "|")],
+    [exp.BitwiseOrAgg, _bitwise_agg_sql],
+    // py:1636 `BitwiseRightShift`
+    [exp.BitwiseRightShift, _bitshift_sql],
+    [exp.BitwiseXorAgg, _bitwise_agg_sql],
     [exp.BoolxorAgg, _boolxor_agg_sql],
     [exp.CommentColumnConstraint, no_comment_column_constraint_sql],
-    // py:1639 [exp.Corr, lambda self._corr_sql] — blocked, `_corr_sql` is a DuckDBGenerator method not ported this pass
+    // py:1639 `Corr`
+    [exp.Corr, (self, e) => self._corr_sql(e)],
     [exp.CosineDistance, rename_func("LIST_COSINE_DISTANCE")],
     [exp.CurrentTime, () => "CURRENT_TIME"],
     [exp.CurrentSchemas, (self, e) => self.func("current_schemas", e.this || exp.true_())],
@@ -895,44 +1680,66 @@ export class DuckDBGenerator extends Generator {
       (self, e) => (e.args.abbreviated ? self.func("STRFTIME", e.this, exp.Literal.string("%b")) : self.func("MONTHNAME", e.this)),
     ],
     [exp.DataType, _datatype_sql],
-    // py:1669 [exp.Date, _date_sql] — blocked, local helper out of scope this pass
+    // py:1669 `Date`
+    [exp.Date, _date_sql],
     [exp.DateAdd, _date_delta_to_binary_interval_op()],
     [exp.DateFromParts, _date_from_parts_sql],
     [exp.DateSub, _date_delta_to_binary_interval_op()],
     [exp.DateDiff, _date_diff_sql],
     [exp.DateStrToDate, datestrtodate_sql],
-    // py:1675 [exp.Datetime, no_datetime_sql] — blocked, needs the unported `TIMEZONES` set
+    // py:1675 `Datetime`
+    [exp.Datetime, no_datetime_sql],
     [exp.DatetimeDiff, _date_diff_sql],
     [exp.DatetimeSub, _date_delta_to_binary_interval_op()],
     [exp.DatetimeAdd, _date_delta_to_binary_interval_op()],
-    // py:1679-1681 [exp.DateToDi, lambda] — skipped, low value (DI = Julian "date-as-int" legacy format)
-    // py:1682-1683 [exp.Decode, exp.HexDecodeString] — blocked, dialect.js does not yet export `encode_decode_sql`
-    // py:1684-1686 [exp.DiToDate, lambda] — skipped, pairs with the excluded DateToDi above
-    // py:1687 [exp.Encode, lambda] — blocked, same as Decode above
+    // py:1679-1681 `DateToDi`
+    [exp.DateToDi, (self, e) => `CAST(STRFTIME(${self.sql(e, "this")}, ${self.dialect.DATEINT_FORMAT}) AS INT)`],
+    // py:1682 `Decode`
+    [exp.Decode, (self, e) => encode_decode_sql(self, e, "DECODE", false)],
+    // py:1683 `HexDecodeString`
+    [exp.HexDecodeString, (self, e) => self.sql(new exp.Decode({ this: new exp.Unhex({ this: e.this }) }))],
+    // py:1684-1686 `DiToDate`
+    [exp.DiToDate, (self, e) => `CAST(STRPTIME(CAST(${self.sql(e, "this")} AS TEXT), ${self.dialect.DATEINT_FORMAT}) AS DATE)`],
+    // py:1687 `Encode`
+    [exp.Encode, (self, e) => encode_decode_sql(self, e, "ENCODE", false)],
     [
       exp.EqualNull,
       (self, e) => self.sql(new exp.NullSafeEQ({ this: e.this, expression: e.expression })),
     ],
     [exp.EuclideanDistance, rename_func("LIST_DISTANCE")],
-    // py:1692,1694 [exp.GenerateDateArray/TimestampArray, _generate_datetime_array_sql]
-    // — still blocked, the local helper is out of scope this pass.
+    // py:1692,1694 `GenerateDateArray`/`GenerateTimestampArray`
+    [exp.GenerateDateArray, _generate_datetime_array_sql],
+    [exp.GenerateTimestampArray, _generate_datetime_array_sql],
     // py:1693 [exp.GenerateSeries, generate_series_sql("GENERATE_SERIES", "RANGE")] —
     // unblocked: `generate_series_sql` (src/dialects/dialect.js:1279) was already a
     // real export, just not imported here (same R22 staleness as the `exp.Array` entry
     // above).
     [exp.GenerateSeries, generate_series_sql("GENERATE_SERIES", "RANGE")],
-    // py:1695 [exp.Getbit, getbit_sql] — blocked, dialect.js does not yet export `getbit_sql`
+    // py:1695 `Getbit`
+    [exp.Getbit, getbit_sql],
     [exp.GroupConcat, (self, e) => groupconcat_sql(self, e, { within_group: false })],
     [exp.Explode, rename_func("UNNEST")],
     [exp.IcebergProperty, () => ""],
     [exp.IntDiv, (self, e) => self.binary(e, "//")],
     [exp.IsInf, rename_func("ISINF")],
     [exp.IsNan, rename_func("ISNAN")],
-    // py:1702-1707 [exp.IsNullValue, exp.IsArray] — skipped, low value (Snowflake-only JSON predicate sugar)
-    // py:1708-1709 [exp.Ceil, exp.Floor, _ceil_floor] — blocked, chains through the unported `_scale_rounding_sql`
+    // py:1702 `IsNullValue`
+    [exp.IsNullValue, (self, e) => self.sql(exp.func("JSON_TYPE", e.this).eq(exp.Literal.string("NULL")))],
+    // py:1705 `IsArray`
+    [exp.IsArray, (self, e) => self.sql(exp.func("JSON_TYPE", e.this).eq(exp.Literal.string("ARRAY")))],
+    // py:1708-1709 `Ceil`/`Floor`
+    [exp.Ceil, _ceil_floor],
+    [exp.Floor, _ceil_floor],
     // and base `round_sql`/`ceil_floor`
     [exp.JSONBExists, rename_func("JSON_EXISTS")],
-    // py:1711-1714 [exp.JSONExtract*, exp.JSONFormat, exp.JSONValueArray] — blocked, local helpers out of scope
+    // py:1711 `JSONExtract`
+    [exp.JSONExtract, _arrow_json_extract_sql],
+    // py:1712 `JSONExtractArray`
+    [exp.JSONExtractArray, _json_extract_value_array_sql],
+    // py:1713 `JSONFormat`
+    [exp.JSONFormat, _json_format_sql],
+    // py:1714 `JSONValueArray`
+    [exp.JSONValueArray, _json_extract_value_array_sql],
     [exp.Lateral, _explode_to_unnest_sql],
     [exp.LogicalOr, (self, e) => self.func("BOOL_OR", _cast_to_boolean(e.this))],
     [exp.LogicalAnd, (self, e) => self.func("BOOL_AND", _cast_to_boolean(e.this))],
@@ -944,9 +1751,18 @@ export class DuckDBGenerator extends Generator {
     // py:1725 [exp.BoolxorAgg, _boolxor_agg_sql] — dup of the real entry already wired above (py:1261)
     // py:1726 [exp.MakeInterval, lambda] wraps `no_make_interval_sql` directly — real, wired below
     [exp.MakeInterval, (self, e) => no_make_interval_sql(self, e, " ")],
-    // py:1727-1732 [exp.Initcap, exp.MD5Digest, exp.SHA*] — blocked, local helpers out of scope this pass
-    // py:1733-1734 [exp.MonthsBetween, exp.NextDay, exp.PreviousDay] — blocked, dialect.js `months_between_sql` not
-    // yet checked against this file's needs; `_day_navigation_sql` (68 lines) out of scope this pass
+    // py:1727 [exp.Initcap, _initcap_sql] — blocked, local helper out of scope this pass
+    // py:1728 `MD5Digest`
+    [exp.MD5Digest, (self, e) => self.func("UNHEX", self.func("MD5", e.this))],
+    // py:1729-1732 `SHA`/`SHA1Digest`/`SHA2`/`SHA2Digest`
+    [exp.SHA, (self, e) => _sha_sql(self, e, "SHA1")],
+    [exp.SHA1Digest, (self, e) => _sha_sql(self, e, "SHA1", true)],
+    [exp.SHA2, (self, e) => _sha_sql(self, e, "SHA256")],
+    [exp.SHA2Digest, (self, e) => _sha_sql(self, e, "SHA256", true)],
+    // py:1733-1734 `MonthsBetween`/`NextDay`/`PreviousDay`
+    [exp.MonthsBetween, months_between_sql],
+    [exp.NextDay, _day_navigation_sql],
+    [exp.PreviousDay, _day_navigation_sql],
     [exp.PercentileCont, rename_func("QUANTILE_CONT")],
     [exp.PercentileDisc, rename_func("QUANTILE_DISC")],
     // py:1739 [exp.Pivot, transforms.preprocess([transforms.unqualify_columns])] — real now (AIR-2194,
@@ -957,18 +1773,23 @@ export class DuckDBGenerator extends Generator {
     // directly against that fixture, not merely transliterated on faith.
     [exp.Pivot, preprocess([unqualify_columns])],
     [exp.RegexpSplit, rename_func("STR_SPLIT_REGEX")],
-    // py:1741-1743,1745-1746 [exp.RegexpILike, exp.RegrValx, exp.RegrValy] — blocked, local helpers out of scope
+    // py:1741 `RegexpILike`
+    [exp.RegexpILike, (self, e) => self.func("REGEXP_MATCHES", e.this, e.expression, exp.Literal.string("i"))],
+    // py:1745-1746 `RegrValx`/`RegrValy`
+    [exp.RegrValx, _regr_val_sql],
+    [exp.RegrValy, _regr_val_sql],
     // py:1747-1748 [exp.Return, exp.ReturnsProperty] — real, wired below
     [exp.Return, (self, e) => self.sql(e, "this")],
     [exp.ReturnsProperty, (self, e) => (e.this instanceof exp.Schema ? "TABLE" : "")],
-    // py:1749-1751 [exp.StrToUnix, lambda] — skipped, chains through DuckDB's own `format_time` handling not
-    // separately verified this pass
+    // py:1749-1751 `StrToUnix`
+    [exp.StrToUnix, (self, e) => self.func("EPOCH", self.func("STRPTIME", e.this, self.format_time(e)))],
     [exp.Struct, _struct_sql],
     [exp.Transform, rename_func("LIST_TRANSFORM")],
     [exp.TimeAdd, _date_delta_to_binary_interval_op()],
     [exp.TimeSub, _date_delta_to_binary_interval_op()],
     [exp.Time, no_time_sql],
-    // py:1757 [exp.TimeDiff, _timediff_sql] — blocked, BigQuery-specific local helper out of scope this pass
+    // py:1757 `TimeDiff`
+    [exp.TimeDiff, _timediff_sql],
     [exp.Timestamp, no_timestamp_sql],
     [exp.TimestampAdd, _date_delta_to_binary_interval_op()],
     [
@@ -991,7 +1812,8 @@ export class DuckDBGenerator extends Generator {
       (self, e) => self.func("EPOCH", exp.cast(e.this, exp.DType.TIMESTAMP)),
     ],
     [exp.TimeToStr, (self, e) => self.func("STRFTIME", e.this, self.format_time(e))],
-    // py:1770 [exp.ToBoolean, _to_boolean_sql] — blocked, 54-line local helper out of scope this pass
+    // py:1770 `ToBoolean`
+    [exp.ToBoolean, _to_boolean_sql],
     [
       exp.ToVariant,
       (self, e) => self.sql(exp.cast(e.this, exp.DataType.build("VARIANT", { dialect: "duckdb" }))),
@@ -1028,7 +1850,8 @@ export class DuckDBGenerator extends Generator {
       exp.UnixToStr,
       (self, e) => self.func("STRFTIME", self.func("TO_TIMESTAMP", e.this), self.format_time(e)),
     ],
-    // py:1793 [exp.UnixToTime, _unix_to_time_sql] — blocked, 33-line local helper out of scope this pass
+    // py:1793 `UnixToTime`
+    [exp.UnixToTime, _unix_to_time_sql],
     [
       exp.UnixToTimeStr,
       (self, e) => `CAST(TO_TIMESTAMP(${self.sql(e, "this")}) AS TEXT)`,
@@ -1052,7 +1875,8 @@ export class DuckDBGenerator extends Generator {
     [exp.JSONObjectAgg, rename_func("JSON_GROUP_OBJECT")],
     [exp.JSONBObjectAgg, rename_func("JSON_GROUP_OBJECT")],
     [exp.DateBin, rename_func("TIME_BUCKET")],
-    // py:1813 [exp.LastDay, _last_day_sql] — blocked, 57-line local helper out of scope this pass
+    // py:1813 `LastDay`
+    [exp.LastDay, _last_day_sql],
   ]);
 
   /** py:1816 */
@@ -1085,6 +1909,13 @@ export class DuckDBGenerator extends Generator {
     [exp.DType.TIMESTAMP_MS, "TIMESTAMP_MS"],
     [exp.DType.TIMESTAMP_NS, "TIMESTAMP_NS"],
     [exp.DType.BIGDECIMAL, "DECIMAL"],
+  ]);
+
+  /** py:1846 `TYPE_PARAM_SETTINGS`. */
+  static TYPE_PARAM_SETTINGS = new Map([
+    ...Generator.TYPE_PARAM_SETTINGS,
+    [exp.DType.BIGDECIMAL, [[38, 5], [38, 38]]],
+    [exp.DType.DECFLOAT, [[38, 5], [38, 38]]],
   ]);
 
   /**
@@ -1310,6 +2141,136 @@ export class DuckDBGenerator extends Generator {
     return super.unnest_sql(expression);
   }
 
+  /** py:4150 `_regexp_extract_sql(self, expression)`. */
+  _regexp_extract_sql(expression) {
+    let this_ = expression.this;
+    let group = expression.args.group;
+    let params = expression.args.parameters;
+    const position = expression.args.position;
+    const occurrence = expression.args.occurrence;
+    const null_if_pos_overflow = expression.args.null_if_pos_overflow;
+
+    // Handle Snowflake's 'e' flag: it enables capture group extraction
+    // In DuckDB, this is controlled by the group parameter directly
+    if (params && params.isString && params.name.includes("e")) {
+      params = exp.Literal.string(params.name.replace(/e/g, ""));
+    }
+
+    const validated_flags = this._validate_regexp_flags(params, "cims");
+
+    // Strip default group when no following params (DuckDB default is same as group=0)
+    if (!validated_flags && group && group.name === String(this.dialect.REGEXP_EXTRACT_DEFAULT_GROUP)) {
+      group = null;
+    }
+
+    const flags_expr = validated_flags ? exp.Literal.string(validated_flags) : null;
+
+    // use substring to handle position argument
+    if (position && (!position.isInt || Number(position.toPy()) > 1)) {
+      this_ = new exp.Substring({ this: this_, start: position });
+
+      if (null_if_pos_overflow) {
+        this_ = new exp.Nullif({ this: this_, expression: exp.Literal.string("") });
+      }
+    }
+
+    const is_extract_all = expression instanceof exp.RegexpExtractAll;
+    const non_single_occurrence = occurrence && (!occurrence.isInt || Number(occurrence.toPy()) > 1);
+
+    const name = is_extract_all || non_single_occurrence ? "REGEXP_EXTRACT_ALL" : "REGEXP_EXTRACT";
+
+    let result = new exp.Anonymous({ this: name, expressions: [this_, expression.expression, group, flags_expr] });
+
+    // Array slicing for REGEXP_EXTRACT_ALL with occurrence
+    if (is_extract_all && non_single_occurrence) {
+      result = new exp.Bracket({ this: result, expressions: [new exp.Slice({ this: occurrence })] });
+    } else if (non_single_occurrence) {
+      // ARRAY_EXTRACT for REGEXP_EXTRACT with occurrence > 1
+      result = new exp.Anonymous({ this: "ARRAY_EXTRACT", expressions: [result, occurrence] });
+    }
+
+    return this.sql(result);
+  }
+
+  /** py:4203 `regexpextract_sql(self, expression)`. */
+  regexpextract_sql(expression) {
+    return this._regexp_extract_sql(expression);
+  }
+
+  /** py:4206 `regexpextractall_sql(self, expression)`. */
+  regexpextractall_sql(expression) {
+    return this._regexp_extract_sql(expression);
+  }
+
+  /** py:3329 `regexpcount_sql(self, expression)`. */
+  regexpcount_sql(expression) {
+    let this_ = expression.this;
+    let pattern = expression.expression;
+    const position = expression.args.position;
+    const parameters = expression.args.parameters;
+
+    // Validate flags - only "ims" flags are supported for embedded patterns
+    const validated_flags = this._validate_regexp_flags(parameters, "ims");
+
+    if (position) this_ = new exp.Substring({ this: this_, start: position });
+
+    // Embed flags in pattern (REGEXP_EXTRACT_ALL doesn't support flags argument)
+    if (validated_flags) {
+      pattern = new exp.Concat({ expressions: [exp.Literal.string(`(?${validated_flags})`), pattern] });
+    }
+
+    // Handle empty pattern: Snowflake returns 0, DuckDB would match between every character
+    const result = exp.case()
+      .when(new exp.EQ({ this: pattern, expression: exp.Literal.string("") }), exp.Literal.number(0))
+      .else_(new exp.Length({ this: new exp.Anonymous({ this: "REGEXP_EXTRACT_ALL", expressions: [this_, pattern] }) }));
+
+    return this.sql(result);
+  }
+
+  /** py:3361 `regexpreplace_sql(self, expression)`. */
+  regexpreplace_sql(expression) {
+    let subject = expression.this;
+    const pattern = expression.expression;
+    const replacement = expression.args.replacement || exp.Literal.string("");
+    const position = expression.args.position;
+    let occurrence = expression.args.occurrence;
+    const modifiers = expression.args.modifiers;
+
+    let validated_flags = this._validate_regexp_flags(modifiers, "cimsg") || "";
+
+    // Handle occurrence (only literals supported)
+    if (occurrence && !occurrence.isInt) {
+      this.unsupported("REGEXP_REPLACE with non-literal occurrence");
+    } else {
+      occurrence = occurrence && occurrence.isInt ? Number(occurrence.toPy()) : 0;
+      if (occurrence > 1) {
+        this.unsupported(`REGEXP_REPLACE occurrence=${occurrence} not supported`);
+      } else if (occurrence === 0 && !validated_flags.includes("g") && !expression.args.single_replace) {
+        // flag duckdb to do either all or none, single_replace check is for duckdb round trip
+        validated_flags += "g";
+      }
+    }
+
+    // Handle position (only literals supported)
+    let prefix = null;
+    if (position && !position.isInt) {
+      this.unsupported("REGEXP_REPLACE with non-literal position");
+    } else if (position && position.isInt && Number(position.toPy()) > 1) {
+      const pos = Number(position.toPy());
+      prefix = new exp.Substring({ this: subject, start: exp.Literal.number(1), length: exp.Literal.number(pos - 1) });
+      subject = new exp.Substring({ this: subject, start: exp.Literal.number(pos) });
+    }
+
+    let result = new exp.Anonymous({
+      this: "REGEXP_REPLACE",
+      expressions: [subject, pattern, replacement, validated_flags ? exp.Literal.string(validated_flags) : null],
+    });
+
+    if (prefix) result = new exp.Concat({ expressions: [prefix, result] });
+
+    return this.sql(result);
+  }
+
   /**
    * py:3299 `_validate_regexp_flags(self, flags, supported_flags)`.
    *
@@ -1350,5 +2311,1557 @@ export class DuckDBGenerator extends Generator {
     }
 
     return this.func("REGEXP_MATCHES", this_, pattern, flag);
+  }
+
+  /** py:2770 `_strptime_default_year(self, expression)`. */
+  _strptime_default_year(expression) {
+    let value = expression.this;
+    let formatted_time = this.format_time(expression);
+
+    const default_year = expression.args.default_year;
+    if (default_year) {
+      value = new exp.DPipe({ this: exp.Literal.string(`${default_year.name} `), expression: value });
+      formatted_time = new exp.DPipe({ this: exp.Literal.string("%Y "), expression: formatted_time });
+    }
+
+    return [value, formatted_time];
+  }
+
+  /** py:2736 `strtotime_sql(self, expression)`. */
+  strtotime_sql(expression) {
+    const target_type = expression.args.target_type;
+    const needs_tz = target_type && (target_type.this === exp.DType.TIMESTAMPLTZ || target_type.this === exp.DType.TIMESTAMPTZ);
+
+    const [value, formatted_time] = this._strptime_default_year(expression);
+
+    if (expression.args.safe) {
+      const cast_type = needs_tz ? exp.DType.TIMESTAMPTZ : exp.DType.TIMESTAMP;
+      return this.sql(exp.cast(this.func("TRY_STRPTIME", value, formatted_time), cast_type));
+    }
+
+    const base_sql = this.func("STRPTIME", value, formatted_time);
+    if (needs_tz) return this.sql(exp.cast(base_sql, new exp.DataType({ this: exp.DType.TIMESTAMPTZ })));
+    return base_sql;
+  }
+
+  /** py:2760 `strtodate_sql(self, expression)`. */
+  strtodate_sql(expression) {
+    const [value, formatted_time] = this._strptime_default_year(expression);
+    const function_name = expression.args.safe ? "TRY_STRPTIME" : "STRPTIME";
+    return this.sql(
+      exp.cast(this.func(function_name, value, formatted_time), new exp.DataType({ this: exp.DType.DATE }))
+    );
+  }
+
+  /** py:2782 `parsedatetime_sql(self, expression)`. */
+  parsedatetime_sql(expression) {
+    const [value, formatted_time] = this._strptime_default_year(expression);
+    return this.func("STRPTIME", value, formatted_time);
+  }
+
+  /** py:2786 `parsetime_sql(self, expression)`. */
+  parsetime_sql(expression) {
+    const formatted_time = this.format_time(expression);
+    return this.sql(
+      exp.cast(this.func("STRPTIME", expression.this, formatted_time), new exp.DataType({ this: exp.DType.TIME }))
+    );
+  }
+
+  /** py:2795 `tsordstotime_sql(self, expression)`. */
+  tsordstotime_sql(expression) {
+    const this_ = expression.this;
+    const time_format = this.format_time(expression);
+    const safe = expression.args.safe;
+    const time_type = exp.DataType.fromStr("TIME", { dialect: "duckdb" });
+    const cast_expr = safe ? exp.TryCast : exp.Cast;
+
+    if (time_format) {
+      const func_name = safe ? "TRY_STRPTIME" : "STRPTIME";
+      const strptime = new exp.Anonymous({ this: func_name, expressions: [this_, time_format] });
+      return this.sql(new cast_expr({ this: strptime, to: time_type }));
+    }
+
+    if (this_ instanceof exp.TsOrDsToTime || this_.isType(exp.DType.TIME)) return this.sql(this_);
+
+    return this.sql(new cast_expr({ this: this_, to: time_type }));
+  }
+
+  /**
+   * py:2943 `timefromparts_sql(self, expression)`.
+   *
+   * The upstream `try`/`except ValueError` around `to_py()` is unreachable here: the
+   * `is_int` check just above it already guarantees `toPy()` succeeds.
+   */
+  timefromparts_sql(expression) {
+    const nano = expression.args.nano;
+    const overflow = expression.args.overflow;
+
+    // Snowflake's TIME_FROM_PARTS supports overflow
+    if (overflow) {
+      const hour = expression.args.hour;
+      const minute = expression.args.min;
+      let sec = expression.args.sec;
+
+      // Check if values are within normal ranges - use MAKE_TIME for efficiency
+      if (!nano && [hour, minute, sec].every((arg) => arg.isInt)) {
+        const h_val = Number(hour.toPy());
+        const m_val = Number(minute.toPy());
+        const s_val = Number(sec.toPy());
+        if (h_val >= 0 && h_val <= 23 && m_val >= 0 && m_val <= 59 && s_val >= 0 && s_val <= 59) {
+          return rename_func("MAKE_TIME")(this, expression);
+        }
+      }
+
+      // Overflow or nanoseconds detected - use INTERVAL arithmetic
+      if (nano) sec = sec.add(nano.pop().div(exp.Literal.number("1000000000.0")));
+
+      const total_seconds = hour.mul(exp.Literal.number(3600)).add(minute.mul(exp.Literal.number(60))).add(sec);
+
+      return this.sql(
+        new exp.Add({
+          this: new exp.Cast({ this: exp.Literal.string("00:00:00"), to: exp.DType.TIME.intoExpr() }),
+          expression: new exp.Interval({ this: total_seconds, unit: exp.var("SECOND") }),
+        }),
+      );
+    }
+
+    // Default: MAKE_TIME
+    if (nano) {
+      expression.set("sec", expression.args.sec.add(nano.pop().div(exp.Literal.number("1000000000.0"))));
+    }
+
+    return rename_func("MAKE_TIME")(this, expression);
+  }
+
+  /** py:3052 `timestampfromparts_sql(self, expression)`. */
+  timestampfromparts_sql(expression) {
+    // Check if this is the date/time expression form: TIMESTAMP_FROM_PARTS(date_expr, time_expr)
+    const date_expr = expression.this;
+    const time_expr = expression.expression;
+
+    if (date_expr !== null && date_expr !== undefined && time_expr !== null && time_expr !== undefined) {
+      // In DuckDB, DATE + TIME produces TIMESTAMP
+      return this.sql(new exp.Add({ this: date_expr, expression: time_expr }));
+    }
+
+    // Component-based form: TIMESTAMP_FROM_PARTS(year, month, day, hour, minute, second, ...)
+    let sec = expression.args.sec;
+    if (sec === null || sec === undefined) {
+      // This shouldn't happen with valid input, but handle gracefully
+      return rename_func("MAKE_TIMESTAMP")(this, expression);
+    }
+
+    const milli = expression.args.milli;
+    if (milli !== null && milli !== undefined) sec = sec.add(milli.pop().div(exp.Literal.number("1000.0")));
+
+    const nano = expression.args.nano;
+    if (nano !== null && nano !== undefined) sec = sec.add(nano.pop().div(exp.Literal.number("1000000000.0")));
+
+    if (milli || nano) expression.set("sec", sec);
+
+    return rename_func("MAKE_TIMESTAMP")(this, expression);
+  }
+
+  /** py:3081 `timestampltzfromparts_sql(self, expression)`. */
+  timestampltzfromparts_sql(expression) {
+    const nano = expression.args.nano;
+    if (nano) {
+      this.unsupported(
+        `Argument 'nano' is not supported for expression '${expression.constructor.name}' when targeting ${this.dialect.constructor.name}.`,
+      );
+      nano.pop();
+    }
+
+    const timestamp = rename_func("MAKE_TIMESTAMP")(this, expression);
+    return `CAST(${timestamp} AS TIMESTAMPTZ)`;
+  }
+
+  /** py:3090 `timestamptzfromparts_sql(self, expression)`. */
+  timestamptzfromparts_sql(expression) {
+    // Extract zone before popping
+    let zone = expression.args.zone;
+    // Pop zone and nano so rename_func only passes args that MAKE_TIMESTAMP accepts
+    if (zone) zone = zone.pop();
+
+    const nano = expression.args.nano;
+    if (nano) {
+      this.unsupported(
+        `Argument 'nano' is not supported for expression '${expression.constructor.name}' when targeting ${this.dialect.constructor.name}.`,
+      );
+      nano.pop();
+    }
+
+    const timestamp = rename_func("MAKE_TIMESTAMP")(this, expression);
+
+    if (zone) {
+      // Use AT TIME ZONE to apply the explicit timezone
+      return `${timestamp} AT TIME ZONE ${this.sql(zone)}`;
+    }
+
+    return timestamp;
+  }
+
+  /** py:3492 `arrayuniqueagg_sql(self, expression)`. */
+  arrayuniqueagg_sql(expression) {
+    return this.sql(
+      new exp.Filter({
+        this: exp.func("LIST", new exp.Distinct({ expressions: [expression.this] })),
+        expression: new exp.Where({ this: expression.this.copy().is_(exp.null_()).not_() }),
+      }),
+    );
+  }
+
+  /** py:3500 `arrayconcatagg_sql(self, expression)`. */
+  arrayconcatagg_sql(expression) {
+    let this_ = expression.this;
+
+    if (this_ instanceof exp.Limit) {
+      this.unsupported("LIMIT in ARRAY_CONCAT_AGG cannot be transpiled to DuckDB");
+      this_ = this_.this;
+    }
+
+    const inner = this_ instanceof exp.Order ? this_.this : this_;
+
+    return this.func(
+      "FLATTEN",
+      new exp.Filter({
+        this: new exp.ArrayAgg({ this: this_ }),
+        expression: new exp.Where({ this: inner.copy().is_(exp.null_()).not_() }),
+      }),
+    );
+  }
+
+  /** py:3521 `arraydistinct_sql(self, expression)`. */
+  arraydistinct_sql(expression) {
+    const arr = expression.this;
+    const func = this.func("LIST_DISTINCT", arr);
+
+    if (expression.args.check_null) {
+      const add_null_to_array = exp.func(
+        "LIST_APPEND",
+        exp.func("LIST_DISTINCT", new exp.ArrayCompact({ this: arr })),
+        new exp.Null(),
+      );
+      return this.sql(
+        new exp.If({
+          this: new exp.NEQ({ this: new exp.ArraySize({ this: arr }), expression: exp.func("LIST_COUNT", arr) }),
+          true: add_null_to_array,
+          false: func,
+        }),
+      );
+    }
+
+    return func;
+  }
+
+  /** py:4093 `arraytostring_sql(self, expression)`. */
+  arraytostring_sql(expression) {
+    const null_ = expression.args.null;
+
+    if (expression.args.null_is_empty) {
+      const x = exp.toIdentifier("x");
+      const list_transform = new exp.Transform({
+        this: expression.this.copy(),
+        expression: new exp.Lambda({
+          this: new exp.Coalesce({ this: exp.cast(x, "TEXT"), expressions: [exp.Literal.string("")] }),
+          expressions: [x],
+        }),
+      });
+      const array_to_string = new exp.ArrayToString({ this: list_transform, expression: expression.expression });
+      if (expression.args.null_delim_is_null) {
+        return this.sql(
+          exp.case()
+            .when(expression.expression.copy().is_(exp.null_()), exp.null_())
+            .else_(array_to_string),
+        );
+      }
+      return this.sql(array_to_string);
+    }
+
+    if (null_) {
+      const x = exp.toIdentifier("x");
+      return this.sql(
+        new exp.ArrayToString({
+          this: new exp.Transform({
+            this: expression.this,
+            expression: new exp.Lambda({ this: new exp.Coalesce({ this: x, expressions: [null_] }), expressions: [x] }),
+          }),
+          expression: expression.expression,
+        }),
+      );
+    }
+
+    return this.func("ARRAY_TO_STRING", expression.this, expression.expression);
+  }
+
+  /** py:2692 `strposition_sql(self, expression)`. */
+  strposition_sql(expression) {
+    const this_ = expression.this;
+    const substr = expression.args.substr;
+    let position = expression.args.position;
+
+    // For BINARY/BLOB: DuckDB's STRPOS doesn't support BLOB types
+    // Convert to HEX strings, use STRPOS, then convert hex position to byte position
+    if (_is_binary(this_)) {
+      // Build expression: STRPOS(HEX(haystack), HEX(needle))
+      const hex_strpos = new exp.StrPosition({
+        this: new exp.Hex({ this: this_ }),
+        substr: new exp.Hex({ this: substr }),
+      });
+
+      return this.sql(exp.cast(hex_strpos.add(1).div(2), exp.DType.INT));
+    }
+
+    // For VARCHAR: handle clamp_position
+    if (expression.args.clamp_position && position) {
+      expression = expression.copy();
+      expression.set(
+        "position",
+        new exp.If({
+          this: new exp.LTE({ this: position, expression: exp.Literal.number(0) }),
+          true: exp.Literal.number(1),
+          false: position.copy(),
+        }),
+      );
+    }
+
+    return strposition_sql(this, expression);
+  }
+
+  /** py:3108 `tablesample_sql(self, expression, tablesample_keyword=None)`. */
+  tablesample_sql(expression, tablesample_keyword = null) {
+    if (!(expression.parent instanceof exp.Select)) {
+      // This sample clause only applies to a single source, not the entire resulting relation
+      tablesample_keyword = "TABLESAMPLE";
+    }
+
+    if (expression.args.size) {
+      const method = expression.args.method;
+      if (method && method.name.toUpperCase() !== "RESERVOIR") {
+        this.unsupported(
+          `Sampling method ${method} is not supported with a discrete sample count, defaulting to reservoir sampling`,
+        );
+        expression.set("method", exp.var("RESERVOIR"));
+      }
+    }
+
+    return super.tablesample_sql(expression, tablesample_keyword);
+  }
+
+  /**
+   * py:2317 `timeslice_sql(self, expression)`.
+   *
+   * Transform Snowflake's TIME_SLICE to DuckDB's time_bucket.
+   *
+   * Snowflake: TIME_SLICE(date_expr, slice_length, 'UNIT' [, 'START'|'END'])
+   * DuckDB:    time_bucket(INTERVAL 'slice_length' UNIT, date_expr)
+   *
+   * For 'END' kind, add the interval to get the end of the slice.
+   * For DATE type with 'END', cast result back to DATE to preserve type.
+   */
+  timeslice_sql(expression) {
+    const date_expr = expression.this;
+    const slice_length = expression.expression;
+    const unit = expression.args.unit;
+    const kind = expression.text("kind").toUpperCase();
+
+    // Create INTERVAL expression: INTERVAL 'N' UNIT
+    const interval_expr = new exp.Interval({ this: slice_length, unit });
+
+    // Create base time_bucket expression
+    const time_bucket_expr = exp.func("time_bucket", interval_expr, date_expr);
+
+    // Check if we need the end of the slice (default is start)
+    if (kind !== "END") {
+      // For 'START', return time_bucket directly
+      return this.sql(time_bucket_expr);
+    }
+
+    // For 'END', add the interval to get end of slice
+    const add_expr = new exp.Add({ this: time_bucket_expr, expression: interval_expr.copy() });
+
+    // If input is DATE type, cast result back to DATE to preserve type
+    // DuckDB converts DATE to TIMESTAMP when adding intervals
+    if (date_expr.isType(exp.DType.DATE)) {
+      return this.sql(exp.cast(add_expr, exp.DType.DATE));
+    }
+
+    return this.sql(add_expr);
+  }
+
+  /**
+   * py:2353 `bitmapbucketnumber_sql(self, expression)`.
+   *
+   * Transpile BITMAP_BUCKET_NUMBER function from Snowflake to DuckDB equivalent.
+   *
+   * Snowflake's BITMAP_BUCKET_NUMBER returns a 1-based bucket identifier where:
+   * - Each bucket covers 32,768 values
+   * - Bucket numbering starts at 1
+   * - Formula: ((value - 1) // 32768) + 1 for positive values
+   *
+   * For non-positive values (0 and negative), we use value // 32768 to avoid
+   * producing bucket 0 or positive bucket IDs for negative inputs.
+   */
+  bitmapbucketnumber_sql(expression) {
+    const value = expression.this;
+
+    const positive_formula = value.sub(exp.Literal.number(1)).floordiv(exp.Literal.number(32768)).add(exp.Literal.number(1));
+    const non_positive_formula = value.floordiv(exp.Literal.number(32768));
+
+    // CASE WHEN value > 0 THEN ((value - 1) // 32768) + 1 ELSE value // 32768 END
+    const case_expr = exp.case()
+      .when(new exp.GT({ this: value, expression: exp.Literal.number(0) }), positive_formula)
+      .else_(non_positive_formula);
+    return this.sql(case_expr);
+  }
+
+  /**
+   * py:2378 `bitmapbitposition_sql(self, expression)`.
+   *
+   * Transpile Snowflake's BITMAP_BIT_POSITION to DuckDB CASE expression.
+   *
+   * Snowflake's BITMAP_BIT_POSITION behavior:
+   * - For n <= 0: returns ABS(n) % 32768
+   * - For n > 0: returns (n - 1) % 32768 (maximum return value is 32767)
+   */
+  bitmapbitposition_sql(expression) {
+    const this_ = expression.this;
+
+    return this.sql(
+      new exp.Mod({
+        this: exp.paren(
+          new exp.If({
+            this: new exp.GT({ this: this_, expression: exp.Literal.number(0) }),
+            true: this_.sub(exp.Literal.number(1)),
+            false: new exp.Abs({ this: this_ }),
+          }),
+        ),
+        expression: MAX_BIT_POSITION,
+      }),
+    );
+  }
+
+  /** py:2860 `trunc_sql(self, expression)`. */
+  trunc_sql(expression) {
+    let decimals = expression.args.decimals;
+    if (expression.args.fractions_supported && decimals && !decimals.isType(exp.DType.INT)) {
+      decimals = exp.cast(decimals, exp.DType.INT, { dialect: "duckdb" });
+    }
+
+    return this.func("TRUNC", expression.this, decimals);
+  }
+
+  /** py:4743 `window_sql(self, expression)`. */
+  window_sql(expression) {
+    const this_ = expression.this;
+    if (this_ instanceof exp.Corr || (this_ instanceof exp.Filter && this_.this instanceof exp.Corr)) {
+      return this._corr_sql(expression);
+    }
+
+    return super.window_sql(expression);
+  }
+
+  /** py:4752 `filter_sql(self, expression)`. */
+  filter_sql(expression) {
+    if (expression.this instanceof exp.Corr) return this._corr_sql(expression);
+
+    return super.filter_sql(expression);
+  }
+
+  /** py:4758 `_corr_sql(self, expression)`. */
+  _corr_sql(expression) {
+    if (expression instanceof exp.Corr && !expression.args.null_on_zero_variance) {
+      return this.func("CORR", expression.this, expression.expression);
+    }
+
+    let corr_expr = _maybe_corr_null_to_false(expression);
+    if (corr_expr === null) {
+      if (expression instanceof exp.Window) return super.window_sql(expression);
+      if (expression instanceof exp.Filter) return super.filter_sql(expression);
+      corr_expr = expression;
+    }
+
+    return this.sql(exp.case().when(new exp.IsNan({ this: corr_expr }), exp.null_()).else_(corr_expr));
+  }
+
+  /** py:3189 `withingroup_sql(self, expression)`. */
+  withingroup_sql(expression) {
+    const func = expression.this;
+
+    // For ARRAY_AGG, DuckDB requires ORDER BY inside the function, not in WITHIN GROUP
+    // Transform: ARRAY_AGG(x) WITHIN GROUP (ORDER BY y) -> ARRAY_AGG(x ORDER BY y)
+    if (func instanceof exp.ArrayAgg) {
+      const order = expression.expression;
+      if (!(order instanceof exp.Order)) return this.sql(func);
+
+      // Save the original column for FILTER clause (before wrapping with Order)
+      const original_this = func.this;
+
+      // Move ORDER BY inside ARRAY_AGG by wrapping its argument with Order
+      // ArrayAgg.this should become Order(this=ArrayAgg.this, expressions=order.expressions)
+      func.set("this", new exp.Order({ this: func.this.copy(), expressions: order.expressions }));
+
+      // Generate the ARRAY_AGG function with ORDER BY and add FILTER clause if needed
+      // Use original_this (not the Order-wrapped version) for the FILTER condition
+      const array_agg_sql = this.function_fallback_sql(func);
+      return this._add_arrayagg_null_filter(array_agg_sql, func, original_this);
+    }
+
+    // For other functions (like PERCENTILES), use existing logic
+    const expression_sql = this.sql(expression, "expression");
+
+    if (func instanceof exp.PercentileCont || func instanceof exp.PercentileDisc) {
+      // Make the order key the first arg and slide the fraction to the right
+      // https://duckdb.org/docs/sql/aggregates#ordered-set-aggregate-functions
+      const order_col = expression.find(exp.Ordered);
+      if (order_col) {
+        func.set("expression", func.this);
+        func.set("this", order_col.this);
+      }
+    }
+
+    const this_ = pyRstrip(this.sql(expression, "this"), ")");
+
+    return `${this_}${expression_sql})`;
+  }
+
+  /**
+   * py:2472 `randstr_sql(self, expression)`.
+   *
+   * Transpile Snowflake's RANDSTR to DuckDB equivalent using deterministic hash-based random.
+   * Uses a pre-parsed template with placeholders replaced by expression nodes.
+   *
+   * RANDSTR(length, generator) generates a random string of specified length.
+   * - With numeric seed: Use HASH(i + seed) for deterministic output (same seed = same result)
+   * - With RANDOM(): Use RANDOM() in the hash for non-deterministic output
+   * - No generator: Use default seed value
+   */
+  randstr_sql(expression) {
+    const length = expression.this;
+    const generator = expression.args.generator;
+
+    let seed_value;
+    if (generator) {
+      if (generator instanceof exp.Rand) {
+        // If it's RANDOM(), use its seed if available, otherwise use RANDOM() itself
+        seed_value = generator.this || generator;
+      } else {
+        // Const/int or other expression - use as seed directly
+        seed_value = generator;
+      }
+    } else {
+      // No generator specified, use default seed (arbitrary but deterministic)
+      seed_value = exp.Literal.number(RANDSTR_SEED);
+    }
+
+    const replacements = { seed: seed_value, length };
+    return `(${this.sql(exp.replacePlaceholders(RANDSTR_TEMPLATE, replacements))})`;
+  }
+
+  /**
+   * py:2510 `zipf_sql(self, expression)`.
+   *
+   * Transpile Snowflake's ZIPF to DuckDB using CDF-based inverse sampling.
+   * Uses a pre-parsed template with placeholders replaced by expression nodes.
+   */
+  zipf_sql(expression) {
+    const s = expression.this;
+    const n = expression.args.elementcount;
+    const gen = expression.args.gen;
+
+    let random_expr;
+    if (!(gen instanceof exp.Rand)) {
+      // (ABS(HASH(seed)) % 1000000) / 1000000.0
+      random_expr = new exp.Div({
+        this: exp.paren(
+          new exp.Mod({
+            this: new exp.Abs({ this: new exp.Anonymous({ this: "HASH", expressions: [gen.copy()] }) }),
+            expression: exp.Literal.number(1000000),
+          }),
+        ),
+        expression: exp.Literal.number("1000000.0"),
+      });
+    } else {
+      // Use RANDOM() for non-deterministic output
+      random_expr = new exp.Rand();
+    }
+
+    const replacements = { s, n, random_expr };
+    return `(${this.sql(exp.replacePlaceholders(ZIPF_TEMPLATE, replacements))})`;
+  }
+
+  /**
+   * py:2871 `normal_sql(self, expression)`.
+   *
+   * Transpile Snowflake's NORMAL(mean, stddev, gen) to DuckDB.
+   * Uses the Box-Muller transform via NORMAL_TEMPLATE.
+   */
+  normal_sql(expression) {
+    const mean = expression.this;
+    const stddev = expression.args.stddev;
+    const gen = expression.args.gen;
+
+    // Build two uniform random values [0, 1) for Box-Muller transform
+    let u1, u2;
+    if (gen instanceof exp.Rand && (gen.this === null || gen.this === undefined)) {
+      u1 = new exp.Rand();
+      u2 = new exp.Rand();
+    } else {
+      // Seeded: derive two values using HASH with different inputs
+      const seed = gen instanceof exp.Rand ? gen.this : gen;
+      u1 = exp.replacePlaceholders(SEEDED_RANDOM_TEMPLATE, { seed });
+      u2 = exp.replacePlaceholders(SEEDED_RANDOM_TEMPLATE, {
+        seed: new exp.Add({ this: seed.copy(), expression: exp.Literal.number(1) }),
+      });
+    }
+
+    const replacements = { mean, stddev, u1, u2 };
+    return this.sql(exp.replacePlaceholders(NORMAL_TEMPLATE, replacements));
+  }
+
+  /**
+   * py:2897 `uniform_sql(self, expression)`.
+   *
+   * Transpile Snowflake's UNIFORM(min, max, gen) to DuckDB.
+   *
+   * UNIFORM returns a random value in [min, max]:
+   * - Integer result if both min and max are integers
+   * - Float result if either min or max is a float
+   */
+  uniform_sql(expression) {
+    const min_val = expression.this;
+    const max_val = expression.expression;
+    const gen = expression.args.gen;
+
+    // Determine if result should be integer (both bounds are integers).
+    // We do this to emulate Snowflake's behavior, INT -> INT, FLOAT -> FLOAT
+    const is_int_result = min_val.isInt && max_val.isInt;
+
+    // Build the random value expression [0, 1)
+    let random_expr;
+    if (!(gen instanceof exp.Rand)) {
+      // Seed value: (ABS(HASH(seed)) % 1000000) / 1000000.0
+      random_expr = new exp.Div({
+        this: exp.paren(
+          new exp.Mod({
+            this: new exp.Abs({ this: new exp.Anonymous({ this: "HASH", expressions: [gen] }) }),
+            expression: exp.Literal.number(1000000),
+          }),
+        ),
+        expression: exp.Literal.number("1000000.0"),
+      });
+    } else {
+      random_expr = new exp.Rand();
+    }
+
+    // Build: min + random * (max - min [+ 1 for int])
+    let range_expr = new exp.Sub({ this: max_val, expression: min_val });
+    if (is_int_result) range_expr = new exp.Add({ this: range_expr, expression: exp.Literal.number(1) });
+
+    let result = new exp.Add({
+      this: min_val,
+      expression: new exp.Mul({ this: random_expr, expression: exp.paren(range_expr) }),
+    });
+
+    if (is_int_result) {
+      result = new exp.Cast({ this: new exp.Floor({ this: result }), to: exp.DType.BIGINT.intoExpr() });
+    }
+
+    return this.sql(result);
+  }
+
+  /** py:3842 `mapcat_sql(self, expression)`. */
+  mapcat_sql(expression) {
+    const result = exp.replacePlaceholders(MAPCAT_TEMPLATE.copy(), {
+      map1: expression.this,
+      map2: expression.expression,
+    });
+    return this.sql(result);
+  }
+
+  /** py:3850 `mapcontainskey_sql(self, expression)`. */
+  mapcontainskey_sql(expression) {
+    return this.func("ARRAY_CONTAINS", exp.func("MAP_KEYS", expression.args.key), expression.this);
+  }
+
+  /** py:3855 `mapdelete_sql(self, expression)`. */
+  mapdelete_sql(expression) {
+    const map_arg = expression.this;
+    const keys_to_delete = expression.expressions;
+
+    const x_dot_key = new exp.Dot({ this: exp.toIdentifier("x"), expression: exp.toIdentifier("key") });
+
+    const lambda_expr = new exp.Lambda({
+      this: new exp.In({ this: x_dot_key, expressions: keys_to_delete }).not_(),
+      expressions: [exp.toIdentifier("x")],
+    });
+    const result = exp.func(
+      "MAP_FROM_ENTRIES",
+      new exp.ArrayFilter({ this: exp.func("MAP_ENTRIES", map_arg), expression: lambda_expr }),
+    );
+    return this.sql(result);
+  }
+
+  /** py:3871 `mappick_sql(self, expression)`. */
+  mappick_sql(expression) {
+    const map_arg = expression.this;
+    const keys_to_pick = expression.expressions;
+
+    const x_dot_key = new exp.Dot({ this: exp.toIdentifier("x"), expression: exp.toIdentifier("key") });
+
+    let lambda_expr;
+    if (keys_to_pick.length === 1 && keys_to_pick[0].isType(exp.DType.ARRAY)) {
+      lambda_expr = new exp.Lambda({
+        this: exp.func("ARRAY_CONTAINS", keys_to_pick[0], x_dot_key),
+        expressions: [exp.toIdentifier("x")],
+      });
+    } else {
+      lambda_expr = new exp.Lambda({
+        this: new exp.In({ this: x_dot_key, expressions: keys_to_pick }),
+        expressions: [exp.toIdentifier("x")],
+      });
+    }
+
+    const result = exp.func(
+      "MAP_FROM_ENTRIES",
+      exp.func("LIST_FILTER", exp.func("MAP_ENTRIES", map_arg), lambda_expr),
+    );
+    return this.sql(result);
+  }
+
+  /** py:3894 `mapsize_sql(self, expression)`. */
+  mapsize_sql(expression) {
+    return this.func("CARDINALITY", expression.this);
+  }
+
+  /** py:3897-3898 `@unsupported_args("update_flag") mapinsert_sql(self, expression)`. */
+  mapinsert_sql(expression) {
+    if (expression.args.update_flag) {
+      this.unsupported(
+        `Argument 'update_flag' is not supported for expression '${expression.constructor.name}' when targeting ${this.dialect.constructor.name}.`,
+      );
+    }
+
+    const map_arg = expression.this;
+    const key = expression.args.key;
+    let value = expression.args.value;
+
+    const map_type = map_arg.type;
+
+    if (value !== null && value !== undefined) {
+      if (map_type && map_type.expressions && map_type.expressions.length > 1) {
+        // Extract the value type from MAP(key_type, value_type)
+        const value_type = map_type.expressions[1];
+        // Cast value to match the map's value type to avoid type conflicts
+        value = exp.cast(value, value_type);
+      }
+      // else: polymorphic MAP case - no type parameters available, use value as-is
+    }
+
+    // Create a single-entry map for the new key-value pair
+    const new_entry_struct = new exp.Struct({ expressions: [new exp.PropertyEQ({ this: key, expression: value })] });
+    const new_entry = new exp.ToMap({ this: new_entry_struct });
+
+    // Use MAP_CONCAT to merge the original map with the new entry
+    // This automatically handles both insert and update cases
+    const result = exp.func("MAP_CONCAT", map_arg, new_entry);
+
+    return this.sql(result);
+  }
+
+  /** py:3726 `rand_sql(self, expression)`. */
+  rand_sql(expression) {
+    const seed = expression.this;
+    if (seed !== null && seed !== undefined) {
+      this.unsupported("RANDOM with seed is not supported in DuckDB");
+    }
+
+    const lower = expression.args.lower;
+    const upper = expression.args.upper;
+
+    if (lower && upper) {
+      // scale DuckDB's [0,1) to the specified range
+      const range_size = exp.paren(upper.sub(lower));
+      const scaled = new exp.Add({ this: lower, expression: exp.func("random").mul(range_size) });
+
+      // For now we assume that if bounds are set, return type is BIGINT. Snowflake/Teradata
+      const result = exp.cast(scaled, exp.DType.BIGINT);
+      return this.sql(result);
+    }
+
+    // Default DuckDB behavior - just return RANDOM() as float
+    return "RANDOM()";
+  }
+
+  /**
+   * py:2588 `_greatest_least_sql(self, expression)`.
+   *
+   * Handle GREATEST/LEAST functions with dialect-aware NULL behavior.
+   *
+   * - If ignore_nulls=False (BigQuery-style): return NULL if any argument is NULL
+   * - If ignore_nulls=True (DuckDB/PostgreSQL-style): ignore NULLs, return greatest/least non-NULL value
+   */
+  _greatest_least_sql(expression) {
+    // Get all arguments
+    const all_args = [expression.this, ...expression.expressions];
+    const fallback_sql = this.function_fallback_sql(expression);
+
+    if (expression.args.ignore_nulls) {
+      // DuckDB/PostgreSQL behavior: use native GREATEST/LEAST (ignores NULLs)
+      return this.sql(fallback_sql);
+    }
+
+    // return NULL if any argument is NULL
+    const case_expr = exp.case().when(
+      exp.or_(...all_args.map((arg) => arg.is_(exp.null_())), { copy: false }),
+      exp.null_(),
+      { copy: false },
+    );
+    case_expr.set("default", fallback_sql);
+    return this.sql(case_expr);
+  }
+
+  /** py:2626 `greatest_sql(self, expression)`. */
+  greatest_sql(expression) {
+    return this._greatest_least_sql(expression);
+  }
+
+  /** py:2629 `least_sql(self, expression)`. */
+  least_sql(expression) {
+    return this._greatest_least_sql(expression);
+  }
+
+  /** py:2632 `lambda_sql(self, expression, arrow_sep="->", wrap=True)`. */
+  lambda_sql(expression, arrow_sep = "->", wrap = true) {
+    let prefix;
+    if (expression.args.colon) {
+      prefix = "LAMBDA ";
+      arrow_sep = ":";
+      wrap = false;
+    } else {
+      prefix = "";
+    }
+
+    const lambda_sql = super.lambda_sql(expression, arrow_sep, wrap);
+    return `${prefix}${lambda_sql}`;
+  }
+
+  /** py:2643 `show_sql(self, expression)`. */
+  show_sql(expression) {
+    let from_ = this.sql(expression, "from_");
+    from_ = from_ ? ` FROM ${from_}` : "";
+    return `SHOW ${expression.name}${from_}`;
+  }
+
+  /** py:2648 `soundex_sql(self, expression)`. */
+  soundex_sql(expression) {
+    this.unsupported("SOUNDEX is not supported in DuckDB");
+    return this.func("SOUNDEX", expression.this);
+  }
+
+  /** py:3155 `countif_sql(self, expression)`. */
+  countif_sql(expression) {
+    if (_dialectAtLeast(this.dialect, 1n, 2n)) {
+      const this_ = expression.this;
+      if (expression.args.zero_on_all_null && !(this_ instanceof exp.Distinct)) {
+        expression = new exp.CountIf({ this: exp.paren(this_).is_(exp.true_()) });
+      }
+      return this.function_fallback_sql(expression);
+    }
+
+    // https://github.com/tobymao/sqlglot/pull/4749
+    return count_if_to_sum(this, expression);
+  }
+
+  /** py:3167 `bracket_sql(self, expression)`. */
+  bracket_sql(expression) {
+    if (_dialectAtLeast(this.dialect, 1n, 2n)) return super.bracket_sql(expression);
+
+    // https://duckdb.org/2025/02/05/announcing-duckdb-120.html#breaking-changes
+    let this_ = expression.this;
+    if (this_ instanceof exp.Array) this_.replace(exp.paren(this_));
+
+    let bracket = super.bracket_sql(expression);
+
+    if (!expression.args.returns_list_for_maps) {
+      if (!this_.type) this_ = annotate_types(this_, { dialect: this.dialect });
+
+      if (this_.isType(exp.DType.MAP)) bracket = `(${bracket})[1]`;
+    }
+
+    return bracket;
+  }
+
+  /** py:3930 `space_sql(self, expression)`. */
+  space_sql(expression) {
+    // DuckDB's REPEAT requires BIGINT for the count parameter
+    return this.sql(
+      new exp.Repeat({ this: exp.Literal.string(" "), times: exp.cast(expression.this, exp.DType.BIGINT) }),
+    );
+  }
+
+  /** py:2812 `currentdate_sql(self, expression)`. */
+  currentdate_sql(expression) {
+    if (!expression.this) return "CURRENT_DATE";
+
+    const expr = new exp.Cast({
+      this: new exp.AtTimeZone({ this: new exp.CurrentTimestamp(), zone: expression.this }),
+      to: new exp.DataType({ this: exp.DType.DATE }),
+    });
+    return this.sql(expr);
+  }
+
+  /** py:3817 `_bitwise_op(self, expression, op)`. */
+  _bitwise_op(expression, op) {
+    _prepare_binary_bitwise_args(expression);
+    const result_sql = this.binary(expression, op);
+    return _gen_with_cast_to_blob(this, expression, result_sql);
+  }
+
+  /** py:3822 `bitwisexor_sql(self, expression)`. */
+  bitwisexor_sql(expression) {
+    _prepare_binary_bitwise_args(expression);
+    const result_sql = this.func("XOR", expression.this, expression.expression);
+    return _gen_with_cast_to_blob(this, expression, result_sql);
+  }
+
+  /** py:3827 `objectinsert_sql(self, expression)`. */
+  objectinsert_sql(expression) {
+    const this_ = expression.this;
+    const key = expression.args.key;
+    const key_sql = key instanceof exp.Expr ? key.name : "";
+    const value_sql = this.sql(expression, "value");
+
+    const kv_sql = `${key_sql} := ${value_sql}`;
+
+    // If the input struct is empty e.g. transpiling OBJECT_INSERT(OBJECT_CONSTRUCT(), key, value) from Snowflake
+    // then we can generate STRUCT_PACK which will build it since STRUCT_INSERT({}, key := value) is not valid DuckDB
+    if (this_ instanceof exp.Struct && !this_.expressions.length) {
+      return this.func("STRUCT_PACK", kv_sql);
+    }
+
+    return this.func("STRUCT_INSERT", this_, kv_sql);
+  }
+
+  /** py:2574 `tonumber_sql(self, expression)`. */
+  tonumber_sql(expression) {
+    const fmt = expression.args.format;
+    const precision = expression.args.precision;
+    const scale = expression.args.scale;
+
+    if (!fmt && precision && scale) {
+      return this.sql(exp.cast(expression.this, `DECIMAL(${precision.name}, ${scale.name})`, { dialect: "duckdb" }));
+    }
+
+    return super.tonumber_sql(expression);
+  }
+
+  /** py:2679 `install_sql(self, expression)`. */
+  install_sql(expression) {
+    const force = expression.args.force ? "FORCE " : "";
+    const this_ = this.sql(expression, "this");
+    let from_clause = this.sql(expression, "from_");
+    from_clause = from_clause ? ` FROM ${from_clause}` : "";
+    return `${force}INSTALL ${this_}${from_clause}`;
+  }
+
+  /** py:3138 `join_sql(self, expression)`. */
+  join_sql(expression) {
+    if (
+      !expression.args.using
+      && !expression.args.on
+      && !expression.method
+      && ["", "INNER", "OUTER"].includes(expression.kind)
+    ) {
+      // Some dialects support `LEFT/INNER JOIN UNNEST(...)` without an explicit ON clause
+      // DuckDB doesn't, but we can just add a dummy ON clause that is always true
+      if (expression.this instanceof exp.Unnest) {
+        return super.join_sql(expression.on(exp.true_()));
+      }
+
+      expression.set("side", null);
+      expression.set("kind", null);
+    }
+
+    return super.join_sql(expression);
+  }
+
+  /** py:3939 `tablefromrows_sql(self, expression)`. */
+  tablefromrows_sql(expression) {
+    // For GENERATOR, unwrap TABLE() - just emit the Generator (becomes RANGE)
+    if (expression.this instanceof exp.Generator) {
+      // Preserve alias, joins, and other table-level args
+      const table = new exp.Table({
+        this: expression.this,
+        alias: expression.args.alias,
+        joins: expression.args.joins,
+      });
+      return this.sql(table);
+    }
+
+    return super.tablefromrows_sql(expression);
+  }
+
+  /** py:3974 `arrayagg_sql(self, expression)`. */
+  arrayagg_sql(expression) {
+    if (expression.this instanceof exp.Limit) {
+      this.unsupported("LIMIT inside ARRAY_AGG is not supported in DuckDB");
+    }
+
+    return super.arrayagg_sql(expression);
+  }
+
+  /** py:3980 `ignorenulls_sql(self, expression)`. */
+  ignorenulls_sql(expression) {
+    let this_ = expression.this;
+
+    if (this.constructor.IGNORE_RESPECT_NULLS_WINDOW_FUNCTIONS.some((cls) => this_ instanceof cls)) {
+      // DuckDB should render IGNORE NULLS only for the general-purpose
+      // window functions that accept it e.g. FIRST_VALUE(... IGNORE NULLS) OVER (...)
+      return super.ignorenulls_sql(expression);
+    }
+
+    // For ARRAY_AGG(expr IGNORE NULLS ...), convert IGNORE NULLS to a
+    // FILTER(WHERE expr IS NOT NULL) clause by setting nulls_excluded on
+    // the ArrayAgg.  The existing _add_arrayagg_null_filter method will
+    // emit the FILTER clause during arrayagg_sql / withingroup_sql.
+    if (this_ instanceof exp.ArrayAgg) {
+      this_.set("nulls_excluded", true);
+      return this.sql(this_);
+    }
+
+    if (this_ instanceof exp.First) this_ = new exp.AnyValue({ this: this_.this });
+
+    if (!(this_ instanceof exp.AnyValue || this_ instanceof exp.ApproxQuantiles)) {
+      this.unsupported("IGNORE NULLS is not supported for non-window functions.");
+    }
+
+    return this.sql(this_);
+  }
+
+  /** py:4004 `split_sql(self, expression)`. */
+  split_sql(expression) {
+    const base_func = exp.func("STR_SPLIT", expression.this, expression.expression);
+
+    let case_expr = exp.case().else_(base_func);
+    let needs_case = false;
+
+    if (expression.args.null_returns_null) {
+      case_expr = case_expr.when(expression.expression.is_(exp.null_()), exp.null_());
+      needs_case = true;
+    }
+
+    if (expression.args.empty_delimiter_returns_whole) {
+      // When delimiter is empty string, return input string as single array element
+      const array_with_input = exp.array(expression.this);
+      case_expr = case_expr.when(expression.expression.eq(exp.Literal.string("")), array_with_input);
+      needs_case = true;
+    }
+
+    return this.sql(needs_case ? case_expr : base_func);
+  }
+
+  /** py:4084 `respectnulls_sql(self, expression)`. */
+  respectnulls_sql(expression) {
+    if (this.constructor.IGNORE_RESPECT_NULLS_WINDOW_FUNCTIONS.some((cls) => expression.this instanceof cls)) {
+      // DuckDB should render RESPECT NULLS only for the general-purpose
+      // window functions that accept it e.g. FIRST_VALUE(... RESPECT NULLS) OVER (...)
+      return super.respectnulls_sql(expression);
+    }
+
+    this.unsupported("RESPECT NULLS is not supported for non-window functions.");
+    return this.sql(expression, "this");
+  }
+
+  /** py:2612 `generator_sql(self, expression)`. */
+  generator_sql(expression) {
+    // Transpile Snowflake GENERATOR to DuckDB range()
+    const rowcount = expression.args.rowcount;
+    const time_limit = expression.args.time_limit;
+
+    if (time_limit) this.unsupported("GENERATOR TIMELIMIT parameter is not supported in DuckDB");
+
+    if (!rowcount) {
+      this.unsupported("GENERATOR without ROWCOUNT is not supported in DuckDB");
+      return this.func("range", exp.Literal.number(0));
+    }
+
+    return this.func("range", rowcount);
+  }
+
+  /** py:4509 `round_sql(self, expression)`. */
+  round_sql(expression) {
+    const this_ = expression.this;
+    let decimals = expression.args.decimals;
+    let truncate = expression.args.truncate;
+
+    // DuckDB requires the scale (decimals) argument to be an INT
+    // Some dialects (e.g., Snowflake) allow non-integer scales and cast to an integer internally
+    if (decimals !== null && decimals !== undefined && expression.args.casts_non_integer_decimals) {
+      if (!(decimals.isInt || decimals.isType(...exp.DataType.INTEGER_TYPES))) {
+        decimals = exp.cast(decimals, exp.DType.INT);
+      }
+    }
+
+    let func = "ROUND";
+    if (truncate) {
+      // BigQuery uses ROUND_HALF_EVEN; Snowflake uses HALF_TO_EVEN
+      if (["ROUND_HALF_EVEN", "HALF_TO_EVEN"].includes(truncate.this)) {
+        func = "ROUND_EVEN";
+        truncate = null;
+      } else if (["ROUND_HALF_AWAY_FROM_ZERO", "HALF_AWAY_FROM_ZERO"].includes(truncate.this)) {
+        // BigQuery uses ROUND_HALF_AWAY_FROM_ZERO; Snowflake uses HALF_AWAY_FROM_ZERO
+        truncate = null;
+      }
+    }
+
+    return this.func(func, this_, decimals, truncate);
+  }
+
+  /** py:3756 `base64encode_sql(self, expression)`. */
+  base64encode_sql(expression) {
+    // DuckDB TO_BASE64 requires BLOB input
+    // Snowflake BASE64_ENCODE accepts both VARCHAR and BINARY - for VARCHAR it implicitly
+    // encodes UTF-8 bytes. We add ENCODE unless the input is a binary type.
+    let result = expression.this;
+
+    // Check if input is a string type - ENCODE only accepts VARCHAR
+    if (result.isType(...exp.DataType.TEXT_TYPES)) result = new exp.Encode({ this: result });
+
+    result = new exp.ToBase64({ this: result });
+
+    const max_line_length = expression.args.max_line_length;
+    const alphabet = expression.args.alphabet;
+
+    // Handle custom alphabet by replacing standard chars with custom ones
+    result = _apply_base64_alphabet_replacements(result, alphabet);
+
+    // Handle max_line_length by inserting newlines every N characters
+    const line_length =
+      max_line_length instanceof exp.Literal && max_line_length.isNumber ? Number(max_line_length.toPy()) : 0;
+    if (line_length > 0) {
+      const newline = new exp.Chr({ expressions: [exp.Literal.number(10)] });
+      result = new exp.Trim({
+        this: new exp.RegexpReplace({
+          this: result,
+          expression: exp.Literal.string(`(.{${line_length}})`),
+          replacement: new exp.Concat({ expressions: [exp.Literal.string("\\1"), newline.copy()] }),
+        }),
+        expression: newline,
+        position: "TRAILING",
+      });
+    }
+
+    return this.sql(result);
+  }
+
+  /** py:4415 `hexstring_sql(self, expression, binary_function_repr=None)` — `UNHEX('FF')`
+   * correctly produces blob `\xFF` in DuckDB (base default is `FROM_HEX`). */
+  hexstring_sql(expression, binary_function_repr = null) {
+    return super.hexstring_sql(expression, "UNHEX");
+  }
+
+  /** py:3794 `hex_sql(self, expression)`. */
+  hex_sql(expression) {
+    const case_ = expression.args.case;
+
+    if (!case_) return this.func("HEX", expression.this);
+
+    const hex_expr = new exp.Hex({ this: expression.this });
+    return this.sql(
+      exp.case()
+        .when(case_.is_(exp.null_()), exp.null_())
+        .when(case_.copy().eq(0), new exp.Lower({ this: hex_expr.copy() }))
+        .else_(hex_expr),
+    );
+  }
+
+  /** py:2457 `jarowinklersimilarity_sql(self, expression)`. */
+  jarowinklersimilarity_sql(expression) {
+    let this_ = expression.this;
+    let expr = expression.expression;
+
+    if (expression.args.case_insensitive) {
+      this_ = new exp.Upper({ this: this_ });
+      expr = new exp.Upper({ this: expr });
+    }
+
+    let result = exp.func("JARO_WINKLER_SIMILARITY", this_, expr);
+
+    if (expression.args.integer_scale) {
+      result = exp.cast(result.mul(exp.Literal.number(100)), "INTEGER");
+    }
+
+    return this.sql(result);
+  }
+
+  /** py:2843 `unicode_sql(self, expression)`. */
+  unicode_sql(expression) {
+    if (expression.args.empty_is_zero) {
+      return this.sql(
+        exp.case()
+          .when(expression.this.eq(exp.Literal.string("")), exp.Literal.number(0))
+          .else_(new exp.Anonymous({ this: "UNICODE", expressions: [expression.this] })),
+      );
+    }
+
+    return this.func("UNICODE", expression.this);
+  }
+
+  /** py:3425 `levenshtein_sql(self, expression)`. */
+  levenshtein_sql(expression) {
+    const this_ = expression.this;
+    const expr = expression.expression;
+    const max_dist = expression.args.max_dist;
+
+    if (max_dist === null || max_dist === undefined) return this.func("LEVENSHTEIN", this_, expr);
+
+    // Emulate Snowflake semantics: if distance > max_dist, return max_dist
+    const levenshtein = new exp.Levenshtein({ this: this_, expression: expr });
+    return this.sql(new exp.Least({ this: levenshtein, expressions: [max_dist] }));
+  }
+
+  /** py:4024 `splitpart_sql(self, expression)`. */
+  splitpart_sql(expression) {
+    const string_arg = expression.this;
+    const delimiter_arg = expression.args.delimiter;
+    let part_index_arg = expression.args.part_index;
+
+    if (delimiter_arg && part_index_arg) {
+      // Handle Snowflake's "index 0 and 1 both return first element" behavior
+      if (expression.args.part_index_zero_as_one) {
+        // Convert 0 to 1 for compatibility
+        part_index_arg = new exp.Paren({
+          this: exp.case()
+            .when(part_index_arg.eq(exp.Literal.number("0")), exp.Literal.number("1"))
+            .else_(part_index_arg),
+        });
+      }
+
+      // Use Anonymous to avoid recursion
+      const base_func_expr = new exp.Anonymous({ this: "SPLIT_PART", expressions: [string_arg, delimiter_arg, part_index_arg] });
+      let needs_case_transform = false;
+      let case_expr = exp.case().else_(base_func_expr);
+
+      if (expression.args.empty_delimiter_returns_whole) {
+        // When delimiter is empty string:
+        // - Return whole string if part_index is 1 or -1
+        // - Return empty string otherwise
+        const empty_case = new exp.Paren({
+          this: exp.case()
+            .when(
+              exp.or_(part_index_arg.eq(exp.Literal.number("1")), part_index_arg.eq(exp.Literal.number("-1"))),
+              string_arg,
+            )
+            .else_(exp.Literal.string("")),
+        });
+
+        case_expr = case_expr.when(delimiter_arg.eq(exp.Literal.string("")), empty_case);
+        needs_case_transform = true;
+      }
+
+      // Output looks something like this:
+      //
+      // CASE
+      // WHEN delimiter is '' THEN
+      //     (
+      //         CASE
+      //         WHEN adjusted_part_index = 1 OR adjusted_part_index = -1 THEN input
+      //         ELSE '' END
+      //     )
+      // ELSE SPLIT_PART(input, delimiter, adjusted_part_index)
+      // END
+      return this.sql(needs_case_transform ? case_expr : base_func_expr);
+    }
+
+    return this.function_fallback_sql(expression);
+  }
+
+  /**
+   * py:3558 `arrayslice_sql(self, expression)`.
+   *
+   * Transpiles Snowflake's ARRAY_SLICE (0-indexed, exclusive end) to DuckDB's
+   * ARRAY_SLICE (1-indexed, inclusive end) by wrapping start and end in CASE
+   * expressions that adjust the index at query time:
+   *   - start: CASE WHEN start >= 0 THEN start + 1 ELSE start END
+   *   - end:   CASE WHEN end < 0 THEN end - 1 ELSE end END
+   */
+  arrayslice_sql(expression) {
+    let start = expression.args.start;
+    let end = expression.args.end;
+
+    if (expression.args.zero_based) {
+      if (start !== null && start !== undefined) {
+        start = exp.case()
+          .when(new exp.GTE({ this: start.copy(), expression: exp.Literal.number(0) }), new exp.Add({ this: start.copy(), expression: exp.Literal.number(1) }))
+          .else_(start);
+      }
+      if (end !== null && end !== undefined) {
+        end = exp.case()
+          .when(new exp.LT({ this: end.copy(), expression: exp.Literal.number(0) }), new exp.Sub({ this: end.copy(), expression: exp.Literal.number(1) }))
+          .else_(end);
+      }
+    }
+
+    return this.func("ARRAY_SLICE", expression.this, start, end, expression.args.step);
+  }
+
+  /** py:2311 `_array_bag_sql(self, condition, arr1, arr2)`. */
+  _array_bag_sql(condition, arr1, arr2) {
+    const cond = new exp.Paren({ this: exp.replacePlaceholders(condition, { arr1, arr2 }) });
+    return this.sql(exp.replacePlaceholders(ARRAY_BAG_TEMPLATE, { arr1, arr2, cond }));
+  }
+
+  /** py:3541 `arrayintersect_sql(self, expression)`. */
+  arrayintersect_sql(expression) {
+    if (expression.args.is_multiset && expression.expressions.length === 2) {
+      return this._array_bag_sql(ARRAY_INTERSECTION_CONDITION, expression.expressions[0], expression.expressions[1]);
+    }
+    return this.function_fallback_sql(expression);
+  }
+
+  /** py:3550 `arrayexcept_sql(self, expression)`. */
+  arrayexcept_sql(expression) {
+    const arr1 = expression.this, arr2 = expression.expression;
+    if (expression.args.is_multiset) return this._array_bag_sql(ARRAY_EXCEPT_CONDITION, arr1, arr2);
+    return this.sql(exp.replacePlaceholders(ARRAY_EXCEPT_SET_TEMPLATE, { arr1, arr2 }));
+  }
+
+  /** py:3128 `in_sql(self, expression)`. */
+  in_sql(expression) {
+    const unnest = expression.args.unnest;
+    if (unnest) {
+      return this.sql(exp.replacePlaceholders(IN_UNNEST_TEMPLATE, { arr: unnest.expressions[0], value: expression.this }));
+    }
+    return super.in_sql(expression);
+  }
+
+  /** py:4726 `bitwisenot_sql(self, expression)`. */
+  bitwisenot_sql(expression) {
+    const this_ = expression.this;
+
+    if (_is_binary(this_)) expression.type = exp.DType.BINARY.intoExpr();
+
+    let arg = _cast_to_bit(this_);
+
+    if (this_ instanceof exp.Neg) arg = new exp.Paren({ this: arg });
+
+    expression.set("this", arg);
+
+    const result_sql = `~${this.sql(expression, "this")}`;
+
+    return _gen_with_cast_to_blob(this, expression, result_sql);
+  }
+
+  /** py:4304 `aliases_sql(self, expression)`. */
+  aliases_sql(expression) {
+    const this_ = expression.this;
+    if (this_ instanceof exp.Posexplode) return this.posexplode_sql(this_);
+
+    return super.aliases_sql(expression);
+  }
+
+  /** py:4311 `posexplode_sql(self, expression)`. */
+  posexplode_sql(expression) {
+    const this_ = expression.this;
+    const parent = expression.parent;
+
+    // The default Spark aliases are "pos" and "col", unless specified otherwise
+    let pos = exp.toIdentifier("pos"), col = exp.toIdentifier("col");
+
+    if (parent instanceof exp.Aliases) {
+      // Column case: SELECT POSEXPLODE(col) [AS (a, b)]
+      [pos, col] = parent.expressions;
+    } else if (parent instanceof exp.Table) {
+      // Table case: SELECT * FROM POSEXPLODE(col) [AS (a, b)]
+      const alias = parent.args.alias;
+      if (alias) {
+        [pos, col] = alias.columns.length ? alias.columns : [pos, col];
+        alias.pop();
+      }
+    }
+
+    // Translate POSEXPLODE to UNNEST + GENERATE_SUBSCRIPTS
+    // Note: In Spark pos is 0-indexed, but in DuckDB it's 1-indexed, so we subtract 1 from GENERATE_SUBSCRIPTS
+    const unnest_sql = this.sql(new exp.Unnest({ expressions: [this_], alias: col }));
+    const gen_subscripts = this.sql(
+      new exp.Alias({
+        this: new exp.Anonymous({ this: "GENERATE_SUBSCRIPTS", expressions: [this_, exp.Literal.number(1)] }).sub(exp.Literal.number(1)),
+        alias: pos,
+      }),
+    );
+
+    const posexplode_sql = this.format_args(gen_subscripts, unnest_sql);
+
+    if (parent instanceof exp.From || (parent && parent.parent instanceof exp.From)) {
+      // SELECT * FROM POSEXPLODE(col) -> SELECT * FROM (SELECT GENERATE_SUBSCRIPTS(...), UNNEST(...))
+      return this.sql(new exp.Subquery({ this: new exp.Select({ expressions: [posexplode_sql] }) }));
+    }
+
+    return posexplode_sql;
+  }
+
+  /** py:4209 `regexpinstr_sql(self, expression)`. */
+  regexpinstr_sql(expression) {
+    let this_ = expression.this;
+    let pattern = expression.expression;
+    const position = expression.args.position;
+    const orig_occ = expression.args.occurrence;
+    const occurrence = orig_occ || exp.Literal.number(1);
+    const option = expression.args.option;
+    const parameters = expression.args.parameters;
+
+    const validated_flags = this._validate_regexp_flags(parameters, "ims");
+    if (validated_flags) {
+      pattern = new exp.Concat({ expressions: [exp.Literal.string(`(?${validated_flags})`), pattern] });
+    }
+
+    // Handle starting position offset
+    let pos_offset = exp.Literal.number(0);
+    if (position && (!position.isInt || Number(position.toPy()) > 1)) {
+      this_ = new exp.Substring({ this: this_, start: position });
+      pos_offset = position.sub(exp.Literal.number(1));
+    }
+
+    // Helper: LIST_SUM(LIST_TRANSFORM(list[1:end], x -> LENGTH(x)))
+    const sum_lengths = (func_name, end) => {
+      const lst = new exp.Bracket({
+        this: new exp.Anonymous({ this: func_name, expressions: [this_, pattern] }),
+        expressions: [new exp.Slice({ this: exp.Literal.number(1), expression: end })],
+        offset: 1,
+      });
+      const transform = new exp.Anonymous({
+        this: "LIST_TRANSFORM",
+        expressions: [lst, new exp.Lambda({ this: new exp.Length({ this: exp.toIdentifier("x") }), expressions: [exp.toIdentifier("x")] })],
+      });
+      return new exp.Coalesce({ this: new exp.Anonymous({ this: "LIST_SUM", expressions: [transform] }), expressions: [exp.Literal.number(0)] });
+    };
+
+    // Position = 1 + sum(split_lengths[1:occ]) + sum(match_lengths[1:occ-1]) + offset
+    let base_pos = exp.Literal.number(1)
+      .add(sum_lengths("STRING_SPLIT_REGEX", occurrence))
+      .add(sum_lengths("REGEXP_EXTRACT_ALL", occurrence.sub(exp.Literal.number(1))))
+      .add(pos_offset);
+
+    // option=1: add match length for end position
+    if (option && option.isInt && Number(option.toPy()) === 1) {
+      const match_at_occ = new exp.Bracket({
+        this: new exp.Anonymous({ this: "REGEXP_EXTRACT_ALL", expressions: [this_, pattern] }),
+        expressions: [occurrence],
+        offset: 1,
+      });
+      base_pos = base_pos.add(new exp.Coalesce({ this: new exp.Length({ this: match_at_occ }), expressions: [exp.Literal.number(0)] }));
+    }
+
+    // NULL checks for all provided arguments
+    // .copy() is used strictly because .is_() alters the node's parent pointer, mutating the parsed AST
+    const null_args = [expression.this, expression.expression, position, orig_occ, option, parameters];
+    const null_checks = null_args.filter((arg) => arg).map((arg) => arg.copy().is_(exp.null_()));
+
+    const matches = new exp.Anonymous({ this: "REGEXP_EXTRACT_ALL", expressions: [this_, pattern] });
+
+    return this.sql(
+      exp.case()
+        .when(exp.or_(...null_checks), exp.null_())
+        .when(pattern.copy().eq(exp.Literal.string("")), exp.Literal.number(0))
+        .when(new exp.LT({ this: new exp.Length({ this: matches }), expression: occurrence }), exp.Literal.number(0))
+        .else_(base_pos),
+    );
+  }
+
+  /** py:3231 `length_sql(self, expression)`. */
+  length_sql(expression) {
+    const arg = expression.this;
+
+    // Dialects like BQ and Snowflake also accept binary values as args, so
+    // DDB will attempt to infer the type or resort to case/when resolution
+    if (!expression.args.binary || arg.isString) return this.func("LENGTH", arg);
+
+    let arg_ = arg;
+    if (!arg_.type) arg_ = annotate_types(arg_, { dialect: this.dialect });
+
+    if (arg_.isType(...exp.DataType.TEXT_TYPES)) return this.func("LENGTH", arg_);
+
+    // We need these casts to make duckdb's static type checker happy
+    const blob = exp.cast(arg_, exp.DType.VARBINARY);
+    const varchar = exp.cast(arg_, exp.DType.VARCHAR);
+
+    const case_ = exp.case(new exp.Anonymous({ this: "TYPEOF", expressions: [arg_] }))
+      .when(exp.Literal.string("BLOB"), new exp.ByteLength({ this: blob }))
+      .else_(new exp.Anonymous({ this: "LENGTH", expressions: [varchar] }));
+    return this.sql(case_);
+  }
+
+  /** py:3746 `bytelength_sql(self, expression)`. */
+  bytelength_sql(expression) {
+    const arg = expression.this;
+
+    // Check if it's a text type (handles both literals and annotated expressions)
+    if (arg.isType(...exp.DataType.TEXT_TYPES)) return this.func("OCTET_LENGTH", new exp.Encode({ this: arg }));
+
+    // Default: pass through as-is (conservative for DuckDB, handles binary and unannotated)
+    return this.func("OCTET_LENGTH", arg);
+  }
+
+  /** py:4775 `uuid_sql(self, expression)`. */
+  uuid_sql(expression) {
+    const namespace = expression.this;
+    const name = expression.args.name;
+
+    // UUID v5 (namespace + name) - Emulate using SHA1
+    if (namespace && name) {
+      const result = exp.replacePlaceholders(UUID_V5_TEMPLATE.copy(), { namespace, name });
+      return this.sql(result);
+    }
+
+    return super.uuid_sql(expression);
+  }
+
+  /** py:2822 `checkjson_sql(self, expression)`. */
+  checkjson_sql(expression) {
+    const arg = expression.this;
+    return this.sql(
+      exp.case()
+        .when(exp.or_(arg.is_(exp.null_()), arg.eq(""), exp.func("json_valid", arg)), exp.null_())
+        .else_(exp.Literal.string("Invalid JSON"))
+    );
+  }
+
+  /** py:2833 `parsejson_sql(self, expression)`. */
+  parsejson_sql(expression) {
+    const arg = expression.this;
+    if (expression.args.safe) {
+      return this.sql(
+        exp.case()
+          .when(exp.func("json_valid", arg), exp.cast(arg.copy(), "JSON"))
+          .else_(exp.null_())
+      );
+    }
+    return this.func("JSON", arg);
+  }
+
+  /** py:4714 `jsonextractscalar_sql(self, expression)`. */
+  jsonextractscalar_sql(expression) {
+    if (expression.args.scalar_only) {
+      const json_value = new exp.JSONExtractScalar({
+        this: rename_func("JSON_VALUE")(this, expression),
+        expression: "'$'",
+      });
+
+      // `->>` binds looser than most operators, so the wrap logic needs the parent
+      json_value.parent = expression.parent;
+      expression = json_value;
+    }
+
+    return _arrow_json_extract_sql(this, expression);
+  }
+
+  /** py:2853 `stripnullvalue_sql(self, expression)`. */
+  stripnullvalue_sql(expression) {
+    return this.sql(
+      exp.case()
+        .when(exp.func("json_type", expression.this).eq("NULL"), exp.null_())
+        .else_(expression.this)
+    );
   }
 }
