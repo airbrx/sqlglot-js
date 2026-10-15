@@ -65,7 +65,7 @@ function _build_timestamp_trunc(unit) {
 function _build_split_by_char(args) {
   const sep = seqGet(args, 0);
   if (sep instanceof exp.Literal) {
-    const sep_value = sep.to_py();
+    const sep_value = sep.toPy();
     if (typeof sep_value === "string" && utf8Len(sep_value) === 1) {
       return _build_split(exp.Split)(args);
     }
@@ -856,7 +856,7 @@ export class ClickHouseParser extends Parser {
 
     // https://clickhouse.com/docs/sql-reference/statements/alter/column#modify-column
     const alter = super._parse_alter_table_alter();
-    return this._curr ? null : alter;
+    return this._curr.bool() ? null : alter;
   }
 
   /** py:925-929 */
@@ -910,7 +910,7 @@ export class ClickHouseParser extends Parser {
   _parse_columns() {
     let this_ = this.expression(new exp.Columns({ this: this._parse_lambda() }));
 
-    while (this._next && this._match_text_seq(")", "APPLY", "(")) {
+    while (this._next.bool() && this._match_text_seq(")", "APPLY", "(")) {
       this._match(TokenType.R_PAREN);
       this_ = new exp.Apply({ this: this_, expression: this._parse_var(true) });
     }
