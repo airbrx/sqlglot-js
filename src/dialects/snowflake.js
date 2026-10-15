@@ -18,7 +18,7 @@
 // is final. Declaring the class without registering it would therefore produce a class
 // that looks complete and whose settings are invisible to every consumer.
 //
-// ONE GAP REMAINS, announced rather than faked; the other closed in this round:
+// NO GAPS REMAIN:
 //
 //   `Generator = SnowflakeGenerator` (py:189) IS now declared — `generators/snowflake.js`
 //   exists (P4, PORT_PLAN.md R21 follow-up). `registerDialect`'s py:304
@@ -26,11 +26,8 @@
 //   `ALL_JSON_PATH_PARTS` half of that logic is trait-derived from `_gen/expr_meta.js`
 //   (generator.js), which is exactly as real as reading it from the unported module.
 //
-//   `class JSONPathTokenizer(jsonpath.JSONPathTokenizer)` (py:130) is NOT declared, for
-//   the same reason `Dialect.jsonpath_tokenizer_class` is null: `sqlglot/jsonpath.py` is
-//   unported. Omitting it leaves `jsonpath_tokenizer_class` null (registerDialect's own
-//   fallback) and `jsonpath_tokenizer()` throwing, rather than handing `to_json_path` a
-//   scanner that lexes JSON paths as SQL.
+//   `class JSONPathTokenizer(jsonpath.JSONPathTokenizer)` (py:130) IS now declared below
+//   (AIR-2274, `src/jsonpath.js`) — `SnowflakeJSONPathTokenizer`.
 //
 // Every setting below is diffed value-by-value against CPython by
 // `spike/p5/fuzz_snowflake_dialect.mjs`, including the twelve `registerDialect` DERIVES
@@ -40,6 +37,7 @@
 // compares against upstream, invisible until some far-away dialect finally reads it.
 
 import { Tokenizer, TokenType, initTokenizerSubclass } from "../tokens.js";
+import { JSONPathTokenizer } from "../jsonpath.js";
 import { SnowflakeParser } from "../parsers/snowflake.js";
 import { SnowflakeGenerator } from "../generators/snowflake.js";
 import * as exp from "../expressions/index.js";
@@ -67,6 +65,16 @@ import { EXPRESSION_METADATA as SNOWFLAKE_EXPRESSION_METADATA } from "../typing/
  * all be inherited from the base class and the Snowflake-only `$$` raw strings, `x'…'`
  * hex strings, `//` comments and `\` escapes would never be scanned.
  */
+/** py: sqlglot/dialects/snowflake.py:130 `class JSONPathTokenizer(jsonpath.JSONPathTokenizer)`. */
+class SnowflakeJSONPathTokenizer extends JSONPathTokenizer {
+  static SINGLE_TOKENS = new Map(JSONPathTokenizer.SINGLE_TOKENS);
+}
+// py:132 `SINGLE_TOKENS.pop("$")` — a mutation AFTER the copy, not an entry omitted
+// from it, same `initTokenizerSubclass`-ordering shape `bigquery.js`'s own
+// `KEYWORDS.delete(...)` calls document.
+SnowflakeJSONPathTokenizer.SINGLE_TOKENS.delete("$");
+initTokenizerSubclass(SnowflakeJSONPathTokenizer);
+
 class SnowflakeTokenizer extends Tokenizer {
   static STRING_ESCAPES = ["\\", "'"];
   static HEX_STRINGS = [
@@ -273,6 +281,9 @@ export class Snowflake extends Dialect {
 
   /** py:188 `class Tokenizer(tokens.Tokenizer)`; see `SnowflakeTokenizer` above. */
   static Tokenizer = SnowflakeTokenizer;
+
+  /** py:130 `class JSONPathTokenizer(jsonpath.JSONPathTokenizer)`; see above. */
+  static JSONPathTokenizer = SnowflakeJSONPathTokenizer;
 
   /**
    * py: sqlglot/dialects/snowflake.py:123

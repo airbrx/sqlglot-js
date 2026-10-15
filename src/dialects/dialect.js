@@ -42,7 +42,7 @@
 
 import { flatten, isInt, seqGet, suggestClosestMatchAndFail, toBool } from "../helper.js";
 import { NotPorted, ParseError } from "../errors.js";
-import { cpSlice, pyIsLower, pyIsPrintable, pyIsUpper, pyLower, pyStr, pyUpper } from "../_py/str.js";
+import { cpSlice, pyIsLower, pyIsPrintable, pyIsUpper, pyLower, pyLstrip, pyStartswith, pyStr, pyUpper } from "../_py/str.js";
 import { pyIntFromStr } from "../_py/num.js";
 import { PyTypeError, PyValueError } from "../_py/errors.js";
 import { pyTruthy } from "../_py/truthy.js";
@@ -51,10 +51,12 @@ import { newTrie } from "../trie.js";
 import { TokenType, Tokenizer, initTokenizerSubclass, setDialectResolver, setDialectHelpersRef } from "../tokens.js";
 import { BaseParser } from "../parsers/base.js";
 import { ALL_JSON_PATH_PARTS, Generator, unsupported_args } from "../generator.js";
+import { JSONPathTokenizer, parse as parse_json_path } from "../jsonpath.js";
 import * as exp from "../expressions/index.js";
 import { SAFE_IDENTIFIER_RE, registerAstDialects, registerGenerator, registerParser } from "../expressions/core.js";
 import { findAllInScope } from "../optimizer/scope.js";
 import { EXPRESSION_METADATA } from "../typing/index.js";
+import { logger } from "../logging.js";
 // py: sqlglot/optimizer/annotate_types.py — `build_trunc`, `build_timetostr_or_tochar`,
 // and `no_timestamp_sql` import this INSIDE their own bodies upstream
 // (dialects/dialect.py:1733/1938/2610) specifically to avoid a module-level cycle:
@@ -1516,14 +1518,13 @@ export function getbit_sql(self, expression) {
 // The `Dialect` class, the registry, and `registerDialect`            — P5
 // ===========================================================================
 //
-// @ported-ranges sqlglot/dialects/dialect.py 68-83 85-166 168-361 363-1172 1184-1229
+// @ported-ranges sqlglot/dialects/dialect.py 68-83 85-166 168-361 363-1229
 //
-// 1173-1183 is EXCLUDED on purpose: it is the body of `to_json_path`'s `Literal`
-// branch, which needs `sqlglot/jsonpath.py` (P4) and is a `NotPorted` stub here. The
-// gap is load-bearing for `tools/lint_deny.mjs`, not cosmetic — py:1179 is a
-// `py_builtins` site (`startswith(("lax", "strict"))`, a TUPLE argument JS's
-// `startsWith` cannot take), and claiming the line would assert a shim routing that
-// does not exist. When the branch lands it must route through `pyStartswith()`.
+// 1173-1183 (the body of `to_json_path`'s `Literal` branch) is now real, landed
+// alongside `src/jsonpath.js` (AIR-2274): py:1179's `path_text.lstrip().startswith(
+// ("lax", "strict"))` is a `py_builtins` site (a TUPLE argument JS's `startsWith`
+// cannot take) and routes through `pyStartswith()`/`pyLstrip()`, as this note always
+// said it must.
 //
 // Everything below is `sqlglot/dialects/dialect.py`'s `_Dialect` metaclass and the
 // `Dialect` class it builds. The module-level builders above kept their own narrow
@@ -1814,15 +1815,8 @@ export class Dialect {
   // `klass.__dict__.get("parser_class", ...)`), so removing it would silently change
   // which parser the default dialect uses.
   static tokenizer_class = Tokenizer;
-  /**
-   * py:823 `jsonpath_tokenizer_class = JSONPathTokenizer`.
-   *
-   * `sqlglot/jsonpath.py` is unported (P4). Left null rather than aliased to the SQL
-   * `Tokenizer`: the two have different `SINGLE_TOKENS`/`KEYWORDS`, so aliasing would
-   * hand `to_json_path` a scanner that lexes JSON paths as SQL and produce wrong
-   * output instead of an error. `jsonpath_tokenizer()` throws on it.
-   */
-  static jsonpath_tokenizer_class = null;
+  /** py:823 `jsonpath_tokenizer_class = JSONPathTokenizer`. */
+  static jsonpath_tokenizer_class = JSONPathTokenizer;
   /**
    * py:824 `parser_class = BaseParser`.
    *
@@ -2202,17 +2196,22 @@ export class Dialect {
     return expression;
   }
 
-  /**
-   * py: sqlglot/dialects/dialect.py:1171
-   *
-   * The `Literal` branch calls `sqlglot.jsonpath.parse_json_path`, an unported module
-   * (P4). It announces itself rather than handing back the raw Literal, which would
-   * differ from the oracle silently instead of loudly — the same choice, for the same
-   * reason, that `spike/p3/dialect_tokenizer.mjs`'s stand-in already makes.
-   */
+  /** py: sqlglot/dialects/dialect.py:1171 */
   to_json_path(path) {
     if (path instanceof exp.Literal) {
-      throw new NotPorted("Dialect.to_json_path", "sqlglot/jsonpath.py:parse_json_path");
+      let path_text = path.name;
+      if (path.is_number) path_text = `[${path_text}]`;
+      try {
+        return parse_json_path(path_text, this);
+      } catch (e) {
+        if (!(e instanceof ParseError)) throw e;
+        if (
+          this.constructor.STRICT_JSON_PATH_SYNTAX
+          && !pyStartswith(pyLstrip(path_text), ["lax", "strict"])
+        ) {
+          logger.warning(`Invalid JSON path syntax. ${e.message}`);
+        }
+      }
     }
 
     return path;
@@ -2265,9 +2264,6 @@ export class Dialect {
 
   /** py: sqlglot/dialects/dialect.py:1211 */
   jsonpath_tokenizer(dialect = null) {
-    if (!this.constructor.jsonpath_tokenizer_class) {
-      throw new NotPorted("Dialect.jsonpath_tokenizer", "sqlglot/jsonpath.py");
-    }
     return new (this.constructor.jsonpath_tokenizer_class)(dialect || this);
   }
 
@@ -2383,10 +2379,16 @@ export function registerDialect(name, klass) {
     klass.tokenizer_class = class Tokenizer extends base_tokenizer {};
     initTokenizerSubclass(klass.tokenizer_class);
   }
-  // py:294 — `sqlglot/jsonpath.py` is unported (P4); see the class field's note.
-  klass.jsonpath_tokenizer_class = Object.hasOwn(klass, "JSONPathTokenizer")
-    ? klass.JSONPathTokenizer
-    : null;
+  // py:294 — same shape as `Tokenizer` above (fresh subclass unless own-declared),
+  // now that `sqlglot/jsonpath.py` is ported: `base_jsonpath_tokenizer` falls back to
+  // the real `JSONPathTokenizer` (imported from `../jsonpath.js`), not `null`.
+  const base_jsonpath_tokenizer = base?.jsonpath_tokenizer_class ?? JSONPathTokenizer;
+  if (Object.hasOwn(klass, "JSONPathTokenizer")) {
+    klass.jsonpath_tokenizer_class = klass.JSONPathTokenizer;
+  } else {
+    klass.jsonpath_tokenizer_class = class JSONPathTokenizer extends base_jsonpath_tokenizer {};
+    initTokenizerSubclass(klass.jsonpath_tokenizer_class);
+  }
   // py:297 — note the ASYMMETRY with `Tokenizer` above: no fresh subclass, and the
   // fallback consults the class's OWN `parser_class`/`generator_class` declaration
   // before the base's. That is what leaves the base `Dialect` on `BaseParser`.

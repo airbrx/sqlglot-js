@@ -28,11 +28,14 @@ for (const dialect of ['snowflake', 'databricks']) {
   // ROLLUP, PIVOT) now generate successfully instead of failing over to the raw-SQL
   // fallback this test exercises. Replaced with three constructs that still hit a
   // real, named, currently-unported base-`Generator` stub on both dialects:
-  // colon-access (`JSONPathKey`, out of this port's jsonpath.js scope),
-  // `kwarg_sql` (named-argument `=>`, R78/R80's own un-fixed gap), and `connect_sql`
+  // `kwarg_sql` (named-argument `=>`, R78/R80's own un-fixed gap — this row was the
+  // colon-access `a:b` example until AIR-2274's `src/jsonpath.js` made `JSONPathKey`
+  // generate for real, then briefly `tablesample (10)` until AIR-2275/R88 ported
+  // `tablesample_sql`; it must name a generator method that is STILL `NotPorted` or the
+  // fallback path this test exercises is never reached), and `connect_sql`
   // (Oracle-style CONNECT BY, unrelated to either).
   for (const [a,b] of [
-    ['select a:b from T /* request=1 */', 'SELECT a:b FROM t -- request=2'],
+    ['select f(a => 1) from T /* request=1 */', 'SELECT f(a => 1) FROM t -- request=2'],
     ['select func(x => 1) from T /* request=1 */', 'SELECT func(x => 1) FROM t /* __AIRBRX_CACHE__ */'],
     ['select a from T connect by PRIOR id = parent /* request=1 */', 'SELECT a FROM t CONNECT BY PRIOR id = parent -- request=2'],
   ]) test(`AIR-2163: fallback convergence (${dialect}): ${a}`, () => {

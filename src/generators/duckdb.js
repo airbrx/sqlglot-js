@@ -1,24 +1,35 @@
 // py: sqlglot/generators/duckdb.py — `class DuckDBGenerator(generator.Generator)`.
 //
-// @ported-ranges sqlglot/generators/duckdb.py 50-50 545-547 549-563 890-901 1017-1020 1123-1130 1261-1274 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931
+// @ported-ranges sqlglot/generators/duckdb.py 50-50 545-547 549-563 890-901 1017-1020 1123-1130 1261-1274 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2652-2677
 //
 // SCOPE — a deliberately small, honest slice of a 4,788-line file (PORT_PLAN.md,
 // "DuckDB generator is an outlier size" — ~4x every other single-file dialect
 // generator ported so far). This file does NOT attempt exhaustive coverage; see
 // PORT_PLAN.md's R32 entry for the marginal analysis that drove the cut and the
-// follow-on stub queue (140 methods, ~110 TRANSFORMS entries, PROPERTIES_LOCATION /
+// follow-on stub queue (139 methods, ~108 TRANSFORMS entries, PROPERTIES_LOCATION /
 // the CREATE-statement properties system, and every ClassVar SQL template are all
 // still NotPorted).
+//
+// AIR-2282/R85 (PORT_PLAN.md Epic 11, generator-fidelity census): re-examined because
+// `exp.Array`, `exp.SortArray`, and `exp.GenerateSeries` were the single biggest
+// SQL_MISMATCH clusters against `tools/mismatch_report.mjs` (duckdb as the WRITE
+// dialect) — see PORT_PLAN.md R85 for the ranked table. All three were "blocked" on
+// dependencies that had since landed in other sessions (R22 "stubs outlive their
+// stated blocker"): `inherit_struct_field_names`/`inline_array_unless_query` for
+// `Array`, and `generate_series_sql` for `GenerateSeries`, were both already real
+// exports; `SortArray` just had no entry at all (its upstream form is a `*_sql`
+// method override, py:2652, outside this file's original TRANSFORMS-table scope).
 //
 // WHAT IS HERE:
 //   - The ~35 scalar class settings (py:1554-1589) — these change how ALREADY-PORTED
 //     base `Generator` methods render DuckDB SQL even without a single DuckDB-specific
 //     override or TRANSFORMS entry (tablesample_sql, join_sql, etc. all read them).
-//   - `TRANSFORMS` (py:1590-1814): ~60 of 147 entries. Two tiers:
-//       Tier 1 (~35): wired verbatim to shared helpers `src/dialects/dialect.js`
+//   - `TRANSFORMS` (py:1590-1814): ~62 of 147 entries. Two tiers:
+//       Tier 1 (~37): wired verbatim to shared helpers `src/dialects/dialect.js`
 //       already ports unmodified (`rename_func`, `array_append_sql`, `datestrtodate_sql`,
 //       `groupconcat_sql`, `no_make_interval_sql`, `approx_count_distinct_sql`,
-//       `no_time_sql`, `no_timestamp_sql`, `timestrtotime_sql`) — zero new logic.
+//       `no_time_sql`, `no_timestamp_sql`, `timestrtotime_sql`, `generate_series_sql`,
+//       `inline_array_unless_query`) — zero new logic.
 //       Tier 2 (~25): small (4-40 line) DuckDB-local helper functions with no further
 //       unported dependency, ported below (boolean-coercion group, ArraySort/
 //       ArrayContains, AnyValue, BoolxorAgg, the Unix*-to-timestamp implicit-cast
@@ -31,10 +42,16 @@
 //     nanosecond/float-interval handling and was judged too large for this pass.
 //   - `SUPPORTED_JSON_PATH_PARTS`, `TYPE_MAPPING`, `RESERVED_KEYWORDS` (py:1816-1931):
 //     cheap, mechanical, real upstream data with no code-logic risk.
+//   - `sortarray_sql` (py:2652) — the one `*_sql` method override pulled forward from
+//     the "WHAT IS DELIBERATELY NOT HERE" queue below, as `_sortarray_sql`, wired
+//     through TRANSFORMS rather than as a same-named instance method (matching this
+//     file's existing convention for `_array_sort_sql`/`_array_contains_sql`, both of
+//     which are TRANSFORMS lambdas upstream too, not methods).
 //
 // WHAT IS DELIBERATELY NOT HERE (left for a follow-on session, named rather than
 // silently skipped):
-//   - All 140 `*_sql` method overrides (py:2311 onward) — `create_sql`/`createable_sql`
+//   - The remaining 139 `*_sql` method overrides (py:2311 onward, minus `sortarray_sql`
+//     above) — `create_sql`/`createable_sql`
 //     (base `Generator`, NotPorted — the CREATE-statement properties subsystem is its
 //     own multi-session port, not a DuckDB-generator task), `window_sql`/`tablesample_sql`/
 //     `pad_sql`/`parsejson_sql` (DuckDB overrides that `super()` into base methods this
@@ -55,13 +72,15 @@
 
 import * as exp from "../expressions/index.js";
 import { Generator, unsupported_args } from "../generator.js";
-import { preprocess, unqualify_columns } from "../transforms.js";
+import { inherit_struct_field_names, preprocess, unqualify_columns } from "../transforms.js";
 import {
   approx_count_distinct_sql,
   array_append_sql,
   array_concat_sql,
   datestrtodate_sql,
+  generate_series_sql,
   groupconcat_sql,
+  inline_array_unless_query,
   no_comment_column_constraint_sql,
   no_make_interval_sql,
   no_time_sql,
@@ -93,6 +112,35 @@ function _array_contains_sql(self, expression) {
   }
 
   return func;
+}
+
+/** py:2652 `DuckDBGenerator.sortarray_sql(expression: exp.SortArray)` */
+function _sortarray_sql(self, expression) {
+  const arr = expression.this;
+  const asc = expression.args.asc;
+  const nulls_first = expression.args.nulls_first;
+
+  if (!(asc instanceof exp.Boolean) && !(nulls_first instanceof exp.Boolean)) {
+    return self.func("LIST_SORT", arr, asc, nulls_first);
+  }
+
+  const nulls_are_first = !!nulls_first?.equals(exp.true_());
+  const nulls_first_sql = nulls_are_first ? exp.Literal.string("NULLS FIRST") : null;
+
+  if (!(asc instanceof exp.Boolean)) {
+    return self.func("LIST_SORT", arr, asc, nulls_first_sql);
+  }
+
+  const descending = asc.equals(exp.false_());
+
+  if (!descending && !nulls_are_first) return self.func("LIST_SORT", arr);
+  if (!nulls_are_first) return self.func("ARRAY_REVERSE_SORT", arr);
+  return self.func(
+    "LIST_SORT",
+    arr,
+    exp.Literal.string(descending ? "DESC" : "ASC"),
+    exp.Literal.string("NULLS FIRST"),
+  );
 }
 
 /**
@@ -227,7 +275,11 @@ export class DuckDBGenerator extends Generator {
     [exp.Boolnot, _boolnot_sql],
     [exp.Booland, _booland_sql],
     [exp.Boolor, _boolor_sql],
-    // py:1597 [exp.Array, transforms.preprocess([transforms.inherit_struct_field_names], generator=inline_array_unless_query)] — blocked, needs this file's own `inline_array_unless_query`
+    // py:1597 — both `inherit_struct_field_names` (src/transforms.js) and
+    // `inline_array_unless_query` (src/dialects/dialect.js) were ported in a later
+    // session than this file's own pass (R22 "stubs outlive their stated blocker");
+    // this entry was still commented out as "blocked" despite both existing.
+    [exp.Array, preprocess([inherit_struct_field_names], inline_array_unless_query)],
     [exp.ArrayAppend, array_append_sql("LIST_APPEND")],
     // py:1602 [exp.ArrayCompact, array_compact_sql] — blocked, dialect.js does not yet export `array_compact_sql`
     // py:1603 [exp.ArrayConstructCompact, lambda] — blocked, depends on the excluded ArrayCompact entry
@@ -242,6 +294,11 @@ export class DuckDBGenerator extends Generator {
     // py:1621 [exp.ArrayRemoveAt, _array_remove_at_sql] — blocked, 91-line local helper out of scope this pass
     // py:1622 [exp.ArrayRemove, remove_from_array_using_filter] — blocked, dialect.js does not yet export `remove_from_array_using_filter`
     [exp.ArraySort, _array_sort_sql],
+    // py:2652 `sortarray_sql` — a `*_sql` METHOD override upstream, not a TRANSFORMS
+    // lambda, so it sits outside this file's py:1590-1814 anchor range; ported here as
+    // a module-level function (`_sortarray_sql`) matching this file's existing
+    // TRANSFORMS-entry convention (`_array_sort_sql`, `_array_contains_sql` above).
+    [exp.SortArray, _sortarray_sql],
     [exp.ArrayPrepend, array_append_sql("LIST_PREPEND", true)],
     [exp.ArraySum, rename_func("LIST_SUM")],
     [exp.ArrayMax, rename_func("LIST_MAX")],
@@ -297,7 +354,13 @@ export class DuckDBGenerator extends Generator {
       (self, e) => self.sql(new exp.NullSafeEQ({ this: e.this, expression: e.expression })),
     ],
     [exp.EuclideanDistance, rename_func("LIST_DISTANCE")],
-    // py:1692-1694 [exp.GenerateDateArray/Series/TimestampArray] — blocked, local helpers out of scope this pass
+    // py:1692,1694 [exp.GenerateDateArray/TimestampArray, _generate_datetime_array_sql]
+    // — still blocked, the local helper is out of scope this pass.
+    // py:1693 [exp.GenerateSeries, generate_series_sql("GENERATE_SERIES", "RANGE")] —
+    // unblocked: `generate_series_sql` (src/dialects/dialect.js:1279) was already a
+    // real export, just not imported here (same R22 staleness as the `exp.Array` entry
+    // above).
+    [exp.GenerateSeries, generate_series_sql("GENERATE_SERIES", "RANGE")],
     // py:1695 [exp.Getbit, getbit_sql] — blocked, dialect.js does not yet export `getbit_sql`
     [exp.GroupConcat, (self, e) => groupconcat_sql(self, e, { within_group: false })],
     [exp.Explode, rename_func("UNNEST")],

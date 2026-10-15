@@ -29,6 +29,7 @@ import {
 } from "../../src/dialects/dialect.js";
 import { BaseParser } from "../../src/parsers/base.js";
 import { Tokenizer } from "../../src/tokens.js";
+import { JSONPathTokenizer } from "../../src/jsonpath.js";
 import { TRIE_END } from "../../src/trie.js";
 
 const ref = JSON.parse(readFileSync("spike/out/dialect_defaults.json", "utf8"));
@@ -141,10 +142,14 @@ note.push(
   `GAP  generator_class: CPython has ${JSON.stringify(ref.classes.generator_class)}, port has null — ` +
     "sqlglot/generator.py is P4",
 );
-note.push(
-  `GAP  jsonpath_tokenizer_class: CPython has ${JSON.stringify(ref.classes.jsonpath_tokenizer_class)}, ` +
-    "port has null — sqlglot/jsonpath.py is P4",
+// py:294 — same fresh-subclass shape `tokenizer_class` above already gets; real
+// since AIR-2274 (`src/jsonpath.js`), closing what used to be a `GAP` note here.
+check(
+  "jsonpath_tokenizer_class is a fresh subclass",
+  Dialect.jsonpath_tokenizer_class !== JSONPathTokenizer,
+  true,
 );
+check("jsonpath_tokenizer_class name", Dialect.jsonpath_tokenizer_class.name, ref.classes.jsonpath_tokenizer_class);
 
 // ---------------------------------------------------------------------------
 // 3. `__init__` state and the `get_or_raise` grammar

@@ -75,6 +75,11 @@ const PARTIALLY_SEEDED_MAP_KEYS = new Map([
   [
     "TRANSFORMS",
     [
+      // AIR-2274 (`src/jsonpath.js`): the `**JSON_PATH_PART_TRANSFORMS` spread
+      // (generator.js py:137) is first in the literal, so these 10 are first here.
+      "exp.JSONPathFilter", "exp.JSONPathKey", "exp.JSONPathRecursive", "exp.JSONPathRoot",
+      "exp.JSONPathScript", "exp.JSONPathSelector", "exp.JSONPathSlice", "exp.JSONPathSubscript",
+      "exp.JSONPathUnion", "exp.JSONPathWildcard",
       "exp.Adjacent", "exp.AllowedValuesProperty", "exp.ArrayContainedBy", "exp.ArrayContainsAll",
       "exp.ArrayOverlaps", "exp.AutoRefreshProperty", "exp.BackupProperty", "exp.CalledOnNullInputProperty",
       "exp.CharacterSetProperty", "exp.CopyGrantsProperty", "exp.CredentialsProperty", "exp.ApiProperty",
