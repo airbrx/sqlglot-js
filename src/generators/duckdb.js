@@ -872,6 +872,67 @@ function _is_binary(arg) {
   return arg.isType(exp.DType.BINARY, exp.DType.VARBINARY, exp.DType.BLOB);
 }
 
+/** py:1031 `_gen_with_cast_to_blob(self, expression, result_sql)`. */
+function _gen_with_cast_to_blob(self, expression, result_sql) {
+  if (_is_binary(expression)) {
+    const blob = exp.DataType.fromStr("BLOB", { dialect: "duckdb" });
+    result_sql = self.sql(new exp.Cast({ this: result_sql, to: blob }));
+  }
+  return result_sql;
+}
+
+/** py:1038 `_cast_to_bit(arg)`. */
+function _cast_to_bit(arg) {
+  if (!_is_binary(arg)) return arg;
+
+  if (arg instanceof exp.HexString) arg = new exp.Unhex({ this: exp.Literal.string(arg.this) });
+
+  return exp.cast(arg, exp.DType.BIT);
+}
+
+/** py:1048 `_prepare_binary_bitwise_args(expression)`. */
+function _prepare_binary_bitwise_args(expression) {
+  if (_is_binary(expression.this)) expression.set("this", _cast_to_bit(expression.this));
+  if (_is_binary(expression.expression)) expression.set("expression", _cast_to_bit(expression.expression));
+}
+
+/**
+ * py:1276 `_bitshift_sql(self, expression)`.
+ *
+ * Transform bitshift expressions for DuckDB by injecting BIT/INT128 casts.
+ *
+ * DuckDB's bitwise shift operators don't work with BLOB/BINARY types, so we cast
+ * them to BIT for the operation, then cast the result back to the original type.
+ *
+ * Note: Assumes type annotation has been applied with the source dialect.
+ */
+function _bitshift_sql(self, expression) {
+  const operator = expression instanceof exp.BitwiseLeftShift ? "<<" : ">>";
+  let result_is_blob = false;
+  const this_ = expression.this;
+
+  if (_is_binary(this_)) {
+    result_is_blob = true;
+    expression.set("this", exp.cast(this_, exp.DType.BIT));
+  } else if (expression.args.requires_int128) {
+    this_.replace(exp.cast(this_, exp.DType.INT128));
+  }
+
+  let result_sql = self.binary(expression, operator);
+
+  // Wrap in parentheses if parent is a bitwise operator to "fix" DuckDB precedence issue
+  // DuckDB parses: a << b | c << d  as  (a << b | c) << d
+  if (expression.parent instanceof exp.Binary) {
+    result_sql = self.sql(new exp.Paren({ this: result_sql }));
+  }
+
+  if (result_is_blob) {
+    result_sql = self.sql(new exp.Cast({ this: result_sql, to: exp.DataType.fromStr("BLOB", { dialect: "duckdb" }) }));
+  }
+
+  return result_sql;
+}
+
 /** py:1526 `_sha_sql(self, expression, hash_func, is_binary=False)`. */
 function _sha_sql(self, expression, hash_func, is_binary = false) {
   let arg = expression.this;
@@ -1213,13 +1274,17 @@ export class DuckDBGenerator extends Generator {
     [exp.ArrayMax, rename_func("LIST_MAX")],
     [exp.ArrayMin, rename_func("LIST_MIN")],
     // py:1628-1629 [exp.Base64DecodeBinary/String, lambda] — blocked, needs this file's own `_base64_decode_sql`
-    // py:1630 [exp.BitwiseAnd, lambda self._bitwise_op] — blocked, `_bitwise_op` is a DuckDBGenerator method not ported this pass
+    // py:1630 `BitwiseAnd`
+    [exp.BitwiseAnd, (self, e) => self._bitwise_op(e, "&")],
     [exp.BitwiseAndAgg, _bitwise_agg_sql],
     [exp.BitwiseCount, rename_func("BIT_COUNT")],
-    // py:1633 [exp.BitwiseLeftShift, _bitshift_sql] — blocked, 36-line local helper out of scope this pass
-    // py:1634 [exp.BitwiseOr, lambda self._bitwise_op] — blocked, same as BitwiseAnd above
+    // py:1633 `BitwiseLeftShift`
+    [exp.BitwiseLeftShift, _bitshift_sql],
+    // py:1634 `BitwiseOr`
+    [exp.BitwiseOr, (self, e) => self._bitwise_op(e, "|")],
     [exp.BitwiseOrAgg, _bitwise_agg_sql],
-    // py:1636 [exp.BitwiseRightShift, _bitshift_sql] — blocked, same as BitwiseLeftShift above
+    // py:1636 `BitwiseRightShift`
+    [exp.BitwiseRightShift, _bitshift_sql],
     [exp.BitwiseXorAgg, _bitwise_agg_sql],
     [exp.BoolxorAgg, _boolxor_agg_sql],
     [exp.CommentColumnConstraint, no_comment_column_constraint_sql],
@@ -2751,6 +2816,38 @@ export class DuckDBGenerator extends Generator {
       to: new exp.DataType({ this: exp.DType.DATE }),
     });
     return this.sql(expr);
+  }
+
+  /** py:3817 `_bitwise_op(self, expression, op)`. */
+  _bitwise_op(expression, op) {
+    _prepare_binary_bitwise_args(expression);
+    const result_sql = this.binary(expression, op);
+    return _gen_with_cast_to_blob(this, expression, result_sql);
+  }
+
+  /** py:3822 `bitwisexor_sql(self, expression)`. */
+  bitwisexor_sql(expression) {
+    _prepare_binary_bitwise_args(expression);
+    const result_sql = this.func("XOR", expression.this, expression.expression);
+    return _gen_with_cast_to_blob(this, expression, result_sql);
+  }
+
+  /** py:3827 `objectinsert_sql(self, expression)`. */
+  objectinsert_sql(expression) {
+    const this_ = expression.this;
+    const key = expression.args.key;
+    const key_sql = key instanceof exp.Expr ? key.name : "";
+    const value_sql = this.sql(expression, "value");
+
+    const kv_sql = `${key_sql} := ${value_sql}`;
+
+    // If the input struct is empty e.g. transpiling OBJECT_INSERT(OBJECT_CONSTRUCT(), key, value) from Snowflake
+    // then we can generate STRUCT_PACK which will build it since STRUCT_INSERT({}, key := value) is not valid DuckDB
+    if (this_ instanceof exp.Struct && !this_.expressions.length) {
+      return this.func("STRUCT_PACK", kv_sql);
+    }
+
+    return this.func("STRUCT_INSERT", this_, kv_sql);
   }
 
   /** py:2822 `checkjson_sql(self, expression)`. */
