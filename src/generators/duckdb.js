@@ -94,6 +94,7 @@ import {
   no_timestamp_sql,
   remove_from_array_using_filter,
   rename_func,
+  strposition_sql,
   timestrtotime_sql,
   unit_to_str,
   week_unit_to_dow,
@@ -1472,6 +1473,136 @@ export class DuckDBGenerator extends Generator {
     return super.unnest_sql(expression);
   }
 
+  /** py:4150 `_regexp_extract_sql(self, expression)`. */
+  _regexp_extract_sql(expression) {
+    let this_ = expression.this;
+    let group = expression.args.group;
+    let params = expression.args.parameters;
+    const position = expression.args.position;
+    const occurrence = expression.args.occurrence;
+    const null_if_pos_overflow = expression.args.null_if_pos_overflow;
+
+    // Handle Snowflake's 'e' flag: it enables capture group extraction
+    // In DuckDB, this is controlled by the group parameter directly
+    if (params && params.isString && params.name.includes("e")) {
+      params = exp.Literal.string(params.name.replace(/e/g, ""));
+    }
+
+    const validated_flags = this._validate_regexp_flags(params, "cims");
+
+    // Strip default group when no following params (DuckDB default is same as group=0)
+    if (!validated_flags && group && group.name === String(this.dialect.REGEXP_EXTRACT_DEFAULT_GROUP)) {
+      group = null;
+    }
+
+    const flags_expr = validated_flags ? exp.Literal.string(validated_flags) : null;
+
+    // use substring to handle position argument
+    if (position && (!position.isInt || Number(position.toPy()) > 1)) {
+      this_ = new exp.Substring({ this: this_, start: position });
+
+      if (null_if_pos_overflow) {
+        this_ = new exp.Nullif({ this: this_, expression: exp.Literal.string("") });
+      }
+    }
+
+    const is_extract_all = expression instanceof exp.RegexpExtractAll;
+    const non_single_occurrence = occurrence && (!occurrence.isInt || Number(occurrence.toPy()) > 1);
+
+    const name = is_extract_all || non_single_occurrence ? "REGEXP_EXTRACT_ALL" : "REGEXP_EXTRACT";
+
+    let result = new exp.Anonymous({ this: name, expressions: [this_, expression.expression, group, flags_expr] });
+
+    // Array slicing for REGEXP_EXTRACT_ALL with occurrence
+    if (is_extract_all && non_single_occurrence) {
+      result = new exp.Bracket({ this: result, expressions: [new exp.Slice({ this: occurrence })] });
+    } else if (non_single_occurrence) {
+      // ARRAY_EXTRACT for REGEXP_EXTRACT with occurrence > 1
+      result = new exp.Anonymous({ this: "ARRAY_EXTRACT", expressions: [result, occurrence] });
+    }
+
+    return this.sql(result);
+  }
+
+  /** py:4203 `regexpextract_sql(self, expression)`. */
+  regexpextract_sql(expression) {
+    return this._regexp_extract_sql(expression);
+  }
+
+  /** py:4206 `regexpextractall_sql(self, expression)`. */
+  regexpextractall_sql(expression) {
+    return this._regexp_extract_sql(expression);
+  }
+
+  /** py:3329 `regexpcount_sql(self, expression)`. */
+  regexpcount_sql(expression) {
+    let this_ = expression.this;
+    let pattern = expression.expression;
+    const position = expression.args.position;
+    const parameters = expression.args.parameters;
+
+    // Validate flags - only "ims" flags are supported for embedded patterns
+    const validated_flags = this._validate_regexp_flags(parameters, "ims");
+
+    if (position) this_ = new exp.Substring({ this: this_, start: position });
+
+    // Embed flags in pattern (REGEXP_EXTRACT_ALL doesn't support flags argument)
+    if (validated_flags) {
+      pattern = new exp.Concat({ expressions: [exp.Literal.string(`(?${validated_flags})`), pattern] });
+    }
+
+    // Handle empty pattern: Snowflake returns 0, DuckDB would match between every character
+    const result = exp.case()
+      .when(new exp.EQ({ this: pattern, expression: exp.Literal.string("") }), exp.Literal.number(0))
+      .else_(new exp.Length({ this: new exp.Anonymous({ this: "REGEXP_EXTRACT_ALL", expressions: [this_, pattern] }) }));
+
+    return this.sql(result);
+  }
+
+  /** py:3361 `regexpreplace_sql(self, expression)`. */
+  regexpreplace_sql(expression) {
+    let subject = expression.this;
+    const pattern = expression.expression;
+    const replacement = expression.args.replacement || exp.Literal.string("");
+    const position = expression.args.position;
+    let occurrence = expression.args.occurrence;
+    const modifiers = expression.args.modifiers;
+
+    let validated_flags = this._validate_regexp_flags(modifiers, "cimsg") || "";
+
+    // Handle occurrence (only literals supported)
+    if (occurrence && !occurrence.isInt) {
+      this.unsupported("REGEXP_REPLACE with non-literal occurrence");
+    } else {
+      occurrence = occurrence && occurrence.isInt ? Number(occurrence.toPy()) : 0;
+      if (occurrence > 1) {
+        this.unsupported(`REGEXP_REPLACE occurrence=${occurrence} not supported`);
+      } else if (occurrence === 0 && !validated_flags.includes("g") && !expression.args.single_replace) {
+        // flag duckdb to do either all or none, single_replace check is for duckdb round trip
+        validated_flags += "g";
+      }
+    }
+
+    // Handle position (only literals supported)
+    let prefix = null;
+    if (position && !position.isInt) {
+      this.unsupported("REGEXP_REPLACE with non-literal position");
+    } else if (position && position.isInt && Number(position.toPy()) > 1) {
+      const pos = Number(position.toPy());
+      prefix = new exp.Substring({ this: subject, start: exp.Literal.number(1), length: exp.Literal.number(pos - 1) });
+      subject = new exp.Substring({ this: subject, start: exp.Literal.number(pos) });
+    }
+
+    let result = new exp.Anonymous({
+      this: "REGEXP_REPLACE",
+      expressions: [subject, pattern, replacement, validated_flags ? exp.Literal.string(validated_flags) : null],
+    });
+
+    if (prefix) result = new exp.Concat({ expressions: [prefix, result] });
+
+    return this.sql(result);
+  }
+
   /**
    * py:3299 `_validate_regexp_flags(self, flags, supported_flags)`.
    *
@@ -1585,6 +1716,40 @@ export class DuckDBGenerator extends Generator {
     if (this_ instanceof exp.TsOrDsToTime || this_.isType(exp.DType.TIME)) return this.sql(this_);
 
     return this.sql(new cast_expr({ this: this_, to: time_type }));
+  }
+
+  /** py:2692 `strposition_sql(self, expression)`. */
+  strposition_sql(expression) {
+    const this_ = expression.this;
+    const substr = expression.args.substr;
+    let position = expression.args.position;
+
+    // For BINARY/BLOB: DuckDB's STRPOS doesn't support BLOB types
+    // Convert to HEX strings, use STRPOS, then convert hex position to byte position
+    if (_is_binary(this_)) {
+      // Build expression: STRPOS(HEX(haystack), HEX(needle))
+      const hex_strpos = new exp.StrPosition({
+        this: new exp.Hex({ this: this_ }),
+        substr: new exp.Hex({ this: substr }),
+      });
+
+      return this.sql(exp.cast(hex_strpos.add(1).div(2), exp.DType.INT));
+    }
+
+    // For VARCHAR: handle clamp_position
+    if (expression.args.clamp_position && position) {
+      expression = expression.copy();
+      expression.set(
+        "position",
+        new exp.If({
+          this: new exp.LTE({ this: position, expression: exp.Literal.number(0) }),
+          true: exp.Literal.number(1),
+          false: position.copy(),
+        }),
+      );
+    }
+
+    return strposition_sql(this, expression);
   }
 
   /** py:2822 `checkjson_sql(self, expression)`. */
