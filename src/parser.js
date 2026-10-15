@@ -1250,7 +1250,7 @@ export class Parser {
     /* py:1157 */ [TokenType.ALTER, (self) => self._parse_alter()],
     /* py:1158 */ [TokenType.ANALYZE, (self) => self._parse_analyze()],
     /* py:1159 */ [TokenType.BEGIN, (self) => self._parse_transaction()],
-    // py:1160  [TokenType.CACHE, ...]  — `_parse_cache` is still a NotPorted stub
+    /* py:1160 */ [TokenType.CACHE, (self) => self._parse_cache()],
     /* py:1161 */ [TokenType.COMMENT, (self) => self._parse_comment()],
     /* py:1162 */ [TokenType.COMMIT, (self) => self._parse_commit_or_rollback()],
     /* py:1163 */ [TokenType.COPY, (self) => self._parse_copy()],
@@ -1272,7 +1272,7 @@ export class Parser {
     /* py:1179 */ [TokenType.ROLLBACK, (self) => self._parse_commit_or_rollback()],
     /* py:1180 */ [TokenType.SET, (self) => self._parse_set()],
     /* py:1181 */ [TokenType.TRUNCATE, (self) => self._parse_truncate_table()],
-    // py:1182  [TokenType.UNCACHE, ...]  — `_parse_uncache` is still a NotPorted stub
+    /* py:1182 */ [TokenType.UNCACHE, (self) => self._parse_uncache()],
     /* py:1183 */ [TokenType.UNPIVOT, (self) => self._parse_simplified_pivot(true)],
     /* py:1184 */ [TokenType.UPDATE, (self) => self._parse_update()],
     /* py:1185 */ [TokenType.USE, (self) => self._parse_use()],
@@ -3180,6 +3180,7 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:3218
   _parse_clustered_by() {
+    this._match_text_seq("BY");
     const expressions = this._parse_wrapped_csv(this._parse_column.bind(this)); let sorted_by = null, buckets = null;
     if (this._match_text_seq("SORTED", "BY")) sorted_by = this._parse_wrapped_csv(this._parse_ordered.bind(this));
     if (this._match_text_seq("INTO")) { buckets = this._parse_number(); this._match_text_seq("BUCKETS"); }
@@ -3560,11 +3561,31 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3899
-  _parse_uncache() { throw new NotPorted("_parse_uncache", "sqlglot/parser.py:3899"); }
+  _parse_uncache() {
+    if (!this._match(TokenType.TABLE)) this.raise_error("Expecting TABLE after UNCACHE");
+    return this.expression(new exp.Uncache({ exists: this._parse_exists(), this: this._parse_table(true) }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3907
-  _parse_cache() { throw new NotPorted("_parse_cache", "sqlglot/parser.py:3907"); }
+  _parse_cache() {
+    const lazy = this._match_text_seq("LAZY");
+    this._match(TokenType.TABLE);
+    const table = this._parse_table(true);
+
+    let options = [];
+    if (this._match_text_seq("OPTIONS")) {
+      this._match_l_paren();
+      const k = this._parse_string();
+      this._match(TokenType.EQ);
+      const v = this._parse_string();
+      options = [k, v];
+      this._match_r_paren();
+    }
+
+    this._match(TokenType.ALIAS);
+    return this.expression(new exp.Cache({ this: table, lazy, options, expression: this._parse_select(true) }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3928
