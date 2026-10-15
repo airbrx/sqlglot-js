@@ -21,8 +21,8 @@ console.log(CURRENT_ROLE_EXCLUSION);
 //      heredoc/byte-string support DuckDB adds that Snowflake doesn't have) and,
 //      separately, the values `__init_subclass__` DERIVES.
 //   3. `to_json_path`, DuckDB's one method override — the JSON-pointer and
-//      back-of-list fast paths, and the fall-through to the (unported, NotPorted)
-//      base implementation for everything else.
+//      back-of-list fast paths, and the fall-through to the base implementation
+//      (real since AIR-2274's `src/jsonpath.js`) for everything else.
 
 import { readFileSync } from "node:fs";
 import * as exp from "../../src/expressions/index.js";
@@ -193,13 +193,11 @@ check("instance normalization_strategy", d.normalization_strategy, ref.instance.
 check("instance version", d.version.map(String), ref.instance.version);
 
 // Cases where the fast path does NOT fire fall through to `super().to_json_path`,
-// which upstream implements via `sqlglot.jsonpath.parse_json_path` and this port has
-// as a `NotPorted` stub (`sqlglot/jsonpath.py` is P4, same gap `snowflake.js`
-// inherits). CPython's `want` for those is a real parsed `JSONPath(...)` repr rather
-// than `SAME_LITERAL`/`SAME_NODE`/an error dict — recognised by that shape, logged as
-// a GAP, and asserted to throw `NotPorted` rather than compared value-for-value.
-const isRealParse = (want) => typeof want === "string" && want.startsWith("JSONPath(");
-
+// which upstream implements via `sqlglot.jsonpath.parse_json_path` — real now
+// (AIR-2274, `src/jsonpath.js`), so these compare value-for-value exactly like the
+// fast-path cases below: `ref.out` is `repr(out)` on the Python side (`gen_
+// duckdb_dialect_ref.py`), and `Expr.prototype.toString()` is this port's verified
+// byte-exact equivalent of that `__repr__` (PORT_PLAN.md R21).
 for (const row of ref.to_json_path) {
   const label = row.text === null
     ? "to_json_path(non-Literal Column)"
@@ -207,24 +205,10 @@ for (const row of ref.to_json_path) {
   const node = row.text === null
     ? new exp.Column({ this: new exp.Identifier({ this: "x" }) })
     : exp.Literal.string(row.text);
-  if (isRealParse(row.out)) {
-    checks += 1;
-    try {
-      d.to_json_path(node);
-      fails.push(`${label}\n       got  <no throw>\n       want NotPorted (sqlglot/jsonpath.py is unported)`);
-    } catch (e) {
-      if (e.name !== "NotPorted") {
-        fails.push(`${label}\n       got  ${e.name}: ${e.message}\n       want NotPorted`);
-      } else {
-        note.push(`GAP  ${label}: CPython parses ${trunc(row.out.replace(/\s+/g, " "))}, port throws NotPorted — sqlglot/jsonpath.py is unported (P4)`);
-      }
-    }
-    continue;
-  }
   let got;
   try {
     const out = d.to_json_path(node);
-    got = out === node ? (row.text === null ? "SAME_NODE" : "SAME_LITERAL") : String(out);
+    got = out === node ? (row.text === null ? "SAME_NODE" : "SAME_LITERAL") : out.toString();
   } catch (e) {
     got = { error: `${e.name}: ${e.message}` };
   }

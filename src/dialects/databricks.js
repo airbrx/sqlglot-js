@@ -1,14 +1,14 @@
 // py: sqlglot/dialects/databricks.py — `class Databricks(Spark)`.
 //
 // Link 4 of 4, the LEAF of `Hive <- Spark2 <- Spark <- Databricks` — see `hive.js`'s
-// header for the full explanation of the split, the `registerDialect` requirement, and
-// the remaining deliberate gaps that apply verbatim to every file in this chain.
+// header for the full explanation of the split and the `registerDialect` requirement.
 // `Generator = DatabricksGenerator` (py:42) IS now declared — `generators/databricks.js`
 // exists (PORT_PLAN.md, the Databricks-chain generator step; this is the fourth and
 // final link, closing out the whole chain). `EXPRESSION_METADATA` (py:16) now resolves
 // to the real `typing/databricks.js` table (AIR-2100), Link 4 — the LEAF — of the
 // overlay chain, see that file's own header. This file adds `class Databricks extends
-// Spark` with its 2 overridden settings and the nested `Tokenizer` subclass.
+// Spark` with its 2 overridden settings and the nested `Tokenizer`/`JSONPathTokenizer`
+// subclasses (the latter AIR-2274, `src/jsonpath.js` — no gaps remain in this chain).
 //
 // Every setting below is diffed value-by-value against CPython by
 // `spike/p5/fuzz_dialect_parse.mjs`'s DATABRICKS row.
@@ -21,17 +21,30 @@ import { Spark } from "./spark.js";
 import { EXPRESSION_METADATA as DATABRICKS_EXPRESSION_METADATA } from "../typing/databricks.js";
 
 /**
+ * py: sqlglot/dialects/databricks.py:29 `class JSONPathTokenizer(Spark.JSONPathTokenizer)`.
+ *
+ * `Spark.JSONPathTokenizer` (the nested-class property) is NOT an own property of
+ * either `Spark` or `Spark2` — Hive is the only link that redeclares it — so Python
+ * attribute lookup walks past both to `Hive.JSONPathTokenizer`. The JS equivalent of
+ * that resolved value is `Spark.jsonpath_tokenizer_class` (set by `registerDialect`
+ * when `spark.js`'s own `registerDialect(Dialects.SPARK, Spark)` call ran, below this
+ * module's own `import { Spark } from "./spark.js"`): a fresh, empty subclass of
+ * Spark2's own fresh subclass of Hive's real `HiveJSONPathTokenizer` — functionally
+ * identical to extending Hive's directly, PORT_PLAN.md R31's own named hazard avoided
+ * by reading the RESOLVED value rather than the naive `Spark.JSONPathTokenizer` (which
+ * is `undefined`).
+ */
+class DatabricksJSONPathTokenizer extends Spark.jsonpath_tokenizer_class {
+  static IDENTIFIERS = ["`", '"'];
+}
+initTokenizerSubclass(DatabricksJSONPathTokenizer);
+
+/**
  * py: sqlglot/dialects/databricks.py:31 `class Tokenizer(Spark.Tokenizer)`.
  *
  * Extends `Spark.Tokenizer` DIRECTLY, matching upstream's own class statement exactly —
  * see `spark2.js`/`spark.js`'s identical notes. Spark DOES declare its own `Tokenizer`
  * (`spark.js`'s `SparkTokenizer`), so this is a direct extension with no MRO skip.
- *
- * The would-be `JSONPathTokenizer(Spark.JSONPathTokenizer)` sibling (py:29) is the one
- * place in this chain where the skip DOES matter and is NOT ported — see `hive.js`'s
- * gap note and PORT_PLAN.md R30. `Spark.JSONPathTokenizer` is not an own property of
- * either `Spark` or `Spark2`, so Python attribute lookup would walk past both to
- * `Hive.JSONPathTokenizer`.
  */
 class DatabricksTokenizer extends Spark.Tokenizer {
   static KEYWORDS = new Map([
@@ -70,6 +83,9 @@ export class Databricks extends Spark {
 
   /** py:31 `class Tokenizer(Spark.Tokenizer)`; see `DatabricksTokenizer` above. */
   static Tokenizer = DatabricksTokenizer;
+
+  /** py:29 `class JSONPathTokenizer(Spark.JSONPathTokenizer)`; see above. */
+  static JSONPathTokenizer = DatabricksJSONPathTokenizer;
 }
 
 // py: upstream registers implicitly, via the `_Dialect` metaclass running on the class

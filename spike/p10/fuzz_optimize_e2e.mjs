@@ -133,10 +133,17 @@ function fingerprint(ast) {
 // `querytransform_sql` (plus `joinhint_sql`/`pivotalias_sql`, two render-side
 // siblings those ten's own un-stubbing surfaced next) — removed from this list, all
 // real now. `kwarg_sql` is the one base-Generator gap AIR-2194 explicitly left
-// un-fixed (out of its own named scope); still real, still named here.
+// un-fixed (out of its own named scope); still real, still named here. The
+// `JSONPathKey` generator entry (colon-access) is also removed — AIR-2274's
+// `src/jsonpath.js` lands `_jsonpathkey_sql`/`JSON_PATH_PART_TRANSFORMS` for real,
+// which is what let `case_sensitive_json_dot_access-bigquery-unnest-no-schema`
+// progress past its own former `to_json_path` parse blocker (removed from
+// `KNOWN_PARSE_BLOCKERS` below) into this NEW, unrelated base-Generator stub:
+// `parsejson_sql` (generator.py:5557), reached by BigQuery's `PARSE_JSON(...)`
+// wrapping a successfully-parsed JSON path.
 const KNOWN_GENERATOR_GAPS = [
   { re: /^NotPorted: kwarg_sql is not ported yet/, blockedBy: "kwarg_sql" },
-  { re: /^PyValueError: Unsupported expression type JSONPathKey/, blockedBy: "JSONPathKey generator (colon-access)" },
+  { re: /^NotPorted: parsejson_sql is not ported yet/, blockedBy: "parsejson_sql" },
 ];
 
 function matchKnownGap(e) {
@@ -153,7 +160,6 @@ function matchKnownGap(e) {
 const KNOWN_PARSE_BLOCKERS = [
   { re: /^PyValueError: Unknown dialect 'clickhouse'/, blockedBy: "dialects/clickhouse.js (unported)" },
   { re: /^NotPorted: _parse_grouping_set is not ported yet/, blockedBy: "parser.js _parse_grouping_set (GROUPING SETS)" },
-  { re: /^NotPorted: Dialect\.to_json_path is not ported yet/, blockedBy: "jsonpath.js parse_json_path (colon-access parse)" },
 ];
 
 function matchKnownBlocker(e) {

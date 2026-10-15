@@ -30,9 +30,11 @@ const VERBOSE = process.argv.includes("--verbose");
 const ref = JSON.parse(readFileSync("spike/out/pushdown_projections.json", "utf8"));
 
 // Mirrors `gen_pushdown_projections_ref.py`'s own `STRUCTURAL_IDS` -- these 3 hit
-// pre-existing `NotPorted` base-Generator stubs (`cube_sql`, `in_unnest_op`,
-// `JSONPathKey`'s missing TRANSFORMS entry) unrelated to this file, so they compare a
-// pure structural `.toString()` dump instead of `.sql()`.
+// pre-existing `NotPorted` base-Generator stubs (`cube_sql`, `in_unnest_op`) and one
+// case that's no longer a gap at all (`JSONPathKey`'s TRANSFORMS entry, real since
+// AIR-2274's `src/jsonpath.js`) but still compares fine structurally, so the
+// exclusion stays for consistency with its siblings rather than being special-cased
+// out.
 const STRUCTURAL_IDS = new Set([35, 50, 73]);
 
 // Same pre-existing, unrelated parser/repr quirk `fuzz_qualify_columns.mjs` already

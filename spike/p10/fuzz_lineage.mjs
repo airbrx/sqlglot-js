@@ -69,13 +69,11 @@ const KNOWN_ORDER_NONDETERMINISM = new Set([
 // `fuzz_qualify.mjs`'s own `KNOWN_GAPS`): `pivot_sql`/`kwarg_sql`/`tablefromrows_sql`
 // are `NotPorted` stubs in `src/generator.js` (base `Generator` rendering methods for
 // PIVOT/UNPIVOT, the `=>` keyword-argument syntax `LATERAL FLATTEN(INPUT => ...)`
-// uses, and Snowflake's `TABLE(FLATTEN(...))` row-set syntax, respectively); the
-// `JSONPathRoot` case is an unsupported-expression-type gap in the same rendering
-// layer, hit by `FLATTENED.VALUE:field::text`'s JSON-path colon syntax.
-const KNOWN_GAPS = [
-  /^NotPorted: (pivot_sql|kwarg_sql) is not ported yet/,
-  /^PyValueError: Unsupported expression type (JSONPathRoot)$/,
-];
+// uses, and Snowflake's `TABLE(FLATTEN(...))` row-set syntax, respectively). The
+// former `JSONPathRoot` entry (hit by `FLATTENED.VALUE:field::text`'s JSON-path
+// colon syntax) is removed — AIR-2274's `src/jsonpath.js` renders it for real now —
+// and `tablefromrows_sql` is removed since AIR-2275 (R88) ported it.
+const KNOWN_GAPS = [/^NotPorted: (pivot_sql|kwarg_sql) is not ported yet/];
 
 function isKnownGap(got) {
   if (!("error" in got)) return false;

@@ -16,8 +16,7 @@
 // need their own `registerDialect` call — one per class, matching how the parser chain
 // registers each link separately.
 //
-// ONE DELIBERATE GAP REMAINS, announced rather than faked, same reason Snowflake's is;
-// TWO CLOSED THIS ROUND:
+// TWO CLOSED, ONE GAP REMAINS:
 //
 //   `Generator = HiveGenerator` (py:126) IS now declared — `generators/hive.js` exists
 //   (PORT_PLAN.md, the Databricks-chain generator step, following Ben's corrected
@@ -36,30 +35,37 @@
 //   Hive's); the base `Dialect.COERCES_TO` is already an empty `Map()`, so Databricks's
 //   own declaration below is the only place this note repeats.
 //
-//   `class JSONPathTokenizer(jsonpath.JSONPathTokenizer)` (py:82) is NOT declared, same
-//   reason as `Dialect.jsonpath_tokenizer_class` being null everywhere: `sqlglot/
-//   jsonpath.py` is unported. This one is worth flagging beyond the usual note: Hive is
-//   the only class in this chain whose Python source actually defines its own
-//   `JSONPathTokenizer` (Spark2/Spark don't redeclare one, and Databricks's own
-//   `class JSONPathTokenizer(Spark.JSONPathTokenizer)` resolves, via ordinary Python
-//   attribute lookup up the MRO, to Hive's — NOT to some intermediate Spark-specific
-//   class, since neither Spark2 nor Spark shadow the name). See PORT_PLAN.md R30: when
-//   this class eventually gets ported, `DatabricksJSONPathTokenizer` must extend
-//   `Hive`'s JSONPathTokenizer directly (or whatever class actually owns it after
-//   MRO resolution), not `Spark.JSONPathTokenizer` read naively as "the immediate
-//   parent's own nested class" — the two are not always the same thing in a chain this
-//   deep, and the `Tokenizer` chain below happens NOT to hit this trap only because
-//   every one of Spark2/Spark/Databricks DOES redeclare its own `Tokenizer`.
+// `class JSONPathTokenizer(jsonpath.JSONPathTokenizer)` (py:82) IS now declared below
+// (AIR-2274, `src/jsonpath.js`) — `HiveJSONPathTokenizer`. Worth flagging beyond the
+// usual note: Hive is the only class in this chain whose Python source actually defines
+// its own `JSONPathTokenizer` (Spark2/Spark don't redeclare one, and Databricks's own
+// `class JSONPathTokenizer(Spark.JSONPathTokenizer)` resolves, via ordinary Python
+// attribute lookup up the MRO, to Hive's — NOT to some intermediate Spark-specific
+// class, since neither Spark2 nor Spark shadow the name). Per PORT_PLAN.md R30's own
+// prediction: `databricks.js`'s `DatabricksJSONPathTokenizer` extends
+// `Spark.jsonpath_tokenizer_class` — the RESOLVED value after `registerDialect` has run
+// the whole chain, which is what actually owns the behavior after MRO resolution — not
+// `Spark.JSONPathTokenizer` read naively as "the immediate parent's own nested class"
+// (Spark never declares one; the two are not always the same thing in a chain this
+// deep, and the `Tokenizer` chain below never hit this trap only because every one of
+// Spark2/Spark/Databricks DOES redeclare its own `Tokenizer`).
 //
 // Every setting below is diffed value-by-value against CPython by
 // `spike/p5/fuzz_dialect_parse.mjs`'s HIVE row (and transitively, via inheritance, by
 // the SPARK2/SPARK/DATABRICKS rows in the same file).
 
 import { Tokenizer, TokenType, initTokenizerSubclass } from "../tokens.js";
+import { JSONPathTokenizer } from "../jsonpath.js";
 import { HiveParser } from "../parsers/hive.js";
 import { HiveGenerator } from "../generators/hive.js";
 import { Dialect, Dialects, NormalizationStrategy, registerDialect } from "./dialect.js";
 import { EXPRESSION_METADATA as HIVE_EXPRESSION_METADATA } from "../typing/hive.js";
+
+/** py: sqlglot/dialects/hive.py:82 `class JSONPathTokenizer(jsonpath.JSONPathTokenizer)`. */
+class HiveJSONPathTokenizer extends JSONPathTokenizer {
+  static VAR_TOKENS = new Set([...JSONPathTokenizer.VAR_TOKENS, TokenType.DASH]);
+}
+initTokenizerSubclass(HiveJSONPathTokenizer);
 
 /**
  * py: sqlglot/dialects/hive.py:84 `class Tokenizer(tokens.Tokenizer)`.
@@ -198,6 +204,9 @@ export class Hive extends Dialect {
 
   /** py:84 `class Tokenizer(tokens.Tokenizer)`; see `HiveTokenizer` above. */
   static Tokenizer = HiveTokenizer;
+
+  /** py:82 `class JSONPathTokenizer(jsonpath.JSONPathTokenizer)`; see `HiveJSONPathTokenizer` above. */
+  static JSONPathTokenizer = HiveJSONPathTokenizer;
 }
 
 // py: upstream registers implicitly, via the `_Dialect` metaclass running on the class
