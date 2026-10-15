@@ -30,7 +30,7 @@
 // for a missing dialect, it is the documented default, and it is reproduced by
 // consulting the base `DATE_PART_MAPPING` literal below rather than by any lookup.
 //
-// @ported-ranges sqlglot/dialects/dialect.py 858-953 1280-1284 1297-1299 1314-1316 1330-1332 1438-1454 1610-1637 1654-1674 1676-1697 1700-1706 1709-1715 1830-1837 1892-1914 1916-1920 1921-1922 1925-1963 1966-1967 1970-1973 2132-2154 2167-2176 2179-2184 2187-2220 2223-2265 2268-2295 2298-2302 2305-2323 2384-2394 2406-2407 2410-2411 2462-2474 2477-2497 2499-2534 2604-2617 2620-2625 2628-2641 2654-2672
+// @ported-ranges sqlglot/dialects/dialect.py 858-953 1280-1284 1297-1299 1314-1316 1330-1332 1438-1454 1610-1637 1654-1674 1676-1697 1700-1706 1709-1715 1830-1837 1892-1914 1916-1920 1921-1922 1925-1963 1966-1967 1970-1973 2132-2154 2167-2176 2179-2184 2187-2220 2223-2265 2268-2295 2298-2302 2305-2323 2384-2394 2406-2407 2410-2411 2462-2474 2477-2497 2499-2534 2604-2617 2620-2625 2628-2641 2654-2672 2675-2685
 //
 // One range per member ported, so `tools/lint_deny.mjs` measures this file against
 // what it actually claims rather than against all 2,600 lines of `dialects/dialect.py`
@@ -1730,6 +1730,26 @@ export function getbit_sql(self, expression) {
   }
 
   return self.func("GET_BIT", value, position);
+}
+
+/**
+ * py: sqlglot/dialects/dialect.py:2675 `jarowinkler_similarity(func)`.
+ *
+ * AIR-2288 (ClickHouse). Returns a `Generator`/`JarowinklerSimilarity` closure that
+ * renders the given SQL function name, upper-casing both operands first when
+ * `case_insensitive` is set.
+ */
+export function jarowinkler_similarity(func) {
+  return (self, expression) => {
+    let this_ = expression.this;
+    let expr = expression.expression;
+    if (expression.args.case_insensitive) {
+      this_ = new exp.Upper({ this: this_ });
+      expr = new exp.Upper({ this: expr });
+    }
+
+    return self.func(func, this_, expr);
+  };
 }
 
 // ===========================================================================
