@@ -514,7 +514,7 @@ export class Generator {
     [exp.HandlerProperty, (self, e) => `HANDLER ${self.sql(e, "this")}`], // py:186
     [exp.ParameterStyleProperty, (self, e) => `PARAMETER STYLE ${self.sql(e, "this")}`], // py:187
     // py:188  [exp.EphemeralColumnConstraint, /* TODO lambda */],
-    // py:191  [exp.ExcludeColumnConstraint, /* TODO lambda */],
+    [exp.ExcludeColumnConstraint, (self, e) => `EXCLUDE ${pyLstrip(self.sql(e, "this"))}`], // py:191
     [exp.ExecuteAsProperty, (self, e) => self.naked_property(e)], // py:192
     // py:193 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4), same
     // `set_operations` wiring as `exp.Intersect`/`exp.Union` below.
