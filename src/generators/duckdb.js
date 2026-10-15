@@ -80,6 +80,7 @@ import {
   approx_count_distinct_sql,
   array_append_sql,
   array_concat_sql,
+  arrow_json_extract_sql,
   date_delta_to_binary_interval_op,
   datestrtodate_sql,
   explode_to_unnest_sql,
@@ -626,6 +627,31 @@ function _date_from_parts_sql(self, expression) {
   return self.func("MAKE_DATE", year_expr, month_expr, day_expr);
 }
 
+/** py:878 */
+const WRAPPED_JSON_EXTRACT_EXPRESSIONS = [exp.Binary, exp.Bracket, exp.In, exp.Not];
+
+/** py:881 `_arrow_json_extract_sql(self, expression)`. */
+function _arrow_json_extract_sql(self, expression) {
+  let arrow_sql = arrow_json_extract_sql(self, expression);
+  if (!expression.sameParent && WRAPPED_JSON_EXTRACT_EXPRESSIONS.some((cls) => expression.parent instanceof cls)) {
+    arrow_sql = self.wrap(arrow_sql);
+  }
+  return arrow_sql;
+}
+
+/** py:1003 `_json_extract_value_array_sql(self, expression)`. */
+function _json_extract_value_array_sql(self, expression) {
+  const json_extract = new exp.JSONExtract({ this: expression.this, expression: expression.expression });
+  const data_type = expression instanceof exp.JSONValueArray ? "ARRAY<STRING>" : "ARRAY<JSON>";
+  return self.sql(exp.cast(json_extract, exp.DataType.fromStr(data_type)));
+}
+
+/** py:665 `_json_format_sql(self, expression)`. */
+function _json_format_sql(self, expression) {
+  const sql = self.func("TO_JSON", expression.this, expression.args.options);
+  return `CAST(${sql} AS TEXT)`;
+}
+
 /** py:1017 */
 function _cast_to_boolean(arg) {
   if (arg && !arg.isType(exp.DType.BOOLEAN)) return exp.cast(arg, exp.DType.BOOLEAN);
@@ -928,11 +954,21 @@ export class DuckDBGenerator extends Generator {
     [exp.IntDiv, (self, e) => self.binary(e, "//")],
     [exp.IsInf, rename_func("ISINF")],
     [exp.IsNan, rename_func("ISNAN")],
-    // py:1702-1707 [exp.IsNullValue, exp.IsArray] — skipped, low value (Snowflake-only JSON predicate sugar)
+    // py:1702 `IsNullValue`
+    [exp.IsNullValue, (self, e) => self.sql(exp.func("JSON_TYPE", e.this).eq(exp.Literal.string("NULL")))],
+    // py:1705 `IsArray`
+    [exp.IsArray, (self, e) => self.sql(exp.func("JSON_TYPE", e.this).eq(exp.Literal.string("ARRAY")))],
     // py:1708-1709 [exp.Ceil, exp.Floor, _ceil_floor] — blocked, chains through the unported `_scale_rounding_sql`
     // and base `round_sql`/`ceil_floor`
     [exp.JSONBExists, rename_func("JSON_EXISTS")],
-    // py:1711-1714 [exp.JSONExtract*, exp.JSONFormat, exp.JSONValueArray] — blocked, local helpers out of scope
+    // py:1711 `JSONExtract`
+    [exp.JSONExtract, _arrow_json_extract_sql],
+    // py:1712 `JSONExtractArray`
+    [exp.JSONExtractArray, _json_extract_value_array_sql],
+    // py:1713 `JSONFormat`
+    [exp.JSONFormat, _json_format_sql],
+    // py:1714 `JSONValueArray`
+    [exp.JSONValueArray, _json_extract_value_array_sql],
     [exp.Lateral, _explode_to_unnest_sql],
     [exp.LogicalOr, (self, e) => self.func("BOOL_OR", _cast_to_boolean(e.this))],
     [exp.LogicalAnd, (self, e) => self.func("BOOL_AND", _cast_to_boolean(e.this))],
@@ -1423,5 +1459,53 @@ export class DuckDBGenerator extends Generator {
     if (this_ instanceof exp.TsOrDsToTime || this_.isType(exp.DType.TIME)) return this.sql(this_);
 
     return this.sql(new cast_expr({ this: this_, to: time_type }));
+  }
+
+  /** py:2822 `checkjson_sql(self, expression)`. */
+  checkjson_sql(expression) {
+    const arg = expression.this;
+    return this.sql(
+      exp.case()
+        .when(exp.or_(arg.is_(exp.null_()), arg.eq(""), exp.func("json_valid", arg)), exp.null_())
+        .else_(exp.Literal.string("Invalid JSON"))
+    );
+  }
+
+  /** py:2833 `parsejson_sql(self, expression)`. */
+  parsejson_sql(expression) {
+    const arg = expression.this;
+    if (expression.args.safe) {
+      return this.sql(
+        exp.case()
+          .when(exp.func("json_valid", arg), exp.cast(arg.copy(), "JSON"))
+          .else_(exp.null_())
+      );
+    }
+    return this.func("JSON", arg);
+  }
+
+  /** py:4714 `jsonextractscalar_sql(self, expression)`. */
+  jsonextractscalar_sql(expression) {
+    if (expression.args.scalar_only) {
+      const json_value = new exp.JSONExtractScalar({
+        this: rename_func("JSON_VALUE")(this, expression),
+        expression: "'$'",
+      });
+
+      // `->>` binds looser than most operators, so the wrap logic needs the parent
+      json_value.parent = expression.parent;
+      expression = json_value;
+    }
+
+    return _arrow_json_extract_sql(this, expression);
+  }
+
+  /** py:2853 `stripnullvalue_sql(self, expression)`. */
+  stripnullvalue_sql(expression) {
+    return this.sql(
+      exp.case()
+        .when(exp.func("json_type", expression.this).eq("NULL"), exp.null_())
+        .else_(expression.this)
+    );
   }
 }
