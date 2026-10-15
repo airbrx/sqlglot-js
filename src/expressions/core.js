@@ -493,7 +493,12 @@ export function toS(node, verbose = false, level = 0, reprStr = false) {
     const args = Object.entries(node.args).filter(([,v]) => verbose || (v !== null && !(Array.isArray(v) && !v.length)));
     // py: core.py:2594 `if (node.type or verbose) and not node.is_data_type`
     if ((node.type || verbose) && !node.constructor.isDataType) args.push(["_type", node.type]);
-    if (node.comments || verbose) args.push(["_comments", node.comments]);
+    // py: core.py:2596 `if node.comments or verbose` -- Python's empty list is falsy; a
+    // JS `[]` is truthy (R37 defect class), which printed `_comments=[]` on every
+    // parsed node whose comments list exists but is empty, where CPython prints nothing.
+    if ((Array.isArray(node.comments) ? node.comments.length > 0 : Boolean(node.comments)) || verbose) {
+      args.push(["_comments", node.comments]);
+    }
     if (node.isLeaf()) { indent = ""; delim = ", "; }
     const quote = !!node.args.is_string || (node.constructor.name === "Identifier" && !!node.args.quoted);
     return `${node.constructor.name}(${indent}${args.map(([k,v]) => `${k}=${toS(v, verbose, level + 1, quote)}`).join(delim)})`;
