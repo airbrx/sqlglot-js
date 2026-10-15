@@ -20,15 +20,10 @@ normalize's) two-step pipeline.
 Six of the 56 pairs are gated behind `# dialect: presto|trino|athena` (two pairs each)
 and exercise `unnest_requires_cross_join` (py:41 `isinstance(dialect, (Athena,
 Presto))`) -- the special case where Presto-family dialects can't push a predicate
-into an UNNEST's CROSS JOIN. `Presto` now exists in this JS codebase (AIR-2287,
-`src/dialects/presto.js`), so its 2 pairs are real coverage; `Trino`/`Athena` remain
-unported (no `src/dialects/{trino,athena}.js`), so `parse_one(sql, read="trino")`
-still fails at the FIRST step on the JS side, independently of
-`pushdown_predicates.js` itself -- the same "real parser/generator can't yet reach
-this scenario" situation R51's typing overlays document, not a `pushdown_predicates.js`
-defect. Those 4 remaining pairs are captured here (so the CPython-side expectation is
-on record) but flagged `"dialect_unported": true"` so the JS fuzzer can skip them with
-a named reason instead of counting them as ERROR.
+into an UNNEST's CROSS JOIN. `Presto` (AIR-2287, R103), `Trino`, and `Athena`
+(AIR-2287, part 2) all now exist in this JS codebase, so all 6 pairs are real
+coverage -- `UNPORTED_DIALECTS` below is empty, kept as a named set rather than
+deleted outright so a future dialect gap in this same fixture has somewhere to go.
 
     python3 spike/p10/gen_pushdown_predicates_ref.py > spike/out/pushdown_predicates.json
     node spike/p10/fuzz_pushdown_predicates.mjs
@@ -76,10 +71,10 @@ def load_sql_fixture_pairs(path):
             yield meta, sql, expected
 
 
-# "presto" removed (AIR-2287): `src/dialects/presto.js` now exists, so the 2
-# `# dialect: presto` pairs are real coverage, not a skip. `trino`/`athena` remain
-# unported.
-UNPORTED_DIALECTS = {"trino", "athena"}
+# "presto" removed (AIR-2287, R103); "trino"/"athena" removed (AIR-2287, part 2) --
+# all three now exist (`src/dialects/{presto,trino,athena}.js`), so none of the 6
+# `# dialect: presto|trino|athena` pairs are skipped anymore.
+UNPORTED_DIALECTS = set()
 
 
 def pushdown_pipeline(sql, dialect):
