@@ -35,7 +35,7 @@
 // (see tools/lint_deny.mjs's `isPortedSite`, which otherwise treats a hand-written file
 // with no seeded `// py:` skeleton as fully ported and flags every deny-list site in
 // the REST of transforms.py as an unacknowledged one):
-// @ported-ranges sqlglot/transforms.py 19-71 72-128 144-200 201-264 265-275 278-294 555-567 570-579 615-631 131-141 297-399 672-729 732-738 741-1084
+// @ported-ranges sqlglot/transforms.py 19-71 72-128 144-200 201-264 265-275 278-294 402-552 555-567 570-579 615-631 131-141 297-399 672-729 732-738 741-1084
 //
 // The added ranges (Databricks-chain generator step, PORT_PLAN.md) cover
 // `unnest_generate_series`, `unnest_to_explode`, `unqualify_columns`,
@@ -58,17 +58,21 @@
 //
 // BigQuery generator step (PORT_PLAN.md) added one more: `remove_precision_
 // parameterized_types` (265, new range above), for `generators/bigquery.js`'s
-// `TRANSFORMS[exp.Cast]`. `explode_projection_to_unnest` (402) stays unported — its
-// `Scope(expression).references` needs the full `Scope` CLASS (references, sources),
-// not the Tier-A `walkInScope`/`findAllInScope`/`findInScope` functions `unqualify_unnest`
-// above already gets by with; `generators/bigquery.js`'s own `TRANSFORMS[exp.Select]`
-// documents the resulting gap where it applies the entry.
+// `TRANSFORMS[exp.Cast]`.
+//
+// P11/AIR-2300 round 2 (PORT_PLAN.md) ported `explode_projection_to_unnest` (402, new
+// range above) — the `Scope(expression).references` call it needs now resolves against
+// the full `Scope` CLASS (`optimizer/scope.js`, landed R44/R46), not the Tier-A
+// `walkInScope`/`findAllInScope`/`findInScope` functions `unqualify_unnest` above gets
+// by with. Wired into `generators/bigquery.js`'s and `generators/snowflake.js`'s own
+// `TRANSFORMS[exp.Select]` chains (see those files).
 
 import { findNewName, seqGet } from "./helper.js";
 import { UnsupportedError } from "./errors.js";
 import * as exp from "./expressions/index.js";
-import { findAllInScope } from "./optimizer/scope.js";
+import { findAllInScope, Scope } from "./optimizer/scope.js";
 import { ensure_bools as canonicalizeEnsureBools } from "./optimizer/canonicalize.js";
+import { PyAssertionError } from "./_py/errors.js";
 
 /**
  * py: sqlglot/transforms.py:19 `preprocess(transforms, generator=None)`
@@ -540,6 +544,193 @@ export function unnest_to_explode(expression, unnest_using_arrays_zip = true) {
   }
 
   return expression;
+}
+
+/**
+ * py: sqlglot/transforms.py:402 `explode_projection_to_unnest(index_offset=0)`
+ *
+ * Convert explode/posexplode projections into unnests.
+ *
+ * @param {number} [index_offset]
+ * @returns {(expression: exp.Expr) => exp.Expr}
+ */
+export function explode_projection_to_unnest(index_offset = 0) {
+  function _explode_projection_to_unnest(expression) {
+    if (expression instanceof exp.Select) {
+      const takenSelectNames = new Set(expression.namedSelects);
+      const takenSourceNames = new Set(new Scope(expression).references.map(([name]) => name));
+
+      function new_name(names, name) {
+        name = findNewName(names, name);
+        names.add(name);
+        return name;
+      }
+
+      const arrays = [];
+      const seriesAlias = new_name(takenSelectNames, "pos");
+      const series = exp.alias_(
+        new exp.Unnest({
+          expressions: [new exp.GenerateSeries({ start: exp.Literal.number(index_offset) })],
+        }),
+        new_name(takenSourceNames, "_u"),
+        { table: [seriesAlias] },
+      );
+
+      // py: `for select in list(expression.selects)` -- expression.selects IS
+      // expression.expressions (same array reference), which this loop mutates via
+      // select.replace()/expression.set("expressions", ...) below, so iterate over a
+      // snapshot copy rather than the live array.
+      for (const select of [...expression.selects]) {
+        let explode = select.find(exp.Explode);
+
+        if (explode) {
+          let posAlias = "";
+          let explodeAlias = "";
+          let alias;
+
+          if (select instanceof exp.Alias) {
+            explodeAlias = select.args.alias;
+            alias = select;
+          } else if (select instanceof exp.Aliases) {
+            // py: `select.aliases` -- `Aliases.aliases` is just `self.expressions`
+            posAlias = select.expressions[0];
+            explodeAlias = select.expressions[1];
+            alias = select.replace(exp.alias_(select.this, "", { copy: false }));
+          } else {
+            alias = select.replace(exp.alias_(select, ""));
+            explode = alias.find(exp.Explode);
+            if (!explode) throw new PyAssertionError("explode");
+          }
+
+          const isPosexplode = explode instanceof exp.Posexplode;
+          let explodeArg = explode.this;
+
+          if (explode instanceof exp.ExplodeOuter) {
+            // deny:operators sqlglot/transforms.py:453 — Python `explode_arg[0]`
+            // (`__getitem__`) builds `exp.Bracket(this=explode_arg.copy(), ...)`;
+            // `.bracket(0)` is this port's equivalent (`core.js` `bracket()`).
+            const bracket = explodeArg.bracket(0);
+            bracket.set("safe", true);
+            bracket.set("offset", true);
+            explodeArg = exp.func(
+              "IF",
+              exp.func("ARRAY_SIZE", exp.func("COALESCE", explodeArg, new exp.Array({}))).eq(0),
+              exp.array(bracket, { copy: false }),
+              explodeArg,
+            );
+          }
+
+          // This ensures that we won't use [POS]EXPLODE's argument as a new selection
+          if (explodeArg instanceof exp.Column) {
+            takenSelectNames.add(explodeArg.outputName);
+          }
+
+          const unnestSourceAlias = new_name(takenSourceNames, "_u");
+
+          if (!explodeAlias) {
+            explodeAlias = new_name(takenSelectNames, "col");
+
+            if (isPosexplode) {
+              posAlias = new_name(takenSelectNames, "pos");
+            }
+          }
+
+          if (!posAlias) {
+            posAlias = new_name(takenSelectNames, "pos");
+          }
+
+          alias.set("alias", exp.toIdentifier(explodeAlias));
+
+          const seriesTableAlias = series.args.alias.this;
+          const column = new exp.If({
+            this: exp
+              .column(seriesAlias, seriesTableAlias)
+              .eq(exp.column(posAlias, unnestSourceAlias)),
+            true: exp.column(explodeAlias, unnestSourceAlias),
+          });
+
+          explode.replace(column);
+
+          if (isPosexplode) {
+            const expressions = expression.expressions;
+            expressions.splice(
+              expressions.indexOf(alias) + 1,
+              0,
+              new exp.If({
+                this: exp
+                  .column(seriesAlias, seriesTableAlias)
+                  .eq(exp.column(posAlias, unnestSourceAlias)),
+                true: exp.column(posAlias, unnestSourceAlias),
+              }).as_(posAlias),
+            );
+            expression.set("expressions", expressions);
+          }
+
+          if (!arrays.length) {
+            if (expression.args.from_) {
+              expression.join(series, { copy: false, join_type: "CROSS" });
+            } else {
+              expression.from_(series, { copy: false });
+            }
+          }
+
+          let size = new exp.ArraySize({ this: explodeArg.copy() });
+          arrays.push(size);
+
+          // trino doesn't support left join unnest with on conditions
+          // if it did, this would be much simpler
+          expression.join(
+            exp.alias_(
+              new exp.Unnest({
+                expressions: [explodeArg.copy()],
+                offset: exp.toIdentifier(posAlias),
+              }),
+              unnestSourceAlias,
+              { table: [explodeAlias] },
+            ),
+            { join_type: "CROSS", copy: false },
+          );
+
+          if (index_offset !== 1) {
+            // deny:operators sqlglot/transforms.py:530 — Python `size - 1` (`__sub__`)
+            // builds `exp.Sub`; `.sub()` is this port's `_binop` equivalent.
+            size = size.sub(1);
+          }
+
+          expression.where(
+            exp
+              .column(seriesAlias, seriesTableAlias)
+              .eq(exp.column(posAlias, unnestSourceAlias))
+              .or_(
+                exp
+                  .column(seriesAlias, seriesTableAlias)
+                  // deny:operators sqlglot/transforms.py:536 — Python `... > size`
+                  // (`__gt__`) builds `exp.GT`; `.gt()` is this port's `_binop`
+                  // equivalent.
+                  .gt(size)
+                  .and_(exp.column(posAlias, unnestSourceAlias).eq(size)),
+              ),
+            { copy: false },
+          );
+        }
+      }
+
+      if (arrays.length) {
+        let end = new exp.Greatest({ this: arrays[0], expressions: arrays.slice(1) });
+
+        if (index_offset !== 1) {
+          // deny:operators sqlglot/transforms.py:547 — Python `end - (1 - index_offset)`
+          // (`__sub__`) builds `exp.Sub`; `.sub()` is this port's `_binop` equivalent.
+          end = end.sub(1 - index_offset);
+        }
+        series.expressions[0].set("end", end);
+      }
+    }
+
+    return expression;
+  }
+
+  return _explode_projection_to_unnest;
 }
 
 /**
