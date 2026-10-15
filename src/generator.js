@@ -191,11 +191,16 @@ export const AFTER_HAVING_MODIFIER_TRANSFORMS = new Map([
  * instead of wrapping the bound method directly — see that call site's own note, which
  * is the same shape this file already uses for every `TRANSFORMS` lambda.
  *
- * Truthiness of `expression.args[arg_name]` uses plain JS truthiness, matching every
- * other `expression.args[key]` read already in this file (none route through
- * `pyTruthy`) — a real divergence only for an empty-list-valued arg, which none of the
- * call sites that exist today (`count`, `weight`, `accuracy`, `ins_cost`, `del_cost`,
- * `sub_cost`) can take.
+ * Truthiness of `expression.args[arg_name]` routes through `pyTruthy` (PORT_PLAN.md
+ * R37's named defect class: a present-but-empty JS array is truthy, an empty Python
+ * list is falsy). Originally plain JS truthiness, documented safe because no call
+ * site passed an empty-list-valued arg (`count`, `weight`, `accuracy`, `ins_cost`,
+ * `del_cost`, `sub_cost`) — AIR-2286's `generators/singlestore.js` broke that
+ * invariant (`unsupported_args("zone", "expressions")` on `exp.Date`, where
+ * `expressions` defaults to `[]`, not `None`, when a bare `DATE(x)` carries no extra
+ * args), surfacing as a spurious "Argument 'expressions' is not supported" warning on
+ * every such call — fixed here, in the base, since every earlier dialect's own args
+ * happen to never take this shape either way.
  *
  * @param {...(string|[string,string])} args argument names, or `[name, diagnostic]` pairs
  * @returns {(func: Function) => Function}
@@ -213,7 +218,7 @@ export function unsupported_args(...args) {
       const dialect_name = generator.dialect.constructor.name;
 
       for (const [arg_name, diag0] of diagnostic_by_arg) {
-        if (expression.args[arg_name]) {
+        if (pyTruthy(expression.args[arg_name])) {
           const diagnostic =
             diag0 ||
             `Argument '${arg_name}' is not supported for expression '${expression_name}' when targeting ${dialect_name}.`;

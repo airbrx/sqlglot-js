@@ -65,7 +65,7 @@ function _str_to_date(args) {
  * keywords arrive as a trailing options object — same deviation `parsers/snowflake.js`
  * already documents for its own `_show_parser`.
  */
-function _show_parser(this_, kwargs = {}) {
+export function _show_parser(this_, kwargs = {}) {
   return function _parse(self) {
     return self._parse_show_mysql(this_, kwargs.target ?? false, kwargs.full ?? null, kwargs.global_ ?? null);
   };
