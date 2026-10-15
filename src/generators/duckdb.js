@@ -1351,4 +1351,77 @@ export class DuckDBGenerator extends Generator {
 
     return this.func("REGEXP_MATCHES", this_, pattern, flag);
   }
+
+  /** py:2770 `_strptime_default_year(self, expression)`. */
+  _strptime_default_year(expression) {
+    let value = expression.this;
+    let formatted_time = this.format_time(expression);
+
+    const default_year = expression.args.default_year;
+    if (default_year) {
+      value = new exp.DPipe({ this: exp.Literal.string(`${default_year.name} `), expression: value });
+      formatted_time = new exp.DPipe({ this: exp.Literal.string("%Y "), expression: formatted_time });
+    }
+
+    return [value, formatted_time];
+  }
+
+  /** py:2736 `strtotime_sql(self, expression)`. */
+  strtotime_sql(expression) {
+    const target_type = expression.args.target_type;
+    const needs_tz = target_type && (target_type.this === exp.DType.TIMESTAMPLTZ || target_type.this === exp.DType.TIMESTAMPTZ);
+
+    const [value, formatted_time] = this._strptime_default_year(expression);
+
+    if (expression.args.safe) {
+      const cast_type = needs_tz ? exp.DType.TIMESTAMPTZ : exp.DType.TIMESTAMP;
+      return this.sql(exp.cast(this.func("TRY_STRPTIME", value, formatted_time), cast_type));
+    }
+
+    const base_sql = this.func("STRPTIME", value, formatted_time);
+    if (needs_tz) return this.sql(exp.cast(base_sql, new exp.DataType({ this: exp.DType.TIMESTAMPTZ })));
+    return base_sql;
+  }
+
+  /** py:2760 `strtodate_sql(self, expression)`. */
+  strtodate_sql(expression) {
+    const [value, formatted_time] = this._strptime_default_year(expression);
+    const function_name = expression.args.safe ? "TRY_STRPTIME" : "STRPTIME";
+    return this.sql(
+      exp.cast(this.func(function_name, value, formatted_time), new exp.DataType({ this: exp.DType.DATE }))
+    );
+  }
+
+  /** py:2782 `parsedatetime_sql(self, expression)`. */
+  parsedatetime_sql(expression) {
+    const [value, formatted_time] = this._strptime_default_year(expression);
+    return this.func("STRPTIME", value, formatted_time);
+  }
+
+  /** py:2786 `parsetime_sql(self, expression)`. */
+  parsetime_sql(expression) {
+    const formatted_time = this.format_time(expression);
+    return this.sql(
+      exp.cast(this.func("STRPTIME", expression.this, formatted_time), new exp.DataType({ this: exp.DType.TIME }))
+    );
+  }
+
+  /** py:2795 `tsordstotime_sql(self, expression)`. */
+  tsordstotime_sql(expression) {
+    const this_ = expression.this;
+    const time_format = this.format_time(expression);
+    const safe = expression.args.safe;
+    const time_type = exp.DataType.fromStr("TIME", { dialect: "duckdb" });
+    const cast_expr = safe ? exp.TryCast : exp.Cast;
+
+    if (time_format) {
+      const func_name = safe ? "TRY_STRPTIME" : "STRPTIME";
+      const strptime = new exp.Anonymous({ this: func_name, expressions: [this_, time_format] });
+      return this.sql(new cast_expr({ this: strptime, to: time_type }));
+    }
+
+    if (this_ instanceof exp.TsOrDsToTime || this_.isType(exp.DType.TIME)) return this.sql(this_);
+
+    return this.sql(new cast_expr({ this: this_, to: time_type }));
+  }
 }
