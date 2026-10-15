@@ -30,7 +30,7 @@
 // for a missing dialect, it is the documented default, and it is reproduced by
 // consulting the base `DATE_PART_MAPPING` literal below rather than by any lookup.
 //
-// @ported-ranges sqlglot/dialects/dialect.py 858-953 1280-1284 1297-1299 1314-1316 1330-1332 1438-1454 1610-1637 1654-1674 1676-1697 1700-1706 1709-1715 1830-1837 1892-1914 1916-1920 1921-1922 1925-1963 1966-1967 1970-1973 2167-2176 2179-2184 2187-2220 2223-2265 2268-2295 2298-2302 2305-2323 2384-2394 2406-2407 2410-2411 2462-2474 2477-2497 2604-2617 2620-2625 2628-2641 2654-2672
+// @ported-ranges sqlglot/dialects/dialect.py 858-953 1280-1284 1297-1299 1314-1316 1330-1332 1438-1454 1610-1637 1654-1674 1676-1697 1700-1706 1709-1715 1830-1837 1892-1914 1916-1920 1921-1922 1925-1963 1966-1967 1970-1973 2132-2154 2167-2176 2179-2184 2187-2220 2223-2265 2268-2295 2298-2302 2305-2323 2384-2394 2406-2407 2410-2411 2462-2474 2477-2497 2604-2617 2620-2625 2628-2641 2654-2672
 //
 // One range per member ported, so `tools/lint_deny.mjs` measures this file against
 // what it actually claims rather than against all 2,600 lines of `dialects/dialect.py`
@@ -762,8 +762,7 @@ export function unit_to_var(expression, default_ = "DAY") {
 // py: sqlglot/dialects/dialect.py:2116 `WEEK_START_DAY_TO_DOW` — days of week to ISO
 // 8601 day-of-week numbers (Monday=1 .. Sunday=7). Needed by `optimizer/simplify.js`'s
 // `_trunc_unit`, which is the first caller of this and `week_offset_to_dow` in this
-// port; `week_unit_to_dow` (py:2132), the third function in this upstream cluster, has
-// no caller yet and is not ported.
+// port.
 export const WEEK_START_DAY_TO_DOW = new Map([
   ["MONDAY", 1],
   ["TUESDAY", 2],
@@ -781,6 +780,20 @@ export const WEEK_START_DAY_TO_DOW = new Map([
  */
 export function week_offset_to_dow(offset) {
   return ((offset % 7) + 7) % 7 + 1;
+}
+
+/**
+ * py: sqlglot/dialects/dialect.py:2132 `week_unit_to_dow(unit)`.
+ * Compute the week start day for a week-ish diff unit, e.g. BigQuery's
+ * `WEEK(<day>)` or `ISOWEEK` unit parts. Returns the ISO 8601 day number
+ * (Monday=1 .. Sunday=7) or null if `unit` is not a week unit or the day is
+ * dynamic (not a constant). First real caller: `generators/duckdb.js`'s
+ * `_date_diff_sql`.
+ */
+export function week_unit_to_dow(unit) {
+  if (unit instanceof exp.Var && ["WEEK", "ISOWEEK"].includes(unit.name.toUpperCase())) return 1;
+  if (unit instanceof exp.WeekStart) return WEEK_START_DAY_TO_DOW.get(unit.name.toUpperCase()) ?? null;
+  return null;
 }
 
 /**

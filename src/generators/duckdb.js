@@ -1,6 +1,6 @@
 // py: sqlglot/generators/duckdb.py — `class DuckDBGenerator(generator.Generator)`.
 //
-// @ported-ranges sqlglot/generators/duckdb.py 50-50 545-547 549-563 890-901 1017-1020 1123-1130 1261-1274 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2652-2677
+// @ported-ranges sqlglot/generators/duckdb.py 50-50 213-214 217-229 320-357 545-547 549-563 890-901 910-949 953-977 1017-1020 1123-1130 1261-1274 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2652-2677
 //
 // SCOPE — a deliberately small, honest slice of a 4,788-line file (PORT_PLAN.md,
 // "DuckDB generator is an outlier size" — ~4x every other single-file dialect
@@ -37,9 +37,12 @@
 //     Every OTHER entry is commented out at its upstream anchor, matching the
 //     established "still-unseeded TRANSFORMS" convention (`src/generator.js`'s own
 //     stub-`TRANSFORMS` lines; `src/generators/snowflake.js`'s five blocked entries).
-//     The largest excluded group is `_date_delta_to_binary_interval_op` (9 entries) —
-//     it wraps `dialect.js`'s shared `date_delta_to_binary_interval_op` with its own
-//     nanosecond/float-interval handling and was judged too large for this pass.
+//     The largest excluded group was `_date_delta_to_binary_interval_op` (9 entries,
+//     wrapping `dialect.js`'s shared `date_delta_to_binary_interval_op` with its own
+//     nanosecond/float-interval handling) — unblocked in AIR-2283 (PORT_PLAN.md R90+)
+//     once `_date_diff_sql`'s own week-boundary path needed `exp.DateAdd` to render
+//     correctly; all 9 entries (DateAdd/DateSub/DatetimeAdd/DatetimeSub/TimeAdd/
+//     TimeSub/TimestampAdd/TimestampSub/TsOrDsAdd) are wired below.
 //   - `SUPPORTED_JSON_PATH_PARTS`, `TYPE_MAPPING`, `RESERVED_KEYWORDS` (py:1816-1931):
 //     cheap, mechanical, real upstream data with no code-logic risk.
 //   - `sortarray_sql` (py:2652) — the one `*_sql` method override pulled forward from
@@ -77,6 +80,7 @@ import {
   approx_count_distinct_sql,
   array_append_sql,
   array_concat_sql,
+  date_delta_to_binary_interval_op,
   datestrtodate_sql,
   generate_series_sql,
   groupconcat_sql,
@@ -87,6 +91,8 @@ import {
   no_timestamp_sql,
   rename_func,
   timestrtotime_sql,
+  unit_to_str,
+  week_unit_to_dow,
 } from "../dialects/dialect.js";
 
 // py:50 — used only by `_implicit_datetime_cast` below.
@@ -158,6 +164,113 @@ function _implicit_datetime_cast(arg, { type = exp.DType.DATE } = {}) {
     arg = exp.cast(arg, type);
   }
   return arg;
+}
+
+/** py:213 */
+function _is_nanosecond_unit(unit) {
+  return (unit instanceof exp.Var || unit instanceof exp.Literal) && unit.name.toUpperCase() === "NANOSECOND";
+}
+
+/**
+ * py:219 `_handle_nanosecond_diff(self, end_time, start_time)`.
+ * Generate NANOSECOND diff using EPOCH_NS since DATE_DIFF doesn't support it.
+ */
+function _handle_nanosecond_diff(self, end_time, start_time) {
+  const end_ns = exp.cast(end_time, exp.DType.TIMESTAMP_NS);
+  const start_ns = exp.cast(start_time, exp.DType.TIMESTAMP_NS);
+  return self.sql(new exp.Sub({ this: self.func("EPOCH_NS", end_ns), expression: self.func("EPOCH_NS", start_ns) }));
+}
+
+/**
+ * py:910 `_build_week_trunc_expression(date_expr, start_dow, preserve_start_day=False, cast_to_date=True)`.
+ *
+ * Build DATE_TRUNC expression for week boundaries with custom start day.
+ * DuckDB's DATE_TRUNC('WEEK', ...) always returns Monday. To align to a
+ * different start day, we shift the date before truncating.
+ *
+ * `preserve_start_day`: if true, reverse the shift after truncating so the
+ * result lands on the correct week start day. Needed for DATE_TRUNC
+ * (absolute result matters) but not for DATE_DIFF (only relative alignment
+ * matters). `cast_to_date`: if true, cast the shifted result back to DATE;
+ * set to false for timestamp-valued inputs, where the result must remain a
+ * timestamp.
+ *
+ * Shift formula: Sunday (7) gets +1, others get (1 - start_dow).
+ */
+function _build_week_trunc_expression(date_expr, start_dow, { preserve_start_day = false, cast_to_date = true } = {}) {
+  const shift_days = start_dow === 7 ? 1 : 1 - start_dow;
+  const truncated = new exp.DateTrunc({ unit: exp.var("WEEK"), this: date_expr });
+  if (shift_days === 0) return truncated;
+
+  const shift = new exp.Interval({ this: exp.Literal.string(String(shift_days)), unit: exp.var("DAY") });
+  const shifted_date = new exp.DateAdd({ this: date_expr, expression: shift });
+  truncated.set("this", shifted_date);
+
+  if (preserve_start_day) {
+    const interval = new exp.Interval({ this: exp.Literal.string(String(-shift_days)), unit: exp.var("DAY") });
+    const shifted_back = new exp.DateAdd({ this: truncated, expression: interval });
+    if (cast_to_date) return exp.cast(shifted_back, exp.DType.DATE, { copy: false });
+    return shifted_back;
+  }
+
+  return truncated;
+}
+
+/** py:953 `_date_diff_sql(self, expression)` for `exp.DateDiff | exp.DatetimeDiff`. */
+function _date_diff_sql(self, expression) {
+  const unit = expression.unit;
+
+  if (_is_nanosecond_unit(unit)) return _handle_nanosecond_diff(self, expression.this, expression.expression);
+
+  let this_ = _implicit_datetime_cast(expression.this);
+  let expr = _implicit_datetime_cast(expression.expression);
+
+  // DuckDB's WEEK diff does not respect Monday crossing (week boundaries), it checks
+  // (end_day - start_day) / 7; other units such as MONTH do respect their boundaries.
+  const date_part_boundary = expression.args.date_part_boundary;
+
+  const week_start = week_unit_to_dow(unit);
+  if (date_part_boundary && week_start && this_ && expr) {
+    expression.set("unit", exp.Literal.string("WEEK"));
+    this_ = _build_week_trunc_expression(this_, week_start);
+    expr = _build_week_trunc_expression(expr, week_start);
+  }
+
+  return self.func("DATE_DIFF", unit_to_str(expression), expr, this_);
+}
+
+/**
+ * py:320 `_date_delta_to_binary_interval_op(cast=True)`.
+ *
+ * DuckDB override of `dialect.js`'s shared `date_delta_to_binary_interval_op`
+ * to handle: (1) NANOSECOND operations (DuckDB doesn't support
+ * `INTERVAL ... NANOSECOND`), (2) float/decimal interval values (DuckDB
+ * `INTERVAL` requires integer expressions).
+ */
+function _date_delta_to_binary_interval_op(cast = true) {
+  const base_impl = date_delta_to_binary_interval_op(cast);
+
+  return function _duckdb_date_delta_sql(self, expression) {
+    const unit = expression.unit;
+    let interval_value = expression.expression;
+
+    if (_is_nanosecond_unit(unit)) {
+      if (interval_value instanceof exp.Interval) interval_value = interval_value.this;
+      const timestamp_ns = exp.cast(expression.this, exp.DType.TIMESTAMP_NS);
+      return self.sql(
+        exp.func("MAKE_TIMESTAMP_NS", new exp.Add({ this: self.func("EPOCH_NS", timestamp_ns), expression: interval_value })),
+      );
+    }
+
+    // Handle float/decimal interval values as duckDB INTERVAL requires integer expressions
+    if (!interval_value || interval_value instanceof exp.Interval) return base_impl(self, expression);
+
+    if (interval_value.isType(...exp.DataType.REAL_TYPES)) {
+      expression.set("expression", exp.cast(self.func("ROUND", interval_value), "INT"));
+    }
+
+    return base_impl(self, expression);
+  };
 }
 
 /** py:1017 */
@@ -341,10 +454,15 @@ export class DuckDBGenerator extends Generator {
     ],
     // py:1668 [exp.DataType, _datatype_sql] — blocked, DECIMAL/BIGDECIMAL/DECFLOAT scale handling out of scope this pass
     // py:1669 [exp.Date, _date_sql] — blocked, local helper out of scope this pass
-    // py:1670-1678,1754-1755,1759,1763,1778 [*Add/*Sub via _date_delta_to_binary_interval_op] — blocked,
-    // the local nanosecond/float-interval wrapper (py:320) is out of scope this pass; see file header.
+    [exp.DateAdd, _date_delta_to_binary_interval_op()],
+    // py:1671 [exp.DateFromParts, _date_from_parts_sql] — blocked, local helper out of scope this pass
+    [exp.DateSub, _date_delta_to_binary_interval_op()],
+    [exp.DateDiff, _date_diff_sql],
     [exp.DateStrToDate, datestrtodate_sql],
     // py:1675 [exp.Datetime, no_datetime_sql] — blocked, needs the unported `TIMEZONES` set
+    [exp.DatetimeDiff, _date_diff_sql],
+    [exp.DatetimeSub, _date_delta_to_binary_interval_op()],
+    [exp.DatetimeAdd, _date_delta_to_binary_interval_op()],
     // py:1679-1681 [exp.DateToDi, lambda] — skipped, low value (DI = Julian "date-as-int" legacy format)
     // py:1682-1683 [exp.Decode, exp.HexDecodeString] — blocked, dialect.js does not yet export `encode_decode_sql`
     // py:1684-1686 [exp.DiToDate, lambda] — skipped, pairs with the excluded DateToDi above
@@ -401,11 +519,12 @@ export class DuckDBGenerator extends Generator {
     // separately verified this pass
     // py:1752 [exp.Struct, _struct_sql] — blocked, local helper out of scope this pass
     [exp.Transform, rename_func("LIST_TRANSFORM")],
-    // py:1754-1755,1759,1763,1778 — see the _date_delta_to_binary_interval_op note above (py:1670-1678)
-    // py:1756 [exp.Time, no_time_sql] wires directly — real, wired below
+    [exp.TimeAdd, _date_delta_to_binary_interval_op()],
+    [exp.TimeSub, _date_delta_to_binary_interval_op()],
     [exp.Time, no_time_sql],
     // py:1757 [exp.TimeDiff, _timediff_sql] — blocked, BigQuery-specific local helper out of scope this pass
     [exp.Timestamp, no_timestamp_sql],
+    [exp.TimestampAdd, _date_delta_to_binary_interval_op()],
     [
       exp.TimestampDiff,
       // py: `exp.Literal.string(e.unit)` — `e.unit` is upstream's `TimeUnit` mixin
@@ -418,6 +537,7 @@ export class DuckDBGenerator extends Generator {
       // `expressions/focused_methods.js:251`) — always the same value, no getter needed.
       (self, e) => self.func("DATE_DIFF", exp.Literal.string(e.args.unit ? e.args.unit.sql() : "None"), e.expression, e.this),
     ],
+    [exp.TimestampSub, _date_delta_to_binary_interval_op()],
     [exp.TimeStrToDate, (self, e) => self.sql(exp.cast(e.this, exp.DType.DATE))],
     [exp.TimeStrToTime, timestrtotime_sql],
     [
@@ -435,7 +555,7 @@ export class DuckDBGenerator extends Generator {
       exp.TsOrDiToDi,
       (self, e) => `CAST(SUBSTR(REPLACE(CAST(${self.sql(e, "this")} AS TEXT), '-', ''), 1, 8) AS INT)`,
     ],
-    // py:1778 [exp.TsOrDsAdd, _date_delta_to_binary_interval_op] — blocked, see py:1670-1678 note above
+    [exp.TsOrDsAdd, _date_delta_to_binary_interval_op()],
     [
       exp.TsOrDsDiff,
       (self, e) =>
