@@ -906,6 +906,24 @@ export function no_time_sql(self, expression) {
   return self.sql(expr);
 }
 
+/** py: sqlglot/dialects/dialect.py:1754 */
+export function no_datetime_sql(self, expression) {
+  let this_ = expression.this;
+  let expr = expression.expression;
+
+  if (TIMEZONES.has(expr.name.toLowerCase())) {
+    // Transpile BQ's DATETIME(timestamp, zone) to CAST(TIMESTAMPTZ <timestamp> AT TIME ZONE <zone> AS TIMESTAMP)
+    this_ = exp.cast(this_, exp.DType.TIMESTAMPTZ);
+    this_ = exp.cast(new exp.AtTimeZone({ this: this_, zone: expr }), exp.DType.TIMESTAMP);
+    return self.sql(this_);
+  }
+
+  this_ = exp.cast(this_, exp.DType.DATE);
+  expr = exp.cast(expr, exp.DType.TIME);
+
+  return self.sql(exp.cast(new exp.Add({ this: this_, expression: expr }), exp.DType.TIMESTAMP));
+}
+
 /** py: sqlglot/dialects/dialect.py:1730 */
 export function no_timestamp_sql(self, expression) {
   const zone = expression.args.zone;

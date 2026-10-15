@@ -91,6 +91,7 @@ import {
   groupconcat_sql,
   inline_array_unless_query,
   no_comment_column_constraint_sql,
+  no_datetime_sql,
   no_make_interval_sql,
   no_time_sql,
   no_timestamp_sql,
@@ -363,6 +364,25 @@ function _handle_nanosecond_diff(self, end_time, start_time) {
  * DuckDB's LAST_DAY only supports finding the last day of a month.
  * For other date parts (year, quarter, week), we need to implement equivalent logic.
  */
+/** py:288 `_date_sql(self, expression)`. */
+function _date_sql(self, expression) {
+  let this_ = expression.this;
+  const zone = self.sql(expression, "zone");
+
+  if (zone) {
+    // BigQuery considers "this" at UTC, converts it to the specified
+    // time zone and then keeps only the DATE part
+    // To micmic that, we:
+    //   (1) Cast to TIMESTAMP to remove DuckDB's local tz
+    //   (2) Apply consecutive AtTimeZone calls for UTC -> zone conversion
+    this_ = exp.cast(this_, exp.DType.TIMESTAMP);
+    const at_utc = new exp.AtTimeZone({ this: this_, zone: exp.Literal.string("UTC") });
+    this_ = new exp.AtTimeZone({ this: at_utc, zone: expression.args.zone });
+  }
+
+  return self.sql(exp.cast(this_, exp.DType.DATE));
+}
+
 function _last_day_sql(self, expression) {
   const date_expr = expression.this;
   const unit_expr = expression.args.unit;
@@ -1230,13 +1250,15 @@ export class DuckDBGenerator extends Generator {
       (self, e) => (e.args.abbreviated ? self.func("STRFTIME", e.this, exp.Literal.string("%b")) : self.func("MONTHNAME", e.this)),
     ],
     [exp.DataType, _datatype_sql],
-    // py:1669 [exp.Date, _date_sql] — blocked, local helper out of scope this pass
+    // py:1669 `Date`
+    [exp.Date, _date_sql],
     [exp.DateAdd, _date_delta_to_binary_interval_op()],
     [exp.DateFromParts, _date_from_parts_sql],
     [exp.DateSub, _date_delta_to_binary_interval_op()],
     [exp.DateDiff, _date_diff_sql],
     [exp.DateStrToDate, datestrtodate_sql],
-    // py:1675 [exp.Datetime, no_datetime_sql] — blocked, needs the unported `TIMEZONES` set
+    // py:1675 `Datetime`
+    [exp.Datetime, no_datetime_sql],
     [exp.DatetimeDiff, _date_diff_sql],
     [exp.DatetimeSub, _date_delta_to_binary_interval_op()],
     [exp.DatetimeAdd, _date_delta_to_binary_interval_op()],
@@ -2718,6 +2740,17 @@ export class DuckDBGenerator extends Generator {
     return this.sql(
       new exp.Repeat({ this: exp.Literal.string(" "), times: exp.cast(expression.this, exp.DType.BIGINT) }),
     );
+  }
+
+  /** py:2812 `currentdate_sql(self, expression)`. */
+  currentdate_sql(expression) {
+    if (!expression.this) return "CURRENT_DATE";
+
+    const expr = new exp.Cast({
+      this: new exp.AtTimeZone({ this: new exp.CurrentTimestamp(), zone: expression.this }),
+      to: new exp.DataType({ this: exp.DType.DATE }),
+    });
+    return this.sql(expr);
   }
 
   /** py:2822 `checkjson_sql(self, expression)`. */
