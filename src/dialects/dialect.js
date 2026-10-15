@@ -1095,6 +1095,16 @@ export const approx_count_distinct_sql = unsupported_args("accuracy")(
   },
 );
 
+/** py: sqlglot/dialects/dialect.py:1810 `encode_decode_sql(self, expression, name, replace=True)` */
+export function encode_decode_sql(self, expression, name, replace = true) {
+  const charset = expression.args.charset;
+  if (charset && !["utf-8", "utf8"].includes(pyLower(charset.name))) {
+    self.unsupported(`Expected utf-8 character set, got ${self.sql(charset)}.`);
+  }
+
+  return self.func(name, expression.this, replace ? expression.args.replace : null);
+}
+
 /** py: sqlglot/dialects/dialect.py:1287 */
 export function no_ilike_sql(self, expression) {
   return self.like_sql(

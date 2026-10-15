@@ -35,7 +35,7 @@
 // (see tools/lint_deny.mjs's `isPortedSite`, which otherwise treats a hand-written file
 // with no seeded `// py:` skeleton as fully ported and flags every deny-list site in
 // the REST of transforms.py as an unacknowledged one):
-// @ported-ranges sqlglot/transforms.py 19-71 72-128 144-200 201-264 265-275 278-294 555-567 570-579 615-631 131-141 297-399 672-729 732-738 741-1084
+// @ported-ranges sqlglot/transforms.py 19-71 72-128 144-200 201-264 265-275 278-294 555-567 570-579 584-600 603-612 615-631 131-141 297-399 672-729 732-738 741-1084
 //
 // The added ranges (Databricks-chain generator step, PORT_PLAN.md) cover
 // `unnest_generate_series`, `unnest_to_explode`, `unqualify_columns`,
@@ -64,11 +64,12 @@
 // above already gets by with; `generators/bigquery.js`'s own `TRANSFORMS[exp.Select]`
 // documents the resulting gap where it applies the entry.
 
-import { findNewName, seqGet } from "./helper.js";
+import { findNewName, nameSequence, seqGet } from "./helper.js";
 import { UnsupportedError } from "./errors.js";
 import * as exp from "./expressions/index.js";
 import { findAllInScope } from "./optimizer/scope.js";
 import { ensure_bools as canonicalizeEnsureBools } from "./optimizer/canonicalize.js";
+import { pyLower } from "./_py/str.js";
 
 /**
  * py: sqlglot/transforms.py:19 `preprocess(transforms, generator=None)`
@@ -421,7 +422,12 @@ export function unnest_generate_series(expression) {
   if (expression instanceof exp.Table && this_ instanceof exp.GenerateSeries) {
     const unnest = new exp.Unnest({ expressions: [this_] });
     if (expression.alias) {
-      return exp.alias_(unnest, expression.alias, { table: [expression.alias], copy: false });
+      // BUG FIX (found porting Presto, AIR-2287): upstream's own alias is the
+      // literal string `"_u"` (py:137 `alias="_u"`), not `expression.alias` — the
+      // ORIGINAL alias becomes the single COLUMN name instead (the `table: [...]`
+      // argument). Reusing `expression.alias` for both produced `AS s(s)` instead
+      // of upstream's `AS _u(s)` for e.g. `GENERATE_SERIES(2, 4) AS s`.
+      return exp.alias_(unnest, "_u", { table: [expression.alias], copy: false });
     }
     return unnest;
   }
@@ -585,6 +591,54 @@ export function remove_within_group_for_percentiles(expression) {
     const quantile = expression.this.this;
     const input_value = expression.find(exp.Ordered).this;
     return expression.replace(new exp.ApproxQuantile({ this: input_value, quantile }));
+  }
+
+  return expression;
+}
+
+/**
+ * py: sqlglot/transforms.py:584 `add_recursive_cte_column_names(expression)`
+ *
+ * Uses projection output names in recursive CTE definitions to define the CTEs' columns.
+ *
+ * @param {exp.Expr} expression
+ * @returns {exp.Expr}
+ */
+export function add_recursive_cte_column_names(expression) {
+  if (expression instanceof exp.With && expression.recursive) {
+    const next_name = nameSequence("_c_");
+
+    for (const cte of expression.expressions) {
+      if (!cte.args.alias.columns.length) {
+        let query = cte.this;
+        if (query instanceof exp.SetOperation) query = query.this;
+
+        cte.args.alias.set(
+          "columns",
+          query.selects.map((s) => exp.toIdentifier(s.aliasOrName || next_name())),
+        );
+      }
+    }
+  }
+
+  return expression;
+}
+
+/**
+ * py: sqlglot/transforms.py:603 `epoch_cast_to_ts(expression)`
+ *
+ * Replace 'epoch' in casts by the equivalent date literal.
+ *
+ * @param {exp.Expr} expression
+ * @returns {exp.Expr}
+ */
+export function epoch_cast_to_ts(expression) {
+  if (
+    (expression instanceof exp.Cast || expression instanceof exp.TryCast) &&
+    pyLower(expression.name) === "epoch" &&
+    exp.DataType.TEMPORAL_TYPES.has(expression.to.this)
+  ) {
+    expression.this.replace(exp.Literal.string("1970-01-01 00:00:00"));
   }
 
   return expression;

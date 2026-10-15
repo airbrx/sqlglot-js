@@ -10,26 +10,21 @@
 // `Scope`/`buildScope`/`findInScope` (`scope.js`, R44/R46) — all already ported and
 // used here exactly as upstream uses them; nothing in this module needed a workaround.
 //
-// `unnest_requires_cross_join` (py:41 `isinstance(dialect, (Athena, Presto))`) is a
-// REAL, DOCUMENTED GAP, not a silent approximation: upstream's own top-level imports
-// are `from sqlglot.dialects.athena import Athena` / `from sqlglot.dialects.presto
-// import Presto`, and neither `src/dialects/athena.js` nor `src/dialects/presto.js`
-// (nor `trino.js`, which upstream's Presto subclass covers via the same isinstance
-// check) exists in this port yet -- `ls src/dialects/` only has the 10 dialects landed
-// through R43. `Dialect.get_or_raise("presto"|"trino"|"athena")` already throws
-// (`DIALECT_CLASSES` has no entry for them, only `DIALECT_MODULE_NAMES` lists the
-// name), so `parse_one(sql, read="presto")` — the FIRST step of every fixture pair
-// gated behind `# dialect: presto|trino|athena` in `tests/fixtures/optimizer/
-// pushdown_predicates.sql` — already fails in this port independently of this file.
-// The flag is therefore hardcoded `false` here (never true, since the only two
-// `Dialect` subclasses that could set it don't exist) with this comment as the
-// pointer, the same way R51's typing overlays note a scenario their own real
-// parser/generator can't yet reach rather than faking a result for it. Revisit when
-// Athena/Presto/Trino dialects land; see PORT_PLAN.md.
+// `unnest_requires_cross_join` (py:41 `isinstance(dialect, (Athena, Presto))`) WAS a
+// real, documented gap (hardcoded `false`, PORT_PLAN.md R71) because neither
+// `Athena` nor `Presto` existed in this port. `src/dialects/presto.js` now exists
+// (AIR-2287) — `dialect instanceof Presto` is real again, and (per upstream's own
+// subclass relationship, `trino.py`'s `Trino(Presto)`) will also cover `trino` once
+// that dialect lands, the same way it already covers `Presto` itself. `Athena` is
+// still unported, so the tuple's other half is still missing; the 6 fixture rows in
+// `tests/fixtures/optimizer/pushdown_predicates.sql` gated behind `# dialect: athena`
+// stay skipped for that reason alone (not `presto`/`trino`, which this fix un-gates).
+// Revisit the `Athena` half when that dialect lands; see PORT_PLAN.md.
 
 import * as exp from "../expressions/index.js";
 import { PyValueError } from "../errors.js";
 import { Dialect } from "../dialects/dialect.js";
+import { Presto } from "../dialects/presto.js";
 import { normalized } from "./normalize.js";
 import { findInScope, buildScope } from "./scope.js";
 import { simplify } from "./simplify.js";
@@ -39,8 +34,9 @@ export function pushdown_predicates(expression, dialect = null) {
   const root = buildScope(expression);
 
   dialect = Dialect.get_or_raise(dialect);
-  // See the module header: always false in this port (Athena/Presto are unported).
-  const unnest_requires_cross_join = false;
+  // py:41 `isinstance(dialect, (Athena, Presto))`. See the module header: `Athena`
+  // is still unported, so only the `Presto` half is real.
+  const unnest_requires_cross_join = dialect instanceof Presto;
 
   if (root) {
     const scope_ref_count = root.refCount();

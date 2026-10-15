@@ -8,12 +8,12 @@
 // (unwrapped) two-step pipeline `pushdown_predicates(parse_one(sql, read=dialect),
 // dialect=dialect).sql(dialect=dialect)` against
 // `tests/fixtures/optimizer/pushdown_predicates.sql` (32 pairs). 6 pairs are gated
-// behind `# dialect: presto|trino|athena` and are SKIPPED (not counted as ERROR):
-// none of those three dialects are ported in this JS codebase yet, so
-// `parseOne(sql, { read: "presto" })` already throws independently of
-// `pushdown_predicates.js` -- see the module header of `src/optimizer/
-// pushdown_predicates.js` for why `unnest_requires_cross_join` (the behavior those 6
-// pairs exercise) is hardcoded `false` here.
+// behind `# dialect: presto|trino|athena`; only the 4 `trino`/`athena` ones are still
+// SKIPPED (not counted as ERROR), since neither of those two dialects is ported in
+// this JS codebase yet. The 2 `presto` pairs are real coverage now that
+// `src/dialects/presto.js` exists (AIR-2287) -- see the module header of
+// `src/optimizer/pushdown_predicates.js` for why `unnest_requires_cross_join` is
+// `dialect instanceof Presto` again rather than hardcoded `false`.
 
 import { readFileSync } from "node:fs";
 import { parseOne } from "../../src/dialects/dialect.js";
@@ -73,7 +73,7 @@ for (const row of ref.fixtures) {
 
 console.log();
 console.log("  src/optimizer/pushdown_predicates.js vs CPython sqlglot.optimizer.pushdown_predicates");
-console.log(`    EXACT ${exact}    MISMATCH ${mismatch}    ERROR ${error}    SKIPPED ${skipped} (presto/trino/athena, unported)`);
+console.log(`    EXACT ${exact}    MISMATCH ${mismatch}    ERROR ${error}    SKIPPED ${skipped} (trino/athena, unported)`);
 if (samples.length) {
   console.log();
   for (const s of samples) console.log(VERBOSE ? `  ${s}\n` : `  ${s.split("\n")[0]}`);

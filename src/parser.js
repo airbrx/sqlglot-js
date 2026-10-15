@@ -1640,7 +1640,7 @@ export class Parser {
     /* py:1580 */ ["JSON_OBJECTAGG", (self) => self._parse_json_object(true)],
     // py:1581  ["JSON_TABLE", ...]      — `_parse_json_table` is still a NotPorted stub
     /* py:1582 */ ["MATCH", (self) => self._parse_match_against()],
-    // py:1583  ["NORMALIZE", ...]  — `_parse_normalize` is still a NotPorted stub
+    /* py:1583 */ ["NORMALIZE", (self) => self._parse_normalize()],
     // py:1584 — NOT wired: `openjson_sql` (generator.js:3925) is still a NotPorted
     // base-generator stub, and wiring `_parse_open_json` in here regresses 2
     // ratchet-pass atoms (plain `OPENJSON(@json)`, no `WITH (...)`) that currently
@@ -3047,9 +3047,23 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3011
+  //
+  // BUG FIX (found porting Presto, AIR-2287): this previously stored a boolean
+  // under a non-existent `definer` arg key instead of upstream's `this` (the only
+  // key `SqlSecurityProperty.arg_types` declares, required) and never recognized
+  // "NONE" — a `CREATE VIEW ... SECURITY INVOKER` round-trip threw `Required
+  // keyword: 'this' missing for SqlSecurityProperty` on every dialect, not just
+  // Presto. `this._match_texts(...)` is a bool; the Python `and` short-circuits to
+  // that `False` (not `None`) when nothing matches, so the JS `false` fallback
+  // (not `null`) is the faithful port of that specific falsy value.
   _parse_sql_security() {
-    const definer = this._match_text_seq("DEFINER"); if (!definer) this._match_text_seq("INVOKER");
-    return this.expression(new exp.SqlSecurityProperty({ definer }));
+    return this.expression(
+      new exp.SqlSecurityProperty({
+        this: this._match_texts(this.constructor.SECURITY_PROPERTY_KEYWORDS)
+          ? pyUpper(this._prev.text)
+          : false,
+      }),
+    );
   }
 
   /** @returns {*} */
@@ -6817,7 +6831,19 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9984
-  _parse_normalize() { throw new NotPorted("_parse_normalize", "sqlglot/parser.py:9984"); }
+  //
+  // Ported alongside Presto (AIR-2287), whose own corpus has the first `NORMALIZE`
+  // rows this project's harness reaches. Python `self._match(COMMA) and
+  // self._parse_var()`: the `false` fallback (not `null`) is the faithful value of
+  // that `and` expression when nothing follows the first argument.
+  _parse_normalize() {
+    return this.expression(
+      new exp.Normalize({
+        this: this._parse_bitwise(),
+        form: this._match(TokenType.COMMA) ? this._parse_var() : false,
+      }),
+    );
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9991
@@ -7186,9 +7212,24 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10452
+  //
+  // BUG FIX (found porting Presto, AIR-2287): this previously hand-rolled a
+  // `this [, expression]` comma-pair parse with an explicit `_match_r_paren()`,
+  // which both parses a different argument shape than upstream (an arbitrary
+  // function-arg list via `_parse_function_args`/`from_arg_list`, not a fixed
+  // this/expression pair) AND never attaches the dialect's default delimiter
+  // charset to a bare `INITCAP(col)` call, so every dialect's `INITCAP` with no
+  // explicit delimiters parsed to a different AST than upstream (missing
+  // `expression`), not just Presto's.
   _parse_initcap() {
-    const this_ = this._parse_bitwise(); const expression = this._match(TokenType.COMMA) ? this._parse_bitwise() : null; this._match_r_paren();
-    return this.expression(new exp.Initcap({ this: this_, expression }));
+    const expr = exp.Initcap.from_arg_list(this._parse_function_args());
+
+    // attach dialect's default delimiters
+    if (expr.args.expression === null || expr.args.expression === undefined) {
+      expr.set("expression", exp.Literal.string(this.dialect.INITCAP_DEFAULT_DELIMITER_CHARS));
+    }
+
+    return expr;
   }
 
   /** @returns {*} */
