@@ -26,23 +26,23 @@ for (const dialect of ['snowflake', 'databricks']) {
   // AIR-2194 (PORT_PLAN.md) ported base `generator.js`'s `currentdate_sql`/
   // `rollup_sql`/`pivot_sql`, so the three original examples here (CURRENT_DATE,
   // ROLLUP, PIVOT) now generate successfully instead of failing over to the raw-SQL
-  // fallback this test exercises. Replaced with constructs that still hit a real,
-  // named, currently-unported base-`Generator` stub on both dialects: `connect_sql`
-  // (Oracle-style CONNECT BY, generator.py:2831). The first two rows were the
-  // named-argument `=>` example (`kwarg_sql`) until AIR-2277 ported it — it must name
-  // a generator method that is STILL `NotPorted` or the fallback path this test
-  // exercises is never reached (verified via `extractSqlMetadata` under snowflake and
-  // databricks that `extractionError` still matches `standardizedSql generation
-  // failed`). `PRIOR` must stay uppercase in BOTH halves of each pair: `connect_sql`
-  // being unported means this clause's raw fallback render case-preserves that
-  // keyword verbatim rather than canonicalizing it the way the real generator would
-  // the table/column identifiers, so a lowercase/uppercase mismatch between the two
-  // requests breaks convergence instead of exercising it.
+  // fallback this test exercises. Replaced with constructs that hit `connect_sql`
+  // (Oracle-style CONNECT BY, generator.py:2831) — until AIR-2279 (P4 generator stubs
+  // cluster D2) that was still a real, named, unported base-`Generator` stub, but that
+  // round ported it along with the rest of the base-Generator stub inventory, so the
+  // test's job (two cosmetically-different requests must converge to the SAME
+  // standardizedSql under the raw-SQL fallback, and `cacheOverride` detection must
+  // still work on that path) no longer has a naturally-occurring unported method to
+  // lean on — the sibling test below ("fallback retains literals...") already solves
+  // this the same way: force the fallback directly via `t.mock.method(Dialect.prototype,
+  // 'generate', ...)` rather than hunting for another stub. The exact SQL text is
+  // incidental now; CONNECT BY is kept only because it is still valid, parseable SQL.
   for (const [a,b] of [
     ['select a from T connect by PRIOR a = b /* request=1 */', 'SELECT a FROM t CONNECT BY PRIOR a = b -- request=2'],
     ['select a from T connect by PRIOR x = y /* request=1 */', 'SELECT a FROM t CONNECT BY PRIOR x = y /* __AIRBRX_CACHE__ */'],
     ['select a from T connect by PRIOR id = parent /* request=1 */', 'SELECT a FROM t CONNECT BY PRIOR id = parent -- request=2'],
-  ]) test(`AIR-2163: fallback convergence (${dialect}): ${a}`, () => {
+  ]) test(`AIR-2163: fallback convergence (${dialect}): ${a}`, (t) => {
+    t.mock.method(Dialect.prototype, 'generate', () => { throw new Error('forced fallback'); });
     const first = metadata(a, {dialect}), second = metadata(b, {dialect});
     assert.equal(first.statementType, 'SELECT');
     assert.match(first.extractionError, /standardizedSql generation failed/);
