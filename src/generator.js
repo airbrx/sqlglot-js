@@ -2415,9 +2415,32 @@ export class Generator {
     return ` /*+ ${pyStrip(this.expressions(expression, null, { sep: this.constructor.QUERY_HINT_SEP }))} */`;
   }
 
-  /** @returns {*} */
-  // py: sqlglot/generator.py:1953
-  indexparameters_sql(expression) { throw new NotPorted("indexparameters_sql", "sqlglot/generator.py:1953"); }
+  /**
+   * py: sqlglot/generator.py:1953
+   * @param {exp.IndexParameters} expression
+   * @returns {string}
+   */
+  indexparameters_sql(expression) {
+    let using = this.sql(expression, "using");
+    using = using ? ` USING ${using}` : "";
+    let columns = this.expressions(expression, "columns", { flat: true });
+    columns = columns ? `(${columns})` : "";
+    let partition_by = this.expressions(expression, "partition_by", { flat: true });
+    partition_by = partition_by ? ` PARTITION BY ${partition_by}` : "";
+    const where = this.sql(expression, "where");
+    let include = this.expressions(expression, "include", { flat: true });
+    if (include) {
+      include = ` INCLUDE (${include})`;
+    }
+    let with_storage = this.expressions(expression, "with_storage", { flat: true });
+    with_storage = with_storage ? ` WITH (${with_storage})` : "";
+    let tablespace = this.sql(expression, "tablespace");
+    tablespace = tablespace ? ` USING INDEX TABLESPACE ${tablespace}` : "";
+    let on = this.sql(expression, "on");
+    on = on ? ` ON ${on}` : "";
+
+    return `${using}${columns}${include}${with_storage}${tablespace}${partition_by}${where}${on}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1973
@@ -5237,6 +5260,10 @@ export class Generator {
     const actions = expression.args.actions;
 
     let actions_sql;
+    // deny:operators sqlglot/generator.py:4337 — plain JS array indexing into the `actions`
+    // list (`actions[0]`), not `exp.Bracket` construction; same false-positive shape as :2556.
+    // Surfaced only now: the scanner's window attributed this site to the adjacent
+    // `alterset_sql` stub until AIR-2278 ported it (R86/R91-class window misattribution).
     if (!this.dialect.ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN && actions[0] instanceof exp.ColumnDef) {
       actions_sql = `ADD ${this.expressions(expression, "actions", { flat: true })}`;
     } else {

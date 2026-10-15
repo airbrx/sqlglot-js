@@ -499,7 +499,9 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // same `tokens.js` relay R82 built for `unit_to_str`/`map_date_part`/
   // `concat_to_dpipe_sql`, extended here rather than duplicated (one relay object,
   // five fields, same "`generator.js` cannot import `dialects/dialect.js`" R32 cycle).
-  assert.equal(bodied.length, 193, "exactly 193 *_sql methods have a real body");
+    // +1 coordinator at merge (R93): `indexparameters_sql` (generator.py:1953), reached by the
+  // qualify oracle's `alter table` fixture once `addconstraint_sql` went real.
+  assert.equal(bodied.length, 194, "exactly 194 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -590,7 +592,7 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // one of the thirty-nine reads only class/Dialect FIELDS and the `tokens.js` relay
   // getters, never a Dialect METHOD, so none needs the `identifier_sql`-style
   // exception).
-  assert.equal(432 - stubs.length, 192, "192 of those 193 also run without a resolved Dialect");
+  assert.equal(432 - stubs.length, 193, "193 of those 194 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],
