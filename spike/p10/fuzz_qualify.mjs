@@ -50,9 +50,8 @@ const gapSamples = [];
 
 // Pre-existing, unrelated gaps this fixture replay reaches but `qualify.js` itself
 // cannot fix: base-Generator `NotPorted` stubs for rendering (`parameter_sql`/
-// `tablesample_sql`/`pseudocolumn_sql`/`copy_sql`/`addconstraint_sql`/
-// `userdefinedfunction_sql`) and one rare unsupported expression type (`TableColumn`)
-// the generator/parser layer doesn't handle yet.
+// `pseudocolumn_sql`/`copy_sql`) and one rare unsupported expression type
+// (`TableColumn`) the generator/parser layer doesn't handle yet.
 // (AIR-2193 fixed the third, previously-listed gap here -- a multi-column `AS (a, b)`
 // alias over a table-generating function (`STACK`) -- by fixing `Select.namedSelects`'
 // `Aliases` branch, which read a nonexistent `args.aliases` instead of `expressions`,
@@ -62,13 +61,14 @@ const gapSamples = [];
 // instead surfaced a real, now-fixed `generators/duckdb.js` TRANSFORMS gap, `exp.Pivot`
 // -> `transforms.unqualify_columns`, R32's own named deferral — see that file's
 // header. AIR-2274's `src/jsonpath.js` removed `JSONPathKey` from this list -- it
-// renders for real now.) Same "named, counted exclusion" shape `gen_qualify_columns_ref.py`'s
+// renders for real now. AIR-2278 removed `addconstraint_sql` -- it renders for real
+// now too.) Same "named, counted exclusion" shape `gen_qualify_columns_ref.py`'s
 // own `STRUCTURAL` set and `gen_pushdown_predicates_ref.py`'s dialect skip already
 // established -- classified by the underlying stub/type name, not by row id, so a
 // NEW unrelated gap of the same shape is still caught by name rather than silently
 // matched.
 const KNOWN_GAPS = [
-  /^NotPorted: (parameter_sql|pseudocolumn_sql|copy_sql|addconstraint_sql) is not ported yet/,
+  /^NotPorted: (parameter_sql|pseudocolumn_sql|copy_sql) is not ported yet/,
   /^PyValueError: Unsupported expression type (TableColumn)$/,
 ];
 
