@@ -114,6 +114,24 @@ PYTHONHASHSEED=0 python3 spike/p5/gen_starrocks_dialect_ref.py > spike/out/starr
 # MySQL and declares NO nested Tokenizer at all -- the oracle checks that a FRESH
 # subclass of `MySQL.Tokenizer` was built for it rather than an alias.
 PYTHONHASHSEED=0 python3 spike/p5/gen_doris_dialect_ref.py > spike/out/doris_dialect.json || fail=1
+# P5 oracle, same shape, Trino (AIR-2287, "12.2 Presto family", part 2). `dialects/
+# trino.py` is 105 resolved settings (3 Trino's own, the rest inherited through
+# Presto), a nested Tokenizer extending Presto's own with 2 added keywords and one
+# post-merge `KEYWORDS.pop("SQL SECURITY")`, and no method overrides at all.
+PYTHONHASHSEED=0 python3 spike/p5/gen_trino_dialect_ref.py > spike/out/trino_dialect.json || fail=1
+# P5 oracle, same shape, Athena (AIR-2287, part 2). `dialects/athena.py` extends the
+# BASE `Dialect` directly and declares no scalar setting of its own -- all its real
+# behavior lives in its composite Tokenizer (merging Hive's and Trino's quoting/
+# keyword settings) and in `AthenaParser`/`AthenaGenerator`'s own Hive-vs-Trino
+# dispatch, so this oracle adds a 4th section: the actual `_tokenize_as_hive` routing
+# decision for 16 representative statements covering every branch of that heuristic.
+PYTHONHASHSEED=0 python3 spike/p5/gen_athena_dialect_ref.py > spike/out/athena_dialect.json || fail=1
+# P5 oracle, same shape, Dune (AIR-2287, part 2, last link: "Dune(Trino)"). `dialects/
+# dune.py` declares no scalar setting at all -- only the three class links and one
+# `HEX_STRINGS` Tokenizer override -- so this oracle mainly re-verifies Trino's own
+# 23 differences-from-base survive unshadowed through yet another level of JS static
+# inheritance.
+PYTHONHASHSEED=0 python3 spike/p5/gen_dune_dialect_ref.py > spike/out/dune_dialect.json || fail=1
 # P6 oracle. `schema.py`'s `MappingSchema` is greenfield -- nothing in the port depends
 # on it yet, so unlike every oracle above it has no corpus/atoms.jsonl tie-in at all.
 # 24 scenarios / 53 checks of column/type lookups, add_table, dialect-aware identifier
@@ -490,6 +508,9 @@ run "P5: MySQL dialect vs CPython"         node spike/p5/fuzz_mysql_dialect.mjs
 run "P5: Presto dialect vs CPython"        node spike/p5/fuzz_presto_dialect.mjs
 run "P5: StarRocks dialect vs CPython"     node spike/p5/fuzz_starrocks_dialect.mjs
 run "P5: Doris dialect vs CPython"         node spike/p5/fuzz_doris_dialect.mjs
+run "P5: Trino dialect vs CPython"         node spike/p5/fuzz_trino_dialect.mjs
+run "P5: Athena dialect vs CPython"        node spike/p5/fuzz_athena_dialect.mjs
+run "P5: Dune dialect vs CPython"          node spike/p5/fuzz_dune_dialect.mjs
 run "P6: schema.js MappingSchema vs CPython" node spike/p6/fuzz_schema.mjs
 run "P7: optimizer/scope.js traverseScope/Scope vs CPython" node spike/p7/fuzz_scope.mjs
 run "P7: optimize_joins.js vs CPython"       node spike/p7/fuzz_optimize_joins.mjs

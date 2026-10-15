@@ -12,19 +12,20 @@
 //
 // `unnest_requires_cross_join` (py:41 `isinstance(dialect, (Athena, Presto))`) WAS a
 // real, documented gap (hardcoded `false`, PORT_PLAN.md R71) because neither
-// `Athena` nor `Presto` existed in this port. `src/dialects/presto.js` now exists
-// (AIR-2287) — `dialect instanceof Presto` is real again, and (per upstream's own
-// subclass relationship, `trino.py`'s `Trino(Presto)`) will also cover `trino` once
-// that dialect lands, the same way it already covers `Presto` itself. `Athena` is
-// still unported, so the tuple's other half is still missing; the 6 fixture rows in
-// `tests/fixtures/optimizer/pushdown_predicates.sql` gated behind `# dialect: athena`
-// stay skipped for that reason alone (not `presto`/`trino`, which this fix un-gates).
-// Revisit the `Athena` half when that dialect lands; see PORT_PLAN.md.
+// `Athena` nor `Presto` existed in this port. `src/dialects/presto.js` (AIR-2287,
+// R103) and `src/dialects/athena.js` (AIR-2287, part 2) now both exist — the full
+// `isinstance(dialect, (Athena, Presto))` check is restored verbatim. `trino`/`dune`
+// are covered transitively via upstream's own subclass chain (`Trino(Presto)`,
+// `Dune(Trino)`), the same way the `Presto` half already covered Presto itself. The
+// 6 fixture rows in `tests/fixtures/optimizer/pushdown_predicates.sql` gated behind
+// `# dialect: athena` are un-skipped in the same round this comment changed; see
+// PORT_PLAN.md's R71 un-skip count.
 
 import * as exp from "../expressions/index.js";
 import { PyValueError } from "../errors.js";
 import { Dialect } from "../dialects/dialect.js";
 import { Presto } from "../dialects/presto.js";
+import { Athena } from "../dialects/athena.js";
 import { normalized } from "./normalize.js";
 import { findInScope, buildScope } from "./scope.js";
 import { simplify } from "./simplify.js";
@@ -34,9 +35,8 @@ export function pushdown_predicates(expression, dialect = null) {
   const root = buildScope(expression);
 
   dialect = Dialect.get_or_raise(dialect);
-  // py:41 `isinstance(dialect, (Athena, Presto))`. See the module header: `Athena`
-  // is still unported, so only the `Presto` half is real.
-  const unnest_requires_cross_join = dialect instanceof Presto;
+  // py:41 `isinstance(dialect, (Athena, Presto))`. Both halves are now real.
+  const unnest_requires_cross_join = dialect instanceof Presto || dialect instanceof Athena;
 
   if (root) {
     const scope_ref_count = root.refCount();
