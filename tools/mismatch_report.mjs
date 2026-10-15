@@ -31,7 +31,7 @@ const INCLUDE_ALL = argv.includes("--all");
 export const PORTED_DIALECTS = new Set([
   "", "athena", "bigquery", "clickhouse", "databricks", "dax", "doris", "druid",
   "duckdb", "dune", "exasol", "hive", "mysql", "oracle", "postgres", "presto",
-  "redshift", "singlestore", "snowflake", "solr", "spark",
+  "redshift", "singlestore", "snowflake", "solr", "spark", "tableau",
   "spark2", "starrocks", "trino", "tsql",
 ]);
 

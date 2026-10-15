@@ -20,7 +20,7 @@ node spike/fuzz_unicode_tokens.mjs
 python3 spike/p3/gen_command_warning_ref.py > spike/out/command_warnings.jsonl
 node spike/p3/fuzz_command_warning.mjs
 # Settings/overrides and independently strict core/optimizer oracles.
-for name in dialect snowflake_dialect duckdb_dialect mysql_dialect singlestore_dialect presto_dialect clickhouse_dialect starrocks_dialect doris_dialect trino_dialect athena_dialect dune_dialect exasol_dialect oracle_dialect solr_dialect druid_dialect dax_dialect; do
+for name in dialect snowflake_dialect duckdb_dialect mysql_dialect singlestore_dialect presto_dialect clickhouse_dialect starrocks_dialect doris_dialect trino_dialect athena_dialect dune_dialect exasol_dialect oracle_dialect solr_dialect druid_dialect dax_dialect tableau_dialect; do
   target="$name"
   [ "$name" != dialect ] || target=dialect_defaults
   python3 "spike/p5/gen_${name}_ref.py" > "spike/out/${target}.json"
