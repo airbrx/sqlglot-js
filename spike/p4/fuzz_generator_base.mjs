@@ -71,6 +71,9 @@ const DEFERRED_TABLES = new Set([]);
 // `exp.JSONObjectAgg` (py:212/213) — wiring `_parse_json_object` into
 // `FUNCTION_PARSERS` is what first let a real `JSON_OBJECT(...)`/`JSON_OBJECTAGG(...)`
 // corpus row construct one of these nodes and reach this table.
+// +5 from AIR-2285 (PORT_PLAN.md R97, the honest generate probe's standing
+// mismatches): `exp.ConnectByRoot`/`exp.UtcDate`/`exp.UtcTime`/`exp.UtcTimestamp`/
+// `exp.VarMap` (py:164/283-285/289) were each still a `// TODO lambda` placeholder.
 const PARTIALLY_SEEDED_MAP_KEYS = new Map([
   [
     "TRANSFORMS",
@@ -82,7 +85,7 @@ const PARTIALLY_SEEDED_MAP_KEYS = new Map([
       "exp.JSONPathUnion", "exp.JSONPathWildcard",
       "exp.Adjacent", "exp.AllowedValuesProperty", "exp.ArrayContainedBy", "exp.ArrayContainsAll",
       "exp.ArrayOverlaps", "exp.AutoRefreshProperty", "exp.BackupProperty", "exp.CalledOnNullInputProperty",
-      "exp.CharacterSetProperty", "exp.CopyGrantsProperty", "exp.CredentialsProperty", "exp.ApiProperty",
+      "exp.CharacterSetProperty", "exp.ConnectByRoot", "exp.CopyGrantsProperty", "exp.CredentialsProperty", "exp.ApiProperty",
       "exp.ApplicationProperty", "exp.CatalogProperty", "exp.ComputeProperty", "exp.DatabaseProperty",
       "exp.DynamicProperty", "exp.EmptyProperty", "exp.EnviromentProperty", "exp.HandlerProperty",
       "exp.ParameterStyleProperty", "exp.ExecuteAsProperty", "exp.Except", "exp.ExternalProperty",
@@ -98,7 +101,8 @@ const PARTIALLY_SEEDED_MAP_KEYS = new Map([
       "exp.SharingProperty", "exp.SqlReadWriteProperty", "exp.SqlSecurityProperty", "exp.StabilityProperty",
       "exp.StreamingTableProperty", "exp.StrictProperty", "exp.Tags", "exp.TemporaryProperty",
       "exp.ToTableProperty", "exp.TransformModelProperty", "exp.TransientProperty", "exp.VirtualProperty",
-      "exp.Union", "exp.UnloggedProperty", "exp.UsingTemplateProperty", "exp.Variadic",
+      "exp.Union", "exp.UnloggedProperty", "exp.UsingTemplateProperty", "exp.UtcDate", "exp.UtcTime",
+      "exp.UtcTimestamp", "exp.Variadic", "exp.VarMap",
       "exp.ViewAttributeProperty", "exp.VolatileProperty", "exp.WithJournalTableProperty", "exp.WithProcedureOptions",
       "exp.WithSchemaBindingProperty", "exp.ForceProperty",
     ],

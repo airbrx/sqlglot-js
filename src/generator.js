@@ -88,7 +88,7 @@ import { formatTime } from "./time.js";
 import { pyTruthy } from "./_py/truthy.js";
 import { ensure_bools, move_ctes_to_top_level } from "./transforms.js";
 import { JSON_PATH_PART_TRANSFORMS } from "./jsonpath.js";
-import { getAnnotateTypesRef, getDialectHelpersRef, getDialectResolver } from "./tokens.js";
+import { getAnnotateTypesRef, getDialectHelpersRef, getDialectResolver, getSimplifyRef } from "./tokens.js";
 import { kernelSql } from "./generator_kernel.js";
 
 /**
@@ -122,6 +122,21 @@ function _getAnnotateTypesModule() {
   const ref = getAnnotateTypesRef();
   if (!ref) {
     throw new Error("generator.js: annotate_types not loaded yet — import optimizer/annotate_types.js first.");
+  }
+  return ref;
+}
+
+/**
+ * Same relay shape, for `optimizer/simplify.js`'s `simplify` (py:
+ * `apply_index_offset`'s `simplify(expression + offset)`) — needed by
+ * `bracket_offset_expressions` only on the branch reached when a literal array index
+ * actually needs re-basing between two dialects' `INDEX_OFFSET`s.
+ * @returns {Function}
+ */
+function _getSimplifyFn() {
+  const ref = getSimplifyRef();
+  if (!ref) {
+    throw new Error("generator.js: simplify not loaded yet — import optimizer/simplify.js first.");
   }
   return ref;
 }
@@ -511,7 +526,7 @@ export class Generator {
     // py:159  [exp.ClusteredColumnConstraint, /* TODO lambda */],
     // py:162  [exp.CollateColumnConstraint, /* TODO lambda */],
     // py:163  [exp.CommentColumnConstraint, /* TODO lambda */],
-    // py:164  [exp.ConnectByRoot, /* TODO lambda */],
+    [exp.ConnectByRoot, (self, e) => `CONNECT_BY_ROOT ${self.sql(e, "this")}`], // py:164
     // py:165  [exp.ConvertToCharset, /* TODO lambda */],
     [exp.CopyGrantsProperty, () => "COPY GRANTS"], // py:168
     [exp.CredentialsProperty, (self, e) => `CREDENTIALS=(${self.expressions(e, "expressions", { sep: " " })})`], // py:169
@@ -645,14 +660,14 @@ export class Generator {
     [exp.UsingTemplateProperty, (self, e) => `USING TEMPLATE ${self.sql(e, "this")}`], // py:280
     // py:281  [exp.UsingData, /* TODO lambda */],
     // py:282  [exp.UppercaseColumnConstraint, /* TODO lambda */],
-    // py:283  [exp.UtcDate, /* TODO lambda */],
-    // py:284  [exp.UtcTime, /* TODO lambda */],
-    // py:285  [exp.UtcTimestamp, /* TODO lambda */],
+    [exp.UtcDate, (self, e) => self.sql(new exp.CurrentDate({ this: exp.Literal.string("UTC") }))], // py:283
+    [exp.UtcTime, (self, e) => self.sql(new exp.CurrentTime({ this: exp.Literal.string("UTC") }))], // py:284
+    [exp.UtcTimestamp, (self, e) => self.sql(new exp.CurrentTimestamp({ this: exp.Literal.string("UTC") }))], // py:285
     // py:288 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4): reached by
     // corpus rows like `MLEAST(VARIADIC ...)`, which previously threw "Unsupported
     // expression type Variadic" (no dispatch entry at all, not even a wrong string).
     [exp.Variadic, (self, e) => `VARIADIC ${self.sql(e, "this")}`],
-    // py:289  [exp.VarMap, /* TODO lambda */],
+    [exp.VarMap, (self, e) => self.func("MAP", e.args.keys, e.args.values)], // py:289
     [exp.ViewAttributeProperty, (self, e) => `WITH ${self.sql(e, "this")}`], // py:290
     [exp.VolatileProperty, () => "VOLATILE"], // py:291
     [exp.WithJournalTableProperty, (self, e) => `WITH JOURNAL TABLE=${self.sql(e, "this")}`], // py:292
@@ -4532,11 +4547,12 @@ export class Generator {
   bracket_offset_expressions(expression, index_offset = null) {
     if (expression.args.json_access) return expression.expressions;
 
+    const { annotate_types } = _getAnnotateTypesModule();
     return exp.applyIndexOffset(
       expression.this,
       expression.expressions,
       (index_offset ?? this.dialect.INDEX_OFFSET) - (expression.args.offset ?? 0),
-      { dialect: this.dialect },
+      { dialect: this.dialect, annotateTypes: annotate_types, simplify: _getSimplifyFn() },
     );
   }
 

@@ -44,7 +44,7 @@ import {
   highlightSql,
   mergeErrors,
 } from "./errors.js";
-import { Token, TokenType, Tokenizer, TOKEN_TYPE_NAMES } from "./tokens.js";
+import { Token, TokenType, Tokenizer, TOKEN_TYPE_NAMES, getAnnotateTypesRef, getSimplifyRef } from "./tokens.js";
 import { newTrie, inTrie, TrieResult } from "./trie.js";
 import { ensureList, seqGet } from "./helper.js";
 import { logger } from "./logging.js";
@@ -56,6 +56,26 @@ import { kernelSql } from "./generator_kernel.js";
 import * as exp from "./expressions/index.js";
 import { findInScope } from "./optimizer/scope.js";
 import { normalize_identifiers } from "./optimizer/normalize_identifiers.js";
+
+/**
+ * `tokens.js`'s `getAnnotateTypesRef()`/`getSimplifyRef()` relay (see their own
+ * headers in `tokens.js`) — needed by `_parse_bracket` (py: `apply_index_offset`)
+ * only on the branch reached when a plain `this[N]` subscript needs its literal
+ * index re-based from this dialect's `INDEX_OFFSET` to the port's dialect-neutral
+ * 0-based internal form. `dialects/dialect.js` eagerly imports both
+ * `optimizer/annotate_types.js` and `optimizer/simplify.js` for this same reason
+ * (AIR-2285), and `parser.js` is only ever reached through a concrete `Dialect`, so
+ * both relays are already populated by the time any real parse runs.
+ * @returns {{ annotateTypes: Function, simplify: Function }}
+ */
+function _getIndexOffsetHelpers() {
+  const annotateTypesRef = getAnnotateTypesRef();
+  const simplify = getSimplifyRef();
+  if (!annotateTypesRef || !simplify) {
+    throw new Error("parser.js: annotate_types/simplify not loaded yet — import dialects/dialect.js first.");
+  }
+  return { annotateTypes: annotateTypesRef.annotate_types, simplify };
+}
 
 // py: sqlglot/parser.py:283
 function _unpivot_target(expr) {
@@ -5537,7 +5557,7 @@ export class Parser {
   // py: sqlglot/parser.py:7976
   // note: param `this` renamed to `this_` (JS reserved word)
   _parse_bracket(this_ = null) {
-    const C=this.constructor;if(!this._match_set(C.BRACKETS))return this_;const mapToken=this._tokens[this._index-2],parseMap=!!(C.MAP_KEYS_ARE_ARBITRARY_EXPRESSIONS&&mapToken&&pyUpper(mapToken.text)==="MAP");const kind=this._prev.token_type;if(kind===TokenType.L_BRACE&&this._curr.bool()&&this._curr.token_type===TokenType.VAR&&C.ODBC_DATETIME_LITERALS.has(this._curr.text.toLowerCase()))return this._parse_odbc_datetime_literal();let expressions=this._parse_csv(()=>this._parse_bracket_key_value(kind===TokenType.L_BRACE));if(kind===TokenType.L_BRACKET&&!this._match(TokenType.R_BRACKET))this.raise_error("Expected ]");else if(kind===TokenType.L_BRACE&&!this._match(TokenType.R_BRACE))this.raise_error("Expected }");if(kind===TokenType.L_BRACE)this_=this.expression(new exp.Struct({expressions:this._kv_to_prop_eq(expressions,parseMap)}));else if(!this_){this_=new exp.Array({expressions});if(this.dialect.HAS_DISTINCT_ARRAY_CONSTRUCTORS)this_.set("bracket_notation",kind===TokenType.L_BRACKET);}else{const K=C.ARRAY_CONSTRUCTORS.get(pyUpper(this_.name));if(K){const out=new K({expressions});if(K===exp.Array&&this.dialect.HAS_DISTINCT_ARRAY_CONSTRUCTORS)out.set("bracket_notation",kind===TokenType.L_BRACKET);return out;}this_=this.expression(new exp.Bracket({this:this_,expressions}),null,this_.popComments());}this._add_comments(this_);return this._parse_bracket(this_);
+    const C=this.constructor;if(!this._match_set(C.BRACKETS))return this_;const mapToken=this._tokens[this._index-2],parseMap=!!(C.MAP_KEYS_ARE_ARBITRARY_EXPRESSIONS&&mapToken&&pyUpper(mapToken.text)==="MAP");const kind=this._prev.token_type;if(kind===TokenType.L_BRACE&&this._curr.bool()&&this._curr.token_type===TokenType.VAR&&C.ODBC_DATETIME_LITERALS.has(this._curr.text.toLowerCase()))return this._parse_odbc_datetime_literal();let expressions=this._parse_csv(()=>this._parse_bracket_key_value(kind===TokenType.L_BRACE));if(kind===TokenType.L_BRACKET&&!this._match(TokenType.R_BRACKET))this.raise_error("Expected ]");else if(kind===TokenType.L_BRACE&&!this._match(TokenType.R_BRACE))this.raise_error("Expected }");if(kind===TokenType.L_BRACE)this_=this.expression(new exp.Struct({expressions:this._kv_to_prop_eq(expressions,parseMap)}));else if(!this_){this_=new exp.Array({expressions});if(this.dialect.HAS_DISTINCT_ARRAY_CONSTRUCTORS)this_.set("bracket_notation",kind===TokenType.L_BRACKET);}else{const K=C.ARRAY_CONSTRUCTORS.get(pyUpper(this_.name));if(K){const out=new K({expressions});if(K===exp.Array&&this.dialect.HAS_DISTINCT_ARRAY_CONSTRUCTORS)out.set("bracket_notation",kind===TokenType.L_BRACKET);return out;}const {annotateTypes,simplify}=_getIndexOffsetHelpers();expressions=exp.applyIndexOffset(this_,expressions,-this.dialect.INDEX_OFFSET,{dialect:this.dialect,annotateTypes,simplify});this_=this.expression(new exp.Bracket({this:this_,expressions}),null,this_.popComments());}this._add_comments(this_);return this._parse_bracket(this_);
   }
 
   /** @returns {*} */
