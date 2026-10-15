@@ -88,6 +88,7 @@ import {
   encode_decode_sql,
   explode_to_unnest_sql,
   generate_series_sql,
+  getbit_sql,
   groupconcat_sql,
   inline_array_unless_query,
   no_comment_column_constraint_sql,
@@ -358,13 +359,75 @@ function _handle_nanosecond_diff(self, end_time, start_time) {
   return self.sql(new exp.Sub({ this: self.func("EPOCH_NS", end_ns), expression: self.func("EPOCH_NS", start_ns) }));
 }
 
+// py:305-306 — BigQuery -> DuckDB conversion for the TIME_DIFF function
+/** py:306 `_timediff_sql(self, expression)`. */
+function _timediff_sql(self, expression) {
+  const unit = expression.args.unit;
+
+  if (_is_nanosecond_unit(unit)) return _handle_nanosecond_diff(self, expression.expression, expression.this);
+
+  const this_ = exp.cast(expression.this, exp.DType.TIME);
+  const expr = exp.cast(expression.expression, exp.DType.TIME);
+
+  // Although the 2 dialects share similar signatures, BQ seems to inverse
+  // the sign of the result so the start/end time operands are flipped
+  return self.func("DATE_DIFF", unit_to_str(expression), expr, this_);
+}
+
 /**
- * py:158 `_last_day_sql(self, expression)`.
+ * py:1360 `_regr_val_sql(self, expression)`.
  *
- * DuckDB's LAST_DAY only supports finding the last day of a month.
- * For other date parts (year, quarter, week), we need to implement equivalent logic.
+ * Transpile Snowflake's REGR_VALX/REGR_VALY to DuckDB equivalent.
+ *
+ * REGR_VALX(y, x) returns NULL if y is NULL; otherwise returns x.
+ * REGR_VALY(y, x) returns NULL if x is NULL; otherwise returns y.
  */
-/** py:288 `_date_sql(self, expression)`. */
+function _regr_val_sql(self, expression) {
+  const y = expression.this;
+  const x = expression.expression;
+
+  // Determine which argument to check for NULL and which to return based on expression type
+  let check_for_null, return_value, return_value_attr;
+  if (expression instanceof exp.RegrValx) {
+    // REGR_VALX: check y for NULL, return x
+    check_for_null = y;
+    return_value = x;
+    return_value_attr = "expression";
+  } else {
+    // REGR_VALY: check x for NULL, return y
+    check_for_null = x;
+    return_value = y;
+    return_value_attr = "this";
+  }
+
+  // Get the type from the return argument
+  let result_type = return_value.type;
+
+  // If no type info, annotate the expression to infer types
+  if (!result_type || result_type.this === exp.DType.UNKNOWN) {
+    try {
+      const annotated = annotate_types(expression.copy(), { dialect: self.dialect });
+      result_type = annotated.args[return_value_attr].type;
+    } catch { /* fall through to the DOUBLE default below */ }
+  }
+
+  // Default to DOUBLE for regression functions if type still unknown
+  if (!result_type || result_type.this === exp.DType.UNKNOWN) {
+    result_type = exp.DType.DOUBLE.intoExpr();
+  }
+
+  // Cast NULL to the same type as return_value to avoid DuckDB type inference issues
+  const typed_null = new exp.Cast({ this: new exp.Null(), to: result_type });
+
+  return self.sql(
+    new exp.If({
+      this: new exp.Is({ this: check_for_null.copy(), expression: new exp.Null() }),
+      true: typed_null,
+      false: return_value.copy(),
+    }),
+  );
+}
+
 /**
  * py:1312 `_scale_rounding_sql(self, expression, rounding_func)`.
  *
@@ -496,6 +559,7 @@ function _to_boolean_sql(self, expression) {
   return self.sql(case_expr);
 }
 
+/** py:288 `_date_sql(self, expression)`. */
 function _date_sql(self, expression) {
   let this_ = expression.this;
   const zone = self.sql(expression, "zone");
@@ -514,6 +578,12 @@ function _date_sql(self, expression) {
   return self.sql(exp.cast(this_, exp.DType.DATE));
 }
 
+/**
+ * py:158 `_last_day_sql(self, expression)`.
+ *
+ * DuckDB's LAST_DAY only supports finding the last day of a month.
+ * For other date parts (year, quarter, week), we need to implement equivalent logic.
+ */
 function _last_day_sql(self, expression) {
   const date_expr = expression.this;
   const unit_expr = expression.args.unit;
@@ -1484,7 +1554,8 @@ export class DuckDBGenerator extends Generator {
     // real export, just not imported here (same R22 staleness as the `exp.Array` entry
     // above).
     [exp.GenerateSeries, generate_series_sql("GENERATE_SERIES", "RANGE")],
-    // py:1695 [exp.Getbit, getbit_sql] — blocked, dialect.js does not yet export `getbit_sql`
+    // py:1695 `Getbit`
+    [exp.Getbit, getbit_sql],
     [exp.GroupConcat, (self, e) => groupconcat_sql(self, e, { within_group: false })],
     [exp.Explode, rename_func("UNNEST")],
     [exp.IcebergProperty, () => ""],
@@ -1541,7 +1612,11 @@ export class DuckDBGenerator extends Generator {
     // directly against that fixture, not merely transliterated on faith.
     [exp.Pivot, preprocess([unqualify_columns])],
     [exp.RegexpSplit, rename_func("STR_SPLIT_REGEX")],
-    // py:1741-1743,1745-1746 [exp.RegexpILike, exp.RegrValx, exp.RegrValy] — blocked, local helpers out of scope
+    // py:1741 `RegexpILike`
+    [exp.RegexpILike, (self, e) => self.func("REGEXP_MATCHES", e.this, e.expression, exp.Literal.string("i"))],
+    // py:1745-1746 `RegrValx`/`RegrValy`
+    [exp.RegrValx, _regr_val_sql],
+    [exp.RegrValy, _regr_val_sql],
     // py:1747-1748 [exp.Return, exp.ReturnsProperty] — real, wired below
     [exp.Return, (self, e) => self.sql(e, "this")],
     [exp.ReturnsProperty, (self, e) => (e.this instanceof exp.Schema ? "TABLE" : "")],
@@ -1552,7 +1627,8 @@ export class DuckDBGenerator extends Generator {
     [exp.TimeAdd, _date_delta_to_binary_interval_op()],
     [exp.TimeSub, _date_delta_to_binary_interval_op()],
     [exp.Time, no_time_sql],
-    // py:1757 [exp.TimeDiff, _timediff_sql] — blocked, BigQuery-specific local helper out of scope this pass
+    // py:1757 `TimeDiff`
+    [exp.TimeDiff, _timediff_sql],
     [exp.Timestamp, no_timestamp_sql],
     [exp.TimestampAdd, _date_delta_to_binary_interval_op()],
     [
@@ -3214,6 +3290,107 @@ export class DuckDBGenerator extends Generator {
         .when(case_.copy().eq(0), new exp.Lower({ this: hex_expr.copy() }))
         .else_(hex_expr),
     );
+  }
+
+  /** py:2457 `jarowinklersimilarity_sql(self, expression)`. */
+  jarowinklersimilarity_sql(expression) {
+    let this_ = expression.this;
+    let expr = expression.expression;
+
+    if (expression.args.case_insensitive) {
+      this_ = new exp.Upper({ this: this_ });
+      expr = new exp.Upper({ this: expr });
+    }
+
+    let result = exp.func("JARO_WINKLER_SIMILARITY", this_, expr);
+
+    if (expression.args.integer_scale) {
+      result = exp.cast(result.mul(exp.Literal.number(100)), "INTEGER");
+    }
+
+    return this.sql(result);
+  }
+
+  /** py:2843 `unicode_sql(self, expression)`. */
+  unicode_sql(expression) {
+    if (expression.args.empty_is_zero) {
+      return this.sql(
+        exp.case()
+          .when(expression.this.eq(exp.Literal.string("")), exp.Literal.number(0))
+          .else_(new exp.Anonymous({ this: "UNICODE", expressions: [expression.this] })),
+      );
+    }
+
+    return this.func("UNICODE", expression.this);
+  }
+
+  /** py:3425 `levenshtein_sql(self, expression)`. */
+  levenshtein_sql(expression) {
+    const this_ = expression.this;
+    const expr = expression.expression;
+    const max_dist = expression.args.max_dist;
+
+    if (max_dist === null || max_dist === undefined) return this.func("LEVENSHTEIN", this_, expr);
+
+    // Emulate Snowflake semantics: if distance > max_dist, return max_dist
+    const levenshtein = new exp.Levenshtein({ this: this_, expression: expr });
+    return this.sql(new exp.Least({ this: levenshtein, expressions: [max_dist] }));
+  }
+
+  /** py:4024 `splitpart_sql(self, expression)`. */
+  splitpart_sql(expression) {
+    const string_arg = expression.this;
+    const delimiter_arg = expression.args.delimiter;
+    let part_index_arg = expression.args.part_index;
+
+    if (delimiter_arg && part_index_arg) {
+      // Handle Snowflake's "index 0 and 1 both return first element" behavior
+      if (expression.args.part_index_zero_as_one) {
+        // Convert 0 to 1 for compatibility
+        part_index_arg = new exp.Paren({
+          this: exp.case()
+            .when(part_index_arg.eq(exp.Literal.number("0")), exp.Literal.number("1"))
+            .else_(part_index_arg),
+        });
+      }
+
+      // Use Anonymous to avoid recursion
+      const base_func_expr = new exp.Anonymous({ this: "SPLIT_PART", expressions: [string_arg, delimiter_arg, part_index_arg] });
+      let needs_case_transform = false;
+      let case_expr = exp.case().else_(base_func_expr);
+
+      if (expression.args.empty_delimiter_returns_whole) {
+        // When delimiter is empty string:
+        // - Return whole string if part_index is 1 or -1
+        // - Return empty string otherwise
+        const empty_case = new exp.Paren({
+          this: exp.case()
+            .when(
+              exp.or_(part_index_arg.eq(exp.Literal.number("1")), part_index_arg.eq(exp.Literal.number("-1"))),
+              string_arg,
+            )
+            .else_(exp.Literal.string("")),
+        });
+
+        case_expr = case_expr.when(delimiter_arg.eq(exp.Literal.string("")), empty_case);
+        needs_case_transform = true;
+      }
+
+      // Output looks something like this:
+      //
+      // CASE
+      // WHEN delimiter is '' THEN
+      //     (
+      //         CASE
+      //         WHEN adjusted_part_index = 1 OR adjusted_part_index = -1 THEN input
+      //         ELSE '' END
+      //     )
+      // ELSE SPLIT_PART(input, delimiter, adjusted_part_index)
+      // END
+      return this.sql(needs_case_transform ? case_expr : base_func_expr);
+    }
+
+    return this.function_fallback_sql(expression);
   }
 
   /** py:2822 `checkjson_sql(self, expression)`. */
