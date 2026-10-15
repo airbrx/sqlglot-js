@@ -736,6 +736,27 @@ export function getDialectHelpersRef() {
   return _dialectHelpersRef;
 }
 
+/**
+ * Same relay shape, for `optimizer/simplify.js`'s `simplify` — needed by
+ * `expressions/builders.js`'s `applyIndexOffset` (py: `apply_index_offset`), which
+ * `generator.js`'s `bracket_offset_expressions` calls to re-base an `ELEMENT_AT`/
+ * `Bracket` literal index between dialects' `INDEX_OFFSET`s. `simplify.js` imports
+ * `dialects/dialect.js` directly, so a top-level import of it here would hit the same
+ * `generator.js` <-> `dialect.js` cycle as the `annotate_types` relay above. Installed
+ * once by `optimizer/simplify.js` itself, at the bottom of that file, after `simplify`
+ * is fully defined.
+ * @type {Function | null}
+ */
+let _simplifyRef = null;
+
+export function setSimplifyRef(ref) {
+  _simplifyRef = ref;
+}
+
+export function getSimplifyRef() {
+  return _simplifyRef;
+}
+
 function resolveDialect(dialect) {
   if (_dialectResolver) return _dialectResolver(dialect);
   if (dialect === null || dialect === undefined) return BASE_DIALECT_TOKENIZER_SETTINGS;

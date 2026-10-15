@@ -101,6 +101,15 @@ test("the only gap versus CPython is the deliberately-unseeded TRANSFORMS", () =
   // `JSON_OBJECT(...)` — latent for the same reason as `PivotAny` above: nothing
   // could construct a real `JSONObject` node until `_parse_json_object` was wired
   // into `FUNCTION_PARSERS`, which is this round's own parser.js change.
+  // +5 from AIR-2285 (PORT_PLAN.md, the honest generate probe's standing mismatches):
+  // `exp.ConnectByRoot` (py:164, `f"CONNECT_BY_ROOT {self.sql(e, 'this')}"`) and
+  // `exp.UtcDate`/`exp.UtcTime`/`exp.UtcTimestamp`/`exp.VarMap` (py:283-285/289) were
+  // each still a `// TODO lambda` placeholder, so real corpus rows through the
+  // default dialect fell through to `function_fallback_sql`'s generic rendering
+  // (`CONNECT_BY_ROOT(x)` instead of the paren-less `CONNECT_BY_ROOT x`, `UTC_DATE()`
+  // left untranslated instead of `CURRENT_DATE('UTC')`, `VAR_MAP(...)` instead of
+  // `MAP(...)`) — each a verified, faithful one-line port of its CPython lambda,
+  // landed independently of, and now subsumed by, AIR-2284's own wiring below.
   // +48 from AIR-2284 (PORT_PLAN.md P11, mismatch/ERROR triage): `exp.ExcludeColumnConstraint`
   // (py:191) and every remaining `// TODO lambda` placeholder in the py:142-295 stretch
   // EXCEPT `Ceil`/`Floor` (`AnalyzeColumns`/`AnalyzeWith`/`AssumeColumnConstraint`/

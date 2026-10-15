@@ -71,6 +71,10 @@ const DEFERRED_TABLES = new Set([]);
 // `exp.JSONObjectAgg` (py:212/213) — wiring `_parse_json_object` into
 // `FUNCTION_PARSERS` is what first let a real `JSON_OBJECT(...)`/`JSON_OBJECTAGG(...)`
 // corpus row construct one of these nodes and reach this table.
+// +5 from AIR-2285 (PORT_PLAN.md R97, the honest generate probe's standing
+// mismatches): `exp.ConnectByRoot`/`exp.UtcDate`/`exp.UtcTime`/`exp.UtcTimestamp`/
+// `exp.VarMap` (py:164/283-285/289) were each still a `// TODO lambda` placeholder —
+// landed independently of, and now subsumed by, AIR-2284's own wiring below.
 // +48 from AIR-2284 (PORT_PLAN.md P11, mismatch/ERROR triage): every remaining
 // `// TODO lambda` placeholder in the py:142-295 stretch landed as a verified,
 // faithful one-line port of its CPython lambda, taking TRANSFORMS from 93 to 141

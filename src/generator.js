@@ -88,7 +88,7 @@ import { formatTime } from "./time.js";
 import { pyTruthy } from "./_py/truthy.js";
 import { ensure_bools, move_ctes_to_top_level } from "./transforms.js";
 import { JSON_PATH_PART_TRANSFORMS } from "./jsonpath.js";
-import { getAnnotateTypesRef, getDialectHelpersRef, getDialectResolver, TOKEN_TYPE_NAMES } from "./tokens.js";
+import { getAnnotateTypesRef, getDialectHelpersRef, getDialectResolver, getSimplifyRef, TOKEN_TYPE_NAMES } from "./tokens.js";
 import { kernelSql } from "./generator_kernel.js";
 
 /**
@@ -122,6 +122,21 @@ function _getAnnotateTypesModule() {
   const ref = getAnnotateTypesRef();
   if (!ref) {
     throw new Error("generator.js: annotate_types not loaded yet — import optimizer/annotate_types.js first.");
+  }
+  return ref;
+}
+
+/**
+ * Same relay shape, for `optimizer/simplify.js`'s `simplify` (py:
+ * `apply_index_offset`'s `simplify(expression + offset)`) — needed by
+ * `bracket_offset_expressions` only on the branch reached when a literal array index
+ * actually needs re-basing between two dialects' `INDEX_OFFSET`s.
+ * @returns {Function}
+ */
+function _getSimplifyFn() {
+  const ref = getSimplifyRef();
+  if (!ref) {
+    throw new Error("generator.js: simplify not loaded yet — import optimizer/simplify.js first.");
   }
   return ref;
 }
@@ -5026,11 +5041,12 @@ export class Generator {
   bracket_offset_expressions(expression, index_offset = null) {
     if (expression.args.json_access) return expression.expressions;
 
+    const { annotate_types } = _getAnnotateTypesModule();
     return exp.applyIndexOffset(
       expression.this,
       expression.expressions,
       (index_offset ?? this.dialect.INDEX_OFFSET) - (expression.args.offset ?? 0),
-      { dialect: this.dialect },
+      { dialect: this.dialect, annotateTypes: annotate_types, simplify: _getSimplifyFn() },
     );
   }
 

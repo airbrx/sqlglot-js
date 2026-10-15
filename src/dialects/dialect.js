@@ -76,6 +76,18 @@ import { logger } from "../logging.js";
 // before this stub's own comment's stated blocker reasoning stopped applying.
 import { annotate_types } from "../optimizer/annotate_types.js";
 
+// Same precedent as the `annotate_types` import immediately above, for
+// `optimizer/simplify.js`'s `setSimplifyRef` side effect (AIR-2285): `generator.js`'s
+// `bracket_offset_expressions` needs the real `simplify` to re-base an `ELEMENT_AT`/
+// `Bracket` literal index between dialects' `INDEX_OFFSET`s, and can only reach it via
+// `tokens.js`'s relay (`simplify.js` imports this file directly, so `generator.js`
+// importing `simplify.js` would recreate the same `generator.js`<->`dialect.js` cycle
+// R32 already named). `simplify.js` only dereferences this file's exports inside
+// function bodies, never at its own module top level, so this import is safe by the
+// same reasoning as `annotate_types` above — verified via `node --check` and a real
+// `import("./index.js")` with no `ReferenceError`.
+import "../optimizer/simplify.js";
+
 /** py: sqlglot/dialects/dialect.py:1916 */
 export function binary_from_function(expr_type) {
   return (args) => new expr_type({ this: seqGet(args, 0), expression: seqGet(args, 1) });
