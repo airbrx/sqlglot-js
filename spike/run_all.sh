@@ -99,6 +99,13 @@ PYTHONHASHSEED=0 python3 spike/p5/gen_duckdb_dialect_ref.py > spike/out/duckdb_d
 # DuckDB's `to_json_path` or Snowflake's `can_quote`) -- every reachable behavior lives
 # in the settings and the Tokenizer, so the oracle has no method-override section.
 PYTHONHASHSEED=0 python3 spike/p5/gen_mysql_dialect_ref.py > spike/out/mysql_dialect.json || fail=1
+# P5 oracle, same shape one dialect-chain level further (AIR-2286, "12.1 MySQL
+# family", part 3). `dialects/singlestore.py` is 109 resolved settings (24
+# SingleStore's own, the rest inherited through MySQL), a nested Tokenizer extending
+# MySQL's own with a BYTE_STRINGS override and ~12 added/replaced keywords, two
+# SingleStore-only tables (VECTOR_TYPE_ALIASES/INVERSE_VECTOR_TYPE_ALIASES) with no
+# base-Dialect counterpart, and no method overrides at all.
+PYTHONHASHSEED=0 python3 spike/p5/gen_singlestore_dialect_ref.py > spike/out/singlestore_dialect.json || fail=1
 # P5 oracle, same shape, Presto (AIR-2287). `dialects/presto.py` is 105 resolved
 # settings (11 of them Presto's own, two borrowed verbatim from MySQL's data tables),
 # a nested Tokenizer with two post-merge `KEYWORDS.pop(...)` calls, and no method
@@ -510,6 +517,7 @@ run "P5: real dialect generation row ratchet" node spike/p5/fuzz_dialect_generat
 
 run "P5: DuckDB dialect vs CPython"        node spike/p5/fuzz_duckdb_dialect.mjs
 run "P5: MySQL dialect vs CPython"         node spike/p5/fuzz_mysql_dialect.mjs
+run "P5: SingleStore dialect vs CPython"   node spike/p5/fuzz_singlestore_dialect.mjs
 run "P5: Presto dialect vs CPython"        node spike/p5/fuzz_presto_dialect.mjs
 run "P5: StarRocks dialect vs CPython"     node spike/p5/fuzz_starrocks_dialect.mjs
 run "P5: Doris dialect vs CPython"         node spike/p5/fuzz_doris_dialect.mjs
