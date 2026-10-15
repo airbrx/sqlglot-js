@@ -402,6 +402,47 @@ export function eliminate_semi_and_anti_joins(expression) {
   return expression;
 }
 
+/**
+ * py: sqlglot/transforms.py:632 `eliminate_full_outer_join(expression)`.
+ *
+ * Converts a query with a FULL OUTER join to a union of identical queries that
+ * use LEFT/RIGHT OUTER joins instead. This transformation currently only works
+ * for queries that have a single FULL OUTER join. First callsite in this port:
+ * `generators/mysql.js`'s `exp.Select` TRANSFORMS pipeline (AIR-2286).
+ *
+ * @param {exp.Expr} expression
+ * @returns {exp.Expr}
+ */
+export function eliminate_full_outer_join(expression) {
+  if (expression instanceof exp.Select) {
+    const full_outer_joins = (expression.args.joins || [])
+      .map((join, index) => [index, join])
+      .filter(([, join]) => join.side === "FULL");
+
+    if (full_outer_joins.length === 1) {
+      let expression_copy = expression.copy();
+      expression.set("limit", null);
+      const [index, full_outer_join] = full_outer_joins[0];
+
+      const tables = [expression.args.from_.aliasOrName, full_outer_join.aliasOrName];
+      const join_conditions = full_outer_join.args.on || exp.and_(
+        ...(full_outer_join.args.using || []).map((col) => exp.column(col, tables[0]).eq(exp.column(col, tables[1]))),
+      );
+
+      full_outer_join.set("side", "left");
+      const anti_join_clause = exp.select("1").from_(expression.args.from_).where(join_conditions);
+      expression_copy.args.joins[index].set("side", "right");
+      expression_copy = expression_copy.where(new exp.Exists({ this: anti_join_clause }).not_());
+      expression_copy.set("with_", null); // remove CTEs from RIGHT side
+      expression.set("order", null); // remove order by from LEFT side
+
+      return expression.union(expression_copy, { copy: false, distinct: false });
+    }
+  }
+
+  return expression;
+}
+
 // ---------------------------------------------------------------------------
 // Added for the Databricks-chain generator step (PORT_PLAN.md): every
 // `transforms.py` function `generators/{hive,spark2,spark,databricks}.py` import that

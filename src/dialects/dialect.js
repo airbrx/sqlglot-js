@@ -543,6 +543,21 @@ export function if_sql(name = "IF", false_value = null) {
   };
 }
 
+/**
+ * py: sqlglot/dialects/dialect.py:1268 `arrow_json_extract_sql(self, expression:
+ * JSON_EXTRACT_TYPE)`. `JSON_EXTRACT_TYPE` is `exp.JSONExtract | exp.JSONExtractScalar`
+ * — a type alias, not reproduced as a runtime value; the `isinstance` check below is
+ * the only place it matters.
+ */
+export function arrow_json_extract_sql(self, expression) {
+  const this_ = expression.this;
+  if (self.constructor.JSON_TYPE_REQUIRED_FOR_EXTRACTION && this_ instanceof exp.Literal && this_.isString) {
+    this_.replace(exp.cast(this_, exp.DType.JSON));
+  }
+
+  return self.binary(expression, expression instanceof exp.JSONExtract ? "->" : "->>");
+}
+
 /** py: sqlglot/dialects/dialect.py:1276 */
 export function inline_array_sql(self, expression) {
   return `[${self.expressions(expression, null, {
@@ -1007,6 +1022,12 @@ export function no_make_interval_sql(self, expression, sep = ", ") {
   return `INTERVAL '${self.format_args(...args, { sep })}'`;
 }
 
+/** py: sqlglot/dialects/dialect.py:2552 */
+export function length_or_char_length_sql(self, expression) {
+  const length_func = expression.args.binary ? "LENGTH" : "CHAR_LENGTH";
+  return self.func(length_func, expression.this);
+}
+
 /**
  * py: sqlglot/dialects/dialect.py:2557
  * `groupconcat_sql(self, expression, func_name="LISTAGG", sep=",", within_group=True, on_overflow=False)`
@@ -1201,6 +1222,16 @@ export const regexp_replace_sql = unsupported_args("position", "occurrence", "mo
 /** py: sqlglot/dialects/dialect.py:1976 */
 export function is_parse_json(expression) {
   return expression instanceof exp.ParseJSON || (expression instanceof exp.Cast && expression.isType("json"));
+}
+
+/**
+ * py: sqlglot/dialects/dialect.py:1982 `isnull_to_is_null(args: BuilderArgs) -> exp.Expr`.
+ * A `FUNCTIONS` table builder (first callsite: `parsers/mysql.py`'s `"ISNULL":
+ * isnull_to_is_null`), signature `(args) => Expr` matching every other builder in this
+ * file.
+ */
+export function isnull_to_is_null(args) {
+  return new exp.Paren({ this: new exp.Is({ this: seqGet(args, 0), expression: exp.null_() }) });
 }
 
 /** py: sqlglot/dialects/dialect.py:1994 `arg_max_or_min_no_count(name)` */

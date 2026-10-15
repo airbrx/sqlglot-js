@@ -1205,12 +1205,13 @@ export class Parser {
     // `self.STRICT_CAST` is a CLASS-level field — `self.constructor.STRICT_CAST`, never
     // bare `self.STRICT_CAST` (§ the same trap FUNCTION_PARSERS["CAST"] documents above).
     /* py:1082 */ [TokenType.DCOLON, (self, this_, to) => self.build_cast(self.constructor.STRICT_CAST, this_, to)],
-    // py:1085  [TokenType.ARROW, /* TODO lambda */],   \ both need `dialect.to_json_path`,
-    // py:1092  [TokenType.DARROW, /* TODO lambda */],  / which needs the unported jsonpath
-    //          module (P4). Leaving them unwired keeps `->`/`->>` at today's behaviour
-    //          rather than silently building a JSONExtract whose `expression` is a raw
-    //          Literal where upstream has a parsed JSONPath — already a known MISMATCH
-    //          class, and wiring them here would convert it into a wrong-AST class.
+    // py:1085/1092 `dialect.to_json_path` (AIR-2274, R89) and `build_json_extract`/
+    // `build_json_extract_scalar` (above, same (self, this, path) signature
+    // COLUMN_OPERATORS values use) are both real now — wired here for the first time
+    // (AIR-2286), closing out the "declare it now, wire the reader later" R19/R21 TODO
+    // this comment used to document.
+    /* py:1085 */ [TokenType.ARROW, build_json_extract],
+    /* py:1092 */ [TokenType.DARROW, build_json_extract_scalar],
     /* py:1100 */ [TokenType.HASH_ARROW, (self, this_, path) => self.expression(new exp.JSONBExtract({ this: this_, expression: path }))],
     /* py:1103 */ [TokenType.DHASH_ARROW, (self, this_, path) => self.expression(new exp.JSONBExtractScalar({ this: this_, expression: path }))],
     /* py:1106 */ [TokenType.PLACEHOLDER, (self, this_, key) => self.expression(new exp.JSONBContainsTopKey({ this: this_, expression: key }))],
@@ -1341,11 +1342,15 @@ export class Parser {
   static PRIMARY_PARSERS = new Map([
     /* py:1241 */ ...this.STRING_PARSERS,
     /* py:1242 */ ...this.NUMERIC_PARSERS,
-    // py:1243  [TokenType.INTRODUCER, /* TODO lambda */],
+    // py:1243 `_parse_introducer` (parser.js:5301) is real; wired here for the first
+    // time (AIR-2286), closing the "declare it now, wire the reader later" TODO.
+    /* py:1243 */ [TokenType.INTRODUCER, (self, token) => self._parse_introducer(token)],
     /* py:1244 */ [TokenType.NULL, (self) => self.expression(new exp.Null())],
     /* py:1245 */ [TokenType.TRUE, (self) => self.expression(new exp.Boolean({ this: true }))],
     /* py:1246 */ [TokenType.FALSE, (self) => self.expression(new exp.Boolean({ this: false }))],
-    // py:1247  [TokenType.SESSION_PARAMETER, /* TODO lambda */],
+    // py:1247 `_parse_session_parameter` (below) is real; wired here for the first
+    // time (AIR-2286), same shape as TokenType.INTRODUCER just above.
+    /* py:1247 */ [TokenType.SESSION_PARAMETER, (self) => self._parse_session_parameter()],
     /* py:1248 */ [TokenType.STAR, (self) => self._parse_star_ops()],
   ]);
 
@@ -3048,8 +3053,9 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:3011
   _parse_sql_security() {
-    const definer = this._match_text_seq("DEFINER"); if (!definer) this._match_text_seq("INVOKER");
-    return this.expression(new exp.SqlSecurityProperty({ definer }));
+    return this.expression(new exp.SqlSecurityProperty({
+      this: this._match_texts(this.constructor.SECURITY_PROPERTY_KEYWORDS) && pyUpper(this._prev.text),
+    }));
   }
 
   /** @returns {*} */
@@ -5297,8 +5303,12 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:7441
   _parse_introducer(token) {
-    const this_ = this._parse_primary();
-    return this_ ? this.expression(new exp.Introducer({ this: this_, expression: token.text })) : null;
+    const literal = this._parse_primary();
+    if (literal) {
+      return this.expression(new exp.Introducer({ this: token.text, expression: literal }), token);
+    }
+
+    return this._identifier_expression(token);
   }
 
   /** @returns {*} */
@@ -5391,7 +5401,14 @@ export class Parser {
     while (true) { const constraint = this._parse_column_constraint(); if (!constraint) break; constraints.push(constraint); }
     if (!kind && !constraints.length) return this_;
     let position = null;
-    if (this._match_texts(new Set(["FIRST", "AFTER"]))) position = this.expression(new exp.ColumnPosition({ this: this._parse_column(), position: this._prev.text }));
+    if (this._match_texts(new Set(["FIRST", "AFTER"]))) {
+      // py:7602 captures `pos = self._prev.text` BEFORE calling `self._parse_column()`.
+      // Evaluating `position: this._prev.text` inline in the object literal below would
+      // read it AFTER `this._parse_column()` has already advanced `_prev` past the
+      // column name, capturing the column text instead of "FIRST"/"AFTER".
+      const pos = this._prev.text;
+      position = this.expression(new exp.ColumnPosition({ this: this._parse_column(), position: pos }));
+    }
     return this.expression(new exp.ColumnDef({ this: this_, kind, constraints, position }));
   }
 
@@ -7159,7 +7176,10 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10397
-  _parse_json_value() { const this_ = this._parse_bitwise(); this._match(TokenType.COMMA); const path = this._parse_bitwise(); const returning = this._match(TokenType.RETURNING) ? this._parse_type() : null; return this.expression(new exp.JSONValue({ this: this_, path: this.dialect.to_json_path(path), returning, on_condition: this._parse_on_condition() })); }
+  // py: `self._match(TokenType.RETURNING) and self._parse_type()` -- Python `and`
+  // returns the FIRST falsy operand, so absent RETURNING this is `False`, not `None`;
+  // `&&` reproduces that (PORT_PLAN.md R18, "Python `and`->false-operand").
+  _parse_json_value() { const this_ = this._parse_bitwise(); this._match(TokenType.COMMA); const path = this._parse_bitwise(); const returning = this._match(TokenType.RETURNING) && this._parse_type(); return this.expression(new exp.JSONValue({ this: this_, path: this.dialect.to_json_path(path), returning, on_condition: this._parse_on_condition() })); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10413

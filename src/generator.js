@@ -88,7 +88,7 @@ import { formatTime } from "./time.js";
 import { pyTruthy } from "./_py/truthy.js";
 import { ensure_bools, move_ctes_to_top_level } from "./transforms.js";
 import { JSON_PATH_PART_TRANSFORMS } from "./jsonpath.js";
-import { getAnnotateTypesRef, getDialectHelpersRef, getDialectResolver, getSimplifyRef, TOKEN_TYPE_NAMES } from "./tokens.js";
+import { getAnnotateTypesRef, getDialectHelpersRef, getDialectResolver, getSimplifyRef, TOKEN_TYPE_NAMES, TokenType } from "./tokens.js";
 import { kernelSql } from "./generator_kernel.js";
 
 /**
@@ -8065,16 +8065,21 @@ export class Generator {
   /** @returns {*} */
   // py: sqlglot/generator.py:5670
   oncondition_sql(expression) {
+    // py:5674,5681 upstream's f"...{empty}..." calls `Expr.__str__` (-> `self.sql()`),
+    // not `__repr__`; `this.sql(empty)` below is the safe equivalent (JS's
+    // `Expr.prototype.toString` mirrors `__repr__`, not `__str__`, so a template
+    // literal would print the debug repr instead — PORT_PLAN.md, "static analysis
+    // misses implicit __str__").
     let empty = expression.args.empty;
     empty =
       empty instanceof exp.Expr
-        ? `DEFAULT ${empty} ON EMPTY`
+        ? `DEFAULT ${this.sql(empty)} ON EMPTY`
         : this.sql(expression, "empty");
 
     let error = expression.args.error;
     error =
       error instanceof exp.Expr
-        ? `DEFAULT ${error} ON ERROR`
+        ? `DEFAULT ${this.sql(error)} ON ERROR`
         : this.sql(expression, "error");
 
     if (error && empty) {
