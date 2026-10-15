@@ -79,6 +79,7 @@ import { inherit_struct_field_names, preprocess, unqualify_columns } from "../tr
 import {
   approx_count_distinct_sql,
   array_append_sql,
+  array_compact_sql,
   array_concat_sql,
   arrow_json_extract_sql,
   date_delta_to_binary_interval_op,
@@ -91,16 +92,19 @@ import {
   no_make_interval_sql,
   no_time_sql,
   no_timestamp_sql,
+  remove_from_array_using_filter,
   rename_func,
   timestrtotime_sql,
   unit_to_str,
   week_unit_to_dow,
   weekstart_unit_to_str,
+  WEEK_START_DAY_TO_DOW,
+  months_between_sql,
 } from "../dialects/dialect.js";
 import { isDateUnit, seqGet } from "../helper.js";
 import { annotate_types } from "../optimizer/annotate_types.js";
 import { decDiv, pyDecimal } from "../_py/num.js";
-import { pyRepr } from "../_py/str.js";
+import { pyRepr, pyUpper } from "../_py/str.js";
 
 // py:50 — used only by `_implicit_datetime_cast` below.
 const TIMEZONE_PATTERN = /:\d{2}.*?[+\-]\d{2}(?::\d{2})?/;
@@ -652,10 +656,92 @@ function _json_format_sql(self, expression) {
   return `CAST(${sql} AS TEXT)`;
 }
 
+/** py:1023 `_is_binary(arg)`. */
+function _is_binary(arg) {
+  return arg.isType(exp.DType.BINARY, exp.DType.VARBINARY, exp.DType.BLOB);
+}
+
+/** py:1526 `_sha_sql(self, expression, hash_func, is_binary=False)`. */
+function _sha_sql(self, expression, hash_func, is_binary = false) {
+  let arg = expression.this;
+
+  // For SHA2 variants, check digest length (DuckDB only supports SHA256)
+  if (hash_func === "SHA256") {
+    const length = expression.text("length") || "256";
+    if (length !== "256") self.unsupported("DuckDB only supports SHA256 hashing algorithm.");
+  }
+
+  // Cast if type is incompatible with DuckDB
+  if (arg.type && arg.type.this !== exp.DType.UNKNOWN && !arg.isType(...exp.DataType.TEXT_TYPES) && !_is_binary(arg)) {
+    arg = exp.cast(arg, exp.DType.VARCHAR);
+  }
+
+  const result = self.func(hash_func, arg);
+  return is_binary ? self.func("UNHEX", result) : result;
+}
+
 /** py:1017 */
 function _cast_to_boolean(arg) {
   if (arg && !arg.isType(exp.DType.BOOLEAN)) return exp.cast(arg, exp.DType.BOOLEAN);
   return arg;
+}
+
+/**
+ * py:1055 `_day_navigation_sql(self, expression)`.
+ *
+ * Transpile Snowflake's NEXT_DAY / PREVIOUS_DAY to DuckDB using date arithmetic.
+ *
+ * Returns the DATE of the next/previous occurrence of the specified weekday.
+ *
+ * Formulas:
+ * - NEXT_DAY: (target_dow - current_dow + 6) % 7 + 1
+ * - PREVIOUS_DAY: (current_dow - target_dow + 6) % 7 + 1
+ */
+function _day_navigation_sql(self, expression) {
+  const date_expr = expression.this;
+  const day_name_expr = expression.expression;
+
+  // Build ISODOW call for current day of week
+  const isodow_call = exp.func("ISODOW", date_expr);
+
+  let target_dow;
+  if (day_name_expr instanceof exp.Literal) {
+    // Literal day name: lookup target_dow directly
+    const day_name_str = pyUpper(day_name_expr.name);
+    const matching_day = [...WEEK_START_DAY_TO_DOW.keys()].find((day) => day.startsWith(day_name_str));
+    if (matching_day) {
+      target_dow = exp.Literal.number(WEEK_START_DAY_TO_DOW.get(matching_day));
+    } else {
+      // Unrecognized day name, use fallback
+      return self.function_fallback_sql(expression);
+    }
+  } else {
+    // Non-literal day name: build CASE statement for runtime mapping
+    const upper_day_name = new exp.Upper({ this: day_name_expr });
+    target_dow = new exp.Case({
+      ifs: [...WEEK_START_DAY_TO_DOW].map(([day, dow_num]) =>
+        new exp.If({
+          this: exp.func("STARTS_WITH", upper_day_name.copy(), exp.Literal.string(day.slice(0, 2))),
+          true: exp.Literal.number(dow_num),
+        }),
+      ),
+    });
+  }
+
+  // Calculate days offset and apply interval based on direction
+  let date_with_offset;
+  if (expression instanceof exp.NextDay) {
+    // NEXT_DAY: (target_dow - current_dow + 6) % 7 + 1
+    const days_offset = exp.paren(target_dow.sub(isodow_call).add(6), false).mod(7).add(1);
+    date_with_offset = date_expr.add(new exp.Interval({ this: days_offset, unit: exp.var("DAY") }));
+  } else {
+    // PREVIOUS_DAY: (current_dow - target_dow + 6) % 7 + 1
+    const days_offset = exp.paren(isodow_call.sub(target_dow).add(6), false).mod(7).add(1);
+    date_with_offset = date_expr.sub(new exp.Interval({ this: days_offset, unit: exp.var("DAY") }));
+  }
+
+  // Build final: CAST(date_with_offset AS DATE)
+  return self.sql(exp.cast(date_with_offset, exp.DType.DATE));
 }
 
 /** py:1123 */
@@ -666,6 +752,34 @@ function _anyvalue_sql(self, expression) {
     return self.func(func_name, having.this, having.expression);
   }
   return self.function_fallback_sql(expression);
+}
+
+/**
+ * py:1132 `_bitwise_agg_sql(self, expression)`.
+ *
+ * DuckDB's bitwise aggregate functions only accept integer types. For other types:
+ * - DECIMAL/STRING: Use CAST(arg AS INT) to convert directly, will round to nearest int
+ * - FLOAT/DOUBLE: Use ROUND(arg)::INT to round to nearest integer, required due to float precision loss
+ */
+function _bitwise_agg_sql(self, expression) {
+  let func_name;
+  if (expression instanceof exp.BitwiseOrAgg) func_name = "BIT_OR";
+  else if (expression instanceof exp.BitwiseAndAgg) func_name = "BIT_AND";
+  else func_name = "BIT_XOR";
+
+  let arg = expression.this;
+
+  if (!arg.type) arg = annotate_types(arg, { dialect: self.dialect });
+
+  if (arg.isType(...exp.DataType.REAL_TYPES, ...exp.DataType.TEXT_TYPES)) {
+    if (arg.isType(...exp.DataType.FLOAT_TYPES)) {
+      // float types need to be rounded first due to precision loss
+      arg = exp.func("ROUND", arg);
+    }
+    arg = exp.cast(arg, exp.DType.INT);
+  }
+
+  return self.func(func_name, arg);
 }
 
 /** py:1261 */
@@ -862,8 +976,10 @@ export class DuckDBGenerator extends Generator {
     // this entry was still commented out as "blocked" despite both existing.
     [exp.Array, preprocess([inherit_struct_field_names], inline_array_unless_query)],
     [exp.ArrayAppend, array_append_sql("LIST_APPEND")],
-    // py:1602 [exp.ArrayCompact, array_compact_sql] — blocked, dialect.js does not yet export `array_compact_sql`
-    // py:1603 [exp.ArrayConstructCompact, lambda] — blocked, depends on the excluded ArrayCompact entry
+    // py:1602 `ArrayCompact`
+    [exp.ArrayCompact, array_compact_sql],
+    // py:1603 `ArrayConstructCompact`
+    [exp.ArrayConstructCompact, (self, e) => self.sql(new exp.ArrayCompact({ this: new exp.Array({ expressions: e.expressions }) }))],
     [exp.ArrayConcat, array_concat_sql("LIST_CONCAT")],
     // py:1607 [exp.ArrayContains, _array_contains_sql] — NOTE: real DuckDB `ArrayContains` (Snowflake-sourced,
     // `check_null` flag) is ported above as `_array_contains_sql`, wired below.
@@ -873,7 +989,8 @@ export class DuckDBGenerator extends Generator {
     [exp.ArrayInsert, _array_insert_sql],
     // py:1611 [exp.ArrayPosition, lambda] — blocked, needs `zero_based` arg semantics not yet checked against a base method this pass touches
     [exp.ArrayRemoveAt, _array_remove_at_sql],
-    // py:1622 [exp.ArrayRemove, remove_from_array_using_filter] — blocked, dialect.js does not yet export `remove_from_array_using_filter`
+    // py:1622 `ArrayRemove`
+    [exp.ArrayRemove, remove_from_array_using_filter],
     [exp.ArraySort, _array_sort_sql],
     // py:2652 `sortarray_sql` — a `*_sql` METHOD override upstream, not a TRANSFORMS
     // lambda, so it sits outside this file's py:1590-1814 anchor range; ported here as
@@ -886,13 +1003,13 @@ export class DuckDBGenerator extends Generator {
     [exp.ArrayMin, rename_func("LIST_MIN")],
     // py:1628-1629 [exp.Base64DecodeBinary/String, lambda] — blocked, needs this file's own `_base64_decode_sql`
     // py:1630 [exp.BitwiseAnd, lambda self._bitwise_op] — blocked, `_bitwise_op` is a DuckDBGenerator method not ported this pass
-    // py:1631 [exp.BitwiseAndAgg, _bitwise_agg_sql] — blocked, 33-line local helper out of scope this pass
+    [exp.BitwiseAndAgg, _bitwise_agg_sql],
     [exp.BitwiseCount, rename_func("BIT_COUNT")],
     // py:1633 [exp.BitwiseLeftShift, _bitshift_sql] — blocked, 36-line local helper out of scope this pass
     // py:1634 [exp.BitwiseOr, lambda self._bitwise_op] — blocked, same as BitwiseAnd above
-    // py:1635 [exp.BitwiseOrAgg, _bitwise_agg_sql] — blocked, same as BitwiseAndAgg above
+    [exp.BitwiseOrAgg, _bitwise_agg_sql],
     // py:1636 [exp.BitwiseRightShift, _bitshift_sql] — blocked, same as BitwiseLeftShift above
-    // py:1637 [exp.BitwiseXorAgg, _bitwise_agg_sql] — blocked, same as BitwiseAndAgg above
+    [exp.BitwiseXorAgg, _bitwise_agg_sql],
     [exp.BoolxorAgg, _boolxor_agg_sql],
     [exp.CommentColumnConstraint, no_comment_column_constraint_sql],
     // py:1639 [exp.Corr, lambda self._corr_sql] — blocked, `_corr_sql` is a DuckDBGenerator method not ported this pass
@@ -980,9 +1097,18 @@ export class DuckDBGenerator extends Generator {
     // py:1725 [exp.BoolxorAgg, _boolxor_agg_sql] — dup of the real entry already wired above (py:1261)
     // py:1726 [exp.MakeInterval, lambda] wraps `no_make_interval_sql` directly — real, wired below
     [exp.MakeInterval, (self, e) => no_make_interval_sql(self, e, " ")],
-    // py:1727-1732 [exp.Initcap, exp.MD5Digest, exp.SHA*] — blocked, local helpers out of scope this pass
-    // py:1733-1734 [exp.MonthsBetween, exp.NextDay, exp.PreviousDay] — blocked, dialect.js `months_between_sql` not
-    // yet checked against this file's needs; `_day_navigation_sql` (68 lines) out of scope this pass
+    // py:1727 [exp.Initcap, _initcap_sql] — blocked, local helper out of scope this pass
+    // py:1728 `MD5Digest`
+    [exp.MD5Digest, (self, e) => self.func("UNHEX", self.func("MD5", e.this))],
+    // py:1729-1732 `SHA`/`SHA1Digest`/`SHA2`/`SHA2Digest`
+    [exp.SHA, (self, e) => _sha_sql(self, e, "SHA1")],
+    [exp.SHA1Digest, (self, e) => _sha_sql(self, e, "SHA1", true)],
+    [exp.SHA2, (self, e) => _sha_sql(self, e, "SHA256")],
+    [exp.SHA2Digest, (self, e) => _sha_sql(self, e, "SHA256", true)],
+    // py:1733-1734 `MonthsBetween`/`NextDay`/`PreviousDay`
+    [exp.MonthsBetween, months_between_sql],
+    [exp.NextDay, _day_navigation_sql],
+    [exp.PreviousDay, _day_navigation_sql],
     [exp.PercentileCont, rename_func("QUANTILE_CONT")],
     [exp.PercentileDisc, rename_func("QUANTILE_DISC")],
     // py:1739 [exp.Pivot, transforms.preprocess([transforms.unqualify_columns])] — real now (AIR-2194,
