@@ -1621,7 +1621,14 @@ export class Parser {
     // py:1581  ["JSON_TABLE", ...]      — `_parse_json_table` is still a NotPorted stub
     /* py:1582 */ ["MATCH", (self) => self._parse_match_against()],
     // py:1583  ["NORMALIZE", ...]  — `_parse_normalize` is still a NotPorted stub
-    // py:1584  ["OPENJSON", ...]   — `_parse_open_json` is still a NotPorted stub
+    // py:1584 — NOT wired: `openjson_sql` (generator.js:3925) is still a NotPorted
+    // base-generator stub, and wiring `_parse_open_json` in here regresses 2
+    // ratchet-pass atoms (plain `OPENJSON(@json)`, no `WITH (...)`) that currently
+    // round-trip correctly only by accident, via the generic Anonymous-function-call
+    // fallback this port used before `_parse_open_json` existed. Re-wire this the
+    // moment `openjson_sql` lands for real -- same shape as `exp.Ceil`/`exp.Floor`
+    // in generator.js.
+    // ["OPENJSON", (self) => self._parse_open_json()],
     /* py:1585 */ ["OVERLAY", (self) => self._parse_overlay()],
     /* py:1586 */ ["POSITION", (self) => self._parse_position()],
     /* py:1587 */ ["SAFE_CAST", (self) => self._parse_cast(false, true)],
@@ -5782,7 +5789,26 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8516
-  _parse_open_json() { throw new NotPorted("_parse_open_json", "sqlglot/parser.py:8516"); }
+  _parse_open_json() {
+    const this_ = this._parse_bitwise();
+    const path = this._match(TokenType.COMMA) && this._parse_string();
+
+    const _parse_open_json_column_def = () => {
+      const this_ = this._parse_field(true);
+      const kind = this._parse_types();
+      const path = this._parse_string();
+      const as_json = this._match_pair(TokenType.ALIAS, TokenType.JSON);
+      return this.expression(new exp.OpenJSONColumnDef({ this: this_, kind, path, as_json }));
+    };
+
+    let expressions = null;
+    if (this._match_pair(TokenType.R_PAREN, TokenType.WITH)) {
+      this._match_l_paren();
+      expressions = this._parse_csv(_parse_open_json_column_def);
+    }
+
+    return this.expression(new exp.OpenJSON({ this: this_, path, expressions }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8537
