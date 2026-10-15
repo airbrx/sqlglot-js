@@ -144,6 +144,12 @@ PYTHONHASHSEED=0 python3 spike/p5/gen_athena_dialect_ref.py > spike/out/athena_d
 # 23 differences-from-base survive unshadowed through yet another level of JS static
 # inheritance.
 PYTHONHASHSEED=0 python3 spike/p5/gen_dune_dialect_ref.py > spike/out/dune_dialect.json || fail=1
+# P5 oracle, same shape, Exasol (AIR-2289, "12.4 Exasol"). `dialects/exasol.py` is
+# standalone (not a subclass chain): 6 resolved settings of its own, a 21-entry
+# TIME_MAPPING dict, and a nested Tokenizer with 6 added keywords, a custom
+# IDENTIFIERS list, and one post-merge `KEYWORDS.pop("DIV")` call. No method override
+# on the Dialect class itself, so no section 4 -- same shape Presto's own oracle used.
+PYTHONHASHSEED=0 python3 spike/p5/gen_exasol_dialect_ref.py > spike/out/exasol_dialect.json || fail=1
 # P5 oracle, same shape, Oracle (AIR-2290, "12.5 Oracle"). `dialects/oracle.py`
 # extends the BASE `Dialect` directly, no chain -- 106 resolved settings (18
 # Oracle's own, including a vestigial `LOCKING_READS_SUPPORTED` that leaks onto
@@ -524,6 +530,7 @@ run "P5: Snowflake dialect vs CPython"     node spike/p5/fuzz_snowflake_dialect.
 run "P5: real dialect generation row ratchet" node spike/p5/fuzz_dialect_generate.mjs
 
 run "P5: DuckDB dialect vs CPython"        node spike/p5/fuzz_duckdb_dialect.mjs
+run "P5: ClickHouse dialect vs CPython"    node spike/p5/fuzz_clickhouse_dialect.mjs
 run "P5: MySQL dialect vs CPython"         node spike/p5/fuzz_mysql_dialect.mjs
 run "P5: SingleStore dialect vs CPython"   node spike/p5/fuzz_singlestore_dialect.mjs
 run "P5: Presto dialect vs CPython"        node spike/p5/fuzz_presto_dialect.mjs
@@ -532,6 +539,7 @@ run "P5: Doris dialect vs CPython"         node spike/p5/fuzz_doris_dialect.mjs
 run "P5: Trino dialect vs CPython"         node spike/p5/fuzz_trino_dialect.mjs
 run "P5: Athena dialect vs CPython"        node spike/p5/fuzz_athena_dialect.mjs
 run "P5: Dune dialect vs CPython"          node spike/p5/fuzz_dune_dialect.mjs
+run "P5: Exasol dialect vs CPython"        node spike/p5/fuzz_exasol_dialect.mjs
 run "P5: Oracle dialect vs CPython"        node spike/p5/fuzz_oracle_dialect.mjs
 run "P6: schema.js MappingSchema vs CPython" node spike/p6/fuzz_schema.mjs
 run "P7: optimizer/scope.js traverseScope/Scope vs CPython" node spike/p7/fuzz_scope.mjs

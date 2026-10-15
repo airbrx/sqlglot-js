@@ -30,7 +30,8 @@ const INCLUDE_ALL = argv.includes("--all");
 // Matches src/dialects/*.js minus dialect.js (the base class), plus "" (default/no dialect).
 export const PORTED_DIALECTS = new Set([
   "", "athena", "bigquery", "clickhouse", "databricks", "doris", "duckdb", "dune",
-  "hive", "mysql", "oracle", "postgres", "presto", "redshift", "singlestore", "snowflake", "spark",
+  "exasol", "hive", "mysql", "oracle", "postgres", "presto", "redshift", "singlestore",
+  "snowflake", "spark",
   "spark2", "starrocks", "trino", "tsql",
 ]);
 
