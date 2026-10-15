@@ -1,6 +1,6 @@
 // py: sqlglot/generators/duckdb.py — `class DuckDBGenerator(generator.Generator)`.
 //
-// @ported-ranges sqlglot/generators/duckdb.py 50-50 213-214 217-229 320-357 545-547 549-563 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2652-2677 4419-4497
+// @ported-ranges sqlglot/generators/duckdb.py 50-50 213-214 217-229 320-357 545-547 549-563 607-648 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2652-2677 4419-4497
 //
 // SCOPE — a deliberately small, honest slice of a 4,788-line file (PORT_PLAN.md,
 // "DuckDB generator is an outlier size" — ~4x every other single-file dialect
@@ -282,6 +282,52 @@ function _date_delta_to_binary_interval_op(cast = true) {
 
     return base_impl(self, expression);
   };
+}
+
+/** py:607 `_struct_sql(self, expression)` for `exp.Struct`. */
+function _struct_sql(self, expression) {
+  let ancestor_cast = expression.findAncestor(exp.Cast, exp.Select);
+  ancestor_cast = ancestor_cast instanceof exp.Select ? null : ancestor_cast;
+
+  // Empty struct cast works with MAP() since DuckDB can't parse {}
+  if (!expression.expressions.length) {
+    if (ancestor_cast instanceof exp.Cast && ancestor_cast.to.isType(exp.DType.MAP)) return "MAP()";
+  }
+
+  const args = [];
+
+  // BigQuery allows inline construction such as "STRUCT<a STRING, b INTEGER>('str', 1)" which is
+  // canonicalized to "ROW('str', 1) AS STRUCT(a TEXT, b INT)" in DuckDB
+  // The transformation to ROW will take place if:
+  //  1. The STRUCT itself does not have proper fields (key := value) as a "proper" STRUCT would
+  //  2. A cast to STRUCT / ARRAY of STRUCTs is found
+  const is_bq_inline_struct = Boolean(
+    expression.find(exp.PropertyEQ) === null
+    && ancestor_cast
+    && [...ancestor_cast.findAll(exp.DataType)].some((casted_type) => casted_type.isType(exp.DType.STRUCT)),
+  );
+
+  const exprs = expression.expressions;
+  for (let i = 0; i < exprs.length; i++) {
+    const expr = exprs[i];
+    const is_property_eq = expr instanceof exp.PropertyEQ;
+    const this_ = expr.this;
+    const value = is_property_eq ? expr.expression : expr;
+
+    if (is_bq_inline_struct) {
+      args.push(self.sql(value));
+    } else {
+      let key;
+      if (this_ instanceof exp.Identifier) key = self.sql(exp.Literal.string(expr.name));
+      else if (is_property_eq) key = self.sql(this_);
+      else key = self.sql(exp.Literal.string(`_${i}`));
+      args.push(`${key}: ${self.sql(value)}`);
+    }
+  }
+
+  const csv_args = args.join(", ");
+
+  return is_bq_inline_struct ? `ROW(${csv_args})` : `{${csv_args}}`;
 }
 
 /** py:1017 */
@@ -617,7 +663,7 @@ export class DuckDBGenerator extends Generator {
     [exp.ReturnsProperty, (self, e) => (e.this instanceof exp.Schema ? "TABLE" : "")],
     // py:1749-1751 [exp.StrToUnix, lambda] — skipped, chains through DuckDB's own `format_time` handling not
     // separately verified this pass
-    // py:1752 [exp.Struct, _struct_sql] — blocked, local helper out of scope this pass
+    [exp.Struct, _struct_sql],
     [exp.Transform, rename_func("LIST_TRANSFORM")],
     [exp.TimeAdd, _date_delta_to_binary_interval_op()],
     [exp.TimeSub, _date_delta_to_binary_interval_op()],
