@@ -365,6 +365,45 @@ function _handle_nanosecond_diff(self, end_time, start_time) {
  * For other date parts (year, quarter, week), we need to implement equivalent logic.
  */
 /** py:288 `_date_sql(self, expression)`. */
+/**
+ * py:1312 `_scale_rounding_sql(self, expression, rounding_func)`.
+ *
+ * Handle scale parameter transformation for rounding functions.
+ *
+ * DuckDB doesn't support the scale parameter for certain functions (e.g., FLOOR, CEIL),
+ * so we transform: FUNC(x, n) to ROUND(FUNC(x * 10^n) / 10^n, n)
+ *
+ * Returns the transformed SQL string if decimals parameter exists, `null` otherwise.
+ */
+function _scale_rounding_sql(self, expression, rounding_func) {
+  const decimals = expression.args.decimals;
+
+  if (decimals === null || decimals === undefined || expression.args.to !== null && expression.args.to !== undefined) {
+    return null;
+  }
+
+  let this_ = expression.this;
+  if (this_ instanceof exp.Binary) this_ = new exp.Paren({ this: this_ });
+
+  let n_int = decimals;
+  if (!(decimals.isInt || decimals.isType(...exp.DataType.INTEGER_TYPES))) {
+    n_int = exp.cast(decimals, exp.DType.INT);
+  }
+
+  const pow_ = new exp.Pow({ this: exp.Literal.number("10"), expression: n_int });
+  const rounded = new rounding_func({ this: new exp.Mul({ this: this_, expression: pow_ }) });
+  const result = new exp.Div({ this: rounded, expression: pow_.copy() });
+
+  return self.round_sql(new exp.Round({ this: result, decimals, casts_non_integer_decimals: true }));
+}
+
+/** py:1353 `_ceil_floor(self, expression)`. */
+function _ceil_floor(self, expression) {
+  const scaled_sql = _scale_rounding_sql(self, expression, expression.constructor);
+  if (scaled_sql !== null) return scaled_sql;
+  return self.ceil_floor(expression);
+}
+
 function _date_sql(self, expression) {
   let this_ = expression.this;
   const zone = self.sql(expression, "zone");
@@ -1362,7 +1401,9 @@ export class DuckDBGenerator extends Generator {
     [exp.IsNullValue, (self, e) => self.sql(exp.func("JSON_TYPE", e.this).eq(exp.Literal.string("NULL")))],
     // py:1705 `IsArray`
     [exp.IsArray, (self, e) => self.sql(exp.func("JSON_TYPE", e.this).eq(exp.Literal.string("ARRAY")))],
-    // py:1708-1709 [exp.Ceil, exp.Floor, _ceil_floor] — blocked, chains through the unported `_scale_rounding_sql`
+    // py:1708-1709 `Ceil`/`Floor`
+    [exp.Ceil, _ceil_floor],
+    [exp.Floor, _ceil_floor],
     // and base `round_sql`/`ceil_floor`
     [exp.JSONBExists, rename_func("JSON_EXISTS")],
     // py:1711 `JSONExtract`
@@ -2997,6 +3038,35 @@ export class DuckDBGenerator extends Generator {
     }
 
     return this.func("range", rowcount);
+  }
+
+  /** py:4509 `round_sql(self, expression)`. */
+  round_sql(expression) {
+    const this_ = expression.this;
+    let decimals = expression.args.decimals;
+    let truncate = expression.args.truncate;
+
+    // DuckDB requires the scale (decimals) argument to be an INT
+    // Some dialects (e.g., Snowflake) allow non-integer scales and cast to an integer internally
+    if (decimals !== null && decimals !== undefined && expression.args.casts_non_integer_decimals) {
+      if (!(decimals.isInt || decimals.isType(...exp.DataType.INTEGER_TYPES))) {
+        decimals = exp.cast(decimals, exp.DType.INT);
+      }
+    }
+
+    let func = "ROUND";
+    if (truncate) {
+      // BigQuery uses ROUND_HALF_EVEN; Snowflake uses HALF_TO_EVEN
+      if (["ROUND_HALF_EVEN", "HALF_TO_EVEN"].includes(truncate.this)) {
+        func = "ROUND_EVEN";
+        truncate = null;
+      } else if (["ROUND_HALF_AWAY_FROM_ZERO", "HALF_AWAY_FROM_ZERO"].includes(truncate.this)) {
+        // BigQuery uses ROUND_HALF_AWAY_FROM_ZERO; Snowflake uses HALF_AWAY_FROM_ZERO
+        truncate = null;
+      }
+    }
+
+    return this.func(func, this_, decimals, truncate);
   }
 
   /** py:2822 `checkjson_sql(self, expression)`. */
