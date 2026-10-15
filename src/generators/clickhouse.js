@@ -35,6 +35,7 @@ import {
 } from "../dialects/dialect.js";
 import { isInt } from "../helper.js";
 import { pyDateTimeFromIsoFormat } from "../_py/datetime.js";
+import { pyZfill, pyLjust } from "../_py/str.js";
 
 /** py:29 `DATETIME_DELTA = t.Union[exp.DateAdd, exp.DateDiff, exp.DateSub, exp.TimestampSub, exp.TimestampAdd]`. */
 
@@ -104,7 +105,7 @@ function _datetime_delta_sql(name) {
  * `isoformat` omits it entirely otherwise — not padded to always show).
  */
 function _isoformatNoTz({ year, month, day, hour, minute, second, microsecond }) {
-  const pad = (n, w = 2) => String(n).padStart(w, "0");
+  const pad = (n, w = 2) => pyZfill(String(n), w);
   const date = `${pad(year, 4)}-${pad(month)}-${pad(day)}`;
   const time = `${pad(hour)}:${pad(minute)}:${pad(second)}`;
   const frac = microsecond ? `.${pad(microsecond, 6)}` : "";
@@ -134,7 +135,7 @@ function _timestrtotime_sql(self, expression) {
       const num_frac_parts = ts_frac_parts.length;
 
       // pad to 6 digits if fractional seconds present
-      ts_frac_parts[0] = ts_frac_parts[0].padEnd(6, "0");
+      ts_frac_parts[0] = pyLjust(ts_frac_parts[0], 6, "0");
       ts_string = [
         ts_parts[0], // date and time
         ".",
