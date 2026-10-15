@@ -480,7 +480,7 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // FIELDS, which the frozen stand-in either hosts or safely returns `undefined` for),
   // so every one of the 13 also lands in the "runs without a resolved Dialect" bucket
   // below, not the `identifier_sql`-style exception.
-  assert.equal(bodied.length, 154, "exactly 154 *_sql methods have a real body");
+  assert.equal(bodied.length, 178, "exactly 178 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -539,6 +539,30 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // Dialect-hosted state, so `transaction_sql`/`commit_sql`/`rollback_sql` all run on
   // the bare stand-in too (`"BEGIN"`/`"COMMIT"`/`"ROLLBACK"` with every optional arg
   // missing).
+  // +24 from AIR-2277 (epic AIR-2270, "10.4 Generator stubs cluster C",
+  // PORT_PLAN.md): the twenty-four named base-Generator stubs
+  // (`notnullcolumnconstraint_sql`, `kwarg_sql`, `nvl2_sql`, `index_sql`,
+  // `median_sql`, `uuid_sql`, `sequenceproperties_sql`,
+  // `explodinggenerateseries_sql`, `semanticview_sql`, `truncatetable_sql`,
+  // `likeproperty_sql`, `historicaldata_sql`, `clone_sql`, `lowerhex_sql`,
+  // `safedivide_sql`, `converttimezone_sql`, `alterrename_sql`, `bitwiseand_sql`,
+  // `columns_sql`, `unicodestring_sql`, `objectidentifier_sql`, `tsordstotime_sql`,
+  // `describe_sql`, `uniquecolumnconstraint_sql`) — empirically verified (`node -e`
+  // against a bare `new Generator()`), none throws `NotPorted`, so all 24 also land
+  // in the "runs without a resolved Dialect" bucket below.
+  // +24 for AIR-2277's twenty-four new bodies: empirically verified (`node -e` against
+  // a bare `new Generator()`), none throws `NotPorted`. Fifteen return a string
+  // outright (`notnullcolumnconstraint_sql`/`uniquecolumnconstraint_sql`/
+  // `sequenceproperties_sql`/`clone_sql`/`describe_sql`/`unicodestring_sql`/
+  // `index_sql`/`lowerhex_sql`/`likeproperty_sql`/`objectidentifier_sql`/
+  // `historicaldata_sql`/`bitwiseand_sql`/`alterrename_sql`/`kwarg_sql`/
+  // `truncatetable_sql`/`explodinggenerateseries_sql`/`converttimezone_sql`/
+  // `semanticview_sql`/`uuid_sql` read only Dialect/class-settings FIELDS or nothing
+  // at all). `safedivide_sql`/`tsordstotime_sql` throw a `TypeError` reading
+  // `.neq`/`.isType` off the bare node's missing `.this`/`.expression`; `nvl2_sql`/
+  // `columns_sql`/`median_sql` throw a `TypeError` from `function_fallback_sql`'s
+  // `expression.constructor.sqlName` on a bare `exp.Expr` — the same "runs, just not
+  // usefully, on made-up input" outcome this assertion already counts.
   // +13 for AIR-2275's thirteen new bodies: empirically verified (`node -e` against a
   // bare `new Generator()`), none throws `NotPorted`. Twelve return a string outright
   // (`pad_sql`/`log_sql`/`parsejson_sql`/`tablesample_sql`/`tablefromrows_sql`/
@@ -559,7 +583,7 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // and combined here): none reads `this.dialect` or any other Dialect-hosted state,
   // so `transaction_sql`/`commit_sql`/`rollback_sql` all run on the bare stand-in too
   // (`"BEGIN"`/`"COMMIT"`/`"ROLLBACK"` with every optional arg missing).
-  assert.equal(432 - stubs.length, 153, "153 of those 154 also run without a resolved Dialect");
+  assert.equal(432 - stubs.length, 177, "177 of those 178 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],
