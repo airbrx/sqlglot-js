@@ -866,7 +866,10 @@ export function eliminate_window_clause(expression) {
       window.set("alias", null);
       for (const key of ["partition_by", "order", "spec"]) {
         const arg = inherited_window.args[key];
-        if (arg !== null && arg !== undefined) window.set(key, arg.copy());
+        // py: `arg.copy()` -- Python's `list.copy()` is a shallow copy of the list
+        // itself (element references unchanged); `partition_by` is the one var-len
+        // arg among these three and is a plain JS array, with no `.copy()` method.
+        if (arg !== null && arg !== undefined) window.set(key, Array.isArray(arg) ? arg.slice() : arg.copy());
       }
     };
 

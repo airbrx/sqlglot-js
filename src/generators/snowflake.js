@@ -23,21 +23,20 @@
 // settings class), and this file (Generator settings + overrides) are three separate,
 // non-comingled directories, matching upstream's own three separate files.
 //
-// FIVE `TRANSFORMS` ENTRIES ARE STILL NOT PORTED, EACH WITH A LIVE POINTER
+// ONE `TRANSFORMS` ENTRY IS STILL NOT PORTED (AIR-2284, R94)
 // --------------------------------------------------------------------------
 // `exp.Array`, `exp.PercentileCont`, `exp.PercentileDisc`, `exp.Pivot`, and `exp.Select`
-// all route through `transforms.preprocess([...])` upstream. `src/transforms.js`
-// landed on a parallel branch (PORT_PLAN.md R26) with `preprocess` plus
-// `eliminate_distinct_on`/`eliminate_qualify`/`eliminate_semi_and_anti_joins` — enough
-// to unblock `exp.Create` (ported below, using this file's own
-// `_flatten_structured_types_unless_iceberg`), but not the other five: `exp.Array`
-// needs `transforms.inherit_struct_field_names` (unported), `exp.PercentileCont`/
-// `PercentileDisc` need `transforms.add_within_group_for_percentiles` (unported),
-// `exp.Pivot`'s own `_unqualify_pivot_columns` needs `transforms.unqualify_columns`
-// (unported), and `exp.Select` needs `transforms.eliminate_window_clause` +
-// `transforms.explode_projection_to_unnest` (both unported) PLUS
-// `sqlglot/optimizer/scope.py`'s `build_scope`/`find_all_in_scope` (unported, P6+) for
-// its own three local helpers. Each remaining blocked entry is commented out at its
+// all route through `transforms.preprocess([...])` upstream. `src/transforms.js` now has
+// every helper the first four need real (`inherit_struct_field_names`,
+// `add_within_group_for_percentiles`, `unqualify_columns` via `_unqualify_pivot_columns`
+// above) — each of those four is wired below. Only `exp.Select` stays blocked:
+// `transforms.explode_projection_to_unnest` (unported, same blocker as the BigQuery
+// EXPLODE-projection cluster) plus its own three LOCAL helpers below
+// (`_transform_generate_date_array`/`_qualify_unnested_columns`/
+// `_eliminate_dot_variant_lookup`, excluded ranges 179-202/246-341/342-375) are
+// themselves still unwritten, not just blocked — `sqlglot/optimizer/scope.py`'s
+// `build_scope`/`find_all_in_scope` they depend on IS real now (PORT_PLAN.md R46), but
+// nobody has transliterated the ~155-line trio yet. The entry is commented out at its
 // upstream anchor, exactly like base `Generator`'s own still-unseeded `TRANSFORMS`
 // lines (`src/generator.js`'s `// py:138 [exp.Adjacent, /* TODO lambda */]`
 // convention) — so this file's line count under-claims rather than growing dead code.
@@ -50,7 +49,7 @@
 // front of it.
 
 import { seqGet } from "../helper.js";
-import { preprocess, unqualify_columns } from "../transforms.js";
+import { preprocess, unqualify_columns, inherit_struct_field_names, add_within_group_for_percentiles } from "../transforms.js";
 import * as exp from "../expressions/index.js";
 import { TokenType } from "../tokens.js";
 import { Generator, unsupported_args } from "../generator.js";
@@ -269,7 +268,7 @@ export class SnowflakeGenerator extends Generator {
     [exp.ApproxDistinct, rename_func("APPROX_COUNT_DISTINCT")],
     [exp.ArgMax, rename_func("MAX_BY")],
     [exp.ArgMin, rename_func("MIN_BY")],
-    // py:413 [exp.Array, transforms.preprocess([transforms.inherit_struct_field_names])] — blocked, transforms.js
+    [exp.Array, preprocess([inherit_struct_field_names])], // py:413
     [exp.ArrayConcat, array_concat_sql("ARRAY_CAT")],
     [exp.ArrayAppend, array_append_sql("ARRAY_APPEND")],
     [exp.ArrayPrepend, array_append_sql("ARRAY_PREPEND")],
@@ -407,8 +406,8 @@ export class SnowflakeGenerator extends Generator {
     [exp.ToFile, (self, e) => self.func(`${e.args.safe ? "TRY_" : ""}TO_FILE`, e.this, e.args.path)],
     [exp.JSONFormat, rename_func("TO_JSON")],
     [exp.PartitionedByProperty, (self, e) => `PARTITION BY ${self.sql(e, "this")}`],
-    // py:540 [exp.PercentileCont, transforms.preprocess([transforms.add_within_group_for_percentiles])] — blocked, transforms.js
-    // py:541 [exp.PercentileDisc, transforms.preprocess([transforms.add_within_group_for_percentiles])] — blocked, transforms.js
+    [exp.PercentileCont, preprocess([add_within_group_for_percentiles])], // py:540
+    [exp.PercentileDisc, preprocess([add_within_group_for_percentiles])], // py:541
     [exp.Pivot, preprocess([_unqualify_pivot_columns])],
     [exp.RegexpExtract, _regexpextract_sql],
     [exp.RegexpExtractAll, _regexpextract_sql],
