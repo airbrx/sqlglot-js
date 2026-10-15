@@ -132,6 +132,12 @@ PYTHONHASHSEED=0 python3 spike/p5/gen_athena_dialect_ref.py > spike/out/athena_d
 # 23 differences-from-base survive unshadowed through yet another level of JS static
 # inheritance.
 PYTHONHASHSEED=0 python3 spike/p5/gen_dune_dialect_ref.py > spike/out/dune_dialect.json || fail=1
+# P5 oracle, same shape, Exasol (AIR-2289, "12.4 Exasol"). `dialects/exasol.py` is
+# standalone (not a subclass chain): 6 resolved settings of its own, a 21-entry
+# TIME_MAPPING dict, and a nested Tokenizer with 6 added keywords, a custom
+# IDENTIFIERS list, and one post-merge `KEYWORDS.pop("DIV")` call. No method override
+# on the Dialect class itself, so no section 4 -- same shape Presto's own oracle used.
+PYTHONHASHSEED=0 python3 spike/p5/gen_exasol_dialect_ref.py > spike/out/exasol_dialect.json || fail=1
 # P6 oracle. `schema.py`'s `MappingSchema` is greenfield -- nothing in the port depends
 # on it yet, so unlike every oracle above it has no corpus/atoms.jsonl tie-in at all.
 # 24 scenarios / 53 checks of column/type lookups, add_table, dialect-aware identifier
@@ -511,6 +517,7 @@ run "P5: Doris dialect vs CPython"         node spike/p5/fuzz_doris_dialect.mjs
 run "P5: Trino dialect vs CPython"         node spike/p5/fuzz_trino_dialect.mjs
 run "P5: Athena dialect vs CPython"        node spike/p5/fuzz_athena_dialect.mjs
 run "P5: Dune dialect vs CPython"          node spike/p5/fuzz_dune_dialect.mjs
+run "P5: Exasol dialect vs CPython"        node spike/p5/fuzz_exasol_dialect.mjs
 run "P6: schema.js MappingSchema vs CPython" node spike/p6/fuzz_schema.mjs
 run "P7: optimizer/scope.js traverseScope/Scope vs CPython" node spike/p7/fuzz_scope.mjs
 run "P7: optimize_joins.js vs CPython"       node spike/p7/fuzz_optimize_joins.mjs
