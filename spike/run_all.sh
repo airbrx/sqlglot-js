@@ -164,6 +164,14 @@ PYTHONHASHSEED=0 python3 spike/p5/gen_oracle_dialect_ref.py > spike/out/oracle_d
 # method override on the Dialect class itself, so no section 4 -- same shape
 # Presto's/Exasol's own oracle used.
 PYTHONHASHSEED=0 python3 spike/p5/gen_solr_dialect_ref.py > spike/out/solr_dialect.json || fail=1
+# P5 oracle, same shape, Druid (AIR-2292, "12.7 Small dialects", batch B). `dialects/
+# druid.py` extends the BASE `Dialect` directly, no chain, and declares NO scalar
+# setting and NO Tokenizer override of its own -- the first ported dialect to
+# exercise `registerDialect`'s IMPLICIT synthetic-Tokenizer-subclass path (chained
+# through `Dialect.tokenizer_class`, itself already a synthetic subclass of the real
+# `tokens.Tokenizer`, since the base `Dialect` class runs through the same
+# registration hook). No method override on the Dialect class itself either.
+PYTHONHASHSEED=0 python3 spike/p5/gen_druid_dialect_ref.py > spike/out/druid_dialect.json || fail=1
 # P6 oracle. `schema.py`'s `MappingSchema` is greenfield -- nothing in the port depends
 # on it yet, so unlike every oracle above it has no corpus/atoms.jsonl tie-in at all.
 # 24 scenarios / 53 checks of column/type lookups, add_table, dialect-aware identifier
@@ -548,6 +556,7 @@ run "P5: Dune dialect vs CPython"          node spike/p5/fuzz_dune_dialect.mjs
 run "P5: Exasol dialect vs CPython"        node spike/p5/fuzz_exasol_dialect.mjs
 run "P5: Oracle dialect vs CPython"        node spike/p5/fuzz_oracle_dialect.mjs
 run "P5: Solr dialect vs CPython"          node spike/p5/fuzz_solr_dialect.mjs
+run "P5: Druid dialect vs CPython"         node spike/p5/fuzz_druid_dialect.mjs
 run "P6: schema.js MappingSchema vs CPython" node spike/p6/fuzz_schema.mjs
 run "P7: optimizer/scope.js traverseScope/Scope vs CPython" node spike/p7/fuzz_scope.mjs
 run "P7: optimize_joins.js vs CPython"       node spike/p7/fuzz_optimize_joins.mjs

@@ -40,6 +40,7 @@ import "./src/dialects/dune.js";
 import "./src/dialects/oracle.js";
 import "./src/dialects/exasol.js";
 import "./src/dialects/solr.js";
+import "./src/dialects/druid.js";
 
 import { Dialect, parseOne } from "./src/dialects/dialect.js";
 import { ErrorLevel, ParseError, TokenError, UnsupportedError } from "./src/errors.js";
