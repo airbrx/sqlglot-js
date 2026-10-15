@@ -489,8 +489,8 @@ export class Generator {
     // "Unsupported expression type Adjacent" (no dispatch entry at all).
     [exp.Adjacent, (self, e) => self.binary(e, "-|-")],
     [exp.AllowedValuesProperty, (self, e) => `ALLOWED_VALUES ${self.expressions(e, null, { flat: true })}`], // py:139
-    // py:142  [exp.AnalyzeColumns, /* TODO lambda */],
-    // py:143  [exp.AnalyzeWith, /* TODO lambda */],
+    [exp.AnalyzeColumns, (self, e) => self.sql(e, "this")], // py:142
+    [exp.AnalyzeWith, (self, e) => self.expressions(e, null, { prefix: "WITH ", sep: " " })], // py:143
     // py:144-146 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4), whose
     // `TRANSFORMS` inherits these three straight from the base map (`{**Generator.
     // TRANSFORMS, ...}`, no Postgres-specific override) and is the first dialect
@@ -500,25 +500,41 @@ export class Generator {
     [exp.ArrayContainedBy, (self, e) => self.binary(e, "<@")],
     [exp.ArrayContainsAll, (self, e) => self.binary(e, "@>")],
     [exp.ArrayOverlaps, (self, e) => self.binary(e, "&&")],
-    // py:147  [exp.AssumeColumnConstraint, /* TODO lambda */],
+    [exp.AssumeColumnConstraint, (self, e) => `ASSUME (${self.sql(e, "this")})`], // py:147
     [exp.AutoRefreshProperty, (self, e) => `AUTO REFRESH ${self.sql(e, "this")}`], // py:148
     [exp.BackupProperty, (self, e) => `BACKUP ${self.sql(e, "this")}`], // py:149
-    // py:150  [exp.CaseSpecificColumnConstraint, /* TODO lambda */],
+    [exp.CaseSpecificColumnConstraint, (_, e) => `${pyTruthy(e.args.not_) ? "NOT " : ""}CASESPECIFIC`], // py:150
     [exp.CalledOnNullInputProperty, () => "CALLED ON NULL INPUT"], // py:153
-    // py:154  [exp.Ceil, /* TODO lambda */],
-    // py:155  [exp.CharacterSetColumnConstraint, /* TODO lambda */],
+    // py:154 — NOT wired: `self.ceil_floor(e)` is still a `NotPorted` base-generator.js
+    // stub (AIR-2276/2277/2278 territory). Routing through it regresses 6 ratchet-pass
+    // atoms (e.g. `FLOOR(x)`, `CEIL(3.14, 1)`) that currently round-trip correctly only
+    // by accident, via `function_fallback_sql`'s class-name-to-SNAKE_CASE fallback
+    // ("Ceil"/"Floor" happen to already BE their own SQL function names). Re-wire this
+    // the moment `ceil_floor` lands for real.
+    // [exp.Ceil, /* TODO lambda */],
+    [exp.CharacterSetColumnConstraint, (self, e) => `CHARACTER SET ${self.sql(e, "this")}`], // py:155
     [exp.CharacterSetProperty, (self, e) => `${e.args.default ? "DEFAULT " : ""}CHARACTER SET=${self.sql(e, "this")}`], // py:156
-    // py:159  [exp.ClusteredColumnConstraint, /* TODO lambda */],
-    // py:162  [exp.CollateColumnConstraint, /* TODO lambda */],
-    // py:163  [exp.CommentColumnConstraint, /* TODO lambda */],
-    // py:164  [exp.ConnectByRoot, /* TODO lambda */],
-    // py:165  [exp.ConvertToCharset, /* TODO lambda */],
+    [exp.ClusteredColumnConstraint, (self, e) => `CLUSTERED (${self.expressions(e, "this", { indent: false })})`], // py:159
+    [exp.CollateColumnConstraint, (self, e) => `COLLATE ${self.sql(e, "this")}`], // py:162
+    [exp.CommentColumnConstraint, (self, e) => `COMMENT ${self.sql(e, "this")}`], // py:163
+    [exp.ConnectByRoot, (self, e) => `CONNECT_BY_ROOT ${self.sql(e, "this")}`], // py:164
+    [exp.ConvertToCharset, (self, e) => self.func("CONVERT", e.this, e.args.dest, e.args.source)], // py:165
     [exp.CopyGrantsProperty, () => "COPY GRANTS"], // py:168
     [exp.CredentialsProperty, (self, e) => `CREDENTIALS=(${self.expressions(e, "expressions", { sep: " " })})`], // py:169
-    // py:172  [exp.CurrentCatalog, /* TODO lambda */],
-    // py:173  [exp.SessionUser, /* TODO lambda */],
-    // py:174  [exp.DateFormatColumnConstraint, /* TODO lambda */],
-    // py:175  [exp.DefaultColumnConstraint, /* TODO lambda */],
+    [exp.CurrentCatalog, () => "CURRENT_CATALOG"], // py:172
+    [exp.SessionUser, () => "SESSION_USER"], // py:173
+    // exp.CurrentRole deliberately has NO entry here. tokens.js's CURRENT_ROLE keyword
+    // (airbrx-gateway PR #228) makes BOTH `CURRENT_ROLE` and `CURRENT_ROLE()` parse to
+    // the same exp.CurrentRole node, with no stored signal distinguishing which form the
+    // source used -- upstream CPython never has this ambiguity, since it never tokenizes
+    // "CURRENT_ROLE" as a keyword at all (bare -> Column, parens -> Func via the generic
+    // by-name path). Either a bare-rendering or a parens-rendering TRANSFORMS entry here
+    // fixes one corpus row's round trip while breaking the other's -- a net-zero swap,
+    // not a fix -- so this is left on the generic Func fallback (parens), matching what
+    // every OTHER un-mapped Func already does and what this class did before AIR-2284
+    // looked at it.
+    [exp.DateFormatColumnConstraint, (self, e) => `FORMAT ${self.sql(e, "this")}`], // py:174
+    [exp.DefaultColumnConstraint, (self, e) => `DEFAULT ${self.sql(e, "this")}`], // py:175
     [exp.ApiProperty, () => "API"], // py:176
     [exp.ApplicationProperty, () => "APPLICATION"], // py:177
     [exp.CatalogProperty, () => "CATALOG"], // py:178
@@ -526,32 +542,33 @@ export class Generator {
     [exp.DatabaseProperty, () => "DATABASE"], // py:180
     [exp.DynamicProperty, () => "DYNAMIC"], // py:181
     [exp.EmptyProperty, () => "EMPTY"], // py:182
-    // py:183  [exp.EncodeColumnConstraint, /* TODO lambda */],
-    // py:184  [exp.EndStatement, /* TODO lambda */],
+    [exp.EncodeColumnConstraint, (self, e) => `ENCODE ${self.sql(e, "this")}`], // py:183
+    [exp.EndStatement, () => "END"], // py:184
     [exp.EnviromentProperty, (self, e) => `ENVIRONMENT (${self.expressions(e, null, { flat: true })})`], // py:185
     [exp.HandlerProperty, (self, e) => `HANDLER ${self.sql(e, "this")}`], // py:186
     [exp.ParameterStyleProperty, (self, e) => `PARAMETER STYLE ${self.sql(e, "this")}`], // py:187
-    // py:188  [exp.EphemeralColumnConstraint, /* TODO lambda */],
-    // py:191  [exp.ExcludeColumnConstraint, /* TODO lambda */],
+    [exp.EphemeralColumnConstraint, (self, e) => `EPHEMERAL${e.this ? " " + self.sql(e, "this") : ""}`], // py:188
+    [exp.ExcludeColumnConstraint, (self, e) => `EXCLUDE ${pyLstrip(self.sql(e, "this"))}`], // py:191
     [exp.ExecuteAsProperty, (self, e) => self.naked_property(e)], // py:192
     // py:193 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4), same
     // `set_operations` wiring as `exp.Intersect`/`exp.Union` below.
     [exp.Except, (self, e) => self.set_operations(e)],
     [exp.ExternalProperty, () => "EXTERNAL"], // py:194
-    // py:195  [exp.Floor, /* TODO lambda */],
-    // py:196  [exp.Get, /* TODO lambda */],
+    // py:195 — NOT wired, same reason as `exp.Ceil` above (py:154).
+    // [exp.Floor, /* TODO lambda */],
+    [exp.Get, (self, e) => self.get_put_sql(e)], // py:196
     [exp.GlobalProperty, () => "GLOBAL"], // py:197
     [exp.HeapProperty, () => "HEAP"], // py:198
     [exp.HybridProperty, () => "HYBRID"], // py:199
     [exp.IcebergProperty, () => "ICEBERG"], // py:200
     [exp.InheritsProperty, (self, e) => `INHERITS (${self.expressions(e, null, { flat: true })})`], // py:201
-    // py:202  [exp.InlineLengthColumnConstraint, /* TODO lambda */],
+    [exp.InlineLengthColumnConstraint, (self, e) => `INLINE LENGTH ${self.sql(e, "this")}`], // py:202
     [exp.InputModelProperty, (self, e) => `INPUT${self.sql(e, "this")}`], // py:203
     // py:204 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4), same
     // `set_operations` wiring as `exp.Except`/`exp.Union`.
     [exp.Intersect, (self, e) => self.set_operations(e)],
-    // py:205  [exp.IntervalSpan, /* TODO lambda */],
-    // py:206  [exp.Int64, /* TODO lambda */],
+    [exp.IntervalSpan, (self, e) => `${self.sql(e, "this")} TO ${self.sql(e, "expression")}`], // py:205
+    [exp.Int64, (self, e) => self.sql(exp.cast(e.this, exp.DType.BIGINT))], // py:206
     // py:207 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4), same
     // reason as `JSONBContainsTopKey` below: a real corpus mismatch
     // (`J_S_O_N_B_CONTAINS_ANY_TOP_KEYS(...)` fallback vs CPython's `?|`).
@@ -585,12 +602,12 @@ export class Generator {
     [exp.MaterializedProperty, () => "MATERIALIZED"], // py:218
     [exp.NetFunc, (self, e) => `NET.${self.sql(e, "this")}`], // py:219
     [exp.NetworkProperty, () => "NETWORK"], // py:220
-    // py:221  [exp.NonClusteredColumnConstraint, /* TODO lambda */],
+    [exp.NonClusteredColumnConstraint, (self, e) => `NONCLUSTERED (${self.expressions(e, "this", { indent: false })})`], // py:221
     [exp.NoPrimaryIndexProperty, () => "NO PRIMARY INDEX"], // py:224
-    // py:225  [exp.NotForReplicationColumnConstraint, /* TODO lambda */],
+    [exp.NotForReplicationColumnConstraint, () => "NOT FOR REPLICATION"], // py:225
     [exp.OnCommitProperty, (_, e) => `ON COMMIT ${e.args.delete ? "DELETE" : "PRESERVE"} ROWS`], // py:226
     [exp.OnProperty, (self, e) => `ON ${self.sql(e, "this")}`], // py:229
-    // py:230  [exp.OnUpdateColumnConstraint, /* TODO lambda */],
+    [exp.OnUpdateColumnConstraint, (self, e) => `ON UPDATE ${self.sql(e, "this")}`], // py:230
     // py:231 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4): reached by
     // `pg_catalog`-style custom-operator corpus rows, which previously threw
     // "Unsupported expression type Operator". `self.binary`'s own `node.args.operator`
@@ -598,17 +615,17 @@ export class Generator {
     // string here is upstream's own comment: "The operator is produced in `binary`".
     [exp.Operator, (self, e) => self.binary(e, "")],
     [exp.OutputModelProperty, (self, e) => `OUTPUT${self.sql(e, "this")}`], // py:232
-    // py:233  [exp.ExtendsLeft, /* TODO lambda */],
-    // py:234  [exp.ExtendsRight, /* TODO lambda */],
-    // py:235  [exp.PathColumnConstraint, /* TODO lambda */],
-    // py:236  [exp.PartitionedByBucket, /* TODO lambda */],
-    // py:237  [exp.PartitionByTruncate, /* TODO lambda */],
+    [exp.ExtendsLeft, (self, e) => self.binary(e, "&<")], // py:233
+    [exp.ExtendsRight, (self, e) => self.binary(e, "&>")], // py:234
+    [exp.PathColumnConstraint, (self, e) => `PATH ${self.sql(e, "this")}`], // py:235
+    [exp.PartitionedByBucket, (self, e) => self.func("BUCKET", e.this, e.expression)], // py:236
+    [exp.PartitionByTruncate, (self, e) => self.func("TRUNCATE", e.this, e.expression)], // py:237
     [exp.PivotAny, (self, e) => `ANY${self.sql(e, "this")}`], // py:238
-    // py:239  [exp.PositionalColumn, /* TODO lambda */],
-    // py:240  [exp.ProjectionPolicyColumnConstraint, /* TODO lambda */],
-    // py:243  [exp.InvisibleColumnConstraint, /* TODO lambda */],
-    // py:244  [exp.ZeroFillColumnConstraint, /* TODO lambda */],
-    // py:245  [exp.Put, /* TODO lambda */],
+    [exp.PositionalColumn, (self, e) => `#${self.sql(e, "this")}`], // py:239
+    [exp.ProjectionPolicyColumnConstraint, (self, e) => `PROJECTION POLICY ${self.sql(e, "this")}`], // py:240
+    [exp.InvisibleColumnConstraint, () => "INVISIBLE"], // py:243
+    [exp.ZeroFillColumnConstraint, () => "ZEROFILL"], // py:244
+    [exp.Put, (self, e) => self.get_put_sql(e)], // py:245
     [exp.RemoteWithConnectionModelProperty, (self, e) => `REMOTE WITH CONNECTION ${self.sql(e, "this")}`], // py:246
     [exp.ReturnsProperty, (self, e) => (e.args.null ? "RETURNS NULL ON NULL INPUT" : self.naked_property(e))], // py:249
     [exp.RowAccessProperty, () => "ROW ACCESS"], // py:252
@@ -623,42 +640,42 @@ export class Generator {
     [exp.SqlReadWriteProperty, (_, e) => e.name], // py:261
     [exp.SqlSecurityProperty, (self, e) => `SQL SECURITY ${self.sql(e, "this")}`], // py:262
     [exp.StabilityProperty, (_, e) => e.name], // py:263
-    // py:264  [exp.Stream, /* TODO lambda */],
+    [exp.Stream, (self, e) => `STREAM ${self.sql(e, "this")}`], // py:264
     [exp.StreamingTableProperty, () => "STREAMING"], // py:265
     [exp.StrictProperty, () => "STRICT"], // py:266
-    // py:267  [exp.SwapTable, /* TODO lambda */],
-    // py:268  [exp.TableColumn, /* TODO lambda */],
+    [exp.SwapTable, (self, e) => `SWAP WITH ${self.sql(e, "this")}`], // py:267
+    [exp.TableColumn, (self, e) => self.sql(e.this)], // py:268
     [exp.Tags, (self, e) => `TAG (${self.expressions(e, null, { flat: true })})`], // py:269
     [exp.TemporaryProperty, () => "TEMPORARY"], // py:270
-    // py:271  [exp.TitleColumnConstraint, /* TODO lambda */],
-    // py:272  [exp.ToMap, /* TODO lambda */],
+    [exp.TitleColumnConstraint, (self, e) => `TITLE ${self.sql(e, "this")}`], // py:271
+    [exp.ToMap, (self, e) => `MAP ${self.sql(e, "this")}`], // py:272
     [exp.ToTableProperty, (self, e) => `TO ${self.sql(e.this)}`], // py:273
     [exp.TransformModelProperty, (self, e) => self.func("TRANSFORM", ...e.expressions)], // py:274
     [exp.TransientProperty, () => "TRANSIENT"], // py:275
     [exp.VirtualProperty, () => "VIRTUAL"], // py:276
-    // py:277  [exp.TriggerExecute, /* TODO lambda */],
+    [exp.TriggerExecute, (self, e) => `EXECUTE FUNCTION ${self.sql(e, "this")}`], // py:277
     // py:278 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4): a plain
     // `WITH RECURSIVE ... UNION ...` corpus row reached `set_operations`/
     // `set_operation` above, both real bodies now rather than `NotPorted` stubs.
     [exp.Union, (self, e) => self.set_operations(e)],
     [exp.UnloggedProperty, () => "UNLOGGED"], // py:279
     [exp.UsingTemplateProperty, (self, e) => `USING TEMPLATE ${self.sql(e, "this")}`], // py:280
-    // py:281  [exp.UsingData, /* TODO lambda */],
-    // py:282  [exp.UppercaseColumnConstraint, /* TODO lambda */],
-    // py:283  [exp.UtcDate, /* TODO lambda */],
-    // py:284  [exp.UtcTime, /* TODO lambda */],
-    // py:285  [exp.UtcTimestamp, /* TODO lambda */],
+    [exp.UsingData, (self, e) => `USING DATA ${self.sql(e, "this")}`], // py:281
+    [exp.UppercaseColumnConstraint, () => "UPPERCASE"], // py:282
+    [exp.UtcDate, (self) => self.sql(new exp.CurrentDate({ this: exp.Literal.string("UTC") }))], // py:283
+    [exp.UtcTime, (self) => self.sql(new exp.CurrentTime({ this: exp.Literal.string("UTC") }))], // py:284
+    [exp.UtcTimestamp, (self) => self.sql(new exp.CurrentTimestamp({ this: exp.Literal.string("UTC") }))], // py:285
     // py:288 — ported alongside `generators/postgres.js` (PORT_PLAN.md P4): reached by
     // corpus rows like `MLEAST(VARIADIC ...)`, which previously threw "Unsupported
     // expression type Variadic" (no dispatch entry at all, not even a wrong string).
     [exp.Variadic, (self, e) => `VARIADIC ${self.sql(e, "this")}`],
-    // py:289  [exp.VarMap, /* TODO lambda */],
+    [exp.VarMap, (self, e) => self.func("MAP", e.args.keys, e.args.values)], // py:289
     [exp.ViewAttributeProperty, (self, e) => `WITH ${self.sql(e, "this")}`], // py:290
     [exp.VolatileProperty, () => "VOLATILE"], // py:291
     [exp.WithJournalTableProperty, (self, e) => `WITH JOURNAL TABLE=${self.sql(e, "this")}`], // py:292
     [exp.WithProcedureOptions, (self, e) => `WITH ${self.expressions(e, null, { flat: true })}`], // py:293
     [exp.WithSchemaBindingProperty, (self, e) => `WITH SCHEMA ${self.sql(e, "this")}`], // py:294
-    // py:295  [exp.WithOperator, /* TODO lambda */],
+    [exp.WithOperator, (self, e) => `${self.sql(e, "this")} WITH ${self.sql(e, "op")}`], // py:295
     [exp.ForceProperty, () => "FORCE"], // py:296
   ]);
 

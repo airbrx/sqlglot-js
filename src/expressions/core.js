@@ -622,7 +622,12 @@ export const SAFE_IDENTIFIER_RE = Object.freeze({
 export const DType = Object.freeze({});
 let PARSE = null;
 let GENERATE = null;
+let RESOLVE_DIALECT = null;
 export function registerParser(fn) { PARSE = fn; }
+/** Install `Dialect.get_or_raise` without making the expression layer import
+ * dialects/dialect.js directly (which itself imports FROM this module's family). */
+export function registerDialectResolver(fn) { RESOLVE_DIALECT = fn; }
+export function resolveDialect(dialect) { return RESOLVE_DIALECT ? RESOLVE_DIALECT(dialect) : dialect; }
 // Lets a caller outside this module (e.g. `DataType.fromStr`) distinguish "the real
 // parser isn't wired up yet" from "the real parser ran and genuinely couldn't parse
 // this" -- `maybeParse` itself already branches on this, but silently, via its P2-safe
