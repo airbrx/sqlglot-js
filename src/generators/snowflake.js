@@ -540,7 +540,7 @@ export class SnowflakeGenerator extends Generator {
 
   /** py:672 */
   with_properties(properties) {
-    return this.properties(properties, { wrapped: false, prefix: this.sep(""), sep: " " });
+    return this.properties(properties, this.sep(""), " ", "", false);
   }
 
   /** py:675 */
