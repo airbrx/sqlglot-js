@@ -1658,12 +1658,14 @@ export class DuckDBGenerator extends Generator {
     [exp.DatetimeDiff, _date_diff_sql],
     [exp.DatetimeSub, _date_delta_to_binary_interval_op()],
     [exp.DatetimeAdd, _date_delta_to_binary_interval_op()],
-    // py:1679-1681 [exp.DateToDi, lambda] — skipped, low value (DI = Julian "date-as-int" legacy format)
+    // py:1679-1681 `DateToDi`
+    [exp.DateToDi, (self, e) => `CAST(STRFTIME(${self.sql(e, "this")}, ${self.dialect.DATEINT_FORMAT}) AS INT)`],
     // py:1682 `Decode`
     [exp.Decode, (self, e) => encode_decode_sql(self, e, "DECODE", false)],
     // py:1683 `HexDecodeString`
     [exp.HexDecodeString, (self, e) => self.sql(new exp.Decode({ this: new exp.Unhex({ this: e.this }) }))],
-    // py:1684-1686 [exp.DiToDate, lambda] — skipped, pairs with the excluded DateToDi above
+    // py:1684-1686 `DiToDate`
+    [exp.DiToDate, (self, e) => `CAST(STRPTIME(CAST(${self.sql(e, "this")} AS TEXT), ${self.dialect.DATEINT_FORMAT}) AS DATE)`],
     // py:1687 `Encode`
     [exp.Encode, (self, e) => encode_decode_sql(self, e, "ENCODE", false)],
     [
