@@ -30,7 +30,7 @@
 // for a missing dialect, it is the documented default, and it is reproduced by
 // consulting the base `DATE_PART_MAPPING` literal below rather than by any lookup.
 //
-// @ported-ranges sqlglot/dialects/dialect.py 858-953 1280-1284 1297-1299 1314-1316 1330-1332 1438-1454 1610-1637 1654-1674 1676-1697 1700-1706 1709-1715 1830-1837 1892-1914 1916-1920 1921-1922 1925-1963 1966-1967 1970-1973 2132-2154 2167-2176 2179-2184 2187-2220 2223-2265 2268-2295 2298-2302 2305-2323 2384-2394 2406-2407 2410-2411 2462-2474 2477-2497 2604-2617 2620-2625 2628-2641 2654-2672
+// @ported-ranges sqlglot/dialects/dialect.py 858-953 1280-1284 1297-1299 1314-1316 1330-1332 1438-1454 1610-1637 1654-1674 1676-1697 1700-1706 1709-1715 1830-1837 1892-1914 1916-1920 1921-1922 1925-1963 1966-1967 1970-1973 2132-2154 2167-2176 2179-2184 2187-2220 2223-2265 2268-2295 2298-2302 2305-2323 2384-2394 2406-2407 2410-2411 2462-2474 2477-2497 2499-2534 2604-2617 2620-2625 2628-2641 2654-2672
 //
 // One range per member ported, so `tools/lint_deny.mjs` measures this file against
 // what it actually claims rather than against all 2,600 lines of `dialects/dialect.py`
@@ -40,7 +40,7 @@
 // P5 ports the surrounding code the range list grows and the lint starts demanding
 // their markers.
 
-import { flatten, isInt, seqGet, suggestClosestMatchAndFail, toBool } from "../helper.js";
+import { ensureList, flatten, isInt, seqGet, suggestClosestMatchAndFail, toBool } from "../helper.js";
 import { NotPorted, ParseError } from "../errors.js";
 import { cpSlice, pyIsLower, pyIsPrintable, pyIsUpper, pyLower, pyLstrip, pyStartswith, pyStr, pyUpper } from "../_py/str.js";
 import { pyIntFromStr } from "../_py/num.js";
@@ -930,6 +930,43 @@ export function date_delta_sql(name, cast = false) {
 
     return self.func(name, unit_to_var(expression), expression.expression, expression.this);
   };
+}
+
+/**
+ * py: sqlglot/dialects/dialect.py:2499 `explode_to_unnest_sql(self, expression)`.
+ *
+ * Converts a LATERAL VIEW EXPLODE/POSEXPLODE into a `CROSS JOIN UNNEST(...)`.
+ * Spark's `FROM x LATERAL VIEW POSEXPLODE(y) t AS pos, col` is 0-based on the
+ * position column and interleaves position with value columns, unlike
+ * DuckDB's `WITH ORDINALITY` (1-based); the Posexplode branch builds a
+ * subquery that re-derives the 0-based position (`pos - 1`) and reorders the
+ * columns to match.
+ */
+export function explode_to_unnest_sql(self, expression) {
+  const this_ = expression.this;
+  const alias = expression.args.alias;
+
+  let cross_join_expr = null;
+  if (this_ instanceof exp.Posexplode && alias) {
+    const pos = alias.columns[0];
+    const cols = ensureList(alias.columns.slice(1));
+
+    const lateral_subquery = exp.select(exp.alias_(pos.sub(1), pos), ...cols).from_(
+      new exp.Unnest({
+        expressions: [this_.this],
+        offset: true,
+        alias: new exp.TableAlias({ this: alias.this, columns: [...cols, pos] }),
+      }),
+    );
+
+    cross_join_expr = new exp.Lateral({ this: lateral_subquery.subquery() });
+  } else if (this_ instanceof exp.Explode) {
+    cross_join_expr = new exp.Unnest({ expressions: [this_.this], alias });
+  }
+
+  if (cross_join_expr) return self.sql(new exp.Join({ this: cross_join_expr, kind: "cross" }));
+
+  return self.lateral_sql(expression);
 }
 
 /**

@@ -1,6 +1,6 @@
 // py: sqlglot/generators/duckdb.py — `class DuckDBGenerator(generator.Generator)`.
 //
-// @ported-ranges sqlglot/generators/duckdb.py 50-50 93-101 213-214 217-229 320-357 359-450 452-540 545-547 549-563 607-648 670-678 827-845 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1428-1455 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 3952-3971 4349-4406 4419-4497 4670-4712
+// @ported-ranges sqlglot/generators/duckdb.py 50-50 93-101 213-214 217-229 320-357 359-450 452-540 545-547 549-563 607-648 670-678 827-845 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1428-1455 1459-1497 1497-1523 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 3952-3971 4349-4406 4419-4497 4670-4712
 //
 // SCOPE — a deliberately small, honest slice of a 4,788-line file (PORT_PLAN.md,
 // "DuckDB generator is an outlier size" — ~4x every other single-file dialect
@@ -82,6 +82,7 @@ import {
   array_concat_sql,
   date_delta_to_binary_interval_op,
   datestrtodate_sql,
+  explode_to_unnest_sql,
   generate_series_sql,
   groupconcat_sql,
   inline_array_unless_query,
@@ -151,6 +152,37 @@ function _seq_sql(self, expression, byte_width) {
 
   const result = _build_seq_expression(_SEQ_BASE.copy(), byte_width, expression.name === "1");
   return self.sql(result);
+}
+
+/**
+ * py:1497 `_explode_to_unnest_sql(self, expression)` for `exp.Lateral`.
+ * Handles LATERAL VIEW EXPLODE/INLINE conversion to UNNEST for DuckDB.
+ */
+function _explode_to_unnest_sql(self, expression) {
+  const explode = expression.this;
+
+  if (explode instanceof exp.Inline) {
+    // For INLINE, create CROSS JOIN LATERAL (SELECT UNNEST(..., max_depth => 2))
+    // Build the UNNEST call with DuckDB-style named parameter
+    const unnest_expr = new exp.Unnest({
+      expressions: [explode.this, new exp.Kwarg({ this: exp.var("max_depth"), expression: exp.Literal.number(2) })],
+    });
+    const select_expr = new exp.Select({ expressions: [unnest_expr] }).subquery();
+
+    let alias_expr = expression.args.alias;
+    if (alias_expr && !alias_expr.this) {
+      // we need to provide a table name if not present
+      alias_expr.set("this", exp.toIdentifier(`_u_${expression.index}`));
+    }
+
+    const transformed_lateral_expr = new exp.Lateral({ this: select_expr, alias: alias_expr });
+    const cross_join_lateral_expr = new exp.Join({ this: transformed_lateral_expr, kind: "CROSS" });
+
+    return self.sql(cross_join_lateral_expr);
+  }
+
+  // For other cases, use the standard conversion
+  return explode_to_unnest_sql(self, expression);
 }
 
 /** py:545 */
@@ -886,7 +918,7 @@ export class DuckDBGenerator extends Generator {
     // and base `round_sql`/`ceil_floor`
     [exp.JSONBExists, rename_func("JSON_EXISTS")],
     // py:1711-1714 [exp.JSONExtract*, exp.JSONFormat, exp.JSONValueArray] — blocked, local helpers out of scope
-    // py:1715 [exp.Lateral, _explode_to_unnest_sql] — blocked, local helper out of scope this pass
+    [exp.Lateral, _explode_to_unnest_sql],
     [exp.LogicalOr, (self, e) => self.func("BOOL_OR", _cast_to_boolean(e.this))],
     [exp.LogicalAnd, (self, e) => self.func("BOOL_AND", _cast_to_boolean(e.this))],
     // py:1718-1720 [exp.Select, transforms.preprocess([connect_by_to_recursive_cte, _seq_to_range_in_generator])] — blocked
