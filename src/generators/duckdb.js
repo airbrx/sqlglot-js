@@ -6,9 +6,9 @@
 // "DuckDB generator is an outlier size" — ~4x every other single-file dialect
 // generator ported so far). This file does NOT attempt exhaustive coverage; see
 // PORT_PLAN.md's R32 entry for the marginal analysis that drove the cut and the
-// follow-on stub queue (139 methods, ~108 TRANSFORMS entries, PROPERTIES_LOCATION /
-// the CREATE-statement properties system, and every ClassVar SQL template are all
-// still NotPorted).
+// follow-on stub queue (139 methods, ~108 TRANSFORMS entries, and every ClassVar SQL
+// template are all still NotPorted). `PROPERTIES_LOCATION`/`UNWRAPPED_INTERVAL_VALUES`/
+// `TYPE_PARAM_SETTINGS` landed in later rounds (see AIR-2299 round 2, PORT_PLAN.md).
 //
 // AIR-2282/R85 (PORT_PLAN.md Epic 11, generator-fidelity census): re-examined because
 // `exp.Array`, `exp.SortArray`, and `exp.GenerateSeries` were the single biggest
@@ -53,16 +53,14 @@
 //
 // WHAT IS DELIBERATELY NOT HERE (left for a follow-on session, named rather than
 // silently skipped):
-//   - The remaining 139 `*_sql` method overrides (py:2311 onward, minus `sortarray_sql`
-//     above) — `create_sql`/`createable_sql`
-//     (base `Generator`, NotPorted — the CREATE-statement properties subsystem is its
-//     own multi-session port, not a DuckDB-generator task), `window_sql`/`tablesample_sql`/
-//     `pad_sql`/`parsejson_sql` (DuckDB overrides that `super()` into base methods this
-//     pass does not touch), `round_sql`/`ceil_floor` (chained through the unported
-//     `_scale_rounding_sql`), `TYPE_PARAM_SETTINGS`, `PROPERTIES_LOCATION`,
-//     `UNWRAPPED_INTERVAL_VALUES`, and every `t.ClassVar[exp.Expr] = exp.maybe_parse(...)`
-//     SQL-string template (ZIPF/NORMAL/SEEDED_RANDOM/MAPCAT/bitmap templates) — all are
-//     reachable only from methods this pass excludes.
+//   - The remaining ~115 `*_sql` method overrides (py:2311 onward, minus the ones named
+//     below as already landed). Base `Generator.create_sql`/`createable_sql` ARE already
+//     ported and DO consume this file's `PROPERTIES_LOCATION`; what's still NotPorted
+//     here is DuckDB's own property-specific overrides (`createable_sql` for CREATE
+//     FUNCTION/MACRO's `AS TABLE` ordering, individual `*Property.sql` renderers for
+//     anything not already driven to `""` via TRANSFORMS). Also still excluded: every
+//     `t.ClassVar[exp.Expr] = exp.maybe_parse(...)` SQL-string template this pass's
+//     ported methods don't reach.
 //
 // `generator_class` DOES NOT throw. The header this file replaces (removed from
 // `src/dialects/duckdb.js`) claimed `registerDialect` throws `NotPorted` "the moment
@@ -1547,6 +1545,27 @@ export class DuckDBGenerator extends Generator {
   static JSON_KEY_VALUE_PAIR_SEP = ",";
   static IGNORE_NULLS_IN_FUNC = true;
   static IGNORE_NULLS_BEFORE_ORDER = false;
+
+  /** py:1933 `UNWRAPPED_INTERVAL_VALUES = (exp.Literal, exp.Paren)` — narrower than the base
+   * class's (Column, Literal, Neg, Paren): DuckDB does NOT unwrap a `Neg`, so `interval_sql`
+   * paren-wraps negative interval amounts (`INTERVAL (-1) MONTH`, not `INTERVAL -1 MONTH`). */
+  static UNWRAPPED_INTERVAL_VALUES = [exp.Literal, exp.Paren];
+
+  /**
+   * py:1939 `PROPERTIES_LOCATION` — DuckDB doesn't generally support CREATE TABLE ..
+   * properties (https://duckdb.org/docs/sql/statements/create_table.html). There are a few
+   * exceptions (e.g. temporary tables) which are supported or can be transpiled to DuckDB,
+   * so they're explicitly overridden below; everything else inherited from the base class
+   * becomes UNSUPPORTED (dropped rather than emitted as a bogus WITH(...) clause).
+   */
+  static PROPERTIES_LOCATION = new Map([
+    ...[...Generator.PROPERTIES_LOCATION.keys()].map((k) => [k, exp.Properties.Location.UNSUPPORTED]),
+    [exp.LikeProperty, exp.Properties.Location.POST_SCHEMA],
+    [exp.TemporaryProperty, exp.Properties.Location.POST_CREATE],
+    [exp.ReturnsProperty, exp.Properties.Location.POST_ALIAS],
+    [exp.SequenceProperties, exp.Properties.Location.POST_EXPRESSION],
+    [exp.IcebergProperty, exp.Properties.Location.POST_CREATE],
+  ]);
 
   /** py:1951 `IGNORE_RESPECT_NULLS_WINDOW_FUNCTIONS` — py:84 `_IGNORE_RESPECT_NULLS_WINDOW_FUNCTIONS`. */
   static IGNORE_RESPECT_NULLS_WINDOW_FUNCTIONS = [exp.FirstValue, exp.Lag, exp.LastValue, exp.Lead, exp.NthValue];
@@ -3434,6 +3453,12 @@ export class DuckDBGenerator extends Generator {
     }
 
     return this.sql(result);
+  }
+
+  /** py:4415 `hexstring_sql(self, expression, binary_function_repr=None)` — `UNHEX('FF')`
+   * correctly produces blob `\xFF` in DuckDB (base default is `FROM_HEX`). */
+  hexstring_sql(expression, binary_function_repr = null) {
+    return super.hexstring_sql(expression, "UNHEX");
   }
 
   /** py:3794 `hex_sql(self, expression)`. */
