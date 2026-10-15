@@ -3,16 +3,11 @@
 // The WRITE-side counterpart of `src/parsers/tsql.js` (grammar) and
 // `src/dialects/tsql.js` (settings) — same three-file split every prior dialect port
 // uses. This file mirrors upstream's full 656 LOC: every `TRANSFORMS` entry and every
-// `*_sql` override is ported, with two exceptions, both blocked on a DIFFERENT
-// unported component rather than anything TSQL-specific:
-//
-//   `exp.CTE`/`exp.Subquery` (py:202,234, both `transforms.preprocess([
-//   qualify_derived_table_outputs])`) — `qualify_derived_table_outputs`'s own body
-//   calls `sqlglot.optimizer.qualify_columns.qualify_outputs`, which is unported
-//   (the whole `optimizer/qualify_columns.py` module, not just this one function).
-//   Left commented out at its upstream anchor, matching `generators/snowflake.js`'s
-//   own precedent for exactly this shape of gap (its header explains five such
-//   entries, one of which is this same `optimizer/scope.py`-adjacent family).
+// `*_sql` override is ported (AIR-2284, R94: `exp.CTE`/`exp.Subquery`, py:202,234,
+// were the last two, both `transforms.preprocess([qualify_derived_table_outputs])` —
+// stale-blocked on `sqlglot.optimizer.qualify_columns.qualify_outputs`, which is real
+// now (PORT_PLAN.md R67); `qualify_derived_table_outputs` itself is ported just above
+// `_json_extract_sql`).
 //
 // Everything else's dependencies are already real: `_string_agg_sql` (py:48, GroupConcat)
 // needed `find_in_scope`, which is `src/optimizer/scope.js`'s ALREADY-PORTED Tier A
@@ -36,6 +31,7 @@ import { seqGet } from "../helper.js";
 import * as exp from "../expressions/index.js";
 import * as transforms from "../transforms.js";
 import { findInScope } from "../optimizer/scope.js";
+import { qualify_outputs } from "../optimizer/qualify_columns.js";
 import { Generator, AFTER_HAVING_MODIFIER_TRANSFORMS, unsupported_args } from "../generator.js";
 import {
   Dialect,
@@ -110,10 +106,42 @@ function _string_agg_sql(self, expression) {
   return `STRING_AGG(${self.format_args(this_, separator)})${order}`;
 }
 
-// py:66 `qualify_derived_table_outputs(expression)` — blocked on
-// `sqlglot.optimizer.qualify_columns.qualify_outputs`, unported. See file header. The
-// only callers are the `exp.CTE`/`exp.Subquery` TRANSFORMS entries below, themselves
-// commented out for the same reason.
+/**
+ * py: sqlglot/generators/tsql.py:70 `qualify_derived_table_outputs(expression)`.
+ * Ensures all (unnamed) output columns are aliased for CTEs and Subqueries.
+ */
+function qualify_derived_table_outputs(expression) {
+  const alias = expression.args.alias;
+
+  if (
+    (expression instanceof exp.CTE || expression instanceof exp.Subquery)
+    && alias instanceof exp.TableAlias
+    && !alias.columns.length
+  ) {
+    const tsqlDialect = Dialect.get_or_raise("tsql");
+
+    // We keep track of the unaliased column projection indexes instead of the expressions
+    // themselves, because the latter are going to be replaced by new nodes when the aliases
+    // are added and hence we won't be able to reach these newly added Alias parents
+    const query = expression.this;
+    const unaliased_column_indexes = query.selects
+      .map((c, i) => [c, i])
+      .filter(([c]) => c instanceof exp.Column && !c.alias)
+      .map(([, i]) => i);
+
+    qualify_outputs(query, tsqlDialect);
+
+    // Preserve the quoting information of columns for newly added Alias nodes
+    const query_selects = query.selects;
+    for (const select_index of unaliased_column_indexes) {
+      const new_alias = query_selects[select_index];
+      const column = new_alias.this;
+      if (column.this instanceof exp.Identifier) new_alias.args.alias.set("quoted", column.this.quoted);
+    }
+  }
+
+  return expression;
+}
 
 /** py: sqlglot/generators/tsql.py:97 `_json_extract_sql(self, expression)` */
 function _json_extract_sql(self, expression) {
@@ -216,8 +244,7 @@ export class TSQLGenerator extends Generator {
     [exp.Ceil, rename_func("CEILING")],
     [exp.Chr, rename_func("CHAR")],
     [exp.DateAdd, date_delta_sql("DATEADD")],
-    // py:202 `exp.CTE: transforms.preprocess([qualify_derived_table_outputs])` —
-    // blocked, see file header.
+    [exp.CTE, transforms.preprocess([qualify_derived_table_outputs])], // py:202
     [exp.CurrentDate, rename_func("GETDATE")],
     [exp.CurrentTimestamp, rename_func("GETDATE")],
     [exp.CurrentTimestampLTZ, rename_func("SYSDATETIMEOFFSET")],
@@ -248,8 +275,7 @@ export class TSQLGenerator extends Generator {
     ],
     [exp.Stddev, rename_func("STDEV")],
     [exp.StrPosition, (self, e) => strposition_sql(self, e, { func_name: "CHARINDEX", supports_position: true })],
-    // py:234 `exp.Subquery: transforms.preprocess([qualify_derived_table_outputs])` —
-    // blocked, see file header.
+    [exp.Subquery, transforms.preprocess([qualify_derived_table_outputs])], // py:234
     [exp.SHA, (self, e) => self.func("HASHBYTES", exp.Literal.string("SHA1"), e.this)],
     [exp.SHA1Digest, (self, e) => self.func("HASHBYTES", exp.Literal.string("SHA1"), e.this)],
     // py:237 `exp.Literal.string(f"SHA2_{e.args.get('length', 256)}")` — an implicit
