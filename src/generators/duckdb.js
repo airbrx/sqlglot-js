@@ -1,6 +1,6 @@
 // py: sqlglot/generators/duckdb.py — `class DuckDBGenerator(generator.Generator)`.
 //
-// @ported-ranges sqlglot/generators/duckdb.py 50-50 213-214 217-229 320-357 359-450 452-540 545-547 549-563 607-648 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 4349-4406 4419-4497
+// @ported-ranges sqlglot/generators/duckdb.py 50-50 213-214 217-229 320-357 359-450 452-540 545-547 549-563 607-648 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1428-1455 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 4349-4406 4419-4497
 //
 // SCOPE — a deliberately small, honest slice of a 4,788-line file (PORT_PLAN.md,
 // "DuckDB generator is an outlier size" — ~4x every other single-file dialect
@@ -494,6 +494,39 @@ function _array_remove_at_sql(self, expression) {
   );
 }
 
+/**
+ * py:1428 `_date_from_parts_sql(self, expression)` for `exp.DateFromParts`.
+ *
+ * Snowflake's DATE_FROM_PARTS allows out-of-range values for the month and
+ * day input (e.g. month=13, day=100, or zero/negative values), but DuckDB's
+ * MAKE_DATE does not. DuckDB's INTERVAL type does, so when `allow_overflow`
+ * is set this converts to date arithmetic:
+ * MAKE_DATE(year, 1, 1) + INTERVAL (month-1) MONTH + INTERVAL (day-1) DAY
+ */
+function _date_from_parts_sql(self, expression) {
+  const year_expr = expression.args.year;
+  const month_expr = expression.args.month;
+  const day_expr = expression.args.day;
+
+  if (expression.args.allow_overflow) {
+    let base_date = exp.func("MAKE_DATE", year_expr, exp.Literal.number(1), exp.Literal.number(1));
+
+    if (month_expr) {
+      // deny:operators sqlglot/generators/duckdb.py:1449 — Python `+`/`-` on an Expr
+      base_date = base_date.add(new exp.Interval({ this: month_expr.sub(exp.Literal.number(1)), unit: exp.var("MONTH") }));
+    }
+
+    if (day_expr) {
+      // deny:operators sqlglot/generators/duckdb.py:1452 — Python `+`/`-` on an Expr
+      base_date = base_date.add(new exp.Interval({ this: day_expr.sub(exp.Literal.number(1)), unit: exp.var("DAY") }));
+    }
+
+    return self.sql(exp.cast(base_date, exp.DType.DATE));
+  }
+
+  return self.func("MAKE_DATE", year_expr, month_expr, day_expr);
+}
+
 /** py:1017 */
 function _cast_to_boolean(arg) {
   if (arg && !arg.isType(exp.DType.BOOLEAN)) return exp.cast(arg, exp.DType.BOOLEAN);
@@ -765,7 +798,7 @@ export class DuckDBGenerator extends Generator {
     // py:1668 [exp.DataType, _datatype_sql] — blocked, DECIMAL/BIGDECIMAL/DECFLOAT scale handling out of scope this pass
     // py:1669 [exp.Date, _date_sql] — blocked, local helper out of scope this pass
     [exp.DateAdd, _date_delta_to_binary_interval_op()],
-    // py:1671 [exp.DateFromParts, _date_from_parts_sql] — blocked, local helper out of scope this pass
+    [exp.DateFromParts, _date_from_parts_sql],
     [exp.DateSub, _date_delta_to_binary_interval_op()],
     [exp.DateDiff, _date_diff_sql],
     [exp.DateStrToDate, datestrtodate_sql],
