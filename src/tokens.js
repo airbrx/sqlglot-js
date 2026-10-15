@@ -720,9 +720,10 @@ export function getAnnotateTypesRef() {
  * own named hazard: `generator.js` cannot import `dialects/dialect.js` at all,
  * regardless of which export it names, because `dialect.js` already imports
  * `Generator` FROM `generator.js` (a one-directional cycle, same shape as this file's
- * own `Dialect` relay above). AIR-2276 adds `WEEK_START_DAY_TO_DOW`/
- * `week_offset_to_dow` to this same payload for `weekstart_name`'s identical reach.
- * Installed once by `dialects/dialect.js` itself, after all five are defined.
+ * own `Dialect` relay above). `WEEK_START_DAY_TO_DOW`/`week_offset_to_dow` were added
+ * to this same payload independently by both AIR-2276 and AIR-2278/PORT_PLAN.md R93
+ * for `weekstart_name`'s identical reach. Installed once by `dialects/dialect.js`
+ * itself, after all five are defined.
  * @type {{ unit_to_str: Function, map_date_part: Function, concat_to_dpipe_sql: Function, WEEK_START_DAY_TO_DOW: Map, week_offset_to_dow: Function } | null}
  */
 let _dialectHelpersRef = null;

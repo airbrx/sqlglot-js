@@ -2550,13 +2550,19 @@ registerAstDialects(DIALECT_CLASSES_BY_NAME);
 setDialectResolver((dialect) => Dialect.get_or_raise(dialect));
 
 // AIR-2194/PORT_PLAN.md R32's own named hazard, same relay shape as the resolver just
-// above: `generator.js`'s base `dateadd_sql`/`extract_sql`/`concat_sql` need
-// `unit_to_str`/`map_date_part`/`concat_to_dpipe_sql` (all three defined earlier in
-// this file) but cannot import this module directly (it already imports `Generator`
-// FROM `generator.js`). AIR-2276 adds `WEEK_START_DAY_TO_DOW`/`week_offset_to_dow`
-// (both also defined earlier in this file) to the same payload for `weekstart_name`'s
-// identical reach. See `tokens.js`'s own `getDialectHelpersRef` header.
-setDialectHelpersRef({ unit_to_str, map_date_part, concat_to_dpipe_sql, WEEK_START_DAY_TO_DOW, week_offset_to_dow });
+// above: `generator.js`'s base `dateadd_sql`/`extract_sql`/`concat_sql`/`weekstart_name`
+// need `unit_to_str`/`map_date_part`/`concat_to_dpipe_sql`/`WEEK_START_DAY_TO_DOW`/
+// `week_offset_to_dow` (all five defined earlier in this file) but cannot import this
+// module directly (it already imports `Generator` FROM `generator.js`). `weekstart_name`
+// and its two extra relay entries were ported independently by both AIR-2276 and
+// AIR-2278/PORT_PLAN.md R93. See `tokens.js`'s own `getDialectHelpersRef` header.
+setDialectHelpersRef({
+  unit_to_str,
+  map_date_part,
+  concat_to_dpipe_sql,
+  WEEK_START_DAY_TO_DOW,
+  week_offset_to_dow,
+});
 
 /**
  * py: sqlglot/__init__.py:134 `parse_one`.
