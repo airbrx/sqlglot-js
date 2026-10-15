@@ -297,11 +297,13 @@ export function run(api) {
     }
     // Sanity floor, not a progress gate: this count legitimately SHRINKS as the stub
     // queue empties (405 originally seeded -> 0 once P3 is done), so it must not assert
-    // a specific baseline. 50 is generous headroom above "the regex silently broke and
-    // found a handful" while staying well clear of real stub-queue burndown. Found
-    // 2026-08-28 when merging the first parallel stub-queue batch (286 real stubs
-    // remaining) tripped the old `< 300` floor as a false failure.
-    if (realStubs.length < 50) throw new Error(`only found ${realStubs.length} stubs — drift?`);
+    // a specific baseline. Lowered 50 -> 20 (AIR-2280): the P3 parser-stubs round's own
+    // nine-stub-plus-family port brought the real count to 35, tripping the old `< 50`
+    // floor the same way merging the first parallel stub-queue batch tripped the
+    // original `< 300` floor on 2026-08-28. 20 stays generous headroom above "the regex
+    // silently broke and found a handful" while staying well clear of the remaining
+    // burndown.
+    if (realStubs.length < 20) throw new Error(`only found ${realStubs.length} stubs — drift?`);
     console.log(`         ${realStubs.length} stubs -> ${seen.size} distinct units, 0 mis-attributed`);
     const tableUnits = new Set(idx.units.filter((u) => /^Parser\.[A-Z_]+\[/.test(u)));
     if (tableUnits.size < 500) throw new Error(`only ${tableUnits.size} table-entry units`);

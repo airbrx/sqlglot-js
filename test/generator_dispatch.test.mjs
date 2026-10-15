@@ -93,14 +93,22 @@ test("the only gap versus CPython is the deliberately-unseeded TRANSFORMS", () =
   // `**JSON_PATH_PART_TRANSFORMS` spread (py:137) finally resolves to its real ten
   // entries — `JSONPath{Filter,Key,Recursive,Root,Script,Selector,Slice,Subscript,
   // Union,Wildcard}` — instead of the placeholder comment R21 left in its place.
-  assert.equal(Generator.TRANSFORMS.size, 91, "TRANSFORMS has 91 real entries after jsonpath.js wiring");
+  // +2 from AIR-2280 (the P3 parser-stubs round, PORT_PLAN.md): `exp.JSONObject` and
+  // `exp.JSONObjectAgg` (py:212/213) were each still a `// TODO lambda` placeholder,
+  // so the base Func fallback derived their SQL name from the class name via the
+  // per-capital-letter split (the "J_S_O_N_B_..." shape the two Postgres entries
+  // above already describe), producing `J_S_O_N_OBJECT(...)` instead of
+  // `JSON_OBJECT(...)` — latent for the same reason as `PivotAny` above: nothing
+  // could construct a real `JSONObject` node until `_parse_json_object` was wired
+  // into `FUNCTION_PARSERS`, which is this round's own parser.js change.
+  assert.equal(Generator.TRANSFORMS.size, 93, "TRANSFORMS has 93 real entries after jsonpath.js wiring");
 
   const wantTransform = Object.entries(WANT).filter(([, h]) => h === "transform");
   assert.equal(wantTransform.length, 143);
 
   const got = _buildDispatch(Generator);
   assert.equal(got.size, Object.keys(WANT).length - wantTransform.length + Generator.TRANSFORMS.size);
-  assert.equal(got.size, 508);
+  assert.equal(got.size, 510);
 });
 
 test("TRANSFORMS beats a same-named *_sql method", () => {
@@ -444,6 +452,21 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // the last `JSONPathPart` generator method left as a stub — a two-line body
   // (`json_path_part` plus a bracket wrap) that depended on nothing but itself.
   // +3 from AIR-2240 (PORT_PLAN.md R85, the transaction-control cluster): `transaction_sql`,
+  // +1 from AIR-2280 (the P3 parser-stubs round, PORT_PLAN.md): `groupingsets_sql`
+  // (generator.py:2765) -- not itself a parser.js method, but porting
+  // `_parse_grouping_set` let a `merge_subqueries` optimize() end-to-end fixture
+  // parse a `GROUPING SETS (...)` tuple for the first time and reach this
+  // previously-unreached base-Generator render stub next, the same "porting the
+  // parser surfaces the generator's own caller" shape R78/R82 already established.
+  // +3 more from the same round: `_jsonobject_sql`/`jsonkeyvalue_sql`/
+  // `formatjson_sql` (generator.py:3835/3793/3825) -- wiring `_parse_json_object`
+  // into `FUNCTION_PARSERS` let real `JSON_OBJECT(...)` corpus rows construct
+  // `JSONObject`/`JSONKeyValue`/`FormatJson` nodes for the first time, surfacing
+  // these three previously-unreached render stubs one layer down; the TRANSFORMS
+  // wiring above is what routes `JSONObject`/`JSONObjectAgg` to `_jsonobject_sql`
+  // instead of the buggy class-name-derived fallback.
+  // +3 from AIR-2240 (PORT_PLAN.md R85, the transaction-control cluster, merged
+  // concurrently with AIR-2280's own R86 and combined here): `transaction_sql`,
   // `commit_sql`, `rollback_sql` (generator.py:4202/4207/4214) — Postgres `BEGIN`/
   // `COMMIT`/`ROLLBACK` previously failed `standardizedSql` generation in
   // `contrib/gatewaySqlMetadata.js` with a `NotPorted` error; the parser side
@@ -457,7 +480,7 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // FIELDS, which the frozen stand-in either hosts or safely returns `undefined` for),
   // so every one of the 13 also lands in the "runs without a resolved Dialect" bucket
   // below, not the `identifier_sql`-style exception.
-  assert.equal(bodied.length, 150, "exactly 150 *_sql methods have a real body");
+  assert.equal(bodied.length, 154, "exactly 154 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -526,7 +549,17 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // so `.isType(...)` has nothing to call itself on) — the same "runs, just not
   // usefully, on made-up input" outcome `arrayagg_sql`/`arrayany_sql` already
   // established this assertion counts.
-  assert.equal(432 - stubs.length, 149, "149 of those 150 also run without a resolved Dialect");
+  // +1 for `groupingsets_sql` (AIR-2280): reads no Dialect state either, so
+  // `this.expressions(expression, null, {indent: false})` + `this.wrap(...)` both
+  // tolerate the missing `expressions` arg and return `"GROUPING SETS ()"`.
+  // +3 for `_jsonobject_sql`/`jsonkeyvalue_sql`/`formatjson_sql` (AIR-2280): none
+  // reads Dialect state either, so all three return a (nonsensical but non-throwing)
+  // string on the bare stand-in (`"JSON_OBJECTAGG()"`, `": "`, `" FORMAT JSON"`).
+  // +3 for AIR-2240's three new bodies (merged concurrently with AIR-2280's own R86
+  // and combined here): none reads `this.dialect` or any other Dialect-hosted state,
+  // so `transaction_sql`/`commit_sql`/`rollback_sql` all run on the bare stand-in too
+  // (`"BEGIN"`/`"COMMIT"`/`"ROLLBACK"` with every optional arg missing).
+  assert.equal(432 - stubs.length, 153, "153 of those 154 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],
