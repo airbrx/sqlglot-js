@@ -7,10 +7,13 @@
 > is the actual measurement, produced by `tools/fixture_rollup.mjs`, which anyone can
 > re-run.
 
-Measured 2026-10-15 on `origin/main` `a5fceb1`, against pinned upstream
+Measured 2026-10-15, branch based on `origin/main` `a5fceb1` and merged forward to
+`2309ae7` (PRs #110/#111/#112 landed concurrently), against pinned upstream
 `91119bcaac977ede6f4a641bdda593b0015ef998` (`/tmp/sqlglot-complete-pin`). Runtime: Node
-22.12.0, CPython 3.9.25, `PYTHONHASHSEED=0`. No `src/` changes in this round — this is
-a measurement-only round (epic AIR-2273, "finish-line hygiene").
+22.12.0, CPython 3.9.25, `PYTHONHASHSEED=0`. No `src/` changes from this round itself —
+this is a measurement-only round (epic AIR-2273, "finish-line hygiene"); the concurrent
+merge did touch `src/` (R91-R93), which is why one table cell below (`qualify_tables.sql`)
+differs from this round's own first measurement — see PORT_PLAN.md's R94 entry.
 
 ```
 SQLGLOT_REF=/tmp/sqlglot-complete-pin node tools/fixture_rollup.mjs             # human-readable
@@ -84,7 +87,7 @@ now.
 | `qualify_columns__invalid.sql` | 20 (lines, not pairs) | `spike/p10/fuzz_qualify.mjs` | EXACT 21  KNOWN_GAP 0  MISMATCH 0  ERROR 0 | 0 | oracle adds 1 own resolver-get-table-fallback scenario (test_optimizer.py:1184-1209) beyond the 20 fixture lines; outside the pair model (see above) |
 | `qualify_columns__with_invisible.sql` | 9 | `spike/p10/fuzz_qualify.mjs` | EXACT 9  KNOWN_GAP 0  MISMATCH 0  ERROR 0 | 0 | |
 | `qualify_columns_ddl.sql` | 10 | `spike/p10/fuzz_qualify.mjs` | EXACT 10  KNOWN_GAP 0  MISMATCH 0  ERROR 0 | 0 | |
-| `qualify_tables.sql` | 71 | `spike/p10/fuzz_qualify.mjs` | EXACT 69  KNOWN_GAP 2  MISMATCH 0  ERROR 0 | 0 | replayed by `fuzz_qualify.mjs`'s own `run_qualify_tables_fixture`, not by `spike/p7/fuzz_qualify_tables.mjs` (hand-built, does not load this file) |
+| `qualify_tables.sql` | 71 | `spike/p10/fuzz_qualify.mjs` | EXACT 70  KNOWN_GAP 1  MISMATCH 0  ERROR 0 | 0 | replayed by `fuzz_qualify.mjs`'s own `run_qualify_tables_fixture`, not by `spike/p7/fuzz_qualify_tables.mjs` (hand-built, does not load this file) |
 | `quote_identifiers.sql` | 10 | **none** | — | 0 | no oracle opens this file |
 | `simplify.sql` | 521 | **none** | — | 0 | `spike/p7/fuzz_simplify.mjs` is a hand-built Simplifier battery (own docstring) -- does not load this 521-pair file, the largest full-SQL-pair fixture in the corpus |
 | `tpc-h/tpc-h.sql` | 22 | `spike/p10/fuzz_optimize_e2e.mjs` | EXACT 22  GENERATOR_GAP 0  MISMATCH 0  ERROR 0  SKIPPED 0 | 0 | |
@@ -104,7 +107,7 @@ end-to-end gate (AIR-2119), not part of the pair model above.
 | Pairs replayed by some oracle in `spike/p7`/`spike/p10` | 854 |
 | Pairs with **no oracle anywhere** that replays their real fixture file | **2,735** |
 | Pairs permanently wontfix (execute, the 3 `execute=True` files, no `execute` meta key) | **259** |
-| Sum of `EXACT` across every mapped oracle (includes each oracle's own extra non-fixture rows per the notes column) | 860 |
+| Sum of `EXACT` across every mapped oracle (includes each oracle's own extra non-fixture rows per the notes column) | 861 |
 | `qualify_columns__invalid.sql` (line-based, not a pair file; separate population) | 20 lines, oracle EXACT 21/21 |
 
 **The one honest sentence:** of the 3,589 real optimizer fixture pairs at this pin, 854
