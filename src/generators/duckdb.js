@@ -1,6 +1,6 @@
 // py: sqlglot/generators/duckdb.py — `class DuckDBGenerator(generator.Generator)`.
 //
-// @ported-ranges sqlglot/generators/duckdb.py 50-50 213-214 217-229 320-357 359-450 452-540 545-547 549-563 607-648 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1428-1455 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 4349-4406 4419-4497 4670-4712
+// @ported-ranges sqlglot/generators/duckdb.py 50-50 213-214 217-229 320-357 359-450 452-540 545-547 549-563 607-648 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1428-1455 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 3952-3971 4349-4406 4419-4497 4670-4712
 //
 // SCOPE — a deliberately small, honest slice of a 4,788-line file (PORT_PLAN.md,
 // "DuckDB generator is an outlier size" — ~4x every other single-file dialect
@@ -95,7 +95,7 @@ import {
   week_unit_to_dow,
   weekstart_unit_to_str,
 } from "../dialects/dialect.js";
-import { isDateUnit } from "../helper.js";
+import { isDateUnit, seqGet } from "../helper.js";
 import { annotate_types } from "../optimizer/annotate_types.js";
 import { decDiv, pyDecimal } from "../_py/num.js";
 
@@ -1183,5 +1183,28 @@ export class DuckDBGenerator extends Generator {
     for (let i = 0; i <= num_quantiles; i++) quantiles.push(exp.Literal.number(decDiv(pyDecimal(i), denom)));
 
     return this.sql(new exp.ApproxQuantile({ this: this_, quantile: new exp.Array({ expressions: quantiles }) }));
+  }
+
+  /** py:3952 `unnest_sql(self, expression)`. */
+  unnest_sql(expression) {
+    const explode_array = expression.args.explode_array;
+    if (explode_array) {
+      // In BigQuery, UNNESTing a nested array leads to explosion of the top-level array & struct
+      // This is transpiled to DDB by transforming "FROM UNNEST(...)" to "FROM (SELECT UNNEST(..., max_depth => 2))"
+      expression.expressions.push(new exp.Kwarg({ this: exp.var("max_depth"), expression: exp.Literal.number(2) }));
+
+      // If BQ's UNNEST is aliased, we transform it from a column alias to a table alias in DDB
+      let alias = expression.args.alias;
+      if (alias instanceof exp.TableAlias) {
+        expression.set("alias", null);
+        if (alias.columns.length) alias = new exp.TableAlias({ this: seqGet(alias.columns, 0) });
+      }
+
+      const unnest_sql = super.unnest_sql(expression);
+      const select = new exp.Select({ expressions: [unnest_sql] }).subquery(alias);
+      return this.sql(select);
+    }
+
+    return super.unnest_sql(expression);
   }
 }
