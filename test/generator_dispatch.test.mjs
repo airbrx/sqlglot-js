@@ -480,7 +480,26 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // FIELDS, which the frozen stand-in either hosts or safely returns `undefined` for),
   // so every one of the 13 also lands in the "runs without a resolved Dialect" bucket
   // below, not the `identifier_sql`-style exception.
-  assert.equal(bodied.length, 154, "exactly 154 *_sql methods have a real body");
+  // +39 from AIR-2278 (epic AIR-2270, "10.5 Generator stubs cluster D1", PORT_PLAN.md):
+  // the forty named base-Generator stubs (`withtablehint_sql`/`comment_sql`/
+  // `jsonarray_sql`/`concatws_sql`/`addpartition_sql`/`space_sql`/`block_sql`/
+  // `bitwisenot_sql`/`jsonarrayagg_sql`/`bitwisexor_sql`/`returning_sql`/
+  // `onconflict_sql`/`nthvalue_sql`/`primarykey_sql`/`partitionedofproperty_sql`/
+  // `alterset_sql`/`strtodate_sql`/`attach_sql`/`tsordstodatetime_sql`/
+  // `altersortkey_sql`/`install_sql`/`toarray_sql`/`fetch_sql`/`in_unnest_op`/
+  // `predict_sql`/`unixseconds_sql`/`addconstraint_sql`/`limitoptions_sql`/
+  // `xmlelement_sql`/`bitwiseor_sql`/`parsedatetime_sql`/`anyvalue_sql`/
+  // `alterdiststyle_sql`/`bitwiserightshift_sql`/`computedcolumnconstraint_sql`/
+  // `bitwiseleftshift_sql`/`show_sql`/`slice_sql`/`scoperesolution_sql`/
+  // `weekstart_name`) plus the `_ml_sql` sibling `predict_sql` reaches, minus the two
+  // named methods that are not `*_sql`-suffixed (`in_unnest_op`, `weekstart_name`) and
+  // so not counted here, minus the `scope_resolution` sibling `scoperesolution_sql`
+  // reaches (also not `*_sql`-suffixed): 40 - 2 + 1 = 39. `weekstart_name` reaches
+  // `dialects/dialect.js`'s `WEEK_START_DAY_TO_DOW`/`week_offset_to_dow` through the
+  // same `tokens.js` relay R82 built for `unit_to_str`/`map_date_part`/
+  // `concat_to_dpipe_sql`, extended here rather than duplicated (one relay object,
+  // five fields, same "`generator.js` cannot import `dialects/dialect.js`" R32 cycle).
+  assert.equal(bodied.length, 193, "exactly 193 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -559,7 +578,19 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // and combined here): none reads `this.dialect` or any other Dialect-hosted state,
   // so `transaction_sql`/`commit_sql`/`rollback_sql` all run on the bare stand-in too
   // (`"BEGIN"`/`"COMMIT"`/`"ROLLBACK"` with every optional arg missing).
-  assert.equal(432 - stubs.length, 153, "153 of those 154 also run without a resolved Dialect");
+  // +39 for AIR-2278's thirty-nine new bodies: empirically verified (`node -e` against
+  // a bare `new Generator()`), none throws `NotPorted`. Three throw a plain
+  // `TypeError` instead (`nthvalue_sql`: `expression.constructor.sqlName` is not a
+  // function on a bare `exp.Expr`; `tsordstodatetime_sql`: `expression.this` is
+  // `undefined`, so `.isType(...)` has nothing to call itself on; `toarray_sql`:
+  // `expression.this.type` likewise) — the same "runs, just not usefully, on made-up
+  // input" outcome this assertion already counts for `arrayagg_sql`/`arrayany_sql`/
+  // `tsordstodate_sql`. The remaining thirty-six return a string outright, including
+  // `weekstart_name` and `scope_resolution`'s own caller `scoperesolution_sql` (every
+  // one of the thirty-nine reads only class/Dialect FIELDS and the `tokens.js` relay
+  // getters, never a Dialect METHOD, so none needs the `identifier_sql`-style
+  // exception).
+  assert.equal(432 - stubs.length, 192, "192 of those 193 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],
