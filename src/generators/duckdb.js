@@ -1,6 +1,6 @@
 // py: sqlglot/generators/duckdb.py — `class DuckDBGenerator(generator.Generator)`.
 //
-// @ported-ranges sqlglot/generators/duckdb.py 50-50 213-214 217-229 320-357 545-547 549-563 607-648 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2652-2677 4419-4497
+// @ported-ranges sqlglot/generators/duckdb.py 50-50 213-214 217-229 320-357 545-547 549-563 607-648 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 4419-4497
 //
 // SCOPE — a deliberately small, honest slice of a 4,788-line file (PORT_PLAN.md,
 // "DuckDB generator is an outlier size" — ~4x every other single-file dialect
@@ -735,16 +735,19 @@ export class DuckDBGenerator extends Generator {
     ],
     [exp.VariancePop, rename_func("VAR_POP")],
     [exp.WeekOfYear, rename_func("WEEKOFYEAR")],
-    // py:1797,1803 [exp.YearOfWeek, exp.YearOfWeekIso] — blocked. Both build an
-    // `exp.Extract` node and render it, which dispatches to base `extract_sql`
-    // (sqlglot/generator.py:3649, still NotPorted). `extract_sql` itself is small (17
-    // lines) but needs `dialects/dialect.js`'s `map_date_part` — and `generator.js`
-    // cannot import `dialects/dialect.js` (the reverse import already exists,
-    // `dialect.js:49`, so this direction would cycle). Newly-found hazard, written up
-    // as PORT_PLAN.md R32: porting `extract_sql` needs either a lazy dynamic import (it
-    // is a sync method on a sync call chain, so that does not work directly) or a
-    // registration-hook indirection (`registerGenerator`-style) neither of which is a
-    // same-pass fix.
+    // py:1797,1803 [exp.YearOfWeek, exp.YearOfWeekIso] — unblocked: both build an
+    // `exp.Extract` node and render it, which now dispatches to the DuckDB-specific
+    // `extract_sql` override below (base `generator.js`'s own `extract_sql` is real
+    // too, `map_date_part`'s cross-module-import hazard from R32 having since been
+    // resolved — stale per R22, "stubs outlive their stated blocker").
+    [
+      exp.YearOfWeek,
+      (self, e) => self.sql(new exp.Extract({ this: exp.var("ISOYEAR"), expression: e.this })),
+    ],
+    [
+      exp.YearOfWeekIso,
+      (self, e) => self.sql(new exp.Extract({ this: exp.var("ISOYEAR"), expression: e.this })),
+    ],
     [exp.Xor, _xor_sql],
     [exp.JSONObjectAgg, rename_func("JSON_GROUP_OBJECT")],
     [exp.JSONBObjectAgg, rename_func("JSON_GROUP_OBJECT")],
@@ -799,4 +802,87 @@ export class DuckDBGenerator extends Generator {
     "current_timestamp", "returning", "primary", "intersect", "having", "analyze",
     "current_user", "and", "cast", "symmetric", "using", "order", "current_catalog",
   ]);
+
+  /**
+   * py:2004 `EXTRACT_STRFTIME_MAPPINGS`.
+   * Maps Snowflake specifiers unsupported in DuckDB to strftime format codes.
+   */
+  static EXTRACT_STRFTIME_MAPPINGS = new Map([
+    ["WEEKISO", ["%V", "INTEGER"]],
+    ["YEAROFWEEK", ["%G", "INTEGER"]],
+    ["YEAROFWEEKISO", ["%G", "INTEGER"]],
+    ["NANOSECOND", ["%n", "BIGINT"]],
+  ]);
+
+  /** py:2012 `EXTRACT_EPOCH_MAPPINGS`. Maps epoch-based specifiers to DuckDB epoch functions. */
+  static EXTRACT_EPOCH_MAPPINGS = new Map([
+    ["EPOCH_SECOND", "EPOCH"],
+    ["EPOCH_MILLISECOND", "EPOCH_MS"],
+    ["EPOCH_MICROSECOND", "EPOCH_US"],
+    ["EPOCH_NANOSECOND", "EPOCH_NS"],
+  ]);
+
+  /**
+   * py:2987 `extract_sql(self, expression)`.
+   *
+   * Transpile EXTRACT/DATE_PART for DuckDB, handling specifiers not natively
+   * supported: WEEKISO, YEAROFWEEK, YEAROFWEEKISO, NANOSECOND, EPOCH_SECOND
+   * (as integer), EPOCH_MILLISECOND, EPOCH_MICROSECOND, EPOCH_NANOSECOND.
+   */
+  extract_sql(expression) {
+    const this_ = expression.this;
+    const datetime_expr = expression.expression;
+
+    // TIMESTAMPTZ extractions may produce different results between Snowflake and DuckDB
+    // because Snowflake applies server timezone while DuckDB uses local timezone
+    if (datetime_expr.isType(exp.DType.TIMESTAMPTZ, exp.DType.TIMESTAMPLTZ)) {
+      this.unsupported(
+        "EXTRACT from TIMESTAMPTZ / TIMESTAMPLTZ may produce different results due to timezone handling differences",
+      );
+    }
+
+    const part_name = this_.name.toUpperCase();
+
+    if (this.constructor.EXTRACT_STRFTIME_MAPPINGS.has(part_name)) {
+      const [fmt, cast_type] = this.constructor.EXTRACT_STRFTIME_MAPPINGS.get(part_name);
+
+      // Problem: strftime doesn't accept TIME and there's no NANOSECOND function
+      // So, for NANOSECOND with TIME, fallback to MICROSECOND * 1000
+      const is_nano_time = part_name === "NANOSECOND" && datetime_expr.isType(exp.DType.TIME, exp.DType.TIMETZ);
+
+      if (is_nano_time) {
+        this.unsupported("Parameter NANOSECOND is not supported with TIME type in DuckDB");
+        return this.sql(
+          exp.cast(
+            new exp.Mul({
+              this: new exp.Extract({ this: exp.var("MICROSECOND"), expression: datetime_expr }),
+              expression: exp.Literal.number(1000),
+            }),
+            exp.DataType.build(cast_type, { dialect: "duckdb" }),
+          ),
+        );
+      }
+
+      // For NANOSECOND, cast to TIMESTAMP_NS to preserve nanosecond precision
+      let strftime_input = datetime_expr;
+      if (part_name === "NANOSECOND") strftime_input = exp.cast(datetime_expr, exp.DType.TIMESTAMP_NS);
+
+      return this.sql(
+        exp.cast(
+          new exp.Anonymous({ this: "STRFTIME", expressions: [strftime_input, exp.Literal.string(fmt)] }),
+          exp.DataType.build(cast_type, { dialect: "duckdb" }),
+        ),
+      );
+    }
+
+    if (this.constructor.EXTRACT_EPOCH_MAPPINGS.has(part_name)) {
+      const func_name = this.constructor.EXTRACT_EPOCH_MAPPINGS.get(part_name);
+      let result = new exp.Anonymous({ this: func_name, expressions: [datetime_expr] });
+      // EPOCH returns float, cast to BIGINT for integer result
+      if (part_name === "EPOCH_SECOND") result = exp.cast(result, exp.DataType.build("BIGINT", { dialect: "duckdb" }));
+      return this.sql(result);
+    }
+
+    return super.extract_sql(expression);
+  }
 }
