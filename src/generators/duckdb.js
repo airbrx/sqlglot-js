@@ -1,6 +1,6 @@
 // py: sqlglot/generators/duckdb.py — `class DuckDBGenerator(generator.Generator)`.
 //
-// @ported-ranges sqlglot/generators/duckdb.py 50-50 93-101 213-214 217-229 320-357 359-450 452-540 545-547 549-563 607-648 670-678 827-845 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1428-1455 1459-1497 1497-1523 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 3299-3326 3412-3422 3952-3971 4349-4406 4419-4497 4670-4712
+// @ported-ranges sqlglot/generators/duckdb.py 50-50 93-101 213-214 217-229 320-357 359-450 452-540 545-547 549-563 607-648 654-662 670-678 827-845 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1428-1455 1459-1497 1497-1523 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 3299-3326 3412-3422 3952-3971 4349-4406 4419-4497 4670-4712
 //
 // SCOPE — a deliberately small, honest slice of a 4,788-line file (PORT_PLAN.md,
 // "DuckDB generator is an outlier size" — ~4x every other single-file dialect
@@ -371,6 +371,20 @@ function _date_delta_to_binary_interval_op(cast = true) {
 }
 
 /** py:607 `_struct_sql(self, expression)` for `exp.Struct`. */
+/** py:654 `_datatype_sql(self, expression)` for `exp.DataType`. */
+function _datatype_sql(self, expression) {
+  if (expression.isType("array")) {
+    return `${self.expressions(expression, null, { flat: true })}[${self.expressions(expression, "values", { flat: true })}]`;
+  }
+
+  // Modifiers are not supported for TIME, [TIME | TIMESTAMP] WITH TIME ZONE
+  if (expression.isType(exp.DType.TIME, exp.DType.TIMETZ, exp.DType.TIMESTAMPTZ)) {
+    return expression.this.value;
+  }
+
+  return self.datatype_sql(expression);
+}
+
 function _struct_sql(self, expression) {
   let ancestor_cast = expression.findAncestor(exp.Cast, exp.Select);
   ancestor_cast = ancestor_cast instanceof exp.Select ? null : ancestor_cast;
@@ -880,7 +894,7 @@ export class DuckDBGenerator extends Generator {
       exp.Monthname,
       (self, e) => (e.args.abbreviated ? self.func("STRFTIME", e.this, exp.Literal.string("%b")) : self.func("MONTHNAME", e.this)),
     ],
-    // py:1668 [exp.DataType, _datatype_sql] — blocked, DECIMAL/BIGDECIMAL/DECFLOAT scale handling out of scope this pass
+    [exp.DataType, _datatype_sql],
     // py:1669 [exp.Date, _date_sql] — blocked, local helper out of scope this pass
     [exp.DateAdd, _date_delta_to_binary_interval_op()],
     [exp.DateFromParts, _date_from_parts_sql],
