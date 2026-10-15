@@ -1,6 +1,6 @@
 // py: sqlglot/generators/duckdb.py — `class DuckDBGenerator(generator.Generator)`.
 //
-// @ported-ranges sqlglot/generators/duckdb.py 50-50 213-214 217-229 320-357 359-450 452-540 545-547 549-563 607-648 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1428-1455 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 3952-3971 4349-4406 4419-4497 4670-4712
+// @ported-ranges sqlglot/generators/duckdb.py 50-50 93-101 213-214 217-229 320-357 359-450 452-540 545-547 549-563 607-648 670-678 827-845 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1428-1455 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 3952-3971 4349-4406 4419-4497 4670-4712
 //
 // SCOPE — a deliberately small, honest slice of a 4,788-line file (PORT_PLAN.md,
 // "DuckDB generator is an outlier size" — ~4x every other single-file dialect
@@ -101,6 +101,57 @@ import { decDiv, pyDecimal } from "../_py/num.js";
 
 // py:50 — used only by `_implicit_datetime_cast` below.
 const TIMEZONE_PATTERN = /:\d{2}.*?[+\-]\d{2}(?::\d{2})?/;
+
+// py:93-101 — SEQ function constants, each a module-level `exp.maybe_parse(...)`
+// template parsed once at import time (mirrored here as module-level `maybeParse`
+// calls for the same reason) and filled in per call via `exp.replace_placeholders`.
+const _SEQ_BASE = exp.maybeParse("(ROW_NUMBER() OVER (ORDER BY 1) - 1)");
+const _SEQ_RESTRICTED = [exp.Where, exp.Having, exp.AggFunc, exp.Order, exp.Select];
+// Maps SEQ expression types to their byte width (suffix indicates bytes: SEQ1=1, SEQ2=2, etc.)
+const _SEQ_BYTE_WIDTH = new Map([[exp.Seq1, 1], [exp.Seq2, 2], [exp.Seq4, 4], [exp.Seq8, 8]]);
+
+// Template for generating signed and unsigned SEQ values within a specified range
+const _SEQ_UNSIGNED = exp.maybeParse(":base % :max_val");
+const _SEQ_SIGNED = exp.maybeParse(
+  "(CASE WHEN :base % :max_val >= :half "
+  + "THEN :base % :max_val - :max_val "
+  + "ELSE :base % :max_val END)",
+);
+
+/** py:670 `_build_seq_expression(base, byte_width, signed)`. */
+function _build_seq_expression(base, byte_width, signed) {
+  const bits = byte_width * 8;
+  const max_val = exp.Literal.number(2 ** bits);
+
+  if (signed) {
+    const half = exp.Literal.number(2 ** (bits - 1));
+    return exp.replacePlaceholders(_SEQ_SIGNED.copy(), { base, max_val, half });
+  }
+  return exp.replacePlaceholders(_SEQ_UNSIGNED.copy(), { base, max_val });
+}
+
+/**
+ * py:827 `_seq_sql(self, expression, byte_width)`.
+ *
+ * Transpile Snowflake SEQ1/SEQ2/SEQ4/SEQ8 to DuckDB. Generates monotonically
+ * increasing integers starting from 0. The signed parameter (0 or 1) affects
+ * wrap-around behavior: unsigned (0) wraps at 2^(bits) - 1; signed (1) wraps
+ * at 2^(bits-1) - 1, then goes negative.
+ */
+function _seq_sql(self, expression, byte_width) {
+  // Warn if SEQ is in a restricted context (Select stops search at current scope)
+  const ancestor = expression.findAncestor(..._SEQ_RESTRICTED);
+  if (
+    ancestor
+    && (!(ancestor instanceof exp.Order || ancestor instanceof exp.Select)
+      || (ancestor instanceof exp.Order && ancestor.parent instanceof exp.Window))
+  ) {
+    self.unsupported("SEQ in restricted context is not supported - use CTE or subquery");
+  }
+
+  const result = _build_seq_expression(_SEQ_BASE.copy(), byte_width, expression.name === "1");
+  return self.sql(result);
+}
 
 /** py:545 */
 function _array_sort_sql(self, expression) {
@@ -839,7 +890,11 @@ export class DuckDBGenerator extends Generator {
     [exp.LogicalOr, (self, e) => self.func("BOOL_OR", _cast_to_boolean(e.this))],
     [exp.LogicalAnd, (self, e) => self.func("BOOL_AND", _cast_to_boolean(e.this))],
     // py:1718-1720 [exp.Select, transforms.preprocess([connect_by_to_recursive_cte, _seq_to_range_in_generator])] — blocked
-    // py:1721-1725 [exp.Seq1/2/4/8, exp.BoolxorAgg dup-region] — blocked, `_seq_sql` local helper out of scope this pass
+    [exp.Seq1, (self, e) => _seq_sql(self, e, 1)],
+    [exp.Seq2, (self, e) => _seq_sql(self, e, 2)],
+    [exp.Seq4, (self, e) => _seq_sql(self, e, 4)],
+    [exp.Seq8, (self, e) => _seq_sql(self, e, 8)],
+    // py:1725 [exp.BoolxorAgg, _boolxor_agg_sql] — dup of the real entry already wired above (py:1261)
     // py:1726 [exp.MakeInterval, lambda] wraps `no_make_interval_sql` directly — real, wired below
     [exp.MakeInterval, (self, e) => no_make_interval_sql(self, e, " ")],
     // py:1727-1732 [exp.Initcap, exp.MD5Digest, exp.SHA*] — blocked, local helpers out of scope this pass
