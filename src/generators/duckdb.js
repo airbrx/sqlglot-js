@@ -202,6 +202,21 @@ const RANDSTR_TEMPLATE = exp.maybeParse(`
  *                      e.g. [2,2,2] INTERSECT [2,2] -> [2,2]
  * IS NOT DISTINCT FROM is used for NULL-safe element comparison.
  */
+// py:2157 `UUID_V5_TEMPLATE` — UUID v5 (namespace + name), emulated via SHA1.
+const UUID_V5_TEMPLATE = exp.maybeParse(`
+  (SELECT
+      LOWER(
+          SUBSTR(h, 1, 8) || '-' ||
+          SUBSTR(h, 9, 4) || '-' ||
+          '5' || SUBSTR(h, 14, 3) || '-' ||
+          FORMAT('{:02x}', CAST('0x' || SUBSTR(h, 17, 2) AS INT) & 63 | 128) || SUBSTR(h, 19, 2) || '-' ||
+          SUBSTR(h, 21, 12)
+      )
+  FROM (
+      SELECT SUBSTR(SHA1(UNHEX(REPLACE(:namespace, '-', '')) || ENCODE(:name, 'utf8')), 1, 32) AS h
+  ))
+`);
+
 const ARRAY_BAG_TEMPLATE = exp.maybeParse(`
   CASE
       WHEN :arr1 IS NULL OR :arr2 IS NULL THEN NULL
@@ -3761,6 +3776,20 @@ export class DuckDBGenerator extends Generator {
 
     // Default: pass through as-is (conservative for DuckDB, handles binary and unannotated)
     return this.func("OCTET_LENGTH", arg);
+  }
+
+  /** py:4775 `uuid_sql(self, expression)`. */
+  uuid_sql(expression) {
+    const namespace = expression.this;
+    const name = expression.args.name;
+
+    // UUID v5 (namespace + name) - Emulate using SHA1
+    if (namespace && name) {
+      const result = exp.replacePlaceholders(UUID_V5_TEMPLATE.copy(), { namespace, name });
+      return this.sql(result);
+    }
+
+    return super.uuid_sql(expression);
   }
 
   /** py:2822 `checkjson_sql(self, expression)`. */
