@@ -47,7 +47,6 @@ import {
 import { TokenType } from "../tokens.js";
 import { isInt, seqGet } from "../helper.js";
 import { pyTruthy } from "../_py/truthy.js";
-import { NotPorted } from "../errors.js";
 import * as exp from "../expressions/index.js";
 import {
   binary_from_function,
@@ -71,45 +70,28 @@ import { annotate_types } from "../optimizer/annotate_types.js";
 /**
  * py: sqlglot/parsers/postgres.py:21
  *
- * `exp.to_interval` routes through `maybe_parse`, which needs the `registerParser`
- * hook that PORT_PLAN.md R17 records as exported-and-never-called (a P5 Dialect
- * concern, outside this parser). Left bare it raises a plain `TypeError`, which
- * `_parse_function_call` (parser.js:4870) would mistake for the arity signal in its
- * `builder(args)` / `builder(args, dialect)` dispatch and silently retry — turning a
- * missing component into a confusing double-call rather than a counted stub. The two
- * `to_interval` call sites are therefore re-raised as `NotPorted`.
+ * The goal is to convert step values like '1 day' or INTERVAL '1 day' into INTERVAL '1' day.
+ * Note: postgres allows calls with just two arguments -- the "step" argument defaults to 1.
  *
- * Only the string / unit-less-INTERVAL step forms reach that path; the ordinary
- * two-argument `GENERATE_SERIES(a, b)` and numeric-step calls never touch it.
+ * AIR-2281: `exp.toInterval` used to be re-raised here as `NotPorted` because it
+ * routes through `maybeParse`, which needed the `registerParser` hook that
+ * PORT_PLAN.md R17 recorded as exported-and-never-called. That hook has been wired
+ * since (`src/dialects/dialect.js`'s `registerParser` call), so this is the same
+ * "stubs outlive their stated blocker" pattern R68/R75/AIR-2193 already named for
+ * this file's own `annotate_types` import above -- found by grepping every
+ * `NotPorted` left in this directory, not by a reported failure.
  */
 function _build_generate_series(args) {
-  // The goal is to convert step values like '1 day' or INTERVAL '1 day' into INTERVAL '1' day
-  // Note: postgres allows calls with just two arguments -- the "step" argument defaults to 1
   const step = seqGet(args, 2);
   if (step !== null && step !== undefined) {
     if (step.isString) {
-      args[2] = _to_interval(step.this);
+      args[2] = exp.toInterval(step.this);
     } else if (step instanceof exp.Interval && !pyTruthy(step.args.unit)) {
-      args[2] = _to_interval(step.this.this);
+      args[2] = exp.toInterval(step.this.this);
     }
   }
 
   return exp.ExplodingGenerateSeries.from_arg_list(args);
-}
-
-/** py: sqlglot/expressions/builders.py:343 `to_interval`, via the R17 hook. */
-function _to_interval(value) {
-  try {
-    return exp.toInterval(value);
-  } catch (e) {
-    if (e instanceof TypeError) {
-      throw new NotPorted(
-        "to_interval (maybe_parse needs registerParser; PORT_PLAN.md R17)",
-        "sqlglot/expressions/builders.py:351",
-      );
-    }
-    throw e;
-  }
 }
 
 /** py: sqlglot/parsers/postgres.py:34 */

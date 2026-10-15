@@ -49,12 +49,12 @@
 // apply the seven preprocessing passes upstream's `Select` TRANSFORMS entry chains in
 // front of it.
 
-import { NotPorted } from "../errors.js";
 import { seqGet } from "../helper.js";
 import { preprocess, unqualify_columns } from "../transforms.js";
 import * as exp from "../expressions/index.js";
 import { TokenType } from "../tokens.js";
 import { Generator, unsupported_args } from "../generator.js";
+import { annotate_types } from "../optimizer/annotate_types.js";
 import {
   array_append_sql,
   array_concat_sql,
@@ -630,7 +630,7 @@ export class SnowflakeGenerator extends Generator {
     let value = expression.this;
 
     if (value.type === null || value.type === undefined) {
-      throw new NotPorted("trycast_sql (annotate_types)", "sqlglot/optimizer/annotate_types.py");
+      value = annotate_types(value, { dialect: this.dialect });
     }
 
     // Snowflake requires that TRY_CAST's value be a string
@@ -1058,10 +1058,10 @@ export class SnowflakeGenerator extends Generator {
 
   /** py:1095 */
   dot_sql(expression) {
-    const this_ = expression.this;
+    let this_ = expression.this;
 
     if (!this_.type) {
-      throw new NotPorted("dot_sql (annotate_types)", "sqlglot/optimizer/annotate_types.py");
+      this_ = annotate_types(this_, { dialect: this.dialect });
     }
 
     if (!(this_ instanceof exp.Dot) && this_.isType(exp.DType.STRUCT)) {
