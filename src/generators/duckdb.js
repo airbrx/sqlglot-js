@@ -112,6 +112,9 @@ import { pyRepr, pyUpper } from "../_py/str.js";
 // py:50 — used only by `_implicit_datetime_cast` below.
 const TIMEZONE_PATTERN = /:\d{2}.*?[+\-]\d{2}(?::\d{2})?/;
 
+// py:74 — used only by `bitmapbitposition_sql` below.
+const MAX_BIT_POSITION = exp.Literal.number(32768);
+
 // py:93-101 — SEQ function constants, each a module-level `exp.maybe_parse(...)`
 // template parsed once at import time (mirrored here as module-level `maybeParse`
 // calls for the same reason) and filled in per call via `exp.replace_placeholders`.
@@ -2012,6 +2015,99 @@ export class DuckDBGenerator extends Generator {
     }
 
     return super.tablesample_sql(expression, tablesample_keyword);
+  }
+
+  /**
+   * py:2317 `timeslice_sql(self, expression)`.
+   *
+   * Transform Snowflake's TIME_SLICE to DuckDB's time_bucket.
+   *
+   * Snowflake: TIME_SLICE(date_expr, slice_length, 'UNIT' [, 'START'|'END'])
+   * DuckDB:    time_bucket(INTERVAL 'slice_length' UNIT, date_expr)
+   *
+   * For 'END' kind, add the interval to get the end of the slice.
+   * For DATE type with 'END', cast result back to DATE to preserve type.
+   */
+  timeslice_sql(expression) {
+    const date_expr = expression.this;
+    const slice_length = expression.expression;
+    const unit = expression.args.unit;
+    const kind = expression.text("kind").toUpperCase();
+
+    // Create INTERVAL expression: INTERVAL 'N' UNIT
+    const interval_expr = new exp.Interval({ this: slice_length, unit });
+
+    // Create base time_bucket expression
+    const time_bucket_expr = exp.func("time_bucket", interval_expr, date_expr);
+
+    // Check if we need the end of the slice (default is start)
+    if (kind !== "END") {
+      // For 'START', return time_bucket directly
+      return this.sql(time_bucket_expr);
+    }
+
+    // For 'END', add the interval to get end of slice
+    const add_expr = new exp.Add({ this: time_bucket_expr, expression: interval_expr.copy() });
+
+    // If input is DATE type, cast result back to DATE to preserve type
+    // DuckDB converts DATE to TIMESTAMP when adding intervals
+    if (date_expr.isType(exp.DType.DATE)) {
+      return this.sql(exp.cast(add_expr, exp.DType.DATE));
+    }
+
+    return this.sql(add_expr);
+  }
+
+  /**
+   * py:2353 `bitmapbucketnumber_sql(self, expression)`.
+   *
+   * Transpile BITMAP_BUCKET_NUMBER function from Snowflake to DuckDB equivalent.
+   *
+   * Snowflake's BITMAP_BUCKET_NUMBER returns a 1-based bucket identifier where:
+   * - Each bucket covers 32,768 values
+   * - Bucket numbering starts at 1
+   * - Formula: ((value - 1) // 32768) + 1 for positive values
+   *
+   * For non-positive values (0 and negative), we use value // 32768 to avoid
+   * producing bucket 0 or positive bucket IDs for negative inputs.
+   */
+  bitmapbucketnumber_sql(expression) {
+    const value = expression.this;
+
+    const positive_formula = value.sub(exp.Literal.number(1)).floordiv(exp.Literal.number(32768)).add(exp.Literal.number(1));
+    const non_positive_formula = value.floordiv(exp.Literal.number(32768));
+
+    // CASE WHEN value > 0 THEN ((value - 1) // 32768) + 1 ELSE value // 32768 END
+    const case_expr = exp.case()
+      .when(new exp.GT({ this: value, expression: exp.Literal.number(0) }), positive_formula)
+      .else_(non_positive_formula);
+    return this.sql(case_expr);
+  }
+
+  /**
+   * py:2378 `bitmapbitposition_sql(self, expression)`.
+   *
+   * Transpile Snowflake's BITMAP_BIT_POSITION to DuckDB CASE expression.
+   *
+   * Snowflake's BITMAP_BIT_POSITION behavior:
+   * - For n <= 0: returns ABS(n) % 32768
+   * - For n > 0: returns (n - 1) % 32768 (maximum return value is 32767)
+   */
+  bitmapbitposition_sql(expression) {
+    const this_ = expression.this;
+
+    return this.sql(
+      new exp.Mod({
+        this: exp.paren(
+          new exp.If({
+            this: new exp.GT({ this: this_, expression: exp.Literal.number(0) }),
+            true: this_.sub(exp.Literal.number(1)),
+            false: new exp.Abs({ this: this_ }),
+          }),
+        ),
+        expression: MAX_BIT_POSITION,
+      }),
+    );
   }
 
   /** py:2860 `trunc_sql(self, expression)`. */
