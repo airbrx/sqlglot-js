@@ -1,59 +1,41 @@
 // py: sqlglot/generators/snowflake.py — `class SnowflakeGenerator(generator.Generator)`.
 //
-// @ported-ranges sqlglot/generators/snowflake.py 1-43 62-118 203-1222
+// @ported-ranges sqlglot/generators/snowflake.py 1-43 44-61 62-118 119-178 179-202 203-245 246-341 342-1222
 //
-// Four upstream ranges are excluded, each a module-level helper reachable ONLY through
-// one of the four still-blocked `TRANSFORMS` entries this file's header explains below
-// (`sqlglot/transforms.py` functions not yet ported, and/or `sqlglot/optimizer/scope.py`,
-// unported):
-//   44-61   _build_datediff, _build_date_time_add       (-> _unnest_generate_date_array)
-//   119-178 _unnest_generate_date_array                  (-> _transform_generate_date_array)
-//   179-202 _transform_generate_date_array                (-> exp.Select)
-//   246-341 _qualify_unnested_columns                     (-> exp.Select)
-//   342-375 _eliminate_dot_variant_lookup                 (-> exp.Select)
-// (75-99, `_unqualify_pivot_columns`, and 100-118,
-// `_flatten_structured_types_unless_iceberg`, are now PORTED — see below.)
-// Porting any of the remaining four would be dead code with no caller. Checked against
-// `corpus/deny/{operators,implicit_str}.json`: none of them carries a deny-listed site,
-// so excluding them does not silently skip an unacknowledged one.
+// ALL `TRANSFORMS` ENTRIES ARE NOW PORTED (P11/AIR-2300 round 2)
+// --------------------------------------------------------------------------
+// `exp.Array`, `exp.PercentileCont`, `exp.PercentileDisc`, `exp.Pivot`, and `exp.Select`
+// all route through `transforms.preprocess([...])` upstream. The first four were wired
+// earlier (AIR-2284/R94, `inherit_struct_field_names`/`add_within_group_for_percentiles`/
+// `unqualify_columns` via `_unqualify_pivot_columns` above). `exp.Select`'s own
+// seven-step chain was the last holdout: `transforms.explode_projection_to_unnest`
+// (shared with the BigQuery EXPLODE-projection cluster, `src/transforms.js`) plus its
+// three LOCAL helpers (`_transform_generate_date_array`/`_qualify_unnested_columns`/
+// `_eliminate_dot_variant_lookup`) all needed `sqlglot/optimizer/scope.py`'s
+// `build_scope`/`find_all_in_scope`, real since R46 but not yet transliterated into this
+// file. All four landed this round (`_build_datediff`/`_build_date_time_add`,
+// `_unnest_generate_date_array`'s own transitive dependencies, also ported).
+//
+// This is also why `SnowflakeGenerator.select_sql`'s own override (py:1007, ported
+// below) still routes through a `TRANSFORMS`-less `super().select_sql()`: the
+// dispatch-precedence rule (`TRANSFORMS` beats `*_sql`, `src/generator.js`'s
+// `_buildDispatch`) means the `TRANSFORMS[exp.Select]` entry above now wins over this
+// override's own body for every `exp.Select` node — the override stays in place for any
+// node that still falls through to the base `*_sql` dispatch path.
 //
 // The other big half of the Snowflake port (the small half is `src/dialects/snowflake.js`,
 // settings only). This file mirrors the file-layout precedent already established for
 // this dialect: `parsers/snowflake.js` (grammar), `dialects/snowflake.js` (Dialect
 // settings class), and this file (Generator settings + overrides) are three separate,
 // non-comingled directories, matching upstream's own three separate files.
-//
-// ONE `TRANSFORMS` ENTRY IS STILL NOT PORTED (AIR-2284, R94)
-// --------------------------------------------------------------------------
-// `exp.Array`, `exp.PercentileCont`, `exp.PercentileDisc`, `exp.Pivot`, and `exp.Select`
-// all route through `transforms.preprocess([...])` upstream. `src/transforms.js` now has
-// every helper the first four need real (`inherit_struct_field_names`,
-// `add_within_group_for_percentiles`, `unqualify_columns` via `_unqualify_pivot_columns`
-// above) — each of those four is wired below. Only `exp.Select` stays blocked:
-// `transforms.explode_projection_to_unnest` (unported, same blocker as the BigQuery
-// EXPLODE-projection cluster) plus its own three LOCAL helpers below
-// (`_transform_generate_date_array`/`_qualify_unnested_columns`/
-// `_eliminate_dot_variant_lookup`, excluded ranges 179-202/246-341/342-375) are
-// themselves still unwritten, not just blocked — `sqlglot/optimizer/scope.py`'s
-// `build_scope`/`find_all_in_scope` they depend on IS real now (PORT_PLAN.md R46), but
-// nobody has transliterated the ~155-line trio yet. The entry is commented out at its
-// upstream anchor, exactly like base `Generator`'s own still-unseeded `TRANSFORMS`
-// lines (`src/generator.js`'s `// py:138 [exp.Adjacent, /* TODO lambda */]`
-// convention) — so this file's line count under-claims rather than growing dead code.
-//
-// This is also why `SnowflakeGenerator.select_sql`'s own override (py:1007, ported
-// below) still routes through a `TRANSFORMS`-less `super().select_sql()`: the
-// dispatch-precedence rule (`TRANSFORMS` beats `*_sql`, `src/generator.js`'s
-// `_buildDispatch`) means the *_sql override IS reachable today, it just cannot yet
-// apply the seven preprocessing passes upstream's `Select` TRANSFORMS entry chains in
-// front of it.
 
-import { seqGet } from "../helper.js";
-import { preprocess, unqualify_columns, inherit_struct_field_names, add_within_group_for_percentiles } from "../transforms.js";
+import { seqGet, findNewName } from "../helper.js";
+import { preprocess, unqualify_columns, inherit_struct_field_names, add_within_group_for_percentiles, explode_projection_to_unnest, eliminate_distinct_on, eliminate_semi_and_anti_joins, eliminate_window_clause } from "../transforms.js";
 import * as exp from "../expressions/index.js";
 import { TokenType } from "../tokens.js";
 import { Generator, unsupported_args } from "../generator.js";
 import { annotate_types } from "../optimizer/annotate_types.js";
+import { buildScope, findAllInScope } from "../optimizer/scope.js";
 import {
   array_append_sql,
   array_concat_sql,
@@ -83,11 +65,32 @@ import {
   build_object_construct,
 } from "../parsers/snowflake.js";
 
-// py:44 `_build_datediff` and py:53 `_build_date_time_add` — both are ONLY called from
-// `_unnest_generate_date_array` (py:119, blocked on `sqlglot/optimizer/scope.py`'s
-// `build_scope`, unported). Not ported: they would be dead code with no caller, the
-// same reasoning as the other five module-level helpers this file leaves as anchored
-// comments rather than unreachable functions.
+/**
+ * py: sqlglot/generators/snowflake.py:44 `_build_datediff(args)`.
+ * Only caller is `_unnest_generate_date_array` below (P11/AIR-2300 round 2).
+ */
+function _build_datediff(args) {
+  return new exp.DateDiff({
+    this: seqGet(args, 2),
+    expression: seqGet(args, 1),
+    unit: map_date_part(seqGet(args, 0)),
+    date_part_boundary: true,
+  });
+}
+
+/**
+ * py: sqlglot/generators/snowflake.py:53 `_build_date_time_add(expr_type)`.
+ * Only caller is `_unnest_generate_date_array` below (P11/AIR-2300 round 2).
+ */
+function _build_date_time_add(expr_type) {
+  return function _builder(args) {
+    return new expr_type({
+      this: seqGet(args, 2),
+      expression: seqGet(args, 1),
+      unit: map_date_part(seqGet(args, 0)),
+    });
+  };
+}
 
 /** py: sqlglot/generators/snowflake.py:64 */
 function _regexpilike_sql(self, expression) {
@@ -162,11 +165,111 @@ function _flatten_structured_types_unless_iceberg(expression) {
   return expression;
 }
 
-// py:119 `_unnest_generate_date_array` — blocked on `sqlglot/optimizer/scope.py`'s
-// `build_scope` (unported, P6+). Only caller is `_transform_generate_date_array` below.
+/**
+ * py: sqlglot/generators/snowflake.py:119 `_unnest_generate_date_array(unnest)`.
+ * Only caller is `_transform_generate_date_array` below (P11/AIR-2300 round 2 —
+ * `optimizer/scope.js`'s `buildScope` landed R46).
+ */
+function _unnest_generate_date_array(unnest) {
+  const generate_date_array = unnest.expressions[0];
+  const start = generate_date_array.args.start;
+  const end = generate_date_array.args.end;
+  const step = generate_date_array.args.step;
 
-// py:179 `_transform_generate_date_array` — blocked transitively via
-// `_unnest_generate_date_array`. Only caller is the `exp.Select` TRANSFORMS entry.
+  if (!start || !end || !(step instanceof exp.Interval) || step.name !== "1") {
+    return;
+  }
+
+  const unit = step.args.unit;
+
+  let unnest_alias = unnest.args.alias;
+  let sequence_value_name;
+  if (unnest_alias) {
+    unnest_alias = unnest_alias.copy();
+    sequence_value_name = seqGet(unnest_alias.columns, 0) || "value";
+  } else {
+    sequence_value_name = "value";
+  }
+
+  // We'll add the next sequence value to the starting date and project the result
+  const date_add = _build_date_time_add(exp.DateAdd)([
+    unit,
+    exp.cast(sequence_value_name, "int"),
+    exp.cast(start, "date"),
+  ]);
+
+  // We use DATEDIFF to compute the number of sequence values needed
+  const number_sequence = SnowflakeParser.FUNCTIONS.get("ARRAY_GENERATE_RANGE")([
+    exp.Literal.number(0),
+    // deny:operators sqlglot/generators/snowflake.py:144 — Python `_build_datediff(...)
+    // + 1` (`__add__`) builds `exp.Add`; `.add()` is this port's `_binop` equivalent.
+    _build_datediff([unit, start, end]).add(1),
+  ]);
+
+  unnest.set("expressions", [number_sequence]);
+
+  const unnest_parent = unnest.parent;
+  if (unnest_parent instanceof exp.Join) {
+    const select = unnest_parent.parent;
+    if (select instanceof exp.Select) {
+      const replace_column_name =
+        typeof sequence_value_name === "string" ? sequence_value_name : sequence_value_name.name;
+
+      const scope = buildScope(select);
+      if (scope) {
+        for (const column of scope.columns) {
+          if (column.name.toLowerCase() === replace_column_name.toLowerCase()) {
+            column.replace(
+              column.parent instanceof exp.Select
+                ? date_add.as_(replace_column_name)
+                : date_add,
+            );
+          }
+        }
+      }
+
+      const lateral = new exp.Lateral({ this: unnest_parent.this.pop() });
+      unnest_parent.replace(new exp.Join({ this: lateral }));
+    }
+  } else {
+    unnest.replace(
+      exp.select(date_add.as_(sequence_value_name)).from_(unnest.copy()).subquery(unnest_alias),
+    );
+  }
+}
+
+/**
+ * py: sqlglot/generators/snowflake.py:179 `_transform_generate_date_array(expression)`.
+ * Only caller is the `exp.Select` TRANSFORMS entry below.
+ */
+function _transform_generate_date_array(expression) {
+  if (expression instanceof exp.Select) {
+    for (const generate_date_array of [...expression.findAll(exp.GenerateDateArray)]) {
+      const parent = generate_date_array.parent;
+
+      // If GENERATE_DATE_ARRAY is used directly as an array (e.g passed into
+      // ARRAY_LENGTH), the transformed Snowflake query is the following (it'll be
+      // unnested properly on the next iteration due to copy):
+      // SELECT ref(GENERATE_DATE_ARRAY(...)) -> SELECT ref((SELECT ARRAY_AGG(*) FROM UNNEST(GENERATE_DATE_ARRAY(...))))
+      if (!(parent instanceof exp.Unnest)) {
+        const unnest = new exp.Unnest({ expressions: [generate_date_array.copy()] });
+        generate_date_array.replace(
+          exp.select(new exp.ArrayAgg({ this: new exp.Star({}) })).from_(unnest).subquery(),
+        );
+      }
+
+      if (
+        parent instanceof exp.Unnest &&
+        (parent.parent instanceof exp.From || parent.parent instanceof exp.Join) &&
+        parent.expressions.length === 1
+      ) {
+        _unnest_generate_date_array(parent);
+      }
+    }
+  }
+
+  return expression;
+}
 
 /** py: sqlglot/generators/snowflake.py:203 */
 function _regexpextract_sql(self, expression) {
@@ -214,11 +317,159 @@ function _json_extract_value_array_sql(self, expression) {
   return self.func("TRANSFORM", json_extract, transform_lambda);
 }
 
-// py:246 `_qualify_unnested_columns` — blocked on `sqlglot/optimizer/scope.py`'s
-// `build_scope` (unported, P6+). Only caller is the `exp.Select` TRANSFORMS entry.
+/**
+ * py: sqlglot/generators/snowflake.py:246 `_qualify_unnested_columns(expression)`.
+ * Only caller is the `exp.Select` TRANSFORMS entry below (P11/AIR-2300 round 2 —
+ * `optimizer/scope.js`'s `buildScope` landed R46).
+ */
+function _qualify_unnested_columns(expression) {
+  if (expression instanceof exp.Select) {
+    const scope = buildScope(expression);
+    if (!scope) return expression;
 
-// py:342 `_eliminate_dot_variant_lookup` — blocked on `sqlglot/optimizer/scope.py`'s
-// `find_all_in_scope` (unported, P6+). Only caller is the `exp.Select` TRANSFORMS entry.
+    const unnests = [...scope.findAll(exp.Unnest)];
+
+    if (!unnests.length) return expression;
+
+    const taken_source_names = new Set(scope.sources.keys());
+    const column_source = new Map();
+    const unnest_to_identifier = new Map();
+
+    let unnest_identifier = null;
+    const orig_expression = expression.copy();
+
+    for (const unnest of unnests) {
+      if (!(unnest.parent instanceof exp.From || unnest.parent instanceof exp.Join)) {
+        continue;
+      }
+
+      // Try to infer column names produced by an unnest operator. This is only
+      // possible when we can peek into the (statically known) contents of the
+      // unnested value.
+      const unnest_columns = new Set();
+      for (const unnest_expr of unnest.expressions) {
+        if (!(unnest_expr instanceof exp.Array)) continue;
+
+        for (const array_expr of unnest_expr.expressions) {
+          if (
+            !(array_expr instanceof exp.Struct) ||
+            !array_expr.expressions.length ||
+            !array_expr.expressions.every((struct_expr) => struct_expr instanceof exp.PropertyEQ)
+          ) {
+            continue;
+          }
+
+          for (const struct_expr of array_expr.expressions) {
+            unnest_columns.add(struct_expr.this.name.toLowerCase());
+          }
+          break;
+        }
+
+        if (unnest_columns.size) break;
+      }
+
+      let unnest_alias = unnest.args.alias;
+      if (!unnest_alias) {
+        const alias_name = findNewName(taken_source_names, "value");
+        taken_source_names.add(alias_name);
+
+        // Produce a `TableAlias` AST similar to what is produced for BigQuery.
+        // This will be corrected later, when we generate SQL for the `Unnest` AST
+        // node.
+        const aliased_unnest = exp.alias_(unnest, null, { table: [alias_name] });
+        scope.replace(unnest, aliased_unnest);
+
+        unnest_identifier = aliased_unnest.args.alias.columns[0];
+      } else {
+        const alias_columns = unnest_alias.columns ?? [];
+        unnest_identifier = unnest_alias.this || seqGet(alias_columns, 0);
+      }
+
+      if (!(unnest_identifier instanceof exp.Identifier)) {
+        return orig_expression;
+      }
+
+      unnest_to_identifier.set(unnest, unnest_identifier);
+      for (const c of unnest_columns) column_source.set(c.toLowerCase(), unnest_identifier);
+    }
+
+    for (const column of scope.columns) {
+      if (column.table) continue;
+
+      let table = column_source.get(column.name.toLowerCase());
+      if (
+        unnest_identifier &&
+        !table &&
+        scope.sources.size === 1 &&
+        column.name.toLowerCase() !== unnest_identifier.name.toLowerCase()
+      ) {
+        const unnest_ancestor = column.findAncestor(exp.Unnest, exp.Select);
+        if (unnest_ancestor instanceof exp.Unnest) {
+          const ancestor_identifier = unnest_to_identifier.get(unnest_ancestor);
+          if (
+            ancestor_identifier &&
+            ancestor_identifier.name.toLowerCase() === unnest_identifier.name.toLowerCase()
+          ) {
+            continue;
+          }
+        }
+
+        table = unnest_identifier;
+      }
+
+      column.set("table", table ? table.copy() : null);
+    }
+  }
+
+  return expression;
+}
+
+/**
+ * py: sqlglot/generators/snowflake.py:342 `_eliminate_dot_variant_lookup(expression)`.
+ * Only caller is the `exp.Select` TRANSFORMS entry below (P11/AIR-2300 round 2 —
+ * `optimizer/scope.js`'s `findAllInScope` landed R44).
+ */
+function _eliminate_dot_variant_lookup(expression) {
+  if (expression instanceof exp.Select) {
+    // This transformation is used to facilitate transpilation of BigQuery `UNNEST`
+    // operations to Snowflake. It should not affect roundtrip because `Unnest` nodes
+    // cannot be produced by Snowflake's parser.
+    //
+    // Additionally, at the time of writing this, BigQuery is the only dialect that
+    // produces a `TableAlias` node that only fills `columns` and not `this`, due to
+    // `UNNEST_COLUMN_ONLY`.
+    const unnest_aliases = new Set();
+    for (const unnest of findAllInScope(expression, exp.Unnest)) {
+      const unnest_alias = unnest.args.alias;
+      if (
+        unnest_alias instanceof exp.TableAlias &&
+        !unnest_alias.this &&
+        unnest_alias.columns.length === 1
+      ) {
+        unnest_aliases.add(unnest_alias.columns[0].name);
+      }
+    }
+
+    if (unnest_aliases.size) {
+      for (const c of [...findAllInScope(expression, exp.Column)]) {
+        if (unnest_aliases.has(c.table)) {
+          const bracket_lhs = c.args.table;
+          const bracket_rhs = exp.Literal.string(c.name);
+          const bracket = new exp.Bracket({ this: bracket_lhs, expressions: [bracket_rhs] });
+
+          if (c.parent === expression) {
+            // Retain column projection names by using aliases
+            c.replace(exp.alias_(bracket, c.this.copy()));
+          } else {
+            c.replace(bracket);
+          }
+        }
+      }
+    }
+  }
+
+  return expression;
+}
 
 /**
  * py: sqlglot/expressions/aggregate.py:223 `PERCENTILES = (PercentileCont, PercentileDisc)`.
@@ -413,7 +664,15 @@ export class SnowflakeGenerator extends Generator {
     [exp.RegexpExtractAll, _regexpextract_sql],
     [exp.RegexpILike, _regexpilike_sql],
     [exp.RowAccessProperty, (self, e) => self.rowaccessproperty_sql(e)],
-    // py:547 [exp.Select, transforms.preprocess([...7 fns...])] — blocked, transforms.js + optimizer/scope.js
+    [exp.Select, preprocess([
+      eliminate_window_clause,
+      eliminate_distinct_on,
+      explode_projection_to_unnest(),
+      eliminate_semi_and_anti_joins,
+      _transform_generate_date_array,
+      _qualify_unnested_columns,
+      _eliminate_dot_variant_lookup,
+    ])],
     [exp.SHA, rename_func("SHA1")],
     [exp.SHA1Digest, rename_func("SHA1_BINARY")],
     [exp.MD5Digest, rename_func("MD5_BINARY")],
