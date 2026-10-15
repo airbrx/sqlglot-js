@@ -1654,7 +1654,7 @@ export class Parser {
     /* py:1578 */ ["INITCAP", (self) => self._parse_initcap()],
     /* py:1579 */ ["JSON_OBJECT", (self) => self._parse_json_object()],
     /* py:1580 */ ["JSON_OBJECTAGG", (self) => self._parse_json_object(true)],
-    // py:1581  ["JSON_TABLE", ...]      — `_parse_json_table` is still a NotPorted stub
+    /* py:1581 */ ["JSON_TABLE", (self) => self._parse_json_table()],
     /* py:1582 */ ["MATCH", (self) => self._parse_match_against()],
     /* py:1583 */ ["NORMALIZE", (self) => self._parse_normalize()],
     // py:1584 — NOT wired: `openjson_sql` (generator.js:3925) is still a NotPorted
@@ -3414,7 +3414,51 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3557
-  _parse_multitable_inserts(comments) { throw new NotPorted("_parse_multitable_inserts", "sqlglot/parser.py:3557"); }
+  _parse_multitable_inserts(comments) {
+    const kind = pyUpper(this._prev.text);
+    const expressions = [];
+
+    const parse_conditional_insert = () => {
+      let expression;
+      if (this._match(TokenType.WHEN)) {
+        expression = this._parse_disjunction();
+        this._match(TokenType.THEN);
+      } else {
+        expression = null;
+      }
+
+      const else_ = this._match(TokenType.ELSE);
+
+      if (!this._match(TokenType.INTO)) {
+        return null;
+      }
+
+      return this.expression(
+        new exp.ConditionalInsert({
+          this: this.expression(
+            new exp.Insert({
+              this: this._parse_table(true),
+              expression: this._parse_derived_table_values(),
+            }),
+          ),
+          expression,
+          else_,
+        }),
+      );
+    };
+
+    let expression = parse_conditional_insert();
+    while (expression !== null) {
+      expressions.push(expression);
+      expression = parse_conditional_insert();
+    }
+
+    return this.expression(
+      new exp.MultitableInserts({ kind, expressions, source: this._parse_table() }),
+      null,
+      comments,
+    );
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3596
@@ -3931,7 +3975,12 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4402
-  _parse_hint_fallback_to_string() { throw new NotPorted("_parse_hint_fallback_to_string", "sqlglot/parser.py:4402"); }
+  _parse_hint_fallback_to_string() {
+    const start = this._curr;
+    while (this._curr.bool()) this._advance();
+    const end = this._tokens[this._index - 1];
+    return new exp.Hint({ expressions: [this._find_sql(start, end)] });
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4410
@@ -5730,7 +5779,7 @@ export class Parser {
   _parse_cast(strict, safe = null) {
     let this_ = this._parse_assignment(); if (!this._match(TokenType.ALIAS)) { if (this._match(TokenType.COMMA)) return this.expression(new exp.CastToStrType({ this: this_, to: this._parse_string() })); this.raise_error("Expected AS after CAST"); }
     let fmt = null, to = this._parse_types(false, false, true, true), default_ = null; if (this._match(TokenType.DEFAULT)) { default_ = this._parse_bitwise(); this._match_text_seq("ON", "CONVERSION", "ERROR"); }
-    if (this._match_set(new Set([TokenType.FORMAT, TokenType.COMMA]))) { const string = this._parse_wrapped(this._parse_string.bind(this), true); fmt = this._parse_at_time_zone(string); if (!to) to = exp.DType.UNKNOWN.intoExpr(); if (exp.DataType.TEMPORAL_TYPES.has(to.this)) { const C = to.this === exp.DType.DATE ? exp.StrToDate : exp.StrToTime; this_ = this.expression(new C({ this: this_, format: exp.Literal.string(formatTime(string ? string.this : "", this.dialect.FORMAT_MAPPING || this.dialect.TIME_MAPPING, this.dialect.FORMAT_TRIE || this.dialect.TIME_TRIE)), safe })); if (fmt instanceof exp.AtTimeZone && this_ instanceof exp.StrToTime) this_.set("zone", fmt.args.zone); return this_; } } else if (!to) this.raise_error("Expected TYPE after CAST"); else if (to instanceof exp.Identifier) to = exp.DataType.fromStr(to.name, { dialect: this.dialect, udt: true }); else if (to.this === exp.DType.CHAR && (this._match(TokenType.CHARACTER_SET) || this._match_text_seq("CHARACTER", "SET"))) to = exp.DType.CHARACTER_SET.intoExpr({ kind: this._parse_var_or_string() });
+    if (this._match_set(new Set([TokenType.FORMAT, TokenType.COMMA]))) { const string = this._parse_wrapped(this._parse_string.bind(this), true); fmt = this._parse_at_time_zone(string); if (!to) to = exp.DType.UNKNOWN.intoExpr(); if (exp.DataType.TEMPORAL_TYPES.has(to.this)) { const C = to.this === exp.DType.DATE ? exp.StrToDate : exp.StrToTime; this_ = this.expression(new C({ this: this_, format: exp.Literal.string(formatTime(string ? string.this : "", pyTruthy(this.dialect.FORMAT_MAPPING) ? this.dialect.FORMAT_MAPPING : this.dialect.TIME_MAPPING, pyTruthy(this.dialect.FORMAT_TRIE) ? this.dialect.FORMAT_TRIE : this.dialect.TIME_TRIE)), safe })); if (fmt instanceof exp.AtTimeZone && this_ instanceof exp.StrToTime) this_.set("zone", fmt.args.zone); return this_; } } else if (!to) this.raise_error("Expected TYPE after CAST"); else if (to instanceof exp.Identifier) to = exp.DataType.fromStr(to.name, { dialect: this.dialect, udt: true }); else if (to.this === exp.DType.CHAR && (this._match(TokenType.CHARACTER_SET) || this._match_text_seq("CHARACTER", "SET"))) to = exp.DType.CHARACTER_SET.intoExpr({ kind: this._parse_var_or_string() });
     return this.build_cast(strict, this_, to, fmt, safe, this._parse_var_from_options(this.constructor.CAST_ACTIONS, false), default_);
   }
 
@@ -5768,7 +5817,7 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8281
-  _parse_xml_element() { let evalname = null, this_; if (this._match_text_seq("EVALNAME")) { evalname = true; this_ = this._parse_bitwise(); } else { this._match_text_seq("NAME"); this_ = this._parse_id_var(); } return this.expression(new exp.XMLElement({ this: this_, expressions: this._match(TokenType.COMMA) ? this._parse_csv(this._parse_bitwise.bind(this)) : null, evalname })); }
+  _parse_xml_element() { let evalname = null, this_; if (this._match_text_seq("EVALNAME")) { evalname = true; this_ = this._parse_bitwise(); } else { this._match_text_seq("NAME"); this_ = this._parse_id_var(); } return this.expression(new exp.XMLElement({ this: this_, expressions: this._match(TokenType.COMMA) && this._parse_csv(this._parse_bitwise.bind(this)), evalname })); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8298
@@ -5851,15 +5900,51 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8435
-  _parse_json_column_def() { throw new NotPorted("_parse_json_column_def", "sqlglot/parser.py:8435"); }
+  _parse_json_column_def() {
+    let this_, ordinality, kind, nested;
+    if (!this._match_text_seq("NESTED")) {
+      this_ = this._parse_id_var();
+      ordinality = this._match_pair(TokenType.FOR, TokenType.ORDINALITY);
+      kind = this._parse_types(false, false, false);
+      nested = null;
+    } else {
+      this_ = null;
+      ordinality = null;
+      kind = null;
+      nested = true;
+    }
+
+    const format_json = this._match_text_seq("FORMAT", "JSON");
+    const path = this._match_text_seq("PATH") && this._parse_string();
+    const nested_schema = nested && this._parse_json_schema();
+
+    return this.expression(
+      new exp.JSONColumnDef({ this: this_, kind, path, nested_schema, ordinality, format_json }),
+    );
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8462
-  _parse_json_schema() { throw new NotPorted("_parse_json_schema", "sqlglot/parser.py:8462"); }
+  _parse_json_schema() {
+    this._match_text_seq("COLUMNS");
+    return this.expression(
+      new exp.JSONSchema({
+        expressions: this._parse_wrapped_csv(() => this._parse_json_column_def(), TokenType.COMMA, true),
+      }),
+    );
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8470
-  _parse_json_table() { throw new NotPorted("_parse_json_table", "sqlglot/parser.py:8470"); }
+  _parse_json_table() {
+    const this_ = this._parse_format_json(this._parse_bitwise());
+    const path = this._match(TokenType.COMMA) && this._parse_string();
+    const error_handling = this._parse_on_handling("ERROR", "ERROR", "NULL");
+    const empty_handling = this._parse_on_handling("EMPTY", "ERROR", "NULL");
+    const schema = this._parse_json_schema();
+
+    return new exp.JSONTable({ this: this_, schema, path, error_handling, empty_handling });
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8485
