@@ -37,6 +37,8 @@ import "./src/dialects/doris.js";
 import "./src/dialects/trino.js";
 import "./src/dialects/athena.js";
 import "./src/dialects/dune.js";
+import "./src/dialects/sqlite.js";
+import "./src/dialects/teradata.js";
 
 import { Dialect, parseOne } from "./src/dialects/dialect.js";
 import { ErrorLevel, ParseError, TokenError, UnsupportedError } from "./src/errors.js";
