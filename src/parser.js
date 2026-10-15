@@ -3234,7 +3234,8 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:3362
   _parse_partition_by() {
-    this._match(TokenType.PARTITION_BY);return this._parse_csv(()=>this._parse_assignment());
+    if (this._match(TokenType.PARTITION_BY)) return this._parse_csv(() => this._parse_disjunction());
+    return [];
   }
 
   /** @returns {*} */
@@ -5592,13 +5593,14 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:8138
   _parse_char() {
-    const this_ = this._parse_csv(this._parse_bitwise.bind(this)); const charset = this._match_text_seq("USING") ? this._parse_var() : null;
-    this._match_r_paren(); return this.expression(new exp.Chr({ expressions: this_, charset }));
+    return this.expression(new exp.Chr({ expressions: this._parse_csv(this._parse_assignment.bind(this)), charset: this._match(TokenType.USING) && this._parse_charset_name() }));
   }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8146
-  _parse_charset_name() { throw new NotPorted("_parse_charset_name", "sqlglot/parser.py:8146"); }
+  _parse_charset_name() {
+    return this._parse_var(false, new Set([TokenType.BINARY, TokenType.IDENTIFIER]));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8155
@@ -5611,14 +5613,34 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8215
-  _parse_string_agg() { let args; if (this._match(TokenType.DISTINCT)) { args=[this.expression(new exp.Distinct({expressions:[this._parse_disjunction()]}))]; if(this._match(TokenType.COMMA)) args.push(...this._parse_csv(this._parse_disjunction.bind(this))); } else args=this._parse_csv(this._parse_disjunction.bind(this)); const index=this._index; if(!this._match(TokenType.R_PAREN) && args.length){ args[0]=this._parse_limit(this._parse_order(args[0])); return this.expression(new exp.GroupConcat({this:args[0],separator:args[1]??null})); } if(!this._match_text_seq("WITHIN","GROUP")){ this._retreat(index); return this.validate_expression(exp.GroupConcat.from_arg_list(args),args); } this._match_l_paren(); return this.expression(new exp.GroupConcat({this:this._parse_order(args[0]??null),separator:args[1]??null})); }
+  _parse_string_agg() {
+    let args;
+    if (this._match(TokenType.DISTINCT)) { args=[this.expression(new exp.Distinct({expressions:[this._parse_disjunction()]}))]; if(this._match(TokenType.COMMA)) args.push(...this._parse_csv(this._parse_disjunction.bind(this))); }
+    else args=this._parse_csv(this._parse_disjunction.bind(this));
+    let on_overflow;
+    if (this._match_text_seq("ON", "OVERFLOW")) {
+      if (this._match_text_seq("ERROR")) on_overflow = exp.var("ERROR");
+      else {
+        this._match_text_seq("TRUNCATE");
+        on_overflow = this.expression(new exp.OverflowTruncateBehavior({ this: this._parse_string(), with_count: this._match_text_seq("WITH", "COUNT") || !this._match_text_seq("WITHOUT", "COUNT") }));
+      }
+    } else on_overflow = null;
+    const index=this._index;
+    if(!this._match(TokenType.R_PAREN) && args.length){ args[0]=this._parse_limit(this._parse_order(args[0])); return this.expression(new exp.GroupConcat({this:args[0],separator:args[1]??null})); }
+    if(!this._match_text_seq("WITHIN","GROUP")){ this._retreat(index); return this.validate_expression(exp.GroupConcat.from_arg_list(args),args); }
+    this._match_l_paren();
+    return this.expression(new exp.GroupConcat({this:this._parse_order(args[0]??null),separator:args[1]??null,on_overflow}));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8269
-  _parse_convert(strict, safe) {
-    const this_ = this._parse_bitwise(); this._match(TokenType.COMMA); const to = this._parse_types(); let style = null;
-    if (this._match(TokenType.COMMA)) style = this._parse_bitwise(); this._match_r_paren();
-    return this.expression(new exp.Convert({ this: this_, to, style, safe, strict }));
+  _parse_convert(strict, safe = null) {
+    const this_ = this._parse_bitwise();
+    let to;
+    if (this._match(TokenType.USING)) to = exp.DType.CHARACTER_SET.intoExpr({ kind: this._parse_charset_name() });
+    else if (this._match(TokenType.COMMA)) to = this._parse_types();
+    else to = null;
+    return this.build_cast(strict, this_, to, undefined, safe);
   }
 
   /** @returns {*} */
@@ -6716,8 +6738,10 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:9991
   _parse_ceil_floor(expr_type) {
-    const this_ = this._parse_bitwise(); const dec = this._match(TokenType.COMMA) || this._match_text_seq("TO"); const decimals = dec ? this._parse_bitwise() : null;
-    this._match_r_paren(); return this.expression(new expr_type({ this: this_, decimals }));
+    const args = this._parse_csv(() => this._parse_lambda());
+    const this_ = args[0] ?? null;
+    const decimals = args[1] ?? null;
+    return this.expression(new expr_type({ this: this_, decimals, to: this._match_text_seq("TO") ? this._parse_var() : null }));
   }
 
   /** @returns {*} */
