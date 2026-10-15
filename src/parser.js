@@ -1614,7 +1614,7 @@ export class Parser {
     /* py:1574 */ ["DECODE", (self) => self._parse_decode()],
     /* py:1575 */ ["EXTRACT", (self) => self._parse_extract()],
     /* py:1576 */ ["FLOOR", (self) => self._parse_ceil_floor(exp.Floor)],
-    // py:1577  ["GAP_FILL", ...]  — `_parse_gap_fill` is still a NotPorted stub
+    /* py:1577 */ ["GAP_FILL", (self) => self._parse_gap_fill()],
     /* py:1578 */ ["INITCAP", (self) => self._parse_initcap()],
     /* py:1579 */ ["JSON_OBJECT", (self) => self._parse_json_object()],
     /* py:1580 */ ["JSON_OBJECTAGG", (self) => self._parse_json_object(true)],
@@ -1622,7 +1622,7 @@ export class Parser {
     /* py:1582 */ ["MATCH", (self) => self._parse_match_against()],
     // py:1583  ["NORMALIZE", ...]  — `_parse_normalize` is still a NotPorted stub
     // py:1584  ["OPENJSON", ...]   — `_parse_open_json` is still a NotPorted stub
-    // py:1585  ["OVERLAY", ...]    — `_parse_overlay` is still a NotPorted stub
+    /* py:1585 */ ["OVERLAY", (self) => self._parse_overlay()],
     /* py:1586 */ ["POSITION", (self) => self._parse_position()],
     /* py:1587 */ ["SAFE_CAST", (self) => self._parse_cast(false, true)],
     /* py:1588 */ ["STRING_AGG", (self) => self._parse_string_agg()],
@@ -5585,9 +5585,18 @@ export class Parser {
     return this.expression(new exp.Extract({ this: this_, expression: this._parse_bitwise() }));
   }
 
-  /** @returns {*} */
+  /** @returns {exp.GapFill} */
   // py: sqlglot/parser.py:8128
-  _parse_gap_fill() { throw new NotPorted("_parse_gap_fill", "sqlglot/parser.py:8128"); }
+  _parse_gap_fill() {
+    this._match(TokenType.TABLE);
+    const this_ = this._parse_table();
+
+    this._match(TokenType.COMMA);
+    const args = [this_, ...this._parse_csv(() => this._parse_lambda())];
+
+    const gap_fill = exp.GapFill.from_arg_list(args);
+    return this.validate_expression(gap_fill, args);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8138
@@ -5615,10 +5624,15 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8269
-  _parse_convert(strict, safe) {
-    const this_ = this._parse_bitwise(); this._match(TokenType.COMMA); const to = this._parse_types(); let style = null;
-    if (this._match(TokenType.COMMA)) style = this._parse_bitwise(); this._match_r_paren();
-    return this.expression(new exp.Convert({ this: this_, to, style, safe, strict }));
+  _parse_convert(strict, safe = null) {
+    const this_ = this._parse_bitwise();
+
+    let to;
+    if (this._match(TokenType.USING)) to = exp.DType.CHARACTER_SET.intoExpr({ kind: this._parse_charset_name() });
+    else if (this._match(TokenType.COMMA)) to = this._parse_types();
+    else to = null;
+
+    return this.build_cast(strict, this_, to, undefined, safe);
   }
 
   /** @returns {*} */
@@ -6782,9 +6796,21 @@ export class Parser {
     return this.expression(new exp.Revoke({ privileges, kind, securable, principals, grant_option: grantOption, cascade }));
   }
 
-  /** @returns {*} */
+  /** @returns {exp.Overlay} */
   // py: sqlglot/parser.py:10123
-  _parse_overlay() { throw new NotPorted("_parse_overlay", "sqlglot/parser.py:10123"); }
+  _parse_overlay() {
+    const _parse_overlay_arg = (text) =>
+      (this._match(TokenType.COMMA) || this._match_text_seq(text)) ? this._parse_bitwise() : null;
+
+    return this.expression(
+      new exp.Overlay({
+        this: this._parse_bitwise(),
+        expression: _parse_overlay_arg("PLACING"),
+        from_: _parse_overlay_arg("FROM"),
+        for_: _parse_overlay_arg("FOR"),
+      }),
+    );
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10140
