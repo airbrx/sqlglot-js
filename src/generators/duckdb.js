@@ -1,6 +1,6 @@
 // py: sqlglot/generators/duckdb.py — `class DuckDBGenerator(generator.Generator)`.
 //
-// @ported-ranges sqlglot/generators/duckdb.py 50-50 545-547 549-563 890-901 1017-1020 1123-1130 1261-1274 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2652-2677
+// @ported-ranges sqlglot/generators/duckdb.py 50-50 93-101 213-214 217-229 320-357 359-450 452-540 545-547 549-563 607-648 654-662 670-678 827-845 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1428-1455 1459-1497 1497-1523 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 3299-3326 3412-3422 3952-3971 4349-4406 4419-4497 4670-4712
 //
 // SCOPE — a deliberately small, honest slice of a 4,788-line file (PORT_PLAN.md,
 // "DuckDB generator is an outlier size" — ~4x every other single-file dialect
@@ -37,9 +37,12 @@
 //     Every OTHER entry is commented out at its upstream anchor, matching the
 //     established "still-unseeded TRANSFORMS" convention (`src/generator.js`'s own
 //     stub-`TRANSFORMS` lines; `src/generators/snowflake.js`'s five blocked entries).
-//     The largest excluded group is `_date_delta_to_binary_interval_op` (9 entries) —
-//     it wraps `dialect.js`'s shared `date_delta_to_binary_interval_op` with its own
-//     nanosecond/float-interval handling and was judged too large for this pass.
+//     The largest excluded group was `_date_delta_to_binary_interval_op` (9 entries,
+//     wrapping `dialect.js`'s shared `date_delta_to_binary_interval_op` with its own
+//     nanosecond/float-interval handling) — unblocked in AIR-2283 (PORT_PLAN.md R90+)
+//     once `_date_diff_sql`'s own week-boundary path needed `exp.DateAdd` to render
+//     correctly; all 9 entries (DateAdd/DateSub/DatetimeAdd/DatetimeSub/TimeAdd/
+//     TimeSub/TimestampAdd/TimestampSub/TsOrDsAdd) are wired below.
 //   - `SUPPORTED_JSON_PATH_PARTS`, `TYPE_MAPPING`, `RESERVED_KEYWORDS` (py:1816-1931):
 //     cheap, mechanical, real upstream data with no code-logic risk.
 //   - `sortarray_sql` (py:2652) — the one `*_sql` method override pulled forward from
@@ -77,7 +80,9 @@ import {
   approx_count_distinct_sql,
   array_append_sql,
   array_concat_sql,
+  date_delta_to_binary_interval_op,
   datestrtodate_sql,
+  explode_to_unnest_sql,
   generate_series_sql,
   groupconcat_sql,
   inline_array_unless_query,
@@ -87,10 +92,99 @@ import {
   no_timestamp_sql,
   rename_func,
   timestrtotime_sql,
+  unit_to_str,
+  week_unit_to_dow,
+  weekstart_unit_to_str,
 } from "../dialects/dialect.js";
+import { isDateUnit, seqGet } from "../helper.js";
+import { annotate_types } from "../optimizer/annotate_types.js";
+import { decDiv, pyDecimal } from "../_py/num.js";
+import { pyRepr } from "../_py/str.js";
 
 // py:50 — used only by `_implicit_datetime_cast` below.
 const TIMEZONE_PATTERN = /:\d{2}.*?[+\-]\d{2}(?::\d{2})?/;
+
+// py:93-101 — SEQ function constants, each a module-level `exp.maybe_parse(...)`
+// template parsed once at import time (mirrored here as module-level `maybeParse`
+// calls for the same reason) and filled in per call via `exp.replace_placeholders`.
+const _SEQ_BASE = exp.maybeParse("(ROW_NUMBER() OVER (ORDER BY 1) - 1)");
+const _SEQ_RESTRICTED = [exp.Where, exp.Having, exp.AggFunc, exp.Order, exp.Select];
+// Maps SEQ expression types to their byte width (suffix indicates bytes: SEQ1=1, SEQ2=2, etc.)
+const _SEQ_BYTE_WIDTH = new Map([[exp.Seq1, 1], [exp.Seq2, 2], [exp.Seq4, 4], [exp.Seq8, 8]]);
+
+// Template for generating signed and unsigned SEQ values within a specified range
+const _SEQ_UNSIGNED = exp.maybeParse(":base % :max_val");
+const _SEQ_SIGNED = exp.maybeParse(
+  "(CASE WHEN :base % :max_val >= :half "
+  + "THEN :base % :max_val - :max_val "
+  + "ELSE :base % :max_val END)",
+);
+
+/** py:670 `_build_seq_expression(base, byte_width, signed)`. */
+function _build_seq_expression(base, byte_width, signed) {
+  const bits = byte_width * 8;
+  const max_val = exp.Literal.number(2 ** bits);
+
+  if (signed) {
+    const half = exp.Literal.number(2 ** (bits - 1));
+    return exp.replacePlaceholders(_SEQ_SIGNED.copy(), { base, max_val, half });
+  }
+  return exp.replacePlaceholders(_SEQ_UNSIGNED.copy(), { base, max_val });
+}
+
+/**
+ * py:827 `_seq_sql(self, expression, byte_width)`.
+ *
+ * Transpile Snowflake SEQ1/SEQ2/SEQ4/SEQ8 to DuckDB. Generates monotonically
+ * increasing integers starting from 0. The signed parameter (0 or 1) affects
+ * wrap-around behavior: unsigned (0) wraps at 2^(bits) - 1; signed (1) wraps
+ * at 2^(bits-1) - 1, then goes negative.
+ */
+function _seq_sql(self, expression, byte_width) {
+  // Warn if SEQ is in a restricted context (Select stops search at current scope)
+  const ancestor = expression.findAncestor(..._SEQ_RESTRICTED);
+  if (
+    ancestor
+    && (!(ancestor instanceof exp.Order || ancestor instanceof exp.Select)
+      || (ancestor instanceof exp.Order && ancestor.parent instanceof exp.Window))
+  ) {
+    self.unsupported("SEQ in restricted context is not supported - use CTE or subquery");
+  }
+
+  const result = _build_seq_expression(_SEQ_BASE.copy(), byte_width, expression.name === "1");
+  return self.sql(result);
+}
+
+/**
+ * py:1497 `_explode_to_unnest_sql(self, expression)` for `exp.Lateral`.
+ * Handles LATERAL VIEW EXPLODE/INLINE conversion to UNNEST for DuckDB.
+ */
+function _explode_to_unnest_sql(self, expression) {
+  const explode = expression.this;
+
+  if (explode instanceof exp.Inline) {
+    // For INLINE, create CROSS JOIN LATERAL (SELECT UNNEST(..., max_depth => 2))
+    // Build the UNNEST call with DuckDB-style named parameter
+    const unnest_expr = new exp.Unnest({
+      expressions: [explode.this, new exp.Kwarg({ this: exp.var("max_depth"), expression: exp.Literal.number(2) })],
+    });
+    const select_expr = new exp.Select({ expressions: [unnest_expr] }).subquery();
+
+    let alias_expr = expression.args.alias;
+    if (alias_expr && !alias_expr.this) {
+      // we need to provide a table name if not present
+      alias_expr.set("this", exp.toIdentifier(`_u_${expression.index}`));
+    }
+
+    const transformed_lateral_expr = new exp.Lateral({ this: select_expr, alias: alias_expr });
+    const cross_join_lateral_expr = new exp.Join({ this: transformed_lateral_expr, kind: "CROSS" });
+
+    return self.sql(cross_join_lateral_expr);
+  }
+
+  // For other cases, use the standard conversion
+  return explode_to_unnest_sql(self, expression);
+}
 
 /** py:545 */
 function _array_sort_sql(self, expression) {
@@ -158,6 +252,378 @@ function _implicit_datetime_cast(arg, { type = exp.DType.DATE } = {}) {
     arg = exp.cast(arg, type);
   }
   return arg;
+}
+
+/** py:213 */
+function _is_nanosecond_unit(unit) {
+  return (unit instanceof exp.Var || unit instanceof exp.Literal) && unit.name.toUpperCase() === "NANOSECOND";
+}
+
+/**
+ * py:219 `_handle_nanosecond_diff(self, end_time, start_time)`.
+ * Generate NANOSECOND diff using EPOCH_NS since DATE_DIFF doesn't support it.
+ */
+function _handle_nanosecond_diff(self, end_time, start_time) {
+  const end_ns = exp.cast(end_time, exp.DType.TIMESTAMP_NS);
+  const start_ns = exp.cast(start_time, exp.DType.TIMESTAMP_NS);
+  return self.sql(new exp.Sub({ this: self.func("EPOCH_NS", end_ns), expression: self.func("EPOCH_NS", start_ns) }));
+}
+
+/**
+ * py:903 `_week_trunc_start_dow(unit)`.
+ * DuckDB's weeks are ISO 8601, so ISOWEEK maps to its plain WEEK unit.
+ */
+function _week_trunc_start_dow(unit) {
+  if (unit instanceof exp.Literal && unit.name.toUpperCase() === "ISOWEEK") return 1;
+  return week_unit_to_dow(unit);
+}
+
+/**
+ * py:910 `_build_week_trunc_expression(date_expr, start_dow, preserve_start_day=False, cast_to_date=True)`.
+ *
+ * Build DATE_TRUNC expression for week boundaries with custom start day.
+ * DuckDB's DATE_TRUNC('WEEK', ...) always returns Monday. To align to a
+ * different start day, we shift the date before truncating.
+ *
+ * `preserve_start_day`: if true, reverse the shift after truncating so the
+ * result lands on the correct week start day. Needed for DATE_TRUNC
+ * (absolute result matters) but not for DATE_DIFF (only relative alignment
+ * matters). `cast_to_date`: if true, cast the shifted result back to DATE;
+ * set to false for timestamp-valued inputs, where the result must remain a
+ * timestamp.
+ *
+ * Shift formula: Sunday (7) gets +1, others get (1 - start_dow).
+ */
+function _build_week_trunc_expression(date_expr, start_dow, { preserve_start_day = false, cast_to_date = true } = {}) {
+  const shift_days = start_dow === 7 ? 1 : 1 - start_dow;
+  const truncated = new exp.DateTrunc({ unit: exp.var("WEEK"), this: date_expr });
+  if (shift_days === 0) return truncated;
+
+  const shift = new exp.Interval({ this: exp.Literal.string(String(shift_days)), unit: exp.var("DAY") });
+  const shifted_date = new exp.DateAdd({ this: date_expr, expression: shift });
+  truncated.set("this", shifted_date);
+
+  if (preserve_start_day) {
+    const interval = new exp.Interval({ this: exp.Literal.string(String(-shift_days)), unit: exp.var("DAY") });
+    const shifted_back = new exp.DateAdd({ this: truncated, expression: interval });
+    if (cast_to_date) return exp.cast(shifted_back, exp.DType.DATE, { copy: false });
+    return shifted_back;
+  }
+
+  return truncated;
+}
+
+/** py:953 `_date_diff_sql(self, expression)` for `exp.DateDiff | exp.DatetimeDiff`. */
+function _date_diff_sql(self, expression) {
+  const unit = expression.unit;
+
+  if (_is_nanosecond_unit(unit)) return _handle_nanosecond_diff(self, expression.this, expression.expression);
+
+  let this_ = _implicit_datetime_cast(expression.this);
+  let expr = _implicit_datetime_cast(expression.expression);
+
+  // DuckDB's WEEK diff does not respect Monday crossing (week boundaries), it checks
+  // (end_day - start_day) / 7; other units such as MONTH do respect their boundaries.
+  const date_part_boundary = expression.args.date_part_boundary;
+
+  const week_start = week_unit_to_dow(unit);
+  if (date_part_boundary && week_start && this_ && expr) {
+    expression.set("unit", exp.Literal.string("WEEK"));
+    this_ = _build_week_trunc_expression(this_, week_start);
+    expr = _build_week_trunc_expression(expr, week_start);
+  }
+
+  return self.func("DATE_DIFF", unit_to_str(expression), expr, this_);
+}
+
+/**
+ * py:320 `_date_delta_to_binary_interval_op(cast=True)`.
+ *
+ * DuckDB override of `dialect.js`'s shared `date_delta_to_binary_interval_op`
+ * to handle: (1) NANOSECOND operations (DuckDB doesn't support
+ * `INTERVAL ... NANOSECOND`), (2) float/decimal interval values (DuckDB
+ * `INTERVAL` requires integer expressions).
+ */
+function _date_delta_to_binary_interval_op(cast = true) {
+  const base_impl = date_delta_to_binary_interval_op(cast);
+
+  return function _duckdb_date_delta_sql(self, expression) {
+    const unit = expression.unit;
+    let interval_value = expression.expression;
+
+    if (_is_nanosecond_unit(unit)) {
+      if (interval_value instanceof exp.Interval) interval_value = interval_value.this;
+      const timestamp_ns = exp.cast(expression.this, exp.DType.TIMESTAMP_NS);
+      return self.sql(
+        exp.func("MAKE_TIMESTAMP_NS", new exp.Add({ this: self.func("EPOCH_NS", timestamp_ns), expression: interval_value })),
+      );
+    }
+
+    // Handle float/decimal interval values as duckDB INTERVAL requires integer expressions
+    if (!interval_value || interval_value instanceof exp.Interval) return base_impl(self, expression);
+
+    if (interval_value.isType(...exp.DataType.REAL_TYPES)) {
+      expression.set("expression", exp.cast(self.func("ROUND", interval_value), "INT"));
+    }
+
+    return base_impl(self, expression);
+  };
+}
+
+/** py:607 `_struct_sql(self, expression)` for `exp.Struct`. */
+/** py:654 `_datatype_sql(self, expression)` for `exp.DataType`. */
+function _datatype_sql(self, expression) {
+  if (expression.isType("array")) {
+    return `${self.expressions(expression, null, { flat: true })}[${self.expressions(expression, "values", { flat: true })}]`;
+  }
+
+  // Modifiers are not supported for TIME, [TIME | TIMESTAMP] WITH TIME ZONE
+  if (expression.isType(exp.DType.TIME, exp.DType.TIMETZ, exp.DType.TIMESTAMPTZ)) {
+    return expression.this.value;
+  }
+
+  return self.datatype_sql(expression);
+}
+
+function _struct_sql(self, expression) {
+  let ancestor_cast = expression.findAncestor(exp.Cast, exp.Select);
+  ancestor_cast = ancestor_cast instanceof exp.Select ? null : ancestor_cast;
+
+  // Empty struct cast works with MAP() since DuckDB can't parse {}
+  if (!expression.expressions.length) {
+    if (ancestor_cast instanceof exp.Cast && ancestor_cast.to.isType(exp.DType.MAP)) return "MAP()";
+  }
+
+  const args = [];
+
+  // BigQuery allows inline construction such as "STRUCT<a STRING, b INTEGER>('str', 1)" which is
+  // canonicalized to "ROW('str', 1) AS STRUCT(a TEXT, b INT)" in DuckDB
+  // The transformation to ROW will take place if:
+  //  1. The STRUCT itself does not have proper fields (key := value) as a "proper" STRUCT would
+  //  2. A cast to STRUCT / ARRAY of STRUCTs is found
+  const is_bq_inline_struct = Boolean(
+    expression.find(exp.PropertyEQ) === null
+    && ancestor_cast
+    && [...ancestor_cast.findAll(exp.DataType)].some((casted_type) => casted_type.isType(exp.DType.STRUCT)),
+  );
+
+  const exprs = expression.expressions;
+  for (let i = 0; i < exprs.length; i++) {
+    const expr = exprs[i];
+    const is_property_eq = expr instanceof exp.PropertyEQ;
+    const this_ = expr.this;
+    const value = is_property_eq ? expr.expression : expr;
+
+    if (is_bq_inline_struct) {
+      args.push(self.sql(value));
+    } else {
+      let key;
+      if (this_ instanceof exp.Identifier) key = self.sql(exp.Literal.string(expr.name));
+      else if (is_property_eq) key = self.sql(this_);
+      else key = self.sql(exp.Literal.string(`_${i}`));
+      args.push(`${key}: ${self.sql(value)}`);
+    }
+  }
+
+  const csv_args = args.join(", ");
+
+  return is_bq_inline_struct ? `ROW(${csv_args})` : `{${csv_args}}`;
+}
+
+/**
+ * py:359 `_array_insert_sql(self, expression)` for `exp.ArrayInsert`.
+ *
+ * Transpile ARRAY_INSERT to DuckDB using LIST_CONCAT and slicing. Handles
+ * 0-based and 1-based indexing (normalizes to 0-based for calculations),
+ * negative position conversion (requires array length), and NULL
+ * propagation (source dialects return NULL, DuckDB creates a single-element
+ * array) — all dialects that support ARRAY_INSERT (Snowflake, Spark,
+ * Databricks) have ARRAY_FUNCS_PROPAGATES_NULLS=True, so NULL propagation is
+ * always assumed. Only a literal position can be transpiled.
+ */
+function _array_insert_sql(self, expression) {
+  const this_ = expression.this;
+  const position = expression.args.position;
+  const element = expression.expression;
+  const element_array = new exp.Array({ expressions: [element] });
+  const index_offset = expression.args.offset ?? 0;
+
+  if (!position || !position.isInt) {
+    self.unsupported("ARRAY_INSERT can only be transpiled with a literal position");
+    return self.func("ARRAY_INSERT", this_, position, element);
+  }
+
+  let pos_value = Number(position.toPy());
+
+  // Normalize one-based indexing to zero-based for slice calculations
+  // Spark (1-based) -> Snowflake (0-based):
+  //   Positive: pos=1 -> pos=0 (subtract 1)
+  //   Negative: pos=-2 -> pos=-1 (add 1)
+  // Example: Spark array_insert([a,b,c], -2, d) -> [a,b,d,c] is same as Snowflake pos=-1
+  if (pos_value > 0) pos_value -= index_offset;
+  else if (pos_value < 0) pos_value += index_offset;
+
+  // Build the appropriate list_concat expression based on position
+  let concat_exprs;
+  if (pos_value === 0) {
+    // insert at beginning
+    concat_exprs = [element_array, this_];
+  } else if (pos_value > 0) {
+    // Positive position: LIST_CONCAT(arr[1:pos], [elem], arr[pos+1:])
+    // 0-based -> DuckDB 1-based slicing
+
+    // left slice: arr[1:pos]
+    const slice_start = new exp.Bracket({
+      this: this_,
+      expressions: [new exp.Slice({ this: exp.Literal.number(1), expression: exp.Literal.number(pos_value) })],
+    });
+
+    // right slice: arr[pos+1:]
+    const slice_end = new exp.Bracket({
+      this: this_,
+      expressions: [new exp.Slice({ this: exp.Literal.number(pos_value + 1) })],
+    });
+
+    concat_exprs = [slice_start, element_array, slice_end];
+  } else {
+    // Negative position: arr[1:LEN(arr)+pos], [elem], arr[LEN(arr)+pos+1:]
+    // pos=-1 means insert before last element
+    const arr_len = new exp.Length({ this: this_ });
+
+    // Calculate slice position: LEN(arr) + pos (e.g., LEN(arr) + (-1) = LEN(arr) - 1)
+    // deny:operators sqlglot/generators/duckdb.py:429 — Python `+` on an Expr
+    const slice_end_pos = arr_len.add(exp.Literal.number(pos_value));
+    // deny:operators sqlglot/generators/duckdb.py:430 — Python `+` on an Expr
+    const slice_start_pos = slice_end_pos.add(exp.Literal.number(1));
+
+    // left slice: arr[1:LEN(arr)+pos]
+    const slice_start = new exp.Bracket({
+      this: this_,
+      expressions: [new exp.Slice({ this: exp.Literal.number(1), expression: slice_end_pos })],
+    });
+
+    // right slice: arr[LEN(arr)+pos+1:]
+    const slice_end = new exp.Bracket({ this: this_, expressions: [new exp.Slice({ this: slice_start_pos })] });
+
+    concat_exprs = [slice_start, element_array, slice_end];
+  }
+
+  // All dialects that support ARRAY_INSERT propagate NULLs (Snowflake/Spark/Databricks)
+  // Wrap in CASE WHEN array IS NULL THEN NULL ELSE func_expr END
+  return self.sql(
+    new exp.If({
+      this: new exp.Is({ this: this_, expression: new exp.Null() }),
+      true: new exp.Null(),
+      false: self.func("LIST_CONCAT", ...concat_exprs),
+    }),
+  );
+}
+
+/**
+ * py:452 `_array_remove_at_sql(self, expression)` for `exp.ArrayRemoveAt`.
+ *
+ * Transpile ARRAY_REMOVE_AT to DuckDB using LIST_CONCAT and slicing: pos=0
+ * (first) -> arr[2:], pos>0 (middle) -> LIST_CONCAT(arr[1:p], arr[p+2:]),
+ * pos=-1 (last) -> arr[1:LEN(arr)-1], pos<-1 -> LIST_CONCAT(arr[1:LEN(arr)+p],
+ * arr[LEN(arr)+p+2:]) — all wrapped in CASE WHEN arr IS NULL THEN NULL ELSE
+ * ... END (Snowflake's ARRAY_FUNCS_PROPAGATES_NULLS=True). Only a literal
+ * position can be transpiled.
+ */
+function _array_remove_at_sql(self, expression) {
+  const this_ = expression.this;
+  const position = expression.args.position;
+
+  if (!position || !position.isInt) {
+    self.unsupported("ARRAY_REMOVE_AT can only be transpiled with a literal position");
+    return self.func("ARRAY_REMOVE_AT", this_, position);
+  }
+
+  const pos_value = Number(position.toPy());
+
+  let result_expr;
+  if (pos_value === 0) {
+    // Remove first element: arr[2:]
+    result_expr = new exp.Bracket({ this: this_, expressions: [new exp.Slice({ this: exp.Literal.number(2) })] });
+  } else if (pos_value > 0) {
+    // Remove at positive position: LIST_CONCAT(arr[1:pos], arr[pos+2:])
+    // DuckDB uses 1-based slicing
+    const left_slice = new exp.Bracket({
+      this: this_,
+      expressions: [new exp.Slice({ this: exp.Literal.number(1), expression: exp.Literal.number(pos_value) })],
+    });
+    const right_slice = new exp.Bracket({
+      this: this_,
+      expressions: [new exp.Slice({ this: exp.Literal.number(pos_value + 2) })],
+    });
+    result_expr = self.func("LIST_CONCAT", left_slice, right_slice);
+  } else if (pos_value === -1) {
+    // Remove last element: arr[1:LEN(arr)-1]
+    // Optimization: simpler than general negative case
+    const arr_len = new exp.Length({ this: this_ });
+    // deny:operators sqlglot/generators/duckdb.py:512 — Python `+` on an Expr
+    const slice_end = arr_len.add(exp.Literal.number(-1));
+    result_expr = new exp.Bracket({
+      this: this_,
+      expressions: [new exp.Slice({ this: exp.Literal.number(1), expression: slice_end })],
+    });
+  } else {
+    // Remove at negative position: LIST_CONCAT(arr[1:LEN(arr)+pos], arr[LEN(arr)+pos+2:])
+    const arr_len = new exp.Length({ this: this_ });
+    // deny:operators sqlglot/generators/duckdb.py:520 — Python `+` on an Expr
+    const slice_end_pos = arr_len.add(exp.Literal.number(pos_value));
+    // deny:operators sqlglot/generators/duckdb.py:521 — Python `+` on an Expr
+    const slice_start_pos = slice_end_pos.add(exp.Literal.number(2));
+
+    const left_slice = new exp.Bracket({
+      this: this_,
+      expressions: [new exp.Slice({ this: exp.Literal.number(1), expression: slice_end_pos })],
+    });
+    const right_slice = new exp.Bracket({ this: this_, expressions: [new exp.Slice({ this: slice_start_pos })] });
+    result_expr = self.func("LIST_CONCAT", left_slice, right_slice);
+  }
+
+  // Snowflake ARRAY_FUNCS_PROPAGATES_NULLS=True, so wrap in NULL check
+  // CASE WHEN array IS NULL THEN NULL ELSE result_expr END
+  return self.sql(
+    new exp.If({
+      this: new exp.Is({ this: this_, expression: new exp.Null() }),
+      true: new exp.Null(),
+      false: result_expr,
+    }),
+  );
+}
+
+/**
+ * py:1428 `_date_from_parts_sql(self, expression)` for `exp.DateFromParts`.
+ *
+ * Snowflake's DATE_FROM_PARTS allows out-of-range values for the month and
+ * day input (e.g. month=13, day=100, or zero/negative values), but DuckDB's
+ * MAKE_DATE does not. DuckDB's INTERVAL type does, so when `allow_overflow`
+ * is set this converts to date arithmetic:
+ * MAKE_DATE(year, 1, 1) + INTERVAL (month-1) MONTH + INTERVAL (day-1) DAY
+ */
+function _date_from_parts_sql(self, expression) {
+  const year_expr = expression.args.year;
+  const month_expr = expression.args.month;
+  const day_expr = expression.args.day;
+
+  if (expression.args.allow_overflow) {
+    let base_date = exp.func("MAKE_DATE", year_expr, exp.Literal.number(1), exp.Literal.number(1));
+
+    if (month_expr) {
+      // deny:operators sqlglot/generators/duckdb.py:1449 — Python `+`/`-` on an Expr
+      base_date = base_date.add(new exp.Interval({ this: month_expr.sub(exp.Literal.number(1)), unit: exp.var("MONTH") }));
+    }
+
+    if (day_expr) {
+      // deny:operators sqlglot/generators/duckdb.py:1452 — Python `+`/`-` on an Expr
+      base_date = base_date.add(new exp.Interval({ this: day_expr.sub(exp.Literal.number(1)), unit: exp.var("DAY") }));
+    }
+
+    return self.sql(exp.cast(base_date, exp.DType.DATE));
+  }
+
+  return self.func("MAKE_DATE", year_expr, month_expr, day_expr);
 }
 
 /** py:1017 */
@@ -230,6 +696,95 @@ function _xor_sql(self, expression) {
 
 /** py:1553 `class DuckDBGenerator(generator.Generator)`. */
 export class DuckDBGenerator extends Generator {
+  // Instance method overrides (base `Generator` has no `datetrunc_sql`/
+  // `datetimetrunc_sql`/`timestamptrunc_sql` of its own — `exp.DateTrunc` etc.
+  // fall back to `function_fallback_sql` unless a dialect generator defines one
+  // of these; `_buildDispatch` (src/generator.js) only fills in a method-name
+  // string for a class with no matching `TRANSFORMS` entry, which is the case
+  // for all three here, so defining them is sufficient to wire the dispatch).
+
+  /** py:4419 `datetrunc_sql(self, expression)` */
+  datetrunc_sql(expression) {
+    const unit_expr = expression.args.unit;
+    const date = expression.this;
+
+    const week_start = _week_trunc_start_dow(unit_expr);
+    const unit = unit_to_str(expression);
+
+    let result;
+    if (week_start) {
+      result = this.sql(_build_week_trunc_expression(date, week_start, { preserve_start_day: true }));
+    } else {
+      result = this.func("DATE_TRUNC", unit, date);
+    }
+
+    if (
+      expression.args.input_type_preserved
+      && date.isType(...exp.DataType.TEMPORAL_TYPES)
+      && !(isDateUnit(unit) && date.isType(exp.DType.DATE))
+    ) {
+      return this.sql(new exp.Cast({ this: result, to: date.type }));
+    }
+
+    return result;
+  }
+
+  /** py:4438 `datetimetrunc_sql(self, expression)` */
+  datetimetrunc_sql(expression) {
+    const this_ = exp.cast(expression.this, exp.DType.DATETIME);
+    const week_start = _week_trunc_start_dow(expression.args.unit);
+    if (week_start) {
+      return this.sql(_build_week_trunc_expression(this_, week_start, { preserve_start_day: true, cast_to_date: false }));
+    }
+    return this.func("DATE_TRUNC", unit_to_str(expression), this_);
+  }
+
+  /** py:4448 `timestamptrunc_sql(self, expression)` */
+  timestamptrunc_sql(expression) {
+    const zone = expression.args.zone;
+    let timestamp = expression.this;
+    const week_start = _week_trunc_start_dow(expression.args.unit);
+
+    // The week start emulation below is exact, so avoid weekstart_unit_to_str's degrade warning
+    const unit = week_start ? unit_to_str(expression) : weekstart_unit_to_str(this, expression);
+    const date_unit = isDateUnit(unit) || Boolean(week_start);
+
+    const trunc_expr = (this_) => {
+      if (week_start) return _build_week_trunc_expression(this_, week_start, { preserve_start_day: true, cast_to_date: false });
+      return exp.func("DATE_TRUNC", unit, this_);
+    };
+
+    if (date_unit && zone) {
+      // BigQuery's TIMESTAMP_TRUNC with timezone truncates in the target timezone and returns as UTC.
+      // Double AT TIME ZONE needed for BigQuery compatibility:
+      // 1. First AT TIME ZONE: ensures truncation happens in the target timezone
+      // 2. Second AT TIME ZONE: converts the DATE result back to TIMESTAMPTZ (preserving time component)
+      timestamp = new exp.AtTimeZone({ this: timestamp, zone });
+      let trunced = trunc_expr(timestamp);
+      if (trunced instanceof exp.DateAdd) {
+        // Parenthesize so the trailing AT TIME ZONE binds to the whole shifted expression
+        trunced = new exp.Paren({ this: trunced });
+      }
+      return this.sql(new exp.AtTimeZone({ this: trunced, zone }));
+    }
+
+    let result = this.sql(trunc_expr(timestamp));
+    if (expression.args.input_type_preserved) {
+      if (timestamp.type && timestamp.isType(exp.DType.TIME, exp.DType.TIMETZ)) {
+        const dummy_date = new exp.Cast({ this: exp.Literal.string("1970-01-01"), to: new exp.DataType({ this: exp.DType.DATE }) });
+        const date_time = new exp.Add({ this: dummy_date, expression: timestamp });
+        result = this.func("DATE_TRUNC", unit, date_time);
+        return this.sql(new exp.Cast({ this: result, to: timestamp.type }));
+      }
+
+      if (timestamp.isType(...exp.DataType.TEMPORAL_TYPES) && !(date_unit && timestamp.isType(exp.DType.DATE))) {
+        return this.sql(new exp.Cast({ this: result, to: timestamp.type }));
+      }
+    }
+
+    return result;
+  }
+
   static PARAMETER_TOKEN = "$";
   static NAMED_PLACEHOLDER_TOKEN = "$";
   static JOIN_HINTS = false;
@@ -289,9 +844,9 @@ export class DuckDBGenerator extends Generator {
     [exp.ArrayContains, _array_contains_sql],
     // py:1608 [exp.ArrayOverlaps, _array_overlaps_sql] — blocked, `_array_overlaps_sql` (42 lines) out of scope this pass
     [exp.ArrayFilter, rename_func("LIST_FILTER")],
-    // py:1610 [exp.ArrayInsert, _array_insert_sql] — blocked, 94-line local helper out of scope this pass
+    [exp.ArrayInsert, _array_insert_sql],
     // py:1611 [exp.ArrayPosition, lambda] — blocked, needs `zero_based` arg semantics not yet checked against a base method this pass touches
-    // py:1621 [exp.ArrayRemoveAt, _array_remove_at_sql] — blocked, 91-line local helper out of scope this pass
+    [exp.ArrayRemoveAt, _array_remove_at_sql],
     // py:1622 [exp.ArrayRemove, remove_from_array_using_filter] — blocked, dialect.js does not yet export `remove_from_array_using_filter`
     [exp.ArraySort, _array_sort_sql],
     // py:2652 `sortarray_sql` — a `*_sql` METHOD override upstream, not a TRANSFORMS
@@ -339,12 +894,17 @@ export class DuckDBGenerator extends Generator {
       exp.Monthname,
       (self, e) => (e.args.abbreviated ? self.func("STRFTIME", e.this, exp.Literal.string("%b")) : self.func("MONTHNAME", e.this)),
     ],
-    // py:1668 [exp.DataType, _datatype_sql] — blocked, DECIMAL/BIGDECIMAL/DECFLOAT scale handling out of scope this pass
+    [exp.DataType, _datatype_sql],
     // py:1669 [exp.Date, _date_sql] — blocked, local helper out of scope this pass
-    // py:1670-1678,1754-1755,1759,1763,1778 [*Add/*Sub via _date_delta_to_binary_interval_op] — blocked,
-    // the local nanosecond/float-interval wrapper (py:320) is out of scope this pass; see file header.
+    [exp.DateAdd, _date_delta_to_binary_interval_op()],
+    [exp.DateFromParts, _date_from_parts_sql],
+    [exp.DateSub, _date_delta_to_binary_interval_op()],
+    [exp.DateDiff, _date_diff_sql],
     [exp.DateStrToDate, datestrtodate_sql],
     // py:1675 [exp.Datetime, no_datetime_sql] — blocked, needs the unported `TIMEZONES` set
+    [exp.DatetimeDiff, _date_diff_sql],
+    [exp.DatetimeSub, _date_delta_to_binary_interval_op()],
+    [exp.DatetimeAdd, _date_delta_to_binary_interval_op()],
     // py:1679-1681 [exp.DateToDi, lambda] — skipped, low value (DI = Julian "date-as-int" legacy format)
     // py:1682-1683 [exp.Decode, exp.HexDecodeString] — blocked, dialect.js does not yet export `encode_decode_sql`
     // py:1684-1686 [exp.DiToDate, lambda] — skipped, pairs with the excluded DateToDi above
@@ -373,11 +933,15 @@ export class DuckDBGenerator extends Generator {
     // and base `round_sql`/`ceil_floor`
     [exp.JSONBExists, rename_func("JSON_EXISTS")],
     // py:1711-1714 [exp.JSONExtract*, exp.JSONFormat, exp.JSONValueArray] — blocked, local helpers out of scope
-    // py:1715 [exp.Lateral, _explode_to_unnest_sql] — blocked, local helper out of scope this pass
+    [exp.Lateral, _explode_to_unnest_sql],
     [exp.LogicalOr, (self, e) => self.func("BOOL_OR", _cast_to_boolean(e.this))],
     [exp.LogicalAnd, (self, e) => self.func("BOOL_AND", _cast_to_boolean(e.this))],
     // py:1718-1720 [exp.Select, transforms.preprocess([connect_by_to_recursive_cte, _seq_to_range_in_generator])] — blocked
-    // py:1721-1725 [exp.Seq1/2/4/8, exp.BoolxorAgg dup-region] — blocked, `_seq_sql` local helper out of scope this pass
+    [exp.Seq1, (self, e) => _seq_sql(self, e, 1)],
+    [exp.Seq2, (self, e) => _seq_sql(self, e, 2)],
+    [exp.Seq4, (self, e) => _seq_sql(self, e, 4)],
+    [exp.Seq8, (self, e) => _seq_sql(self, e, 8)],
+    // py:1725 [exp.BoolxorAgg, _boolxor_agg_sql] — dup of the real entry already wired above (py:1261)
     // py:1726 [exp.MakeInterval, lambda] wraps `no_make_interval_sql` directly — real, wired below
     [exp.MakeInterval, (self, e) => no_make_interval_sql(self, e, " ")],
     // py:1727-1732 [exp.Initcap, exp.MD5Digest, exp.SHA*] — blocked, local helpers out of scope this pass
@@ -399,13 +963,14 @@ export class DuckDBGenerator extends Generator {
     [exp.ReturnsProperty, (self, e) => (e.this instanceof exp.Schema ? "TABLE" : "")],
     // py:1749-1751 [exp.StrToUnix, lambda] — skipped, chains through DuckDB's own `format_time` handling not
     // separately verified this pass
-    // py:1752 [exp.Struct, _struct_sql] — blocked, local helper out of scope this pass
+    [exp.Struct, _struct_sql],
     [exp.Transform, rename_func("LIST_TRANSFORM")],
-    // py:1754-1755,1759,1763,1778 — see the _date_delta_to_binary_interval_op note above (py:1670-1678)
-    // py:1756 [exp.Time, no_time_sql] wires directly — real, wired below
+    [exp.TimeAdd, _date_delta_to_binary_interval_op()],
+    [exp.TimeSub, _date_delta_to_binary_interval_op()],
     [exp.Time, no_time_sql],
     // py:1757 [exp.TimeDiff, _timediff_sql] — blocked, BigQuery-specific local helper out of scope this pass
     [exp.Timestamp, no_timestamp_sql],
+    [exp.TimestampAdd, _date_delta_to_binary_interval_op()],
     [
       exp.TimestampDiff,
       // py: `exp.Literal.string(e.unit)` — `e.unit` is upstream's `TimeUnit` mixin
@@ -418,6 +983,7 @@ export class DuckDBGenerator extends Generator {
       // `expressions/focused_methods.js:251`) — always the same value, no getter needed.
       (self, e) => self.func("DATE_DIFF", exp.Literal.string(e.args.unit ? e.args.unit.sql() : "None"), e.expression, e.this),
     ],
+    [exp.TimestampSub, _date_delta_to_binary_interval_op()],
     [exp.TimeStrToDate, (self, e) => self.sql(exp.cast(e.this, exp.DType.DATE))],
     [exp.TimeStrToTime, timestrtotime_sql],
     [
@@ -435,7 +1001,7 @@ export class DuckDBGenerator extends Generator {
       exp.TsOrDiToDi,
       (self, e) => `CAST(SUBSTR(REPLACE(CAST(${self.sql(e, "this")} AS TEXT), '-', ''), 1, 8) AS INT)`,
     ],
-    // py:1778 [exp.TsOrDsAdd, _date_delta_to_binary_interval_op] — blocked, see py:1670-1678 note above
+    [exp.TsOrDsAdd, _date_delta_to_binary_interval_op()],
     [
       exp.TsOrDsDiff,
       (self, e) =>
@@ -469,16 +1035,19 @@ export class DuckDBGenerator extends Generator {
     ],
     [exp.VariancePop, rename_func("VAR_POP")],
     [exp.WeekOfYear, rename_func("WEEKOFYEAR")],
-    // py:1797,1803 [exp.YearOfWeek, exp.YearOfWeekIso] — blocked. Both build an
-    // `exp.Extract` node and render it, which dispatches to base `extract_sql`
-    // (sqlglot/generator.py:3649, still NotPorted). `extract_sql` itself is small (17
-    // lines) but needs `dialects/dialect.js`'s `map_date_part` — and `generator.js`
-    // cannot import `dialects/dialect.js` (the reverse import already exists,
-    // `dialect.js:49`, so this direction would cycle). Newly-found hazard, written up
-    // as PORT_PLAN.md R32: porting `extract_sql` needs either a lazy dynamic import (it
-    // is a sync method on a sync call chain, so that does not work directly) or a
-    // registration-hook indirection (`registerGenerator`-style) neither of which is a
-    // same-pass fix.
+    // py:1797,1803 [exp.YearOfWeek, exp.YearOfWeekIso] — unblocked: both build an
+    // `exp.Extract` node and render it, which now dispatches to the DuckDB-specific
+    // `extract_sql` override below (base `generator.js`'s own `extract_sql` is real
+    // too, `map_date_part`'s cross-module-import hazard from R32 having since been
+    // resolved — stale per R22, "stubs outlive their stated blocker").
+    [
+      exp.YearOfWeek,
+      (self, e) => self.sql(new exp.Extract({ this: exp.var("ISOYEAR"), expression: e.this })),
+    ],
+    [
+      exp.YearOfWeekIso,
+      (self, e) => self.sql(new exp.Extract({ this: exp.var("ISOYEAR"), expression: e.this })),
+    ],
     [exp.Xor, _xor_sql],
     [exp.JSONObjectAgg, rename_func("JSON_GROUP_OBJECT")],
     [exp.JSONBObjectAgg, rename_func("JSON_GROUP_OBJECT")],
@@ -533,4 +1102,253 @@ export class DuckDBGenerator extends Generator {
     "current_timestamp", "returning", "primary", "intersect", "having", "analyze",
     "current_user", "and", "cast", "symmetric", "using", "order", "current_catalog",
   ]);
+
+  /**
+   * py:2004 `EXTRACT_STRFTIME_MAPPINGS`.
+   * Maps Snowflake specifiers unsupported in DuckDB to strftime format codes.
+   */
+  static EXTRACT_STRFTIME_MAPPINGS = new Map([
+    ["WEEKISO", ["%V", "INTEGER"]],
+    ["YEAROFWEEK", ["%G", "INTEGER"]],
+    ["YEAROFWEEKISO", ["%G", "INTEGER"]],
+    ["NANOSECOND", ["%n", "BIGINT"]],
+  ]);
+
+  /** py:2012 `EXTRACT_EPOCH_MAPPINGS`. Maps epoch-based specifiers to DuckDB epoch functions. */
+  static EXTRACT_EPOCH_MAPPINGS = new Map([
+    ["EPOCH_SECOND", "EPOCH"],
+    ["EPOCH_MILLISECOND", "EPOCH_MS"],
+    ["EPOCH_MICROSECOND", "EPOCH_US"],
+    ["EPOCH_NANOSECOND", "EPOCH_NS"],
+  ]);
+
+  /**
+   * py:2987 `extract_sql(self, expression)`.
+   *
+   * Transpile EXTRACT/DATE_PART for DuckDB, handling specifiers not natively
+   * supported: WEEKISO, YEAROFWEEK, YEAROFWEEKISO, NANOSECOND, EPOCH_SECOND
+   * (as integer), EPOCH_MILLISECOND, EPOCH_MICROSECOND, EPOCH_NANOSECOND.
+   */
+  extract_sql(expression) {
+    const this_ = expression.this;
+    const datetime_expr = expression.expression;
+
+    // TIMESTAMPTZ extractions may produce different results between Snowflake and DuckDB
+    // because Snowflake applies server timezone while DuckDB uses local timezone
+    if (datetime_expr.isType(exp.DType.TIMESTAMPTZ, exp.DType.TIMESTAMPLTZ)) {
+      this.unsupported(
+        "EXTRACT from TIMESTAMPTZ / TIMESTAMPLTZ may produce different results due to timezone handling differences",
+      );
+    }
+
+    const part_name = this_.name.toUpperCase();
+
+    if (this.constructor.EXTRACT_STRFTIME_MAPPINGS.has(part_name)) {
+      const [fmt, cast_type] = this.constructor.EXTRACT_STRFTIME_MAPPINGS.get(part_name);
+
+      // Problem: strftime doesn't accept TIME and there's no NANOSECOND function
+      // So, for NANOSECOND with TIME, fallback to MICROSECOND * 1000
+      const is_nano_time = part_name === "NANOSECOND" && datetime_expr.isType(exp.DType.TIME, exp.DType.TIMETZ);
+
+      if (is_nano_time) {
+        this.unsupported("Parameter NANOSECOND is not supported with TIME type in DuckDB");
+        return this.sql(
+          exp.cast(
+            new exp.Mul({
+              this: new exp.Extract({ this: exp.var("MICROSECOND"), expression: datetime_expr }),
+              expression: exp.Literal.number(1000),
+            }),
+            exp.DataType.build(cast_type, { dialect: "duckdb" }),
+          ),
+        );
+      }
+
+      // For NANOSECOND, cast to TIMESTAMP_NS to preserve nanosecond precision
+      let strftime_input = datetime_expr;
+      if (part_name === "NANOSECOND") strftime_input = exp.cast(datetime_expr, exp.DType.TIMESTAMP_NS);
+
+      return this.sql(
+        exp.cast(
+          new exp.Anonymous({ this: "STRFTIME", expressions: [strftime_input, exp.Literal.string(fmt)] }),
+          exp.DataType.build(cast_type, { dialect: "duckdb" }),
+        ),
+      );
+    }
+
+    if (this.constructor.EXTRACT_EPOCH_MAPPINGS.has(part_name)) {
+      const func_name = this.constructor.EXTRACT_EPOCH_MAPPINGS.get(part_name);
+      let result = new exp.Anonymous({ this: func_name, expressions: [datetime_expr] });
+      // EPOCH returns float, cast to BIGINT for integer result
+      if (part_name === "EPOCH_SECOND") result = exp.cast(result, exp.DataType.build("BIGINT", { dialect: "duckdb" }));
+      return this.sql(result);
+    }
+
+    return super.extract_sql(expression);
+  }
+
+  /**
+   * py:4349 `addmonths_sql(self, expression)`.
+   *
+   * Handles three key issues:
+   * 1. Float/decimal months: e.g., Snowflake rounds, whereas DuckDB INTERVAL requires integers
+   * 2. End-of-month preservation: If input is last day of month, result is last day of result month
+   * 3. Type preservation: Maintains DATE/TIMESTAMPTZ types (DuckDB defaults to TIMESTAMP)
+   */
+  addmonths_sql(expression) {
+    let this_ = expression.this;
+    if (!this_.type) this_ = annotate_types(this_, { dialect: this.dialect });
+
+    if (this_.isType(...exp.DataType.TEXT_TYPES)) {
+      this_ = new exp.Cast({ this: this_, to: new exp.DataType({ this: exp.DType.TIMESTAMP }) });
+    }
+
+    // Detect float/decimal months to apply rounding (Snowflake behavior)
+    // DuckDB INTERVAL syntax doesn't support non-integer expressions, so use TO_MONTHS
+    let months_expr = expression.expression;
+    if (!months_expr.type) months_expr = annotate_types(months_expr, { dialect: this.dialect });
+
+    // Build interval or to_months expression based on type
+    // Float/decimal case: Round and use TO_MONTHS(CAST(ROUND(value) AS INT))
+    const interval_or_to_months = months_expr.isType(exp.DType.FLOAT, exp.DType.DOUBLE, exp.DType.DECIMAL)
+      ? exp.func("TO_MONTHS", exp.cast(exp.func("ROUND", months_expr), "INT"))
+      // Integer case: standard INTERVAL N MONTH syntax
+      : new exp.Interval({ this: months_expr, unit: exp.var("MONTH") });
+
+    const date_add_expr = new exp.Add({ this: this_, expression: interval_or_to_months });
+
+    // Apply end-of-month preservation if Snowflake flag is set
+    // CASE WHEN LAST_DAY(date) = date THEN LAST_DAY(result) ELSE result END
+    const preserve_eom = expression.args.preserve_end_of_month;
+    const result_expr = preserve_eom
+      ? exp.case()
+          .when(new exp.EQ({ this: exp.func("LAST_DAY", this_), expression: this_ }), exp.func("LAST_DAY", date_add_expr))
+          .else_(date_add_expr)
+      : date_add_expr;
+
+    // DuckDB's DATE_ADD function returns TIMESTAMP/DATETIME by default, even when the input is DATE
+    // To match for example Snowflake's ADD_MONTHS behavior (which preserves the input type)
+    // We need to cast the result back to the original type when the input is DATE or TIMESTAMPTZ
+    // Example: ADD_MONTHS('2023-01-31'::date, 1) should return DATE, not TIMESTAMP
+    if (this_.isType(exp.DType.DATE, exp.DType.TIMESTAMPTZ)) {
+      return this.sql(new exp.Cast({ this: result_expr, to: this_.type }));
+    }
+    return this.sql(result_expr);
+  }
+
+  /** py:4670 `approxquantile_sql(self, expression)`. */
+  approxquantile_sql(expression) {
+    let result = this.func("APPROX_QUANTILE", expression.this, expression.args.quantile);
+
+    // DuckDB returns integers for APPROX_QUANTILE, cast to DOUBLE if the expected type is a real type
+    if (expression.isType(...exp.DataType.REAL_TYPES)) result = `CAST(${result} AS DOUBLE)`;
+
+    return result;
+  }
+
+  /**
+   * py:4679 `approxquantiles_sql(self, expression)`.
+   *
+   * BigQuery's APPROX_QUANTILES(expr, n) returns an array of n+1 approximate
+   * quantile values dividing the input distribution into n equal-sized
+   * buckets. Both BigQuery and DuckDB use approximate algorithms for
+   * quantile estimation, but BigQuery does not document the specific
+   * algorithm used so results may differ. DuckDB does not support RESPECT
+   * NULLS.
+   */
+  approxquantiles_sql(expression) {
+    const this_ = expression.this;
+    let num_quantiles_expr;
+    if (this_ instanceof exp.Distinct) {
+      // APPROX_QUANTILES requires 2 args and DISTINCT node grabs both
+      if (this_.expressions.length < 2) {
+        this.unsupported("APPROX_QUANTILES requires a bucket count argument");
+        return this.function_fallback_sql(expression);
+      }
+      num_quantiles_expr = this_.expressions[1].pop();
+    } else {
+      num_quantiles_expr = expression.expression;
+    }
+
+    if (!(num_quantiles_expr instanceof exp.Literal) || !num_quantiles_expr.isInt) {
+      this.unsupported("APPROX_QUANTILES bucket count must be a positive integer");
+      return this.function_fallback_sql(expression);
+    }
+
+    const num_quantiles = Number(num_quantiles_expr.toPy());
+    if (num_quantiles <= 0) {
+      this.unsupported("APPROX_QUANTILES bucket count must be a positive integer");
+      return this.function_fallback_sql(expression);
+    }
+
+    const quantiles = [];
+    const denom = pyDecimal(num_quantiles);
+    for (let i = 0; i <= num_quantiles; i++) quantiles.push(exp.Literal.number(decDiv(pyDecimal(i), denom)));
+
+    return this.sql(new exp.ApproxQuantile({ this: this_, quantile: new exp.Array({ expressions: quantiles }) }));
+  }
+
+  /** py:3952 `unnest_sql(self, expression)`. */
+  unnest_sql(expression) {
+    const explode_array = expression.args.explode_array;
+    if (explode_array) {
+      // In BigQuery, UNNESTing a nested array leads to explosion of the top-level array & struct
+      // This is transpiled to DDB by transforming "FROM UNNEST(...)" to "FROM (SELECT UNNEST(..., max_depth => 2))"
+      expression.expressions.push(new exp.Kwarg({ this: exp.var("max_depth"), expression: exp.Literal.number(2) }));
+
+      // If BQ's UNNEST is aliased, we transform it from a column alias to a table alias in DDB
+      let alias = expression.args.alias;
+      if (alias instanceof exp.TableAlias) {
+        expression.set("alias", null);
+        if (alias.columns.length) alias = new exp.TableAlias({ this: seqGet(alias.columns, 0) });
+      }
+
+      const unnest_sql = super.unnest_sql(expression);
+      const select = new exp.Select({ expressions: [unnest_sql] }).subquery(alias);
+      return this.sql(select);
+    }
+
+    return super.unnest_sql(expression);
+  }
+
+  /**
+   * py:3299 `_validate_regexp_flags(self, flags, supported_flags)`.
+   *
+   * Validate and filter regexp flags for DuckDB compatibility. `flags` is
+   * the flags expression to validate; `supported_flags` is a string of
+   * supported flags (e.g. "ims", "cims") -- only those are returned.
+   * Returns the validated/filtered flag string, or null if none remain.
+   */
+  _validate_regexp_flags(flags, supported_flags) {
+    if (!(flags instanceof exp.Expr)) return null;
+
+    if (!flags.isString) {
+      this.unsupported("Non-literal regexp flags are not fully supported in DuckDB");
+      return null;
+    }
+
+    const flag_str = flags.this;
+    const unsupported = [...new Set(flag_str)].filter((f) => !supported_flags.includes(f));
+
+    if (unsupported.length) {
+      this.unsupported(`Regexp flags ${pyRepr(unsupported.sort())} are not supported in this context`);
+    }
+
+    const filtered = [...flag_str].filter((f) => supported_flags.includes(f)).join("");
+    return filtered || null;
+  }
+
+  /** py:3412 `regexplike_sql(self, expression)`. */
+  regexplike_sql(expression) {
+    const this_ = expression.this;
+    const pattern = expression.expression;
+    let flag = expression.args.flag;
+
+    if (expression.args.full_match) {
+      const validated_flags = this._validate_regexp_flags(flag, "cims");
+      flag = validated_flags ? exp.Literal.string(validated_flags) : null;
+      return this.func("REGEXP_FULL_MATCH", this_, pattern, flag);
+    }
+
+    return this.func("REGEXP_MATCHES", this_, pattern, flag);
+  }
 }
