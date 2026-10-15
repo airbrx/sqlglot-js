@@ -150,6 +150,14 @@ PYTHONHASHSEED=0 python3 spike/p5/gen_dune_dialect_ref.py > spike/out/dune_diale
 # IDENTIFIERS list, and one post-merge `KEYWORDS.pop("DIV")` call. No method override
 # on the Dialect class itself, so no section 4 -- same shape Presto's own oracle used.
 PYTHONHASHSEED=0 python3 spike/p5/gen_exasol_dialect_ref.py > spike/out/exasol_dialect.json || fail=1
+# P5 oracle, same shape, Oracle (AIR-2290, "12.5 Oracle"). `dialects/oracle.py`
+# extends the BASE `Dialect` directly, no chain -- 106 resolved settings (18
+# Oracle's own, including a vestigial `LOCKING_READS_SUPPORTED` that leaks onto
+# this class with no `Dialect`-side reader), a nested Tokenizer with ~15 added/
+# remapped keywords (incl. the `(+)` outer-join marker), and one method override
+# (`can_quote`, a Pseudocolumn-parent DUAL exception) -- a real section 4, the
+# same shape Snowflake/DuckDB/ClickHouse use.
+PYTHONHASHSEED=0 python3 spike/p5/gen_oracle_dialect_ref.py > spike/out/oracle_dialect.json || fail=1
 # P5 oracle, same shape, Materialize (AIR-2292, "12.7 Small dialects", batch A, part
 # 1/3). `dialects/materialize.py` is `Materialize(Postgres)`: one resolved setting of
 # its own (NORMALIZE_NOT_NULL), no nested Tokenizer declared (a fresh empty subclass
@@ -548,6 +556,7 @@ run "P5: Trino dialect vs CPython"         node spike/p5/fuzz_trino_dialect.mjs
 run "P5: Athena dialect vs CPython"        node spike/p5/fuzz_athena_dialect.mjs
 run "P5: Dune dialect vs CPython"          node spike/p5/fuzz_dune_dialect.mjs
 run "P5: Exasol dialect vs CPython"        node spike/p5/fuzz_exasol_dialect.mjs
+run "P5: Oracle dialect vs CPython"        node spike/p5/fuzz_oracle_dialect.mjs
 run "P5: Materialize dialect vs CPython"   node spike/p5/fuzz_materialize_dialect.mjs
 run "P5: RisingWave dialect vs CPython"    node spike/p5/fuzz_risingwave_dialect.mjs
 run "P5: Fabric dialect vs CPython"        node spike/p5/fuzz_fabric_dialect.mjs

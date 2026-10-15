@@ -37,6 +37,7 @@ import "./src/dialects/doris.js";
 import "./src/dialects/trino.js";
 import "./src/dialects/athena.js";
 import "./src/dialects/dune.js";
+import "./src/dialects/oracle.js";
 import "./src/dialects/exasol.js";
 import "./src/dialects/materialize.js";
 import "./src/dialects/risingwave.js";
