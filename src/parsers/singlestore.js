@@ -82,6 +82,9 @@ export class SingleStoreParser extends MySQLParser {
       this: seqGet(args, 0),
       format: MySQL.format_time(exp.Literal.string("%M")),
     })],
+    // deny:operators sqlglot/parsers/singlestore.py:71 — `DayOfWeek(...) + 5` is
+    // `Expr.__add__` (`.add()`) and the trailing `% 7` is `Expr.__mod__` (`.mod()`),
+    // both building the matching `exp.Add`/`exp.Mod` nodes.
     ["WEEKDAY", (args) => exp.paren(new exp.DayOfWeek({ this: seqGet(args, 0) }).add(5), false).mod(7)],
     ["UNIX_TIMESTAMP", exp.StrToUnix.from_arg_list],
     ["FROM_UNIXTIME", build_formatted_time(exp.UnixToTime, "mysql")],

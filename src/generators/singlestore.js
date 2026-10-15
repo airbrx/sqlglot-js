@@ -25,6 +25,7 @@ import {
 } from "../dialects/dialect.js";
 import { unsupported_args } from "../generator.js";
 import { MySQLGenerator, date_add_sql } from "./mysql.js";
+import { pyChr } from "../_py/str.js";
 
 /**
  * py: sqlglot/generators/singlestore.py:24 `_unicode_substitute(m: re.Match[str])`.
@@ -36,7 +37,7 @@ import { MySQLGenerator, date_add_sql } from "./mysql.js";
  * SECOND parameter here, not a property read off the first.
  */
 function _unicode_substitute(match, group1) {
-  return String.fromCodePoint(Number.parseInt(group1, 16));
+  return pyChr(Number.parseInt(group1, 16));
 }
 
 /** py: sqlglot/generators/singlestore.py:28 */
@@ -173,6 +174,9 @@ export class SingleStoreGenerator extends MySQLGenerator {
     [exp.Variance, rename_func("VAR_SAMP")],
     [exp.VariancePop, rename_func("VAR_POP")],
     [exp.Xor, bool_xor_sql],
+    // deny:operators sqlglot/generators/singlestore.py:200 — `1 / 3` is
+    // `Expr.__truediv__`, which builds `exp.Div`; `.truediv()` is that same
+    // constructor.
     [exp.Cbrt, (self, e) => self.sql(
       new exp.Pow({ this: e.this, expression: exp.Literal.number(1).truediv(exp.Literal.number(3)) }),
     )],
@@ -207,8 +211,12 @@ export class SingleStoreGenerator extends MySQLGenerator {
     )],
     [exp.Stuff, (self, e) => self.func(
       "CONCAT",
+      // deny:operators sqlglot/generators/singlestore.py:245 — `start - 1` is
+      // `Expr.__sub__`, which builds `exp.Sub`; `.sub()` is that same constructor.
       self.func("SUBSTRING", e.this, exp.Literal.number(1), e.args.start.sub(1)),
       e.expression,
+      // deny:operators sqlglot/generators/singlestore.py:247 — `start + length` is
+      // `Expr.__add__`, which builds `exp.Add`; `.add()` is that same constructor.
       self.func("SUBSTRING", e.this, e.args.start.add(e.args.length)),
     )],
     [exp.National, (self, e) => self.national_sql(e, "")],
@@ -492,14 +500,21 @@ export class SingleStoreGenerator extends MySQLGenerator {
     "zone",
   ]);
 
-  /** py:1428 */
+  /**
+   * py:1428. `json_type` is always a plain string (set that way by every
+   * `FUNCTIONS`/`COLUMN_OPERATORS` builder in `parsers/singlestore.js`, never an
+   * `exp.Expr`), so the template interpolation below is plain string formatting, not
+   * an implicit `Expression.__str__` -> `.sql()` call.
+   */
+  // deny:implicit_str sqlglot/generators/singlestore.py:1430
   jsonextractscalar_sql(expression) {
     const json_type = expression.args.json_type;
     const func_name = json_type == null ? "JSON_EXTRACT_JSON" : `JSON_EXTRACT_${json_type}`;
     return json_extract_segments(func_name)(this, expression);
   }
 
-  /** py:1433 */
+  // py:1433 — same `json_type`-is-a-plain-string shape as `jsonextractscalar_sql` above.
+  // deny:implicit_str sqlglot/generators/singlestore.py:1435
   jsonbextractscalar_sql(expression) {
     const json_type = expression.args.json_type;
     const func_name = json_type == null ? "BSON_EXTRACT_BSON" : `BSON_EXTRACT_${json_type}`;
@@ -671,6 +686,10 @@ export class SingleStoreGenerator extends MySQLGenerator {
       if (hash_function.name.toLowerCase() === "sha") return this.func("SHA", expression.this);
       if (hash_function.name.toLowerCase() === "md5") return this.func("MD5", expression.this);
 
+      // `hash_function` is a Literal here (the `instanceof exp.Literal` check
+      // above), and a Literal's `.this` is its raw value, not a nested Expr — plain
+      // string interpolation, not an implicit `Expression.__str__` -> `.sql()` call.
+      // deny:implicit_str sqlglot/generators/singlestore.py:1565
       this.unsupported(`${hash_function.this} hash method is not supported in SingleStore`);
       return this.func("SHA", expression.this);
     }
