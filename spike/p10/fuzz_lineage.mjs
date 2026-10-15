@@ -71,8 +71,9 @@ const KNOWN_ORDER_NONDETERMINISM = new Set([
 // PIVOT/UNPIVOT, the `=>` keyword-argument syntax `LATERAL FLATTEN(INPUT => ...)`
 // uses, and Snowflake's `TABLE(FLATTEN(...))` row-set syntax, respectively). The
 // former `JSONPathRoot` entry (hit by `FLATTENED.VALUE:field::text`'s JSON-path
-// colon syntax) is removed — AIR-2274's `src/jsonpath.js` renders it for real now.
-const KNOWN_GAPS = [/^NotPorted: (pivot_sql|kwarg_sql|tablefromrows_sql) is not ported yet/];
+// colon syntax) is removed — AIR-2274's `src/jsonpath.js` renders it for real now —
+// and `tablefromrows_sql` is removed since AIR-2275 (R88) ported it.
+const KNOWN_GAPS = [/^NotPorted: (pivot_sql|kwarg_sql) is not ported yet/];
 
 function isKnownGap(got) {
   if (!("error" in got)) return false;

@@ -68,7 +68,7 @@ const gapSamples = [];
 // NEW unrelated gap of the same shape is still caught by name rather than silently
 // matched.
 const KNOWN_GAPS = [
-  /^NotPorted: (parameter_sql|tablesample_sql|pseudocolumn_sql|copy_sql|addconstraint_sql|userdefinedfunction_sql) is not ported yet/,
+  /^NotPorted: (parameter_sql|pseudocolumn_sql|copy_sql|addconstraint_sql) is not ported yet/,
   /^PyValueError: Unsupported expression type (TableColumn)$/,
 ];
 
