@@ -73,7 +73,7 @@ const KNOWN_ORDER_NONDETERMINISM = new Set([
 // `JSONPathRoot` case is an unsupported-expression-type gap in the same rendering
 // layer, hit by `FLATTENED.VALUE:field::text`'s JSON-path colon syntax.
 const KNOWN_GAPS = [
-  /^NotPorted: (pivot_sql|kwarg_sql|tablefromrows_sql) is not ported yet/,
+  /^NotPorted: (pivot_sql|kwarg_sql) is not ported yet/,
   /^PyValueError: Unsupported expression type (JSONPathRoot)$/,
 ];
 
