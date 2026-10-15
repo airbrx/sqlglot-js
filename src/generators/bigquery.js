@@ -8,21 +8,13 @@
 // settings class), and this file (Generator settings + overrides) are three separate,
 // non-comingled directories, matching upstream's own three separate files.
 //
-// A `TRANSFORMS` ENTRY IS PARTIALLY BLOCKED, ANNOUNCED RATHER THAN FAKED
-// --------------------------------------------------------------------------
-// `exp.Select` (py:387) chains SIX preprocessing steps through `transforms.preprocess`.
-// Five are real: `_unnest_explode_generate_series` (this file), `transforms.
-// unqualify_unnest`, `transforms.eliminate_distinct_on`, `_alias_ordered_group` (this
-// file), and `transforms.eliminate_semi_and_anti_joins` (all landed, `src/transforms.js`,
-// PORT_PLAN.md R26/R38). The sixth, `transforms.explode_projection_to_unnest()`, needs
-// `Scope(expression).references` — the full `Scope` CLASS's source-tracking, not the
-// Tier-A `walkInScope`/`findAllInScope`/`findInScope` functions `unqualify_unnest`
-// already gets by with (`sqlglot/optimizer/scope.py`, unported beyond Tier A). Omitted
-// from the chain below rather than blocking the whole `exp.Select` entry: dropping one
-// step out of six changes behavior only for EXPLODE/POSEXPLODE projections (rare in
-// hand-written BigQuery SQL, which uses UNNEST natively), while blocking the entire
-// entry would regress every other BigQuery SELECT's generation quality for zero
-// benefit — worse than the documented, narrow gap this leaves instead.
+// `exp.Select` (py:387) chains SIX preprocessing steps through `transforms.preprocess`:
+// `_unnest_explode_generate_series` (this file), `transforms.explode_projection_to_
+// unnest()` (P11/AIR-2300 round 2 — needed the full `Scope` CLASS's source-tracking,
+// not the Tier-A `walkInScope`/`findAllInScope`/`findInScope` functions `unqualify_unnest`
+// gets by with), `transforms.unqualify_unnest`, `transforms.eliminate_distinct_on`,
+// `_alias_ordered_group` (this file), and `transforms.eliminate_semi_and_anti_joins`
+// (all landed, `src/transforms.js`, PORT_PLAN.md R26/R38/P11).
 //
 // `bracket_sql` (py:668) calls the real `optimizer/annotate_types.js` (AIR-2281 — this
 // file's own local `annotate_types` stub outlived its stated blocker: that module
@@ -34,7 +26,7 @@
 
 import { logger } from "../logging.js";
 import { seqGet } from "../helper.js";
-import { preprocess, eliminate_distinct_on, eliminate_semi_and_anti_joins, remove_precision_parameterized_types, unqualify_unnest, unnest_generate_series } from "../transforms.js";
+import { preprocess, eliminate_distinct_on, eliminate_semi_and_anti_joins, remove_precision_parameterized_types, unqualify_unnest, unnest_generate_series, explode_projection_to_unnest } from "../transforms.js";
 import * as exp from "../expressions/index.js";
 import { AFTER_HAVING_MODIFIER_TRANSFORMS, Generator, unsupported_args } from "../generator.js";
 import { pyIsAlnum } from "../_py/str.js";
@@ -477,6 +469,7 @@ export class BigQueryGenerator extends Generator {
     [exp.ParseDatetime, (self, e) => self.func("PARSE_DATETIME", self.format_time(e), e.this)],
     [exp.Select, preprocess([
       _unnest_explode_generate_series,
+      explode_projection_to_unnest(),
       unqualify_unnest,
       eliminate_distinct_on,
       _alias_ordered_group,
@@ -561,14 +554,15 @@ export class BigQueryGenerator extends Generator {
    * REPLACEMENT of the base class-level table (which also carries "cluster"/
    * "distribute"/"sort"), narrowed to just these two keys, each read from the
    * module-level `AFTER_HAVING_MODIFIER_TRANSFORMS` constant (`generator.js`'s own
-   * `py:65` export). That module-level constant is itself still empty at both entries
-   * (`generator.js`'s own "stub-queue scope" gap), so this declares the same empty
-   * `Map` rather than one with `undefined`-valued entries — the latter would crash
-   * `select_sql`'s `[...values()].map((gen) => gen(this, expression))` the moment a
-   * QUALIFY or WINDOW clause reached this class, which is worse than the documented gap.
+   * `py:65` export) and REORDERED: upstream puts "qualify" before "windows" here,
+   * the opposite of the base class's own "windows"-then-"qualify" order (py:671-676).
+   * Spreading the module constant directly (as a prior pass here did) kept the base
+   * order and silently rendered `WINDOW ... QUALIFY ...` instead of BigQuery's
+   * required `QUALIFY ... WINDOW ...` (P11/AIR-2300 round 2).
    */
   static AFTER_HAVING_MODIFIER_TRANSFORMS = new Map([
-    ...AFTER_HAVING_MODIFIER_TRANSFORMS,
+    ["qualify", AFTER_HAVING_MODIFIER_TRANSFORMS.get("qualify")],
+    ["windows", AFTER_HAVING_MODIFIER_TRANSFORMS.get("windows")],
   ]);
 
   // from: https://cloud.google.com/bigquery/docs/reference/standard-sql/lexical#reserved_keywords
@@ -715,9 +709,15 @@ export class BigQueryGenerator extends Generator {
     let expressions_sql = this.expressions(expression, null, { flat: true });
     const offset = expression.args.offset;
 
-    if (offset === 0) {
+    // py: `offset == 0` / `offset == 1` -- Python's `==` has `True == 1` and
+    // `False == 0`, so `transforms.explode_projection_to_unnest`'s own
+    // `bracket.set("offset", True)` (P11/AIR-2300 round 2) takes the `ORDINAL(...)`
+    // branch there. JS's `===` does not coerce, so the boolean case (the only one this
+    // port constructs outside `parsers/bigquery.js`'s `BRACKET_OFFSETS`, which only ever
+    // produces plain 0/1) needs its own check to match.
+    if (offset === 0 || offset === false) {
       expressions_sql = `OFFSET(${expressions_sql})`;
-    } else if (offset === 1) {
+    } else if (offset === 1 || offset === true) {
       expressions_sql = `ORDINAL(${expressions_sql})`;
     } else if (offset !== null && offset !== undefined) {
       // deny:implicit_str sqlglot/generators/bigquery.py:691 — `offset` is a `Bracket`
