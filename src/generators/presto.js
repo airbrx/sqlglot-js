@@ -301,8 +301,14 @@ function _explode_to_unnest_sql(self, expression) {
   return explode_to_unnest_sql(self, expression);
 }
 
-/** py: sqlglot/generators/presto.py:228 */
-function amend_exploded_column_table(expression) {
+/**
+ * py: sqlglot/generators/presto.py:228
+ *
+ * Exported (upstream's own public name, imported by `generators/trino.py` as
+ * `from sqlglot.generators.presto import PrestoGenerator, amend_exploded_column_table`)
+ * so `src/generators/trino.js` (PORT_PLAN.md R10x) can reuse it the same way.
+ */
+export function amend_exploded_column_table(expression) {
   // We check for expression.type because the columns can be amended only if types were inferred
   if (expression instanceof exp.Select && expression.type) {
     for (const lateral of expression.args.laterals || []) {
