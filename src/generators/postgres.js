@@ -30,25 +30,18 @@
 //   - `Dialect.prototype.normalize_identifier` — reached by `merge_without_target_sql`,
 //     its first real caller (see the note on that method in `dialects/dialect.js`).
 //
-// TWO REMAINING GAPS, each a live `NotPorted` throw rather than an approximation,
-// following this project's precedent of porting the function that CONTAINS a gap
-// rather than declining to port it (`dialects/dialect.js`'s `sequence_sql` note is the
-// precedent this quotes):
-//   - `_round_sql` and this file's own `unnest_sql` both need
-//     `sqlglot.optimizer.annotate_types.annotate_types` (P6+, unported) when an
-//     expression's `.type` is not already set — which today it never is, so both
-//     throw whenever that specific branch is reached. `generators/snowflake.js`'s
-//     `trycast_sql`/`dot_sql` hit the identical wall and use the identical shape: throw
-//     directly at the call site instead of importing `dialects/dialect.js`'s private
-//     (and itself-`NotPorted`) `annotate_types` stub.
-//   - `arraycontains_sql`, `columndef_sql`, `datatype_sql`, and everything else below
-//     that does NOT mention `annotate_types` has no such gap and is fully real.
+// AIR-2281: `_round_sql` and this file's own `unnest_sql` used to throw `NotPorted`
+// at their `annotate_types` call sites because `sqlglot.optimizer.annotate_types.
+// annotate_types` was unported when this file first landed. That module has been
+// real since R54 — the same "stubs outlive their stated blocker" defect class R68/
+// R75/AIR-2193 already named for `parsers/bigquery.js` and `generators/bigquery.js`'s
+// own identically-shaped stubs — so both now call the real thing.
 
 import * as exp from "../expressions/index.js";
 import { PyValueError } from "../_py/errors.js";
-import { NotPorted } from "../errors.js";
 import { Generator, unsupported_args } from "../generator.js";
 import * as transforms from "../transforms.js";
+import { annotate_types } from "../optimizer/annotate_types.js";
 import {
   any_value_to_max_sql,
   array_append_sql,
@@ -319,13 +312,7 @@ function _versioned_anyvalue_sql(self, expression) {
   return rename_func("ANY_VALUE")(self, expression);
 }
 
-/**
- * py: sqlglot/generators/postgres.py:230 `_round_sql(self, expression)`.
- *
- * See the file header note: throws `NotPorted` at the `annotate_types` call site
- * itself, the same shape `generators/snowflake.js`'s `trycast_sql`/`dot_sql` use for
- * the identical gap, rather than importing `dialects/dialect.js`'s private stub.
- */
+/** py: sqlglot/generators/postgres.py:230 `_round_sql(self, expression)`. */
 function _round_sql(self, expression) {
   let this_ = self.sql(expression, "this");
   const decimals = self.sql(expression, "decimals");
@@ -333,7 +320,7 @@ function _round_sql(self, expression) {
   if (!decimals) return self.func("ROUND", this_);
 
   if (!expression.type) {
-    throw new NotPorted("_round_sql (annotate_types)", "sqlglot/optimizer/annotate_types.py");
+    expression = annotate_types(expression, { dialect: self.dialect });
   }
 
   // ROUND(double precision, integer) is not permitted in Postgres
@@ -551,11 +538,7 @@ export class PostgresGenerator extends Generator {
     return super.columndef_sql(expression, sep);
   }
 
-  /**
-   * py:448 `unnest_sql(self, expression)`. See the file header note: the
-   * `annotate_types` branch throws `NotPorted` directly at the call site rather than
-   * approximating it, same shape as `generators/snowflake.js`'s `trycast_sql`/`dot_sql`.
-   */
+  /** py:448 `unnest_sql(self, expression)`. */
   unnest_sql(expression) {
     if (expression.expressions.length === 1) {
       const arg = expression.expressions[0];
@@ -569,16 +552,11 @@ export class PostgresGenerator extends Generator {
         return this.sql(generate_series);
       }
 
-      if (!arg.type) {
-        throw new NotPorted("unnest_sql (annotate_types)", "sqlglot/optimizer/annotate_types.py");
-      }
-
-      const this_ = arg;
+      let this_ = annotate_types(arg, { dialect: this.dialect });
       if (this_.isType("array<json>")) {
-        let json_this = this_;
-        while (json_this instanceof exp.Cast) json_this = json_this.this;
+        while (this_ instanceof exp.Cast) this_ = this_.this;
 
-        const arg_as_json = this.sql(exp.cast(json_this, exp.DType.JSON));
+        const arg_as_json = this.sql(exp.cast(this_, exp.DType.JSON));
         let alias = this.sql(expression, "alias");
         alias = alias ? ` AS ${alias}` : "";
 
