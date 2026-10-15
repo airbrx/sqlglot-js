@@ -1,6 +1,6 @@
 // py: sqlglot/generators/duckdb.py — `class DuckDBGenerator(generator.Generator)`.
 //
-// @ported-ranges sqlglot/generators/duckdb.py 50-50 213-214 217-229 320-357 359-450 452-540 545-547 549-563 607-648 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1428-1455 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 4349-4406 4419-4497
+// @ported-ranges sqlglot/generators/duckdb.py 50-50 213-214 217-229 320-357 359-450 452-540 545-547 549-563 607-648 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1428-1455 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 4349-4406 4419-4497 4670-4712
 //
 // SCOPE — a deliberately small, honest slice of a 4,788-line file (PORT_PLAN.md,
 // "DuckDB generator is an outlier size" — ~4x every other single-file dialect
@@ -97,6 +97,7 @@ import {
 } from "../dialects/dialect.js";
 import { isDateUnit } from "../helper.js";
 import { annotate_types } from "../optimizer/annotate_types.js";
+import { decDiv, pyDecimal } from "../_py/num.js";
 
 // py:50 — used only by `_implicit_datetime_cast` below.
 const TIMEZONE_PATTERN = /:\d{2}.*?[+\-]\d{2}(?::\d{2})?/;
@@ -1130,5 +1131,57 @@ export class DuckDBGenerator extends Generator {
       return this.sql(new exp.Cast({ this: result_expr, to: this_.type }));
     }
     return this.sql(result_expr);
+  }
+
+  /** py:4670 `approxquantile_sql(self, expression)`. */
+  approxquantile_sql(expression) {
+    let result = this.func("APPROX_QUANTILE", expression.this, expression.args.quantile);
+
+    // DuckDB returns integers for APPROX_QUANTILE, cast to DOUBLE if the expected type is a real type
+    if (expression.isType(...exp.DataType.REAL_TYPES)) result = `CAST(${result} AS DOUBLE)`;
+
+    return result;
+  }
+
+  /**
+   * py:4679 `approxquantiles_sql(self, expression)`.
+   *
+   * BigQuery's APPROX_QUANTILES(expr, n) returns an array of n+1 approximate
+   * quantile values dividing the input distribution into n equal-sized
+   * buckets. Both BigQuery and DuckDB use approximate algorithms for
+   * quantile estimation, but BigQuery does not document the specific
+   * algorithm used so results may differ. DuckDB does not support RESPECT
+   * NULLS.
+   */
+  approxquantiles_sql(expression) {
+    const this_ = expression.this;
+    let num_quantiles_expr;
+    if (this_ instanceof exp.Distinct) {
+      // APPROX_QUANTILES requires 2 args and DISTINCT node grabs both
+      if (this_.expressions.length < 2) {
+        this.unsupported("APPROX_QUANTILES requires a bucket count argument");
+        return this.function_fallback_sql(expression);
+      }
+      num_quantiles_expr = this_.expressions[1].pop();
+    } else {
+      num_quantiles_expr = expression.expression;
+    }
+
+    if (!(num_quantiles_expr instanceof exp.Literal) || !num_quantiles_expr.isInt) {
+      this.unsupported("APPROX_QUANTILES bucket count must be a positive integer");
+      return this.function_fallback_sql(expression);
+    }
+
+    const num_quantiles = Number(num_quantiles_expr.toPy());
+    if (num_quantiles <= 0) {
+      this.unsupported("APPROX_QUANTILES bucket count must be a positive integer");
+      return this.function_fallback_sql(expression);
+    }
+
+    const quantiles = [];
+    const denom = pyDecimal(num_quantiles);
+    for (let i = 0; i <= num_quantiles; i++) quantiles.push(exp.Literal.number(decDiv(pyDecimal(i), denom)));
+
+    return this.sql(new exp.ApproxQuantile({ this: this_, quantile: new exp.Array({ expressions: quantiles }) }));
   }
 }
