@@ -116,22 +116,25 @@ test("the only gap versus CPython is the deliberately-unseeded TRANSFORMS", () =
   // `TitleColumnConstraint`/`ToMap`/`TriggerExecute`/`UsingData`/`UppercaseColumnConstraint`/
   // `UtcDate`/`UtcTime`/`UtcTimestamp`/`VarMap`/`WithOperator`) were each still commented
   // out, each reached by a real corpus row that threw "Unsupported expression type X".
-  // `exp.Ceil`/`exp.Floor` (py:154/195) are DELIBERATELY left unwired: upstream's real
-  // lambda (`self.ceil_floor(e)`) is still a `NotPorted` base-generator.js stub
-  // (AIR-2276/2277/2278 territory), and wiring it regressed 6 ratchet-pass atoms that
-  // currently round-trip correctly only by accident via `function_fallback_sql`'s
+  // `exp.Ceil`/`exp.Floor` (py:154/195) were DELIBERATELY left unwired by AIR-2284
+  // pending `ceil_floor` (then still a `NotPorted` base-generator.js stub,
+  // AIR-2276/2277/2278 territory): wiring it regressed 6 ratchet-pass atoms that
+  // round-tripped correctly only by accident, via `function_fallback_sql`'s
   // class-name-to-SNAKE_CASE fallback ("Ceil"/"Floor" happen to already BE their own SQL
-  // function names) — re-wire the moment `ceil_floor` lands for real. Every other entry
-  // here is a verified, faithful one-line port of its CPython lambda; `TRANSFORMS` now
-  // has 141 of upstream's 143 entries filled (only `Ceil`/`Floor` still commented out).
-  assert.equal(Generator.TRANSFORMS.size, 141, "TRANSFORMS has 141/143 entries filled (AIR-2284; Ceil/Floor deliberately held back)");
+  // function names). AIR-2279 (10.6 generator stubs cluster D2) ported `ceil_floor` for
+  // real and re-wired both entries here: the 6 atoms do not regress, since
+  // `ceil_floor` itself falls through to the identical `function_fallback_sql` call
+  // for the no-`to`-clause case; `CEIL(x TO y)`/`FLOOR(x TO y)` now also render, which
+  // the old fallback could never reach. `TRANSFORMS` now has all 143 of upstream's
+  // entries filled.
+  assert.equal(Generator.TRANSFORMS.size, 143, "TRANSFORMS has all 143 entries filled (AIR-2279 wires the last two, Ceil/Floor)");
 
   const wantTransform = Object.entries(WANT).filter(([, h]) => h === "transform");
   assert.equal(wantTransform.length, 143);
 
   const got = _buildDispatch(Generator);
   assert.equal(got.size, Object.keys(WANT).length - wantTransform.length + Generator.TRANSFORMS.size);
-  assert.equal(got.size, 558, "417 method-derived + 141 of 143 TRANSFORMS entries (Ceil/Floor held back)");
+  assert.equal(got.size, 560, "417 method-derived + all 143 TRANSFORMS entries");
 });
 
 test("TRANSFORMS beats a same-named *_sql method", () => {

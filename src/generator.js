@@ -505,13 +505,14 @@ export class Generator {
     [exp.BackupProperty, (self, e) => `BACKUP ${self.sql(e, "this")}`], // py:149
     [exp.CaseSpecificColumnConstraint, (_, e) => `${pyTruthy(e.args.not_) ? "NOT " : ""}CASESPECIFIC`], // py:150
     [exp.CalledOnNullInputProperty, () => "CALLED ON NULL INPUT"], // py:153
-    // py:154 — NOT wired: `self.ceil_floor(e)` is still a `NotPorted` base-generator.js
-    // stub (AIR-2276/2277/2278 territory). Routing through it regresses 6 ratchet-pass
-    // atoms (e.g. `FLOOR(x)`, `CEIL(3.14, 1)`) that currently round-trip correctly only
-    // by accident, via `function_fallback_sql`'s class-name-to-SNAKE_CASE fallback
-    // ("Ceil"/"Floor" happen to already BE their own SQL function names). Re-wire this
-    // the moment `ceil_floor` lands for real.
-    // [exp.Ceil, /* TODO lambda */],
+    // py:154 — re-wired by AIR-2279 (10.6 generator stubs cluster D2), which ported
+    // `ceil_floor` for real. The 6 ratchet-pass atoms AIR-2284's own note names
+    // (`FLOOR(x)`, `CEIL(3.14, 1)`, ...) do not regress: with no `to` clause,
+    // `ceil_floor` itself falls through to the same `function_fallback_sql` call the
+    // accidental class-name fallback was already making, so plain `CEIL`/`FLOOR` renders
+    // byte-identical; the `CEIL(x TO y)`/`FLOOR(x TO y)` form `ceil_floor` also now
+    // handles was unreachable through the old fallback at all.
+    [exp.Ceil, (self, e) => self.ceil_floor(e)],
     [exp.CharacterSetColumnConstraint, (self, e) => `CHARACTER SET ${self.sql(e, "this")}`], // py:155
     [exp.CharacterSetProperty, (self, e) => `${e.args.default ? "DEFAULT " : ""}CHARACTER SET=${self.sql(e, "this")}`], // py:156
     [exp.ClusteredColumnConstraint, (self, e) => `CLUSTERED (${self.expressions(e, "this", { indent: false })})`], // py:159
@@ -554,8 +555,8 @@ export class Generator {
     // `set_operations` wiring as `exp.Intersect`/`exp.Union` below.
     [exp.Except, (self, e) => self.set_operations(e)],
     [exp.ExternalProperty, () => "EXTERNAL"], // py:194
-    // py:195 — NOT wired, same reason as `exp.Ceil` above (py:154).
-    // [exp.Floor, /* TODO lambda */],
+    // py:195 — re-wired, same reason as `exp.Ceil` above (py:154).
+    [exp.Floor, (self, e) => self.ceil_floor(e)],
     [exp.Get, (self, e) => self.get_put_sql(e)], // py:196
     [exp.GlobalProperty, () => "GLOBAL"], // py:197
     [exp.HeapProperty, () => "HEAP"], // py:198
