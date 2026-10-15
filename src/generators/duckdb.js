@@ -107,7 +107,7 @@ import {
 import { isDateUnit, seqGet } from "../helper.js";
 import { annotate_types } from "../optimizer/annotate_types.js";
 import { decDiv, pyDecimal } from "../_py/num.js";
-import { pyRepr, pyUpper } from "../_py/str.js";
+import { pyRepr, pyRstrip, pyUpper } from "../_py/str.js";
 
 // py:50 — used only by `_implicit_datetime_cast` below.
 const TIMEZONE_PATTERN = /:\d{2}.*?[+\-]\d{2}(?::\d{2})?/;
@@ -1302,8 +1302,8 @@ export class DuckDBGenerator extends Generator {
     // py:1747-1748 [exp.Return, exp.ReturnsProperty] — real, wired below
     [exp.Return, (self, e) => self.sql(e, "this")],
     [exp.ReturnsProperty, (self, e) => (e.this instanceof exp.Schema ? "TABLE" : "")],
-    // py:1749-1751 [exp.StrToUnix, lambda] — skipped, chains through DuckDB's own `format_time` handling not
-    // separately verified this pass
+    // py:1749-1751 `StrToUnix`
+    [exp.StrToUnix, (self, e) => self.func("EPOCH", self.func("STRPTIME", e.this, self.format_time(e)))],
     [exp.Struct, _struct_sql],
     [exp.Transform, rename_func("LIST_TRANSFORM")],
     [exp.TimeAdd, _date_delta_to_binary_interval_op()],
@@ -2175,6 +2175,47 @@ export class DuckDBGenerator extends Generator {
     }
 
     return this.func("TRUNC", expression.this, decimals);
+  }
+
+  /** py:3189 `withingroup_sql(self, expression)`. */
+  withingroup_sql(expression) {
+    const func = expression.this;
+
+    // For ARRAY_AGG, DuckDB requires ORDER BY inside the function, not in WITHIN GROUP
+    // Transform: ARRAY_AGG(x) WITHIN GROUP (ORDER BY y) -> ARRAY_AGG(x ORDER BY y)
+    if (func instanceof exp.ArrayAgg) {
+      const order = expression.expression;
+      if (!(order instanceof exp.Order)) return this.sql(func);
+
+      // Save the original column for FILTER clause (before wrapping with Order)
+      const original_this = func.this;
+
+      // Move ORDER BY inside ARRAY_AGG by wrapping its argument with Order
+      // ArrayAgg.this should become Order(this=ArrayAgg.this, expressions=order.expressions)
+      func.set("this", new exp.Order({ this: func.this.copy(), expressions: order.expressions }));
+
+      // Generate the ARRAY_AGG function with ORDER BY and add FILTER clause if needed
+      // Use original_this (not the Order-wrapped version) for the FILTER condition
+      const array_agg_sql = this.function_fallback_sql(func);
+      return this._add_arrayagg_null_filter(array_agg_sql, func, original_this);
+    }
+
+    // For other functions (like PERCENTILES), use existing logic
+    const expression_sql = this.sql(expression, "expression");
+
+    if (func instanceof exp.PercentileCont || func instanceof exp.PercentileDisc) {
+      // Make the order key the first arg and slide the fraction to the right
+      // https://duckdb.org/docs/sql/aggregates#ordered-set-aggregate-functions
+      const order_col = expression.find(exp.Ordered);
+      if (order_col) {
+        func.set("expression", func.this);
+        func.set("this", order_col.this);
+      }
+    }
+
+    const this_ = pyRstrip(this.sql(expression, "this"), ")");
+
+    return `${this_}${expression_sql})`;
   }
 
   /**
