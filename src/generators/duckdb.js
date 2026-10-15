@@ -260,6 +260,26 @@ function _implicit_datetime_cast(arg, { type = exp.DType.DATE } = {}) {
   return arg;
 }
 
+/** py:981 `_generate_datetime_array_sql(self, expression)`. */
+function _generate_datetime_array_sql(self, expression) {
+  const is_generate_date_array = expression instanceof exp.GenerateDateArray;
+
+  const type = is_generate_date_array ? exp.DType.DATE : exp.DType.TIMESTAMP;
+  const start = _implicit_datetime_cast(expression.args.start, { type });
+  const end = _implicit_datetime_cast(expression.args.end, { type });
+
+  // BQ's GENERATE_DATE_ARRAY & GENERATE_TIMESTAMP_ARRAY are transformed to DuckDB'S GENERATE_SERIES
+  let gen_series = new exp.GenerateSeries({ start, end, step: expression.args.step });
+
+  if (is_generate_date_array) {
+    // The GENERATE_SERIES result type is TIMESTAMP array, so to match BQ's semantics for
+    // GENERATE_DATE_ARRAY we must cast it back to DATE array
+    gen_series = exp.cast(gen_series, exp.DataType.fromStr("ARRAY<DATE>"));
+  }
+
+  return self.sql(gen_series);
+}
+
 /** py:213 */
 function _is_nanosecond_unit(unit) {
   return (unit instanceof exp.Var || unit instanceof exp.Literal) && unit.name.toUpperCase() === "NANOSECOND";
@@ -655,6 +675,38 @@ function _json_extract_value_array_sql(self, expression) {
 function _json_format_sql(self, expression) {
   const sql = self.func("TO_JSON", expression.this, expression.args.options);
   return `CAST(${sql} AS TEXT)`;
+}
+
+/** py:848 `_unix_to_time_sql(self, expression)`. */
+function _unix_to_time_sql(self, expression) {
+  const scale = expression.args.scale;
+  let timestamp = expression.this;
+  const target_type = expression.args.target_type;
+
+  // Check if we need NTZ (naive timestamp in UTC)
+  const is_ntz = target_type && (target_type.this === exp.DType.TIMESTAMP || target_type.this === exp.DType.TIMESTAMPNTZ);
+
+  if (scale && scale.equals(exp.UnixToTime.MILLIS)) {
+    // EPOCH_MS already returns TIMESTAMP (naive, UTC)
+    return self.func("EPOCH_MS", timestamp);
+  }
+  if (scale && scale.equals(exp.UnixToTime.MICROS)) {
+    // MAKE_TIMESTAMP already returns TIMESTAMP (naive, UTC)
+    return self.func("MAKE_TIMESTAMP", timestamp);
+  }
+
+  // Other scales: divide and use TO_TIMESTAMP
+  if (scale && !scale.equals(exp.UnixToTime.SECONDS)) {
+    timestamp = new exp.Div({ this: timestamp, expression: exp.func("POW", 10, scale) });
+  }
+
+  let to_timestamp = new exp.Anonymous({ this: "TO_TIMESTAMP", expressions: [timestamp] });
+
+  if (is_ntz) {
+    to_timestamp = new exp.AtTimeZone({ this: to_timestamp, zone: exp.Literal.string("UTC") });
+  }
+
+  return self.sql(to_timestamp);
 }
 
 /** py:1023 `_is_binary(arg)`. */
@@ -1058,8 +1110,9 @@ export class DuckDBGenerator extends Generator {
       (self, e) => self.sql(new exp.NullSafeEQ({ this: e.this, expression: e.expression })),
     ],
     [exp.EuclideanDistance, rename_func("LIST_DISTANCE")],
-    // py:1692,1694 [exp.GenerateDateArray/TimestampArray, _generate_datetime_array_sql]
-    // — still blocked, the local helper is out of scope this pass.
+    // py:1692,1694 `GenerateDateArray`/`GenerateTimestampArray`
+    [exp.GenerateDateArray, _generate_datetime_array_sql],
+    [exp.GenerateTimestampArray, _generate_datetime_array_sql],
     // py:1693 [exp.GenerateSeries, generate_series_sql("GENERATE_SERIES", "RANGE")] —
     // unblocked: `generate_series_sql` (src/dialects/dialect.js:1279) was already a
     // real export, just not imported here (same R22 staleness as the `exp.Array` entry
@@ -1191,7 +1244,8 @@ export class DuckDBGenerator extends Generator {
       exp.UnixToStr,
       (self, e) => self.func("STRFTIME", self.func("TO_TIMESTAMP", e.this), self.format_time(e)),
     ],
-    // py:1793 [exp.UnixToTime, _unix_to_time_sql] — blocked, 33-line local helper out of scope this pass
+    // py:1793 `UnixToTime`
+    [exp.UnixToTime, _unix_to_time_sql],
     [
       exp.UnixToTimeStr,
       (self, e) => `CAST(TO_TIMESTAMP(${self.sql(e, "this")}) AS TEXT)`,
@@ -1716,6 +1770,121 @@ export class DuckDBGenerator extends Generator {
     if (this_ instanceof exp.TsOrDsToTime || this_.isType(exp.DType.TIME)) return this.sql(this_);
 
     return this.sql(new cast_expr({ this: this_, to: time_type }));
+  }
+
+  /**
+   * py:2943 `timefromparts_sql(self, expression)`.
+   *
+   * The upstream `try`/`except ValueError` around `to_py()` is unreachable here: the
+   * `is_int` check just above it already guarantees `toPy()` succeeds.
+   */
+  timefromparts_sql(expression) {
+    const nano = expression.args.nano;
+    const overflow = expression.args.overflow;
+
+    // Snowflake's TIME_FROM_PARTS supports overflow
+    if (overflow) {
+      const hour = expression.args.hour;
+      const minute = expression.args.min;
+      let sec = expression.args.sec;
+
+      // Check if values are within normal ranges - use MAKE_TIME for efficiency
+      if (!nano && [hour, minute, sec].every((arg) => arg.isInt)) {
+        const h_val = Number(hour.toPy());
+        const m_val = Number(minute.toPy());
+        const s_val = Number(sec.toPy());
+        if (h_val >= 0 && h_val <= 23 && m_val >= 0 && m_val <= 59 && s_val >= 0 && s_val <= 59) {
+          return rename_func("MAKE_TIME")(this, expression);
+        }
+      }
+
+      // Overflow or nanoseconds detected - use INTERVAL arithmetic
+      if (nano) sec = sec.add(nano.pop().div(exp.Literal.number("1000000000.0")));
+
+      const total_seconds = hour.mul(exp.Literal.number(3600)).add(minute.mul(exp.Literal.number(60))).add(sec);
+
+      return this.sql(
+        new exp.Add({
+          this: new exp.Cast({ this: exp.Literal.string("00:00:00"), to: exp.DType.TIME.intoExpr() }),
+          expression: new exp.Interval({ this: total_seconds, unit: exp.var("SECOND") }),
+        }),
+      );
+    }
+
+    // Default: MAKE_TIME
+    if (nano) {
+      expression.set("sec", expression.args.sec.add(nano.pop().div(exp.Literal.number("1000000000.0"))));
+    }
+
+    return rename_func("MAKE_TIME")(this, expression);
+  }
+
+  /** py:3052 `timestampfromparts_sql(self, expression)`. */
+  timestampfromparts_sql(expression) {
+    // Check if this is the date/time expression form: TIMESTAMP_FROM_PARTS(date_expr, time_expr)
+    const date_expr = expression.this;
+    const time_expr = expression.expression;
+
+    if (date_expr !== null && date_expr !== undefined && time_expr !== null && time_expr !== undefined) {
+      // In DuckDB, DATE + TIME produces TIMESTAMP
+      return this.sql(new exp.Add({ this: date_expr, expression: time_expr }));
+    }
+
+    // Component-based form: TIMESTAMP_FROM_PARTS(year, month, day, hour, minute, second, ...)
+    let sec = expression.args.sec;
+    if (sec === null || sec === undefined) {
+      // This shouldn't happen with valid input, but handle gracefully
+      return rename_func("MAKE_TIMESTAMP")(this, expression);
+    }
+
+    const milli = expression.args.milli;
+    if (milli !== null && milli !== undefined) sec = sec.add(milli.pop().div(exp.Literal.number("1000.0")));
+
+    const nano = expression.args.nano;
+    if (nano !== null && nano !== undefined) sec = sec.add(nano.pop().div(exp.Literal.number("1000000000.0")));
+
+    if (milli || nano) expression.set("sec", sec);
+
+    return rename_func("MAKE_TIMESTAMP")(this, expression);
+  }
+
+  /** py:3081 `timestampltzfromparts_sql(self, expression)`. */
+  timestampltzfromparts_sql(expression) {
+    const nano = expression.args.nano;
+    if (nano) {
+      this.unsupported(
+        `Argument 'nano' is not supported for expression '${expression.constructor.name}' when targeting ${this.dialect.constructor.name}.`,
+      );
+      nano.pop();
+    }
+
+    const timestamp = rename_func("MAKE_TIMESTAMP")(this, expression);
+    return `CAST(${timestamp} AS TIMESTAMPTZ)`;
+  }
+
+  /** py:3090 `timestamptzfromparts_sql(self, expression)`. */
+  timestamptzfromparts_sql(expression) {
+    // Extract zone before popping
+    let zone = expression.args.zone;
+    // Pop zone and nano so rename_func only passes args that MAKE_TIMESTAMP accepts
+    if (zone) zone = zone.pop();
+
+    const nano = expression.args.nano;
+    if (nano) {
+      this.unsupported(
+        `Argument 'nano' is not supported for expression '${expression.constructor.name}' when targeting ${this.dialect.constructor.name}.`,
+      );
+      nano.pop();
+    }
+
+    const timestamp = rename_func("MAKE_TIMESTAMP")(this, expression);
+
+    if (zone) {
+      // Use AT TIME ZONE to apply the explicit timezone
+      return `${timestamp} AT TIME ZONE ${this.sql(zone)}`;
+    }
+
+    return timestamp;
   }
 
   /** py:2692 `strposition_sql(self, expression)`. */
