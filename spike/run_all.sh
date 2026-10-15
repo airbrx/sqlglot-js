@@ -93,6 +93,12 @@ PYTHONHASHSEED=0 python3 spike/p5/gen_snowflake_dialect_ref.py > spike/out/snowf
 # else (gated on the unported `sqlglot/jsonpath.py`) -- so the oracle asserts the split
 # explicitly rather than treating either half as the whole answer.
 PYTHONHASHSEED=0 python3 spike/p5/gen_duckdb_dialect_ref.py > spike/out/duckdb_dialect.json || fail=1
+# P5 oracle, same shape one dialect over (AIR-2286). `dialects/mysql.py` is 9 resolved
+# settings plus a nested Tokenizer with ~70 added/replaced keywords and bit-string/
+# hex-string/escape-char support, and declares NO method overrides at all (unlike
+# DuckDB's `to_json_path` or Snowflake's `can_quote`) -- every reachable behavior lives
+# in the settings and the Tokenizer, so the oracle has no method-override section.
+PYTHONHASHSEED=0 python3 spike/p5/gen_mysql_dialect_ref.py > spike/out/mysql_dialect.json || fail=1
 # P5 oracle, same shape, Presto (AIR-2287). `dialects/presto.py` is 105 resolved
 # settings (11 of them Presto's own, two borrowed verbatim from MySQL's data tables),
 # a nested Tokenizer with two post-merge `KEYWORDS.pop(...)` calls, and no method
@@ -471,6 +477,7 @@ run "P5: Snowflake dialect vs CPython"     node spike/p5/fuzz_snowflake_dialect.
 run "P5: real dialect generation row ratchet" node spike/p5/fuzz_dialect_generate.mjs
 
 run "P5: DuckDB dialect vs CPython"        node spike/p5/fuzz_duckdb_dialect.mjs
+run "P5: MySQL dialect vs CPython"         node spike/p5/fuzz_mysql_dialect.mjs
 run "P5: Presto dialect vs CPython"        node spike/p5/fuzz_presto_dialect.mjs
 run "P6: schema.js MappingSchema vs CPython" node spike/p6/fuzz_schema.mjs
 run "P7: optimizer/scope.js traverseScope/Scope vs CPython" node spike/p7/fuzz_scope.mjs
