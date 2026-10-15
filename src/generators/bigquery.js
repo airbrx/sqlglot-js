@@ -8,7 +8,7 @@
 // settings class), and this file (Generator settings + overrides) are three separate,
 // non-comingled directories, matching upstream's own three separate files.
 //
-// ONE `TRANSFORMS` ENTRY IS PARTIALLY BLOCKED, ANNOUNCED RATHER THAN FAKED
+// A `TRANSFORMS` ENTRY IS PARTIALLY BLOCKED, ANNOUNCED RATHER THAN FAKED
 // --------------------------------------------------------------------------
 // `exp.Select` (py:387) chains SIX preprocessing steps through `transforms.preprocess`.
 // Five are real: `_unnest_explode_generate_series` (this file), `transforms.
@@ -24,21 +24,14 @@
 // entry would regress every other BigQuery SELECT's generation quality for zero
 // benefit — worse than the documented, narrow gap this leaves instead.
 //
-// A SECOND GAP, inside `bracket_sql` (py:668) rather than `TRANSFORMS`: BigQuery's
-// STRUCT-field-via-string-bracket special case (`x['field']` -> `x.field`) needs
-// `arg.type`, which needs a real `sqlglot.optimizer.annotate_types.annotate_types` call
-// when the argument arrives un-annotated (always, today — nothing in this port's reach
-// runs the type-annotation pass). Mirrors the identically-named, identically-scoped
-// local stub `parsers/bigquery.js` already carries for the exact same reason: BigQuery
-// bracket access into a plain (non-STRUCT) value is unaffected, and bracket access into
-// an ALREADY-typed STRUCT argument (`arg.type` already set by some other path) is also
-// unaffected — only the un-annotated STRUCT-bracket path throws, loudly, instead of
-// silently guessing.
+// `bracket_sql` (py:668) calls the real `optimizer/annotate_types.js` (AIR-2281 — this
+// file's own local `annotate_types` stub outlived its stated blocker: that module
+// landed whole at R54, same "stubs outlive their stated blocker" defect class R68/R75/
+// AIR-2193 already named for `parsers/bigquery.js`'s identically-scoped stub).
 //
 // Every setting below is diffed against CPython by `spike/p5/fuzz_dialect_generate.mjs`'s
 // BIGQUERY row.
 
-import { NotPorted } from "../errors.js";
 import { logger } from "../logging.js";
 import { seqGet } from "../helper.js";
 import { preprocess, eliminate_distinct_on, eliminate_semi_and_anti_joins, remove_precision_parameterized_types, unqualify_unnest, unnest_generate_series } from "../transforms.js";
@@ -66,21 +59,11 @@ import {
   ts_or_ds_add_cast,
   unit_to_var,
 } from "../dialects/dialect.js";
+import { annotate_types } from "../optimizer/annotate_types.js";
 
 const JSON_EXTRACT_TYPE = [exp.JSONExtract, exp.JSONExtractScalar, exp.JSONExtractArray];
 
 const DQUOTES_ESCAPING_JSON_FUNCTIONS = ["JSON_QUERY", "JSON_VALUE", "JSON_QUERY_ARRAY"];
-
-/**
- * py: sqlglot/optimizer/annotate_types.py — NOT PORTED.
- *
- * `bracket_sql` imports this INSIDE its own body upstream (`generators/bigquery.py:675`),
- * mirroring the file-local stub `parsers/bigquery.js` already carries at the same
- * upstream module, for the same reason (P6+ scope).
- */
-function annotate_types(_expression, _dialect) {
-  throw new NotPorted("annotate_types", "sqlglot/optimizer/annotate_types.py");
-}
 
 /** py: sqlglot/generators/bigquery.py:39 */
 function _derived_table_values_to_unnest(self, expression) {
@@ -720,7 +703,7 @@ export class BigQueryGenerator extends Generator {
     if (expressions.length === 1 && this_ && this_.isType(exp.DType.STRUCT)) {
       let arg = expressions[0];
       if (arg.type === null || arg.type === undefined) {
-        arg = annotate_types(arg, this.dialect);
+        arg = annotate_types(arg, { dialect: this.dialect });
       }
 
       if (arg.type && exp.DataType.TEXT_TYPES.has(arg.type.this)) {
