@@ -105,6 +105,15 @@ PYTHONHASHSEED=0 python3 spike/p5/gen_mysql_dialect_ref.py > spike/out/mysql_dia
 # overrides at all -- the first dialect-settings oracle in this family with no
 # section 4.
 PYTHONHASHSEED=0 python3 spike/p5/gen_presto_dialect_ref.py > spike/out/presto_dialect.json || fail=1
+# P5 oracle, same shape, StarRocks (AIR-2286 part 2). `dialects/starrocks.py` extends
+# MySQL, not Dialect, so the "which settings differ" comparison is against MySQL's own
+# resolved values; 2 resolved settings of its own plus a nested Tokenizer adding
+# LARGEINT/REFRESH, no method overrides.
+PYTHONHASHSEED=0 python3 spike/p5/gen_starrocks_dialect_ref.py > spike/out/starrocks_dialect.json || fail=1
+# P5 oracle, same shape, Doris (AIR-2286 part 2). `dialects/doris.py` also extends
+# MySQL and declares NO nested Tokenizer at all -- the oracle checks that a FRESH
+# subclass of `MySQL.Tokenizer` was built for it rather than an alias.
+PYTHONHASHSEED=0 python3 spike/p5/gen_doris_dialect_ref.py > spike/out/doris_dialect.json || fail=1
 # P5 oracle, same shape, Trino (AIR-2287, "12.2 Presto family", part 2). `dialects/
 # trino.py` is 105 resolved settings (3 Trino's own, the rest inherited through
 # Presto), a nested Tokenizer extending Presto's own with 2 added keywords and one
@@ -497,6 +506,8 @@ run "P5: real dialect generation row ratchet" node spike/p5/fuzz_dialect_generat
 run "P5: DuckDB dialect vs CPython"        node spike/p5/fuzz_duckdb_dialect.mjs
 run "P5: MySQL dialect vs CPython"         node spike/p5/fuzz_mysql_dialect.mjs
 run "P5: Presto dialect vs CPython"        node spike/p5/fuzz_presto_dialect.mjs
+run "P5: StarRocks dialect vs CPython"     node spike/p5/fuzz_starrocks_dialect.mjs
+run "P5: Doris dialect vs CPython"         node spike/p5/fuzz_doris_dialect.mjs
 run "P5: Trino dialect vs CPython"         node spike/p5/fuzz_trino_dialect.mjs
 run "P5: Athena dialect vs CPython"        node spike/p5/fuzz_athena_dialect.mjs
 run "P5: Dune dialect vs CPython"          node spike/p5/fuzz_dune_dialect.mjs
