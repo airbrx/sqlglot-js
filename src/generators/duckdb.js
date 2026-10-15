@@ -1,6 +1,6 @@
 // py: sqlglot/generators/duckdb.py — `class DuckDBGenerator(generator.Generator)`.
 //
-// @ported-ranges sqlglot/generators/duckdb.py 50-50 213-214 217-229 320-357 545-547 549-563 607-648 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 4349-4406 4419-4497
+// @ported-ranges sqlglot/generators/duckdb.py 50-50 213-214 217-229 320-357 359-450 452-540 545-547 549-563 607-648 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 4349-4406 4419-4497
 //
 // SCOPE — a deliberately small, honest slice of a 4,788-line file (PORT_PLAN.md,
 // "DuckDB generator is an outlier size" — ~4x every other single-file dialect
@@ -331,6 +331,169 @@ function _struct_sql(self, expression) {
   return is_bq_inline_struct ? `ROW(${csv_args})` : `{${csv_args}}`;
 }
 
+/**
+ * py:359 `_array_insert_sql(self, expression)` for `exp.ArrayInsert`.
+ *
+ * Transpile ARRAY_INSERT to DuckDB using LIST_CONCAT and slicing. Handles
+ * 0-based and 1-based indexing (normalizes to 0-based for calculations),
+ * negative position conversion (requires array length), and NULL
+ * propagation (source dialects return NULL, DuckDB creates a single-element
+ * array) — all dialects that support ARRAY_INSERT (Snowflake, Spark,
+ * Databricks) have ARRAY_FUNCS_PROPAGATES_NULLS=True, so NULL propagation is
+ * always assumed. Only a literal position can be transpiled.
+ */
+function _array_insert_sql(self, expression) {
+  const this_ = expression.this;
+  const position = expression.args.position;
+  const element = expression.expression;
+  const element_array = new exp.Array({ expressions: [element] });
+  const index_offset = expression.args.offset ?? 0;
+
+  if (!position || !position.isInt) {
+    self.unsupported("ARRAY_INSERT can only be transpiled with a literal position");
+    return self.func("ARRAY_INSERT", this_, position, element);
+  }
+
+  let pos_value = Number(position.toPy());
+
+  // Normalize one-based indexing to zero-based for slice calculations
+  // Spark (1-based) -> Snowflake (0-based):
+  //   Positive: pos=1 -> pos=0 (subtract 1)
+  //   Negative: pos=-2 -> pos=-1 (add 1)
+  // Example: Spark array_insert([a,b,c], -2, d) -> [a,b,d,c] is same as Snowflake pos=-1
+  if (pos_value > 0) pos_value -= index_offset;
+  else if (pos_value < 0) pos_value += index_offset;
+
+  // Build the appropriate list_concat expression based on position
+  let concat_exprs;
+  if (pos_value === 0) {
+    // insert at beginning
+    concat_exprs = [element_array, this_];
+  } else if (pos_value > 0) {
+    // Positive position: LIST_CONCAT(arr[1:pos], [elem], arr[pos+1:])
+    // 0-based -> DuckDB 1-based slicing
+
+    // left slice: arr[1:pos]
+    const slice_start = new exp.Bracket({
+      this: this_,
+      expressions: [new exp.Slice({ this: exp.Literal.number(1), expression: exp.Literal.number(pos_value) })],
+    });
+
+    // right slice: arr[pos+1:]
+    const slice_end = new exp.Bracket({
+      this: this_,
+      expressions: [new exp.Slice({ this: exp.Literal.number(pos_value + 1) })],
+    });
+
+    concat_exprs = [slice_start, element_array, slice_end];
+  } else {
+    // Negative position: arr[1:LEN(arr)+pos], [elem], arr[LEN(arr)+pos+1:]
+    // pos=-1 means insert before last element
+    const arr_len = new exp.Length({ this: this_ });
+
+    // Calculate slice position: LEN(arr) + pos (e.g., LEN(arr) + (-1) = LEN(arr) - 1)
+    // deny:operators sqlglot/generators/duckdb.py:429 — Python `+` on an Expr
+    const slice_end_pos = arr_len.add(exp.Literal.number(pos_value));
+    // deny:operators sqlglot/generators/duckdb.py:430 — Python `+` on an Expr
+    const slice_start_pos = slice_end_pos.add(exp.Literal.number(1));
+
+    // left slice: arr[1:LEN(arr)+pos]
+    const slice_start = new exp.Bracket({
+      this: this_,
+      expressions: [new exp.Slice({ this: exp.Literal.number(1), expression: slice_end_pos })],
+    });
+
+    // right slice: arr[LEN(arr)+pos+1:]
+    const slice_end = new exp.Bracket({ this: this_, expressions: [new exp.Slice({ this: slice_start_pos })] });
+
+    concat_exprs = [slice_start, element_array, slice_end];
+  }
+
+  // All dialects that support ARRAY_INSERT propagate NULLs (Snowflake/Spark/Databricks)
+  // Wrap in CASE WHEN array IS NULL THEN NULL ELSE func_expr END
+  return self.sql(
+    new exp.If({
+      this: new exp.Is({ this: this_, expression: new exp.Null() }),
+      true: new exp.Null(),
+      false: self.func("LIST_CONCAT", ...concat_exprs),
+    }),
+  );
+}
+
+/**
+ * py:452 `_array_remove_at_sql(self, expression)` for `exp.ArrayRemoveAt`.
+ *
+ * Transpile ARRAY_REMOVE_AT to DuckDB using LIST_CONCAT and slicing: pos=0
+ * (first) -> arr[2:], pos>0 (middle) -> LIST_CONCAT(arr[1:p], arr[p+2:]),
+ * pos=-1 (last) -> arr[1:LEN(arr)-1], pos<-1 -> LIST_CONCAT(arr[1:LEN(arr)+p],
+ * arr[LEN(arr)+p+2:]) — all wrapped in CASE WHEN arr IS NULL THEN NULL ELSE
+ * ... END (Snowflake's ARRAY_FUNCS_PROPAGATES_NULLS=True). Only a literal
+ * position can be transpiled.
+ */
+function _array_remove_at_sql(self, expression) {
+  const this_ = expression.this;
+  const position = expression.args.position;
+
+  if (!position || !position.isInt) {
+    self.unsupported("ARRAY_REMOVE_AT can only be transpiled with a literal position");
+    return self.func("ARRAY_REMOVE_AT", this_, position);
+  }
+
+  const pos_value = Number(position.toPy());
+
+  let result_expr;
+  if (pos_value === 0) {
+    // Remove first element: arr[2:]
+    result_expr = new exp.Bracket({ this: this_, expressions: [new exp.Slice({ this: exp.Literal.number(2) })] });
+  } else if (pos_value > 0) {
+    // Remove at positive position: LIST_CONCAT(arr[1:pos], arr[pos+2:])
+    // DuckDB uses 1-based slicing
+    const left_slice = new exp.Bracket({
+      this: this_,
+      expressions: [new exp.Slice({ this: exp.Literal.number(1), expression: exp.Literal.number(pos_value) })],
+    });
+    const right_slice = new exp.Bracket({
+      this: this_,
+      expressions: [new exp.Slice({ this: exp.Literal.number(pos_value + 2) })],
+    });
+    result_expr = self.func("LIST_CONCAT", left_slice, right_slice);
+  } else if (pos_value === -1) {
+    // Remove last element: arr[1:LEN(arr)-1]
+    // Optimization: simpler than general negative case
+    const arr_len = new exp.Length({ this: this_ });
+    // deny:operators sqlglot/generators/duckdb.py:512 — Python `+` on an Expr
+    const slice_end = arr_len.add(exp.Literal.number(-1));
+    result_expr = new exp.Bracket({
+      this: this_,
+      expressions: [new exp.Slice({ this: exp.Literal.number(1), expression: slice_end })],
+    });
+  } else {
+    // Remove at negative position: LIST_CONCAT(arr[1:LEN(arr)+pos], arr[LEN(arr)+pos+2:])
+    const arr_len = new exp.Length({ this: this_ });
+    // deny:operators sqlglot/generators/duckdb.py:520 — Python `+` on an Expr
+    const slice_end_pos = arr_len.add(exp.Literal.number(pos_value));
+    // deny:operators sqlglot/generators/duckdb.py:521 — Python `+` on an Expr
+    const slice_start_pos = slice_end_pos.add(exp.Literal.number(2));
+
+    const left_slice = new exp.Bracket({
+      this: this_,
+      expressions: [new exp.Slice({ this: exp.Literal.number(1), expression: slice_end_pos })],
+    });
+    const right_slice = new exp.Bracket({ this: this_, expressions: [new exp.Slice({ this: slice_start_pos })] });
+    result_expr = self.func("LIST_CONCAT", left_slice, right_slice);
+  }
+
+  // Snowflake ARRAY_FUNCS_PROPAGATES_NULLS=True, so wrap in NULL check
+  // CASE WHEN array IS NULL THEN NULL ELSE result_expr END
+  return self.sql(
+    new exp.If({
+      this: new exp.Is({ this: this_, expression: new exp.Null() }),
+      true: new exp.Null(),
+      false: result_expr,
+    }),
+  );
+}
+
 /** py:1017 */
 function _cast_to_boolean(arg) {
   if (arg && !arg.isType(exp.DType.BOOLEAN)) return exp.cast(arg, exp.DType.BOOLEAN);
@@ -549,9 +712,9 @@ export class DuckDBGenerator extends Generator {
     [exp.ArrayContains, _array_contains_sql],
     // py:1608 [exp.ArrayOverlaps, _array_overlaps_sql] — blocked, `_array_overlaps_sql` (42 lines) out of scope this pass
     [exp.ArrayFilter, rename_func("LIST_FILTER")],
-    // py:1610 [exp.ArrayInsert, _array_insert_sql] — blocked, 94-line local helper out of scope this pass
+    [exp.ArrayInsert, _array_insert_sql],
     // py:1611 [exp.ArrayPosition, lambda] — blocked, needs `zero_based` arg semantics not yet checked against a base method this pass touches
-    // py:1621 [exp.ArrayRemoveAt, _array_remove_at_sql] — blocked, 91-line local helper out of scope this pass
+    [exp.ArrayRemoveAt, _array_remove_at_sql],
     // py:1622 [exp.ArrayRemove, remove_from_array_using_filter] — blocked, dialect.js does not yet export `remove_from_array_using_filter`
     [exp.ArraySort, _array_sort_sql],
     // py:2652 `sortarray_sql` — a `*_sql` METHOD override upstream, not a TRANSFORMS
