@@ -1144,6 +1144,17 @@ function _maybe_corr_null_to_false(expression) {
   return expression;
 }
 
+/**
+ * Shared helper for this file's two `self.dialect.version >= (1, 2)` checks
+ * (py:3156 `countif_sql`, py:3168 `bracket_sql`). `dialect.version` is a 3-element
+ * BigInt array (PORT_PLAN.md's "non-2^63 sentinel" note); Python tuple comparison
+ * `(v0, v1, v2) >= (1, 2)` only ever inspects the first two elements.
+ */
+function _dialectAtLeast(dialect, major, minor) {
+  const v = dialect.version;
+  return v[0] > major || (v[0] === major && v[1] >= minor);
+}
+
 function _is_binary(arg) {
   return arg.isType(exp.DType.BINARY, exp.DType.VARBINARY, exp.DType.BLOB);
 }
@@ -1538,7 +1549,13 @@ export class DuckDBGenerator extends Generator {
     // py:1608 [exp.ArrayOverlaps, _array_overlaps_sql] — blocked, `_array_overlaps_sql` (42 lines) out of scope this pass
     [exp.ArrayFilter, rename_func("LIST_FILTER")],
     [exp.ArrayInsert, _array_insert_sql],
-    // py:1611 [exp.ArrayPosition, lambda] — blocked, needs `zero_based` arg semantics not yet checked against a base method this pass touches
+    // py:1611 `ArrayPosition`
+    [
+      exp.ArrayPosition,
+      (self, e) => e.args.zero_based
+        ? self.sql(new exp.Sub({ this: new exp.ArrayPosition({ this: e.this, expression: e.expression }), expression: exp.Literal.number(1) }))
+        : self.func("ARRAY_POSITION", e.this, e.expression),
+    ],
     [exp.ArrayRemoveAt, _array_remove_at_sql],
     // py:1622 `ArrayRemove`
     [exp.ArrayRemove, remove_from_array_using_filter],
@@ -3075,9 +3092,7 @@ export class DuckDBGenerator extends Generator {
 
   /** py:3155 `countif_sql(self, expression)`. */
   countif_sql(expression) {
-    const v = this.dialect.version;
-    const at_least_1_2 = v[0] > 1n || (v[0] === 1n && v[1] >= 2n);
-    if (at_least_1_2) {
+    if (_dialectAtLeast(this.dialect, 1n, 2n)) {
       const this_ = expression.this;
       if (expression.args.zero_on_all_null && !(this_ instanceof exp.Distinct)) {
         expression = new exp.CountIf({ this: exp.paren(this_).is_(exp.true_()) });
@@ -3087,6 +3102,25 @@ export class DuckDBGenerator extends Generator {
 
     // https://github.com/tobymao/sqlglot/pull/4749
     return count_if_to_sum(this, expression);
+  }
+
+  /** py:3167 `bracket_sql(self, expression)`. */
+  bracket_sql(expression) {
+    if (_dialectAtLeast(this.dialect, 1n, 2n)) return super.bracket_sql(expression);
+
+    // https://duckdb.org/2025/02/05/announcing-duckdb-120.html#breaking-changes
+    let this_ = expression.this;
+    if (this_ instanceof exp.Array) this_.replace(exp.paren(this_));
+
+    let bracket = super.bracket_sql(expression);
+
+    if (!expression.args.returns_list_for_maps) {
+      if (!this_.type) this_ = annotate_types(this_, { dialect: this.dialect });
+
+      if (this_.isType(exp.DType.MAP)) bracket = `(${bracket})[1]`;
+    }
+
+    return bracket;
   }
 
   /** py:3930 `space_sql(self, expression)`. */
@@ -3525,6 +3559,23 @@ export class DuckDBGenerator extends Generator {
       return this.sql(exp.replacePlaceholders(IN_UNNEST_TEMPLATE, { arr: unnest.expressions[0], value: expression.this }));
     }
     return super.in_sql(expression);
+  }
+
+  /** py:4726 `bitwisenot_sql(self, expression)`. */
+  bitwisenot_sql(expression) {
+    const this_ = expression.this;
+
+    if (_is_binary(this_)) expression.type = exp.DType.BINARY.intoExpr();
+
+    let arg = _cast_to_bit(this_);
+
+    if (this_ instanceof exp.Neg) arg = new exp.Paren({ this: arg });
+
+    expression.set("this", arg);
+
+    const result_sql = `~${this.sql(expression, "this")}`;
+
+    return _gen_with_cast_to_blob(this, expression, result_sql);
   }
 
   /** py:2822 `checkjson_sql(self, expression)`. */
