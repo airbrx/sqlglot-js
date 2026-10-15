@@ -296,6 +296,65 @@ function _handle_nanosecond_diff(self, end_time, start_time) {
 }
 
 /**
+ * py:158 `_last_day_sql(self, expression)`.
+ *
+ * DuckDB's LAST_DAY only supports finding the last day of a month.
+ * For other date parts (year, quarter, week), we need to implement equivalent logic.
+ */
+function _last_day_sql(self, expression) {
+  const date_expr = expression.this;
+  const unit_expr = expression.args.unit;
+
+  const week_start = week_unit_to_dow(unit_expr);
+  if (week_start) {
+    // The week's last day precedes its start day; DuckDB DAYOFWEEK: Sunday=0, ..., Saturday=6
+    const last_dow = week_start - 1;
+    const dow = exp.func("EXTRACT", "DAYOFWEEK", date_expr);
+
+    // Days to the last day of week: (last_dow + 7 - dayofweek) % 7
+    const days_to_last_expr = new exp.Mod({
+      this: exp.paren(new exp.Sub({ this: exp.Literal.number(last_dow + 7), expression: dow })),
+      expression: exp.Literal.number(7),
+    });
+    const interval_expr = new exp.Interval({ this: days_to_last_expr, unit: exp.var("DAY") });
+    const add_expr = new exp.Add({ this: date_expr, expression: interval_expr });
+
+    return self.sql(exp.cast(add_expr, exp.DType.DATE));
+  }
+
+  const unit = expression.text("unit");
+
+  if (!unit || unit.toUpperCase() === "MONTH") {
+    // Default behavior - use DuckDB's native LAST_DAY
+    return self.func("LAST_DAY", date_expr);
+  }
+
+  if (unit.toUpperCase() === "YEAR") {
+    // Last day of year: December 31st of the same year
+    const year_expr = exp.func("EXTRACT", "YEAR", date_expr);
+    const make_date_expr = exp.func("MAKE_DATE", year_expr, exp.Literal.number(12), exp.Literal.number(31));
+    return self.sql(make_date_expr);
+  }
+
+  if (unit.toUpperCase() === "QUARTER") {
+    // Last day of quarter
+    const year_expr = exp.func("EXTRACT", "YEAR", date_expr);
+    const quarter_expr = exp.func("EXTRACT", "QUARTER", date_expr);
+
+    // Calculate last month of quarter: quarter * 3. Quarter can be 1 to 4
+    const last_month_expr = new exp.Mul({ this: quarter_expr, expression: exp.Literal.number(3) });
+    const first_day_last_month_expr = exp.func("MAKE_DATE", year_expr, last_month_expr, exp.Literal.number(1));
+
+    // Last day of the last month of the quarter
+    const last_day_expr = exp.func("LAST_DAY", first_day_last_month_expr);
+    return self.sql(last_day_expr);
+  }
+
+  self.unsupported(`Unsupported date part '${unit}' in LAST_DAY function`);
+  return self.function_fallback_sql(expression);
+}
+
+/**
  * py:903 `_week_trunc_start_dow(unit)`.
  * DuckDB's weeks are ISO 8601, so ISOWEEK maps to its plain WEEK unit.
  */
@@ -1269,7 +1328,8 @@ export class DuckDBGenerator extends Generator {
     [exp.JSONObjectAgg, rename_func("JSON_GROUP_OBJECT")],
     [exp.JSONBObjectAgg, rename_func("JSON_GROUP_OBJECT")],
     [exp.DateBin, rename_func("TIME_BUCKET")],
-    // py:1813 [exp.LastDay, _last_day_sql] — blocked, 57-line local helper out of scope this pass
+    // py:1813 `LastDay`
+    [exp.LastDay, _last_day_sql],
   ]);
 
   /** py:1816 */
@@ -1919,6 +1979,40 @@ export class DuckDBGenerator extends Generator {
     }
 
     return strposition_sql(this, expression);
+  }
+
+  /** py:2860 `trunc_sql(self, expression)`. */
+  trunc_sql(expression) {
+    let decimals = expression.args.decimals;
+    if (expression.args.fractions_supported && decimals && !decimals.isType(exp.DType.INT)) {
+      decimals = exp.cast(decimals, exp.DType.INT, { dialect: "duckdb" });
+    }
+
+    return this.func("TRUNC", expression.this, decimals);
+  }
+
+  /** py:3726 `rand_sql(self, expression)`. */
+  rand_sql(expression) {
+    const seed = expression.this;
+    if (seed !== null && seed !== undefined) {
+      this.unsupported("RANDOM with seed is not supported in DuckDB");
+    }
+
+    const lower = expression.args.lower;
+    const upper = expression.args.upper;
+
+    if (lower && upper) {
+      // scale DuckDB's [0,1) to the specified range
+      const range_size = exp.paren(upper.sub(lower));
+      const scaled = new exp.Add({ this: lower, expression: exp.func("random").mul(range_size) });
+
+      // For now we assume that if bounds are set, return type is BIGINT. Snowflake/Teradata
+      const result = exp.cast(scaled, exp.DType.BIGINT);
+      return this.sql(result);
+    }
+
+    // Default DuckDB behavior - just return RANDOM() as float
+    return "RANDOM()";
   }
 
   /** py:2822 `checkjson_sql(self, expression)`. */
