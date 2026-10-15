@@ -103,7 +103,7 @@ function _unix_to_time_sql(self, expression) {
 }
 
 /** py: sqlglot/generators/mysql.py:80 */
-function date_add_sql(kind) {
+export function date_add_sql(kind) {
   return function func(self, expression) {
     return self.func(
       `DATE_${kind}`,
