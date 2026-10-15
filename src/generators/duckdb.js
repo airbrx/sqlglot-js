@@ -1,6 +1,6 @@
 // py: sqlglot/generators/duckdb.py — `class DuckDBGenerator(generator.Generator)`.
 //
-// @ported-ranges sqlglot/generators/duckdb.py 50-50 213-214 217-229 320-357 545-547 549-563 890-901 910-949 953-977 1017-1020 1123-1130 1261-1274 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2652-2677
+// @ported-ranges sqlglot/generators/duckdb.py 50-50 213-214 217-229 320-357 545-547 549-563 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1459-1497 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2652-2677 4419-4497
 //
 // SCOPE — a deliberately small, honest slice of a 4,788-line file (PORT_PLAN.md,
 // "DuckDB generator is an outlier size" — ~4x every other single-file dialect
@@ -93,7 +93,9 @@ import {
   timestrtotime_sql,
   unit_to_str,
   week_unit_to_dow,
+  weekstart_unit_to_str,
 } from "../dialects/dialect.js";
+import { isDateUnit } from "../helper.js";
 
 // py:50 — used only by `_implicit_datetime_cast` below.
 const TIMEZONE_PATTERN = /:\d{2}.*?[+\-]\d{2}(?::\d{2})?/;
@@ -179,6 +181,15 @@ function _handle_nanosecond_diff(self, end_time, start_time) {
   const end_ns = exp.cast(end_time, exp.DType.TIMESTAMP_NS);
   const start_ns = exp.cast(start_time, exp.DType.TIMESTAMP_NS);
   return self.sql(new exp.Sub({ this: self.func("EPOCH_NS", end_ns), expression: self.func("EPOCH_NS", start_ns) }));
+}
+
+/**
+ * py:903 `_week_trunc_start_dow(unit)`.
+ * DuckDB's weeks are ISO 8601, so ISOWEEK maps to its plain WEEK unit.
+ */
+function _week_trunc_start_dow(unit) {
+  if (unit instanceof exp.Literal && unit.name.toUpperCase() === "ISOWEEK") return 1;
+  return week_unit_to_dow(unit);
 }
 
 /**
@@ -343,6 +354,95 @@ function _xor_sql(self, expression) {
 
 /** py:1553 `class DuckDBGenerator(generator.Generator)`. */
 export class DuckDBGenerator extends Generator {
+  // Instance method overrides (base `Generator` has no `datetrunc_sql`/
+  // `datetimetrunc_sql`/`timestamptrunc_sql` of its own — `exp.DateTrunc` etc.
+  // fall back to `function_fallback_sql` unless a dialect generator defines one
+  // of these; `_buildDispatch` (src/generator.js) only fills in a method-name
+  // string for a class with no matching `TRANSFORMS` entry, which is the case
+  // for all three here, so defining them is sufficient to wire the dispatch).
+
+  /** py:4419 `datetrunc_sql(self, expression)` */
+  datetrunc_sql(expression) {
+    const unit_expr = expression.args.unit;
+    const date = expression.this;
+
+    const week_start = _week_trunc_start_dow(unit_expr);
+    const unit = unit_to_str(expression);
+
+    let result;
+    if (week_start) {
+      result = this.sql(_build_week_trunc_expression(date, week_start, { preserve_start_day: true }));
+    } else {
+      result = this.func("DATE_TRUNC", unit, date);
+    }
+
+    if (
+      expression.args.input_type_preserved
+      && date.isType(...exp.DataType.TEMPORAL_TYPES)
+      && !(isDateUnit(unit) && date.isType(exp.DType.DATE))
+    ) {
+      return this.sql(new exp.Cast({ this: result, to: date.type }));
+    }
+
+    return result;
+  }
+
+  /** py:4438 `datetimetrunc_sql(self, expression)` */
+  datetimetrunc_sql(expression) {
+    const this_ = exp.cast(expression.this, exp.DType.DATETIME);
+    const week_start = _week_trunc_start_dow(expression.args.unit);
+    if (week_start) {
+      return this.sql(_build_week_trunc_expression(this_, week_start, { preserve_start_day: true, cast_to_date: false }));
+    }
+    return this.func("DATE_TRUNC", unit_to_str(expression), this_);
+  }
+
+  /** py:4448 `timestamptrunc_sql(self, expression)` */
+  timestamptrunc_sql(expression) {
+    const zone = expression.args.zone;
+    let timestamp = expression.this;
+    const week_start = _week_trunc_start_dow(expression.args.unit);
+
+    // The week start emulation below is exact, so avoid weekstart_unit_to_str's degrade warning
+    const unit = week_start ? unit_to_str(expression) : weekstart_unit_to_str(this, expression);
+    const date_unit = isDateUnit(unit) || Boolean(week_start);
+
+    const trunc_expr = (this_) => {
+      if (week_start) return _build_week_trunc_expression(this_, week_start, { preserve_start_day: true, cast_to_date: false });
+      return exp.func("DATE_TRUNC", unit, this_);
+    };
+
+    if (date_unit && zone) {
+      // BigQuery's TIMESTAMP_TRUNC with timezone truncates in the target timezone and returns as UTC.
+      // Double AT TIME ZONE needed for BigQuery compatibility:
+      // 1. First AT TIME ZONE: ensures truncation happens in the target timezone
+      // 2. Second AT TIME ZONE: converts the DATE result back to TIMESTAMPTZ (preserving time component)
+      timestamp = new exp.AtTimeZone({ this: timestamp, zone });
+      let trunced = trunc_expr(timestamp);
+      if (trunced instanceof exp.DateAdd) {
+        // Parenthesize so the trailing AT TIME ZONE binds to the whole shifted expression
+        trunced = new exp.Paren({ this: trunced });
+      }
+      return this.sql(new exp.AtTimeZone({ this: trunced, zone }));
+    }
+
+    let result = this.sql(trunc_expr(timestamp));
+    if (expression.args.input_type_preserved) {
+      if (timestamp.type && timestamp.isType(exp.DType.TIME, exp.DType.TIMETZ)) {
+        const dummy_date = new exp.Cast({ this: exp.Literal.string("1970-01-01"), to: new exp.DataType({ this: exp.DType.DATE }) });
+        const date_time = new exp.Add({ this: dummy_date, expression: timestamp });
+        result = this.func("DATE_TRUNC", unit, date_time);
+        return this.sql(new exp.Cast({ this: result, to: timestamp.type }));
+      }
+
+      if (timestamp.isType(...exp.DataType.TEMPORAL_TYPES) && !(date_unit && timestamp.isType(exp.DType.DATE))) {
+        return this.sql(new exp.Cast({ this: result, to: timestamp.type }));
+      }
+    }
+
+    return result;
+  }
+
   static PARAMETER_TOKEN = "$";
   static NAMED_PLACEHOLDER_TOKEN = "$";
   static JOIN_HINTS = false;
