@@ -3578,6 +3578,54 @@ export class DuckDBGenerator extends Generator {
     return _gen_with_cast_to_blob(this, expression, result_sql);
   }
 
+  /** py:4304 `aliases_sql(self, expression)`. */
+  aliases_sql(expression) {
+    const this_ = expression.this;
+    if (this_ instanceof exp.Posexplode) return this.posexplode_sql(this_);
+
+    return super.aliases_sql(expression);
+  }
+
+  /** py:4311 `posexplode_sql(self, expression)`. */
+  posexplode_sql(expression) {
+    const this_ = expression.this;
+    const parent = expression.parent;
+
+    // The default Spark aliases are "pos" and "col", unless specified otherwise
+    let pos = exp.toIdentifier("pos"), col = exp.toIdentifier("col");
+
+    if (parent instanceof exp.Aliases) {
+      // Column case: SELECT POSEXPLODE(col) [AS (a, b)]
+      [pos, col] = parent.expressions;
+    } else if (parent instanceof exp.Table) {
+      // Table case: SELECT * FROM POSEXPLODE(col) [AS (a, b)]
+      const alias = parent.args.alias;
+      if (alias) {
+        [pos, col] = alias.columns.length ? alias.columns : [pos, col];
+        alias.pop();
+      }
+    }
+
+    // Translate POSEXPLODE to UNNEST + GENERATE_SUBSCRIPTS
+    // Note: In Spark pos is 0-indexed, but in DuckDB it's 1-indexed, so we subtract 1 from GENERATE_SUBSCRIPTS
+    const unnest_sql = this.sql(new exp.Unnest({ expressions: [this_], alias: col }));
+    const gen_subscripts = this.sql(
+      new exp.Alias({
+        this: new exp.Anonymous({ this: "GENERATE_SUBSCRIPTS", expressions: [this_, exp.Literal.number(1)] }).sub(exp.Literal.number(1)),
+        alias: pos,
+      }),
+    );
+
+    const posexplode_sql = this.format_args(gen_subscripts, unnest_sql);
+
+    if (parent instanceof exp.From || (parent && parent.parent instanceof exp.From)) {
+      // SELECT * FROM POSEXPLODE(col) -> SELECT * FROM (SELECT GENERATE_SUBSCRIPTS(...), UNNEST(...))
+      return this.sql(new exp.Subquery({ this: new exp.Select({ expressions: [posexplode_sql] }) }));
+    }
+
+    return posexplode_sql;
+  }
+
   /** py:2822 `checkjson_sql(self, expression)`. */
   checkjson_sql(expression) {
     const arg = expression.this;
