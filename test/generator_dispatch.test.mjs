@@ -441,7 +441,16 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // `COMMIT`/`ROLLBACK` previously failed `standardizedSql` generation in
   // `contrib/gatewaySqlMetadata.js` with a `NotPorted` error; the parser side
   // (`_parse_transaction`/`_parse_commit_or_rollback`) was already real.
-  assert.equal(bodied.length, 136, "exactly 136 *_sql methods have a real body");
+  // +13 from AIR-2275 (epic AIR-2270, "10.2 Generator stubs cluster A", PORT_PLAN.md):
+  // the ten named base-Generator stubs (`userdefinedfunction_sql`, `matchrecognize_sql`,
+  // `forclause_sql`, `pad_sql`, `tsordstodate_sql`, `parsejson_sql`, `tablesample_sql`,
+  // `declare_sql`, `tablefromrows_sql`, `log_sql`) plus three siblings each one reaches
+  // and un-stubs along the way (`matchrecognizemeasure_sql`/`queryoption_sql`/
+  // `declareitem_sql`) — none of them read a dialect-hosted METHOD (only plain
+  // FIELDS, which the frozen stand-in either hosts or safely returns `undefined` for),
+  // so every one of the 13 also lands in the "runs without a resolved Dialect" bucket
+  // below, not the `identifier_sql`-style exception.
+  assert.equal(bodied.length, 149, "exactly 149 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -497,7 +506,17 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // Dialect-hosted state, so `transaction_sql`/`commit_sql`/`rollback_sql` all run on
   // the bare stand-in too (`"BEGIN"`/`"COMMIT"`/`"ROLLBACK"` with every optional arg
   // missing).
-  assert.equal(432 - stubs.length, 135, "135 of those 136 also run without a resolved Dialect");
+  // +13 for AIR-2275's thirteen new bodies: empirically verified (`node -e` against a
+  // bare `new Generator()`), none throws `NotPorted`. Twelve return a string outright
+  // (`pad_sql`/`log_sql`/`parsejson_sql`/`tablesample_sql`/`tablefromrows_sql`/
+  // `declare_sql`/`declareitem_sql` read only class/Dialect FIELDS, never a METHOD;
+  // `userdefinedfunction_sql`/`matchrecognizemeasure_sql`/`matchrecognize_sql`/
+  // `forclause_sql`/`queryoption_sql` read no Dialect state at all). `tsordstodate_sql`
+  // throws a `TypeError` (`expression.this` is `undefined` on a bare `new exp.Expr({})`,
+  // so `.isType(...)` has nothing to call itself on) — the same "runs, just not
+  // usefully, on made-up input" outcome `arrayagg_sql`/`arrayany_sql` already
+  // established this assertion counts.
+  assert.equal(432 - stubs.length, 148, "148 of those 149 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],
