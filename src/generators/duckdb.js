@@ -1,6 +1,6 @@
 // py: sqlglot/generators/duckdb.py — `class DuckDBGenerator(generator.Generator)`.
 //
-// @ported-ranges sqlglot/generators/duckdb.py 50-50 93-101 213-214 217-229 320-357 359-450 452-540 545-547 549-563 607-648 670-678 827-845 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1428-1455 1459-1497 1497-1523 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 3952-3971 4349-4406 4419-4497 4670-4712
+// @ported-ranges sqlglot/generators/duckdb.py 50-50 93-101 213-214 217-229 320-357 359-450 452-540 545-547 549-563 607-648 670-678 827-845 890-901 903-908 910-949 953-977 1017-1020 1123-1130 1261-1274 1428-1455 1459-1497 1497-1523 1554-1590 1591-1814 1816-1821 1823-1844 1852-1931 2004-2017 2652-2677 2987-3050 3299-3326 3412-3422 3952-3971 4349-4406 4419-4497 4670-4712
 //
 // SCOPE — a deliberately small, honest slice of a 4,788-line file (PORT_PLAN.md,
 // "DuckDB generator is an outlier size" — ~4x every other single-file dialect
@@ -99,6 +99,7 @@ import {
 import { isDateUnit, seqGet } from "../helper.js";
 import { annotate_types } from "../optimizer/annotate_types.js";
 import { decDiv, pyDecimal } from "../_py/num.js";
+import { pyRepr } from "../_py/str.js";
 
 // py:50 — used only by `_implicit_datetime_cast` below.
 const TIMEZONE_PATTERN = /:\d{2}.*?[+\-]\d{2}(?::\d{2})?/;
@@ -1293,5 +1294,47 @@ export class DuckDBGenerator extends Generator {
     }
 
     return super.unnest_sql(expression);
+  }
+
+  /**
+   * py:3299 `_validate_regexp_flags(self, flags, supported_flags)`.
+   *
+   * Validate and filter regexp flags for DuckDB compatibility. `flags` is
+   * the flags expression to validate; `supported_flags` is a string of
+   * supported flags (e.g. "ims", "cims") -- only those are returned.
+   * Returns the validated/filtered flag string, or null if none remain.
+   */
+  _validate_regexp_flags(flags, supported_flags) {
+    if (!(flags instanceof exp.Expr)) return null;
+
+    if (!flags.isString) {
+      this.unsupported("Non-literal regexp flags are not fully supported in DuckDB");
+      return null;
+    }
+
+    const flag_str = flags.this;
+    const unsupported = [...new Set(flag_str)].filter((f) => !supported_flags.includes(f));
+
+    if (unsupported.length) {
+      this.unsupported(`Regexp flags ${pyRepr(unsupported.sort())} are not supported in this context`);
+    }
+
+    const filtered = [...flag_str].filter((f) => supported_flags.includes(f)).join("");
+    return filtered || null;
+  }
+
+  /** py:3412 `regexplike_sql(self, expression)`. */
+  regexplike_sql(expression) {
+    const this_ = expression.this;
+    const pattern = expression.expression;
+    let flag = expression.args.flag;
+
+    if (expression.args.full_match) {
+      const validated_flags = this._validate_regexp_flags(flag, "cims");
+      flag = validated_flags ? exp.Literal.string(validated_flags) : null;
+      return this.func("REGEXP_FULL_MATCH", this_, pattern, flag);
+    }
+
+    return this.func("REGEXP_MATCHES", this_, pattern, flag);
   }
 }
