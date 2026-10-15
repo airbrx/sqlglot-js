@@ -101,6 +101,15 @@ test("the only gap versus CPython is the deliberately-unseeded TRANSFORMS", () =
   // `JSON_OBJECT(...)` — latent for the same reason as `PivotAny` above: nothing
   // could construct a real `JSONObject` node until `_parse_json_object` was wired
   // into `FUNCTION_PARSERS`, which is this round's own parser.js change.
+  // +5 from AIR-2285 (PORT_PLAN.md, the honest generate probe's standing mismatches):
+  // `exp.ConnectByRoot` (py:164, `f"CONNECT_BY_ROOT {self.sql(e, 'this')}"`) and
+  // `exp.UtcDate`/`exp.UtcTime`/`exp.UtcTimestamp`/`exp.VarMap` (py:283-285/289) were
+  // each still a `// TODO lambda` placeholder, so real corpus rows through the
+  // default dialect fell through to `function_fallback_sql`'s generic rendering
+  // (`CONNECT_BY_ROOT(x)` instead of the paren-less `CONNECT_BY_ROOT x`, `UTC_DATE()`
+  // left untranslated instead of `CURRENT_DATE('UTC')`, `VAR_MAP(...)` instead of
+  // `MAP(...)`) — each a verified, faithful one-line port of its CPython lambda,
+  // landed independently of, and now subsumed by, AIR-2284's own wiring below.
   // +48 from AIR-2284 (PORT_PLAN.md P11, mismatch/ERROR triage): `exp.ExcludeColumnConstraint`
   // (py:191) and every remaining `// TODO lambda` placeholder in the py:142-295 stretch
   // EXCEPT `Ceil`/`Floor` (`AnalyzeColumns`/`AnalyzeWith`/`AssumeColumnConstraint`/
@@ -116,22 +125,25 @@ test("the only gap versus CPython is the deliberately-unseeded TRANSFORMS", () =
   // `TitleColumnConstraint`/`ToMap`/`TriggerExecute`/`UsingData`/`UppercaseColumnConstraint`/
   // `UtcDate`/`UtcTime`/`UtcTimestamp`/`VarMap`/`WithOperator`) were each still commented
   // out, each reached by a real corpus row that threw "Unsupported expression type X".
-  // `exp.Ceil`/`exp.Floor` (py:154/195) are DELIBERATELY left unwired: upstream's real
-  // lambda (`self.ceil_floor(e)`) is still a `NotPorted` base-generator.js stub
-  // (AIR-2276/2277/2278 territory), and wiring it regressed 6 ratchet-pass atoms that
-  // currently round-trip correctly only by accident via `function_fallback_sql`'s
+  // `exp.Ceil`/`exp.Floor` (py:154/195) were DELIBERATELY left unwired by AIR-2284
+  // pending `ceil_floor` (then still a `NotPorted` base-generator.js stub,
+  // AIR-2276/2277/2278 territory): wiring it regressed 6 ratchet-pass atoms that
+  // round-tripped correctly only by accident, via `function_fallback_sql`'s
   // class-name-to-SNAKE_CASE fallback ("Ceil"/"Floor" happen to already BE their own SQL
-  // function names) — re-wire the moment `ceil_floor` lands for real. Every other entry
-  // here is a verified, faithful one-line port of its CPython lambda; `TRANSFORMS` now
-  // has 141 of upstream's 143 entries filled (only `Ceil`/`Floor` still commented out).
-  assert.equal(Generator.TRANSFORMS.size, 141, "TRANSFORMS has 141/143 entries filled (AIR-2284; Ceil/Floor deliberately held back)");
+  // function names). AIR-2279 (10.6 generator stubs cluster D2) ported `ceil_floor` for
+  // real and re-wired both entries here: the 6 atoms do not regress, since
+  // `ceil_floor` itself falls through to the identical `function_fallback_sql` call
+  // for the no-`to`-clause case; `CEIL(x TO y)`/`FLOOR(x TO y)` now also render, which
+  // the old fallback could never reach. `TRANSFORMS` now has all 143 of upstream's
+  // entries filled.
+  assert.equal(Generator.TRANSFORMS.size, 143, "TRANSFORMS has all 143 entries filled (AIR-2279 wires the last two, Ceil/Floor)");
 
   const wantTransform = Object.entries(WANT).filter(([, h]) => h === "transform");
   assert.equal(wantTransform.length, 143);
 
   const got = _buildDispatch(Generator);
   assert.equal(got.size, Object.keys(WANT).length - wantTransform.length + Generator.TRANSFORMS.size);
-  assert.equal(got.size, 558, "417 method-derived + 141 of 143 TRANSFORMS entries (Ceil/Floor held back)");
+  assert.equal(got.size, 560, "417 method-derived + all 143 TRANSFORMS entries");
 });
 
 test("TRANSFORMS beats a same-named *_sql method", () => {
@@ -542,7 +554,22 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // reaches (also not `*_sql`-suffixed): 40 - 2 + 1 = 39, plus +1 coordinator at merge
   // (R93): `indexparameters_sql` (generator.py:1953), reached by the qualify oracle's
   // `alter table` fixture once `addconstraint_sql` went real — 39 + 1 = 40.
-  assert.equal(bodied.length, 244, "exactly 244 *_sql methods have a real body");
+  // +188 from AIR-2279 (epic AIR-2270, "10.6 Generator stubs cluster D2", PORT_PLAN.md
+  // — the LAST stub cluster): every remaining base-Generator `*_sql` method that was
+  // still a lone `throw new NotPorted`, named individually in that PR's own
+  // description (187 stubs discovered via `grep -n 'new NotPorted(' src/generator.js`
+  // on main, which is more than the task's own enumerated census list because that
+  // list only named rows with nonzero corpus weight — ownership was "every remaining
+  // stub" regardless of weight) plus 3 more (`fromiso8601date_sql`/
+  // `fromiso8601timestamp_sql`/`fromiso8601timestampnanos_sql`) the same sweep's own
+  // extraction script initially missed and a follow-up grep caught. 244 + 188 = 432 —
+  // every one of the 432 `*_sql` methods on the prototype now has a real body; the
+  // four remaining `grep -c 'new NotPorted(' src/generator.js` hits are pre-existing,
+  // deliberately GUARDED branches inside otherwise-bodied methods (`_resolveDialect`'s
+  // string-dialect branch, `BASE_DIALECT_GENERATOR_SETTINGS.can_quote`,
+  // `_simplify_unless_literal`, `_embed_ignore_nulls`'s `IGNORE_NULLS_BEFORE_ORDER`
+  // branch) — none of them a `*_sql`-named method itself, so none affects this count.
+  assert.equal(bodied.length, 432, "every *_sql method now has a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -687,7 +714,19 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // `scoperesolution_sql` (every one reads only class/Dialect FIELDS and the
   // `tokens.js` relay getters, never a Dialect METHOD, so none needs the
   // `identifier_sql`-style exception).
-  assert.equal(432 - stubs.length, 243, "243 of those 244 also run without a resolved Dialect");
+  // +188 for AIR-2279's 188 new bodies (the same set `bodied.length` above gained):
+  // empirically verified (`node -e`, after the same dynamic `dialects/dialect.js`
+  // import test #15 above already performs in this same process — that import's
+  // side effect is what registers the real parser `maybe_parse`/`exp.cast`/`exp.func`
+  // route through, which several of these 188 reach on a bare `new exp.Expr({})` with
+  // every optional arg `undefined`). None throws `NotPorted`; most return a string
+  // outright (reading only class/Dialect FIELDS, or nothing at all), and a handful
+  // throw a plain `TypeError` instead on the bare node's missing `.this`/
+  // `.expression` (e.g. `tsordstotimestamp_sql`'s `.isType(...)`,
+  // `getextract_sql`'s `.type`) — the same "runs, just not usefully, on made-up
+  // input" outcome this assertion already counts for `arrayagg_sql`/`tsordstodate_sql`
+  // above. 243 + 188 = 431.
+  assert.equal(432 - stubs.length, 431, "431 of those 432 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],

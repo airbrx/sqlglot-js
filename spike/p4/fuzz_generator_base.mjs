@@ -71,6 +71,10 @@ const DEFERRED_TABLES = new Set([]);
 // `exp.JSONObjectAgg` (py:212/213) — wiring `_parse_json_object` into
 // `FUNCTION_PARSERS` is what first let a real `JSON_OBJECT(...)`/`JSON_OBJECTAGG(...)`
 // corpus row construct one of these nodes and reach this table.
+// +5 from AIR-2285 (PORT_PLAN.md R97, the honest generate probe's standing
+// mismatches): `exp.ConnectByRoot`/`exp.UtcDate`/`exp.UtcTime`/`exp.UtcTimestamp`/
+// `exp.VarMap` (py:164/283-285/289) were each still a `// TODO lambda` placeholder —
+// landed independently of, and now subsumed by, AIR-2284's own wiring below.
 // +48 from AIR-2284 (PORT_PLAN.md P11, mismatch/ERROR triage): every remaining
 // `// TODO lambda` placeholder in the py:142-295 stretch landed as a verified,
 // faithful one-line port of its CPython lambda, taking TRANSFORMS from 93 to 141
@@ -91,7 +95,7 @@ const PARTIALLY_SEEDED_MAP_KEYS = new Map([
       "exp.Adjacent", "exp.AllowedValuesProperty", "exp.AnalyzeColumns", "exp.AnalyzeWith",
       "exp.ArrayContainedBy", "exp.ArrayContainsAll", "exp.ArrayOverlaps", "exp.AssumeColumnConstraint",
       "exp.AutoRefreshProperty", "exp.BackupProperty", "exp.CaseSpecificColumnConstraint",
-      "exp.CalledOnNullInputProperty", "exp.CharacterSetColumnConstraint", "exp.CharacterSetProperty",
+      "exp.CalledOnNullInputProperty", "exp.Ceil", "exp.CharacterSetColumnConstraint", "exp.CharacterSetProperty",
       "exp.ClusteredColumnConstraint", "exp.CollateColumnConstraint", "exp.CommentColumnConstraint",
       "exp.ConnectByRoot", "exp.ConvertToCharset", "exp.CopyGrantsProperty", "exp.CredentialsProperty",
       "exp.CurrentCatalog", "exp.SessionUser", "exp.DateFormatColumnConstraint", "exp.DefaultColumnConstraint",
@@ -99,7 +103,7 @@ const PARTIALLY_SEEDED_MAP_KEYS = new Map([
       "exp.DatabaseProperty", "exp.DynamicProperty", "exp.EmptyProperty", "exp.EncodeColumnConstraint",
       "exp.EndStatement", "exp.EnviromentProperty", "exp.HandlerProperty", "exp.ParameterStyleProperty",
       "exp.EphemeralColumnConstraint", "exp.ExcludeColumnConstraint", "exp.ExecuteAsProperty", "exp.Except",
-      "exp.ExternalProperty", "exp.Get", "exp.GlobalProperty", "exp.HeapProperty", "exp.HybridProperty",
+      "exp.ExternalProperty", "exp.Floor", "exp.Get", "exp.GlobalProperty", "exp.HeapProperty", "exp.HybridProperty",
       "exp.IcebergProperty", "exp.InheritsProperty", "exp.InlineLengthColumnConstraint", "exp.InputModelProperty",
       "exp.Intersect", "exp.IntervalSpan", "exp.Int64", "exp.JSONBContainsAnyTopKeys",
       "exp.JSONBContainsAllTopKeys", "exp.JSONBContainsTopKey", "exp.JSONBDeleteAtPath", "exp.JSONBPathExists",

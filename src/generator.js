@@ -88,7 +88,7 @@ import { formatTime } from "./time.js";
 import { pyTruthy } from "./_py/truthy.js";
 import { ensure_bools, move_ctes_to_top_level } from "./transforms.js";
 import { JSON_PATH_PART_TRANSFORMS } from "./jsonpath.js";
-import { getAnnotateTypesRef, getDialectHelpersRef, getDialectResolver } from "./tokens.js";
+import { getAnnotateTypesRef, getDialectHelpersRef, getDialectResolver, getSimplifyRef, TOKEN_TYPE_NAMES } from "./tokens.js";
 import { kernelSql } from "./generator_kernel.js";
 
 /**
@@ -122,6 +122,21 @@ function _getAnnotateTypesModule() {
   const ref = getAnnotateTypesRef();
   if (!ref) {
     throw new Error("generator.js: annotate_types not loaded yet — import optimizer/annotate_types.js first.");
+  }
+  return ref;
+}
+
+/**
+ * Same relay shape, for `optimizer/simplify.js`'s `simplify` (py:
+ * `apply_index_offset`'s `simplify(expression + offset)`) — needed by
+ * `bracket_offset_expressions` only on the branch reached when a literal array index
+ * actually needs re-basing between two dialects' `INDEX_OFFSET`s.
+ * @returns {Function}
+ */
+function _getSimplifyFn() {
+  const ref = getSimplifyRef();
+  if (!ref) {
+    throw new Error("generator.js: simplify not loaded yet — import optimizer/simplify.js first.");
   }
   return ref;
 }
@@ -505,13 +520,14 @@ export class Generator {
     [exp.BackupProperty, (self, e) => `BACKUP ${self.sql(e, "this")}`], // py:149
     [exp.CaseSpecificColumnConstraint, (_, e) => `${pyTruthy(e.args.not_) ? "NOT " : ""}CASESPECIFIC`], // py:150
     [exp.CalledOnNullInputProperty, () => "CALLED ON NULL INPUT"], // py:153
-    // py:154 — NOT wired: `self.ceil_floor(e)` is still a `NotPorted` base-generator.js
-    // stub (AIR-2276/2277/2278 territory). Routing through it regresses 6 ratchet-pass
-    // atoms (e.g. `FLOOR(x)`, `CEIL(3.14, 1)`) that currently round-trip correctly only
-    // by accident, via `function_fallback_sql`'s class-name-to-SNAKE_CASE fallback
-    // ("Ceil"/"Floor" happen to already BE their own SQL function names). Re-wire this
-    // the moment `ceil_floor` lands for real.
-    // [exp.Ceil, /* TODO lambda */],
+    // py:154 — re-wired by AIR-2279 (10.6 generator stubs cluster D2), which ported
+    // `ceil_floor` for real. The 6 ratchet-pass atoms AIR-2284's own note names
+    // (`FLOOR(x)`, `CEIL(3.14, 1)`, ...) do not regress: with no `to` clause,
+    // `ceil_floor` itself falls through to the same `function_fallback_sql` call the
+    // accidental class-name fallback was already making, so plain `CEIL`/`FLOOR` renders
+    // byte-identical; the `CEIL(x TO y)`/`FLOOR(x TO y)` form `ceil_floor` also now
+    // handles was unreachable through the old fallback at all.
+    [exp.Ceil, (self, e) => self.ceil_floor(e)],
     [exp.CharacterSetColumnConstraint, (self, e) => `CHARACTER SET ${self.sql(e, "this")}`], // py:155
     [exp.CharacterSetProperty, (self, e) => `${e.args.default ? "DEFAULT " : ""}CHARACTER SET=${self.sql(e, "this")}`], // py:156
     [exp.ClusteredColumnConstraint, (self, e) => `CLUSTERED (${self.expressions(e, "this", { indent: false })})`], // py:159
@@ -554,8 +570,8 @@ export class Generator {
     // `set_operations` wiring as `exp.Intersect`/`exp.Union` below.
     [exp.Except, (self, e) => self.set_operations(e)],
     [exp.ExternalProperty, () => "EXTERNAL"], // py:194
-    // py:195 — NOT wired, same reason as `exp.Ceil` above (py:154).
-    // [exp.Floor, /* TODO lambda */],
+    // py:195 — re-wired, same reason as `exp.Ceil` above (py:154).
+    [exp.Floor, (self, e) => self.ceil_floor(e)],
     [exp.Get, (self, e) => self.get_put_sql(e)], // py:196
     [exp.GlobalProperty, () => "GLOBAL"], // py:197
     [exp.HeapProperty, () => "HEAP"], // py:198
@@ -1645,15 +1661,31 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1135
-  uncache_sql(expression) { throw new NotPorted("uncache_sql", "sqlglot/generator.py:1135"); }
+  uncache_sql(expression) {
+    const table = this.sql(expression, "this");
+    const exists_sql = expression.args.exists ? " IF EXISTS" : "";
+    return `UNCACHE TABLE${exists_sql} ${table}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1140
-  cache_sql(expression) { throw new NotPorted("cache_sql", "sqlglot/generator.py:1140"); }
+  cache_sql(expression) {
+    const lazy = expression.args.lazy ? " LAZY" : "";
+    const table = this.sql(expression, "this");
+    const options = expression.args.options;
+    const options_sql = options ? ` OPTIONS(${this.sql(options[0])} = ${this.sql(options[1])})` : "";
+    let sql = this.sql(expression, "expression");
+    sql = sql ? ` AS${this.sep()}${sql}` : "";
+    sql = `CACHE${lazy} TABLE ${table}${options_sql}${sql}`;
+    return this.prepend_ctes(expression, sql);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1150
-  characterset_sql(expression) { throw new NotPorted("characterset_sql", "sqlglot/generator.py:1150"); }
+  characterset_sql(expression) {
+    const default_ = expression.args.default ? "DEFAULT " : "";
+    return `${default_}CHARACTER SET=${this.sql(expression, "this")}`;
+  }
 
   /**
    * py: sqlglot/generator.py:1154
@@ -1699,11 +1731,18 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1179
-  pseudocolumn_sql(expression) { throw new NotPorted("pseudocolumn_sql", "sqlglot/generator.py:1179"); }
+  pseudocolumn_sql(expression) {
+    return this.column_sql(expression);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1182
-  columnposition_sql(expression) { throw new NotPorted("columnposition_sql", "sqlglot/generator.py:1182"); }
+  columnposition_sql(expression) {
+    let this_ = this.sql(expression, "this");
+    this_ = this_ ? ` ${this_}` : "";
+    const position = this.sql(expression, "position");
+    return `${position}${this_}`;
+  }
 
   /**
    * py: sqlglot/generator.py:1188 `columndef_sql(self, expression, sep=" ")`
@@ -1760,23 +1799,72 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1219
-  autoincrementcolumnconstraint_sql(_) { throw new NotPorted("autoincrementcolumnconstraint_sql", "sqlglot/generator.py:1219"); }
+  autoincrementcolumnconstraint_sql(_) {
+    return this.token_sql(TokenType.AUTO_INCREMENT);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1222
-  compresscolumnconstraint_sql(expression) { throw new NotPorted("compresscolumnconstraint_sql", "sqlglot/generator.py:1222"); }
+  compresscolumnconstraint_sql(expression) {
+    let this_;
+    if (Array.isArray(expression.this)) {
+      this_ = this.wrap(this.expressions(expression, "this", { flat: true }));
+    } else {
+      this_ = this.sql(expression, "this");
+    }
+    return `COMPRESS ${this_}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1230
-  generatedasidentitycolumnconstraint_sql(expression) { throw new NotPorted("generatedasidentitycolumnconstraint_sql", "sqlglot/generator.py:1230"); }
+  generatedasidentitycolumnconstraint_sql(expression) {
+    let this_ = "";
+    if (expression.this !== null && expression.this !== undefined) {
+      const on_null = expression.args.on_null ? " ON NULL" : "";
+      this_ = expression.this ? " ALWAYS" : ` BY DEFAULT${on_null}`;
+    }
+
+    let start = expression.args.start;
+    start = start ? `START WITH ${start}` : "";
+    let increment = expression.args.increment;
+    increment = increment ? ` INCREMENT BY ${increment}` : "";
+    let minvalue = expression.args.minvalue;
+    minvalue = minvalue ? ` MINVALUE ${minvalue}` : "";
+    let maxvalue = expression.args.maxvalue;
+    maxvalue = maxvalue ? ` MAXVALUE ${maxvalue}` : "";
+    const cycle = expression.args.cycle;
+    let cycle_sql = "";
+
+    if (cycle !== null && cycle !== undefined) {
+      cycle_sql = `${!cycle ? " NO" : ""} CYCLE`;
+      cycle_sql = !start && !increment ? pyStrip(cycle_sql) : cycle_sql;
+    }
+
+    let sequence_opts = "";
+    if (start || increment || cycle_sql) {
+      sequence_opts = `${start}${increment}${minvalue}${maxvalue}${cycle_sql}`;
+      sequence_opts = ` (${pyStrip(sequence_opts)})`;
+    }
+
+    let expr = this.sql(expression, "expression");
+    expr = expr ? `(${expr})` : "IDENTITY";
+
+    return `GENERATED${this_} AS ${expr}${sequence_opts}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1263
-  generatedasrowcolumnconstraint_sql(expression) { throw new NotPorted("generatedasrowcolumnconstraint_sql", "sqlglot/generator.py:1263"); }
+  generatedasrowcolumnconstraint_sql(expression) {
+    const start = expression.args.start ? "START" : "END";
+    const hidden = expression.args.hidden ? " HIDDEN" : "";
+    return `GENERATED ALWAYS AS ROW ${start}${hidden}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1270
-  periodforsystemtimeconstraint_sql(expression) { throw new NotPorted("periodforsystemtimeconstraint_sql", "sqlglot/generator.py:1270"); }
+  periodforsystemtimeconstraint_sql(expression) {
+    return `PERIOD FOR SYSTEM_TIME (${this.sql(expression, "this")}, ${this.sql(expression, "expression")})`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1275
@@ -1786,7 +1874,15 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1278
-  primarykeycolumnconstraint_sql(expression) { throw new NotPorted("primarykeycolumnconstraint_sql", "sqlglot/generator.py:1278"); }
+  primarykeycolumnconstraint_sql(expression) {
+    const desc = expression.args.desc;
+    if (desc !== null && desc !== undefined) {
+      return `PRIMARY KEY${desc ? " DESC" : " ASC"}`;
+    }
+    let options = this.expressions(expression, "options", { flat: true });
+    options = options ? ` ${options}` : "";
+    return `PRIMARY KEY${options}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1286
@@ -1805,7 +1901,19 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1298
-  inoutcolumnconstraint_sql(expression) { throw new NotPorted("inoutcolumnconstraint_sql", "sqlglot/generator.py:1298"); }
+  inoutcolumnconstraint_sql(expression) {
+    const input_ = expression.args.input_;
+    const output = expression.args.output;
+    const variadic = expression.args.variadic;
+
+    if (variadic) return "VARIADIC";
+
+    if (input_ && output) return `IN${this.constructor.INOUT_SEPARATOR}OUT`;
+    if (input_) return "IN";
+    if (output) return "OUT";
+
+    return "";
+  }
 
   /**
    * py: sqlglot/generator.py:1316
@@ -2027,11 +2135,33 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1494
-  triggerreferencing_sql(expression) { throw new NotPorted("triggerreferencing_sql", "sqlglot/generator.py:1494"); }
+  triggerreferencing_sql(expression) {
+    const parts = [];
+
+    const old_alias = expression.args.old;
+    if (old_alias) parts.push(`OLD TABLE AS ${this.sql(old_alias)}`);
+
+    const new_alias = expression.args.new;
+    if (new_alias) parts.push(`NEW TABLE AS ${this.sql(new_alias)}`);
+
+    return `REFERENCING ${parts.join(" ")}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1505
-  triggerevent_sql(expression) { throw new NotPorted("triggerevent_sql", "sqlglot/generator.py:1505"); }
+  triggerevent_sql(expression) {
+    // deny:implicit_str sqlglot/generator.py:1508 -- `expression.this` is interpolated
+    // raw, exactly as upstream does, not routed through `this.sql(...)`. The deny
+    // scanner flags it generically as "could be an Expr arg", but `TriggerEvent.this`
+    // is always a plain event-keyword string (`"INSERT"`/`"UPDATE"`/`"DELETE"`) set by
+    // the parser, never an `Expr` node, so no `.sql()` call is needed here.
+    const columns = expression.args.columns;
+    if (columns) {
+      return `${expression.this} OF ${this.expressions(expression, "columns", { flat: true })}`;
+    }
+
+    return this.sql(expression, "this");
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1512
@@ -2057,7 +2187,10 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1529
-  heredoc_sql(expression) { throw new NotPorted("heredoc_sql", "sqlglot/generator.py:1529"); }
+  heredoc_sql(expression) {
+    const tag = this.sql(expression, "tag");
+    return `$${tag}$${this.sql(expression, "this")}$${tag}$`;
+  }
 
   /**
    * py: sqlglot/generator.py:1533
@@ -2149,7 +2282,13 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1592
-  bitstring_sql(expression) { throw new NotPorted("bitstring_sql", "sqlglot/generator.py:1592"); }
+  bitstring_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    if (this.dialect.BIT_START) {
+      return `${this.dialect.BIT_START}${this_}${this.dialect.BIT_END}`;
+    }
+    return `${parseInt(this_, 2)}`;
+  }
 
   /**
    * `hexstring_sql(expression, binary_function_repr=None)`.
@@ -2416,7 +2555,12 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1803
-  directory_sql(expression) { throw new NotPorted("directory_sql", "sqlglot/generator.py:1803"); }
+  directory_sql(expression) {
+    const local = expression.args.local ? "LOCAL " : "";
+    let row_format = this.sql(expression, "row_format");
+    row_format = row_format ? ` ${row_format}` : "";
+    return `${local}DIRECTORY ${this.sql(expression, "this")}${row_format}`;
+  }
 
   /**
    * py: sqlglot/generator.py:1809
@@ -2454,6 +2598,15 @@ export class Generator {
    */
   // py: sqlglot/generator.py:1829
   drop_sql(expression) {
+    // deny:implicit_str sqlglot/generator.py:1852 -- `kind` is interpolated raw,
+    // exactly as upstream does, not routed through `this.sql(...)`. The deny scanner
+    // flags it generically as "could be an Expr arg" (every name the final f-string
+    // substitutes), but `kind` specifically is mapped through
+    // `this.dialect.INVERSE_CREATABLE_KIND_MAPPING` two lines below, which only ever
+    // holds/returns keyword strings (e.g. `"TABLE"`/`"VIEW"`), never an `Expr` node;
+    // every other name in that f-string (`temporary`/`materialized`/`iceberg`/.../
+    // `force`) is a literal JS string built from a boolean check below, not an
+    // `.args.get(...)` passthrough, so none of them is a candidate either.
     const tables = this.expressions(expression, "tables", { flat: true });
     let expressions = this.expressions(expression, null, { flat: true });
     expressions = expressions ? ` (${expressions})` : "";
@@ -2648,7 +2801,20 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:1987
-  dynamicidentifier_sql(expression) { throw new NotPorted("dynamicidentifier_sql", "sqlglot/generator.py:1987"); }
+  dynamicidentifier_sql(expression) {
+    const this_ = expression.this;
+    if (this_ && this_.is_string) {
+      const resolved = exp.maybeParse(this_.name).sql(this.dialect);
+      if (Object.hasOwn(expression.args, "expressions")) {
+        this.unsupported(
+          "Transpiling dynamically-invoked IDENTIFIER() functions is unsupported",
+        );
+      }
+      return resolved;
+    }
+    this.unsupported("IDENTIFIER() with non-literal arguments is not supported");
+    return this.func("IDENTIFIER", this_);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2001
@@ -2688,7 +2854,13 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2018
-  hex_sql(expression) { throw new NotPorted("hex_sql", "sqlglot/generator.py:2018"); }
+  hex_sql(expression) {
+    let text = this.func(this.constructor.HEX_FUNC, this.sql(expression, "this"));
+    if (this.dialect.HEX_LOWERCASE) {
+      text = this.func("LOWER", text);
+    }
+    return text;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2025
@@ -2700,7 +2872,13 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2031
-  inputoutputformat_sql(expression) { throw new NotPorted("inputoutputformat_sql", "sqlglot/generator.py:2031"); }
+  inputoutputformat_sql(expression) {
+    let input_format = this.sql(expression, "input_format");
+    input_format = input_format ? `INPUTFORMAT ${input_format}` : "";
+    let output_format = this.sql(expression, "output_format");
+    output_format = output_format ? `OUTPUTFORMAT ${output_format}` : "";
+    return [input_format, output_format].join(this.sep());
+  }
 
   /**
    * py: sqlglot/generator.py:2038 `national_sql(self, expression, prefix="N")`
@@ -2716,7 +2894,10 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2042
-  partition_sql(expression) { throw new NotPorted("partition_sql", "sqlglot/generator.py:2042"); }
+  partition_sql(expression) {
+    const partition_keyword = expression.args.subpartition ? "SUBPARTITION" : "PARTITION";
+    return `${partition_keyword}(${this.expressions(expression, null, { flat: true })})`;
+  }
 
   /**
    * py: sqlglot/generator.py:2046
@@ -2849,7 +3030,9 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2121
-  uuidproperty_sql(expression) { throw new NotPorted("uuidproperty_sql", "sqlglot/generator.py:2121"); }
+  uuidproperty_sql(expression) {
+    return `UUID ${this.sql(expression, "this")}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2124
@@ -2876,43 +3059,138 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2141
-  fallbackproperty_sql(expression) { throw new NotPorted("fallbackproperty_sql", "sqlglot/generator.py:2141"); }
+  fallbackproperty_sql(expression) {
+    const no = expression.args.no ? "NO " : "";
+    const protection = expression.args.protection ? " PROTECTION" : "";
+    return `${no}FALLBACK${protection}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2146
-  journalproperty_sql(expression) { throw new NotPorted("journalproperty_sql", "sqlglot/generator.py:2146"); }
+  journalproperty_sql(expression) {
+    const no = expression.args.no ? "NO " : "";
+    let local = expression.args.local;
+    local = local ? `${local} ` : "";
+    const dual = expression.args.dual ? "DUAL " : "";
+    const before = expression.args.before ? "BEFORE " : "";
+    const after = expression.args.after ? "AFTER " : "";
+    return `${no}${local}${dual}${before}${after}JOURNAL`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2155
-  freespaceproperty_sql(expression) { throw new NotPorted("freespaceproperty_sql", "sqlglot/generator.py:2155"); }
+  freespaceproperty_sql(expression) {
+    const freespace = this.sql(expression, "this");
+    const percent = expression.args.percent ? " PERCENT" : "";
+    return `FREESPACE=${freespace}${percent}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2160
-  checksumproperty_sql(expression) { throw new NotPorted("checksumproperty_sql", "sqlglot/generator.py:2160"); }
+  checksumproperty_sql(expression) {
+    let property;
+    if (expression.args.default) {
+      property = "DEFAULT";
+    } else if (expression.args.on) {
+      property = "ON";
+    } else {
+      property = "OFF";
+    }
+    return `CHECKSUM=${property}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2169
-  mergeblockratioproperty_sql(expression) { throw new NotPorted("mergeblockratioproperty_sql", "sqlglot/generator.py:2169"); }
+  mergeblockratioproperty_sql(expression) {
+    if (expression.args.no) return "NO MERGEBLOCKRATIO";
+    if (expression.args.default) return "DEFAULT MERGEBLOCKRATIO";
+
+    const percent = expression.args.percent ? " PERCENT" : "";
+    return `MERGEBLOCKRATIO=${this.sql(expression, "this")}${percent}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2178
-  moduleproperty_sql(expression) { throw new NotPorted("moduleproperty_sql", "sqlglot/generator.py:2178"); }
+  moduleproperty_sql(expression) {
+    let expressions = this.expressions(expression, null, { flat: true });
+    expressions = expressions ? `(${expressions})` : "";
+    return `USING ${this.sql(expression, "this")}${expressions}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2183
-  datablocksizeproperty_sql(expression) { throw new NotPorted("datablocksizeproperty_sql", "sqlglot/generator.py:2183"); }
+  datablocksizeproperty_sql(expression) {
+    const default_ = expression.args.default;
+    const minimum = expression.args.minimum;
+    const maximum = expression.args.maximum;
+    if (default_ || minimum || maximum) {
+      let prop;
+      if (default_) {
+        prop = "DEFAULT";
+      } else if (minimum) {
+        prop = "MINIMUM";
+      } else {
+        prop = "MAXIMUM";
+      }
+      return `${prop} DATABLOCKSIZE`;
+    }
+    let units = expression.args.units;
+    units = units ? ` ${units}` : "";
+    return `DATABLOCKSIZE=${this.sql(expression, "size")}${units}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2199
-  blockcompressionproperty_sql(expression) { throw new NotPorted("blockcompressionproperty_sql", "sqlglot/generator.py:2199"); }
+  blockcompressionproperty_sql(expression) {
+    const autotemp = expression.args.autotemp;
+    const always = expression.args.always;
+    const default_ = expression.args.default;
+    const manual = expression.args.manual;
+    const never = expression.args.never;
+
+    let prop;
+    if (autotemp !== null && autotemp !== undefined) {
+      prop = `AUTOTEMP(${this.expressions(autotemp)})`;
+    } else if (always) {
+      prop = "ALWAYS";
+    } else if (default_) {
+      prop = "DEFAULT";
+    } else if (manual) {
+      prop = "MANUAL";
+    } else if (never) {
+      prop = "NEVER";
+    }
+    return `BLOCKCOMPRESSION=${prop}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2218
-  isolatedloadingproperty_sql(expression) { throw new NotPorted("isolatedloadingproperty_sql", "sqlglot/generator.py:2218"); }
+  isolatedloadingproperty_sql(expression) {
+    let no = expression.args.no;
+    no = no ? " NO" : "";
+    let concurrent = expression.args.concurrent;
+    concurrent = concurrent ? " CONCURRENT" : "";
+    let target = this.sql(expression, "target");
+    target = target ? ` ${target}` : "";
+    return `WITH${no}${concurrent} ISOLATED LOADING${target}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2227
-  partitionboundspec_sql(expression) { throw new NotPorted("partitionboundspec_sql", "sqlglot/generator.py:2227"); }
+  partitionboundspec_sql(expression) {
+    if (Array.isArray(expression.this)) {
+      return `IN (${this.expressions(expression, "this", { flat: true })})`;
+    }
+    if (expression.this) {
+      const modulus = this.sql(expression, "this");
+      const remainder = this.sql(expression, "expression");
+      return `WITH (MODULUS ${modulus}, REMAINDER ${remainder})`;
+    }
+
+    const from_expressions = this.expressions(expression, "from_expressions", { flat: true });
+    const to_expressions = this.expressions(expression, "to_expressions", { flat: true });
+    return `FROM (${from_expressions}) TO (${to_expressions})`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2239
@@ -2932,15 +3210,54 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2250
-  lockingproperty_sql(expression) { throw new NotPorted("lockingproperty_sql", "sqlglot/generator.py:2250"); }
+  lockingproperty_sql(expression) {
+    // deny:implicit_str sqlglot/generator.py:2257 -- `kind`, `for_or_in`, and
+    // `lock_type` are interpolated raw, exactly as upstream does, not routed through
+    // `this.sql(...)`. The deny scanner flags them generically as "could be Expr args",
+    // but `LockingProperty`'s `kind`/`for_or_in`/`lock_type` are always parser-set
+    // keyword strings (e.g. `"ROW"`/`"FOR"`/`"SHARE"`), never `Expr` nodes.
+    const kind = expression.args.kind;
+    const this_ = expression.this ? ` ${this.sql(expression, "this")}` : "";
+    let for_or_in = expression.args.for_or_in;
+    for_or_in = for_or_in ? ` ${for_or_in}` : "";
+    const lock_type = expression.args.lock_type;
+    const override = expression.args.override ? " OVERRIDE" : "";
+    return `LOCKING ${kind}${this_}${for_or_in} ${lock_type}${override}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2259
-  withdataproperty_sql(expression) { throw new NotPorted("withdataproperty_sql", "sqlglot/generator.py:2259"); }
+  withdataproperty_sql(expression) {
+    const data_sql = `WITH ${expression.args.no ? "NO " : ""}DATA`;
+    const statistics = expression.args.statistics;
+    let statistics_sql = "";
+    if (statistics !== null && statistics !== undefined) {
+      statistics_sql = ` AND ${!statistics ? "NO " : ""}STATISTICS`;
+    }
+    return `${data_sql}${statistics_sql}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2267
-  withsystemversioningproperty_sql(expression) { throw new NotPorted("withsystemversioningproperty_sql", "sqlglot/generator.py:2267"); }
+  withsystemversioningproperty_sql(expression) {
+    let this_ = this.sql(expression, "this");
+    this_ = this_ ? `HISTORY_TABLE=${this_}` : "";
+    let data_consistency = this.sql(expression, "data_consistency");
+    data_consistency = data_consistency ? `DATA_CONSISTENCY_CHECK=${data_consistency}` : null;
+    let retention_period = this.sql(expression, "retention_period");
+    retention_period = retention_period ? `HISTORY_RETENTION_PERIOD=${retention_period}` : null;
+
+    let on_sql;
+    if (this_) {
+      on_sql = this.func("ON", this_, data_consistency, retention_period);
+    } else {
+      on_sql = expression.args.on ? "ON" : "OFF";
+    }
+
+    const sql = `SYSTEM_VERSIONING=${on_sql}`;
+
+    return expression.args.with_ ? `WITH(${sql})` : sql;
+  }
 
   /**
    * py: sqlglot/generator.py:2288
@@ -3000,15 +3317,25 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2335
-  introducer_sql(expression) { throw new NotPorted("introducer_sql", "sqlglot/generator.py:2335"); }
+  introducer_sql(expression) {
+    return `${this.sql(expression, "this")} ${this.sql(expression, "expression")}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2338
-  kill_sql(expression) { throw new NotPorted("kill_sql", "sqlglot/generator.py:2338"); }
+  kill_sql(expression) {
+    let kind = this.sql(expression, "kind");
+    kind = kind ? ` ${kind}` : "";
+    let this_ = this.sql(expression, "this");
+    this_ = this_ ? ` ${this_}` : "";
+    return `KILL${kind}${this_}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2345
-  pseudotype_sql(expression) { throw new NotPorted("pseudotype_sql", "sqlglot/generator.py:2345"); }
+  pseudotype_sql(expression) {
+    return expression.name;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2348
@@ -3052,7 +3379,21 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2377
-  rowformatdelimitedproperty_sql(expression) { throw new NotPorted("rowformatdelimitedproperty_sql", "sqlglot/generator.py:2377"); }
+  rowformatdelimitedproperty_sql(expression) {
+    let fields = this.sql(expression, "fields");
+    fields = fields ? ` FIELDS TERMINATED BY ${fields}` : "";
+    let escaped = this.sql(expression, "escaped");
+    escaped = escaped ? ` ESCAPED BY ${escaped}` : "";
+    let items = this.sql(expression, "collection_items");
+    items = items ? ` COLLECTION ITEMS TERMINATED BY ${items}` : "";
+    let keys = this.sql(expression, "map_keys");
+    keys = keys ? ` MAP KEYS TERMINATED BY ${keys}` : "";
+    let lines = this.sql(expression, "lines");
+    lines = lines ? ` LINES TERMINATED BY ${lines}` : "";
+    let null_ = this.sql(expression, "null");
+    null_ = null_ ? ` NULL DEFINED AS ${null_}` : "";
+    return `ROW FORMAT DELIMITED${fields}${escaped}${items}${keys}${lines}${null_}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2392
@@ -3063,7 +3404,12 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2395
-  indextablehint_sql(expression) { throw new NotPorted("indextablehint_sql", "sqlglot/generator.py:2395"); }
+  indextablehint_sql(expression) {
+    const this_ = `${this.sql(expression, "this")} INDEX`;
+    let target = this.sql(expression, "target");
+    target = target ? ` FOR ${target}` : "";
+    return `${this_}${target} (${this.expressions(expression, null, { flat: true })})`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2401
@@ -3497,7 +3843,10 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2757
-  into_sql(expression) { throw new NotPorted("into_sql", "sqlglot/generator.py:2757"); }
+  // py: sqlglot/generator.py:2757 `@unsupported_args("expressions") def into_sql(self, expression)`
+  // — the `this`-forwarding shim onto `_into_sql` below (module scope), same split as
+  // `tochar_sql`/`_tochar_sql`.
+  into_sql(expression) { return _into_sql(this, expression); }
 
   /**
    * py: sqlglot/generator.py:2762
@@ -3525,15 +3874,32 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2773
-  rollupindex_sql(expression) { throw new NotPorted("rollupindex_sql", "sqlglot/generator.py:2773"); }
+  rollupindex_sql(expression) {
+    const this_ = this.sql(expression, "this");
+
+    const columns = this.expressions(expression, null, { flat: true });
+
+    let from_sql = this.sql(expression, "from_index");
+    from_sql = from_sql ? ` FROM ${from_sql}` : "";
+
+    const properties = expression.args.properties;
+    const properties_sql = properties ? ` ${this.properties(properties, "PROPERTIES")}` : "";
+
+    return `${this_}(${columns})${from_sql}${properties_sql}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2788
-  rollupproperty_sql(expression) { throw new NotPorted("rollupproperty_sql", "sqlglot/generator.py:2788"); }
+  rollupproperty_sql(expression) {
+    return `ROLLUP (${this.expressions(expression, null, { flat: true })})`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2791
-  cube_sql(expression) { throw new NotPorted("cube_sql", "sqlglot/generator.py:2791"); }
+  cube_sql(expression) {
+    const expressions = this.expressions(expression, null, { indent: false });
+    return expressions ? `CUBE ${this.wrap(expressions)}` : "WITH CUBE";
+  }
 
   /**
    * py: sqlglot/generator.py:2795
@@ -3589,11 +3955,20 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2831
-  connect_sql(expression) { throw new NotPorted("connect_sql", "sqlglot/generator.py:2831"); }
+  connect_sql(expression) {
+    let start = this.sql(expression, "start");
+    start = start ? this.seg(`START WITH ${start}`) : "";
+    const nocycle = expression.args.nocycle ? " NOCYCLE" : "";
+    let connect = this.sql(expression, "connect");
+    connect = this.seg(`CONNECT BY${nocycle} ${connect}`);
+    return start + connect;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2839
-  prior_sql(expression) { throw new NotPorted("prior_sql", "sqlglot/generator.py:2839"); }
+  prior_sql(expression) {
+    return `PRIOR ${this.sql(expression, "this")}`;
+  }
 
   /**
    * py: sqlglot/generator.py:2842
@@ -3799,15 +4174,51 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2976
-  queryband_sql(expression) { throw new NotPorted("queryband_sql", "sqlglot/generator.py:2976"); }
+  queryband_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const update = expression.args.update ? " UPDATE" : "";
+    let scope = this.sql(expression, "scope");
+    scope = scope ? ` FOR ${scope}` : "";
+
+    return `QUERY_BAND = ${this_}${update}${scope}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2984
-  pragma_sql(expression) { throw new NotPorted("pragma_sql", "sqlglot/generator.py:2984"); }
+  pragma_sql(expression) {
+    return `PRAGMA ${this.sql(expression, "this")}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:2987
-  lock_sql(expression) { throw new NotPorted("lock_sql", "sqlglot/generator.py:2987"); }
+  lock_sql(expression) {
+    if (!this.constructor.LOCKING_READS_SUPPORTED) {
+      this.unsupported("Locking reads using 'FOR UPDATE/SHARE' are not supported");
+      return "";
+    }
+
+    const update = expression.args.update;
+    const key = expression.args.key;
+    let lock_type;
+    if (update) {
+      lock_type = key ? "FOR NO KEY UPDATE" : "FOR UPDATE";
+    } else {
+      lock_type = key ? "FOR KEY SHARE" : "FOR SHARE";
+    }
+    let expressions = this.expressions(expression, null, { flat: true });
+    expressions = expressions ? ` OF ${expressions}` : "";
+    let wait = expression.args.wait;
+
+    if (wait !== null && wait !== undefined) {
+      if (wait instanceof exp.Literal) {
+        wait = ` WAIT ${this.sql(wait)}`;
+      } else {
+        wait = wait ? " NOWAIT" : " SKIP LOCKED";
+      }
+    }
+
+    return `${lock_type}${expressions}${wait || ""}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3010
@@ -3864,7 +4275,36 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3040
-  loaddata_sql(expression) { throw new NotPorted("loaddata_sql", "sqlglot/generator.py:3040"); }
+  loaddata_sql(expression) {
+    const is_overwrite = expression.args.overwrite;
+    const overwrite = is_overwrite ? " OVERWRITE" : "";
+    let this_ = this.sql(expression, "this");
+
+    const files = expression.args.files;
+    if (files) {
+      let files_sql = this.expressions(files, null, { flat: true });
+      files_sql = `FILES${this.wrap(files_sql)}`;
+      if (is_overwrite) {
+        this_ = ` ${this_}`;
+      } else if (expression.args.temp) {
+        this_ = ` INTO TEMP TABLE ${this_}`;
+      } else {
+        this_ = ` INTO TABLE ${this_}`;
+      }
+      return `LOAD DATA${overwrite}${this_} FROM ${files_sql}`;
+    }
+
+    const local = expression.args.local ? " LOCAL" : "";
+    const inpath = ` INPATH ${this.sql(expression, "inpath")}`;
+    this_ = ` INTO TABLE ${this_}`;
+    let partition = this.sql(expression, "partition");
+    partition = partition ? ` ${partition}` : "";
+    let input_format = this.sql(expression, "input_format");
+    input_format = input_format ? ` INPUTFORMAT ${input_format}` : "";
+    let serde = this.sql(expression, "serde");
+    serde = serde ? ` SERDE ${serde}` : "";
+    return `LOAD DATA${local}${inpath}${overwrite}${this_}${partition}${input_format}${serde}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3068
@@ -3880,11 +4320,15 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3074
-  booland_sql(expression) { throw new NotPorted("booland_sql", "sqlglot/generator.py:3074"); }
+  booland_sql(expression) {
+    return `((${this.sql(expression, "this")}) AND (${this.sql(expression, "expression")}))`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3077
-  boolor_sql(expression) { throw new NotPorted("boolor_sql", "sqlglot/generator.py:3077"); }
+  boolor_sql(expression) {
+    return `((${this.sql(expression, "this")}) OR (${this.sql(expression, "expression")}))`;
+  }
 
   /**
    * py: sqlglot/generator.py:3080 `order_sql(expression, flat=False)`
@@ -3902,7 +4346,23 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3086
-  withfill_sql(expression) { throw new NotPorted("withfill_sql", "sqlglot/generator.py:3086"); }
+  withfill_sql(expression) {
+    let from_sql = this.sql(expression, "from_");
+    from_sql = from_sql ? ` FROM ${from_sql}` : "";
+    let to_sql = this.sql(expression, "to");
+    to_sql = to_sql ? ` TO ${to_sql}` : "";
+    let step_sql = this.sql(expression, "step");
+    step_sql = step_sql ? ` STEP ${step_sql}` : "";
+    const interpolated_values = (expression.args.interpolate || []).map((e) =>
+      e instanceof exp.Alias
+        ? `${this.sql(e, "alias")} AS ${this.sql(e, "this")}`
+        : this.sql(e, "this"),
+    );
+    const interpolate = interpolated_values.length
+      ? ` INTERPOLATE (${interpolated_values.join(", ")})`
+      : "";
+    return `WITH FILL${from_sql}${to_sql}${step_sql}${interpolate}`;
+  }
 
   /**
    * py: sqlglot/generator.py:3104
@@ -3914,7 +4374,14 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3107
-  clusterproperty_sql(expression) { throw new NotPorted("clusterproperty_sql", "sqlglot/generator.py:3107"); }
+  clusterproperty_sql(expression) {
+    if (expression.this) {
+      this.unsupported(`Unsupported CLUSTER BY ${this.sql(expression, "this")}`);
+      return "";
+    }
+    const expressions = this.expressions(expression, null, { flat: true });
+    return `CLUSTER BY (${expressions})`;
+  }
 
   /**
    * py: sqlglot/generator.py:3114
@@ -3934,7 +4401,25 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3120
-  _resolve_ordered_for_null_ordering_simulation(expression) { throw new NotPorted("_resolve_ordered_for_null_ordering_simulation", "sqlglot/generator.py:3120"); }
+  _resolve_ordered_for_null_ordering_simulation(expression) {
+    const this_ = expression.this;
+    if (!(this_ instanceof exp.Column && !this_.table)) return null;
+
+    const ancestor = expression.findAncestor(exp.Select, exp.Window);
+    if (!(ancestor instanceof exp.Select)) return null;
+
+    const column_name = this_.name;
+    const matched = ancestor.selects
+      .filter((p) => p.outputName === column_name)
+      .map((p) => (p instanceof exp.Alias ? p.this : p));
+    const match = matched.length === 1 ? matched[0] : null;
+
+    if (match instanceof exp.Column && !match.table && match.name === column_name) {
+      return null;
+    }
+
+    return match;
+  }
 
   /**
    * py: sqlglot/generator.py:3154
@@ -4364,7 +4849,12 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3448
-  sessionparameter_sql(expression) { throw new NotPorted("sessionparameter_sql", "sqlglot/generator.py:3448"); }
+  sessionparameter_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    let kind = expression.text("kind");
+    if (kind) kind = `${kind}.`;
+    return `@@${kind}${this_}`;
+  }
 
   /**
    * py: sqlglot/generator.py:3455
@@ -4448,7 +4938,9 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3506
-  prewhere_sql(expression) { throw new NotPorted("prewhere_sql", "sqlglot/generator.py:3506"); }
+  prewhere_sql(expression) {
+    return "";
+  }
 
   /**
    * py: sqlglot/generator.py:3509
@@ -4549,11 +5041,12 @@ export class Generator {
   bracket_offset_expressions(expression, index_offset = null) {
     if (expression.args.json_access) return expression.expressions;
 
+    const { annotate_types } = _getAnnotateTypesModule();
     return exp.applyIndexOffset(
       expression.this,
       expression.expressions,
       (index_offset ?? this.dialect.INDEX_OFFSET) - (expression.args.offset ?? 0),
-      { dialect: this.dialect },
+      { dialect: this.dialect, annotateTypes: annotate_types, simplify: _getSimplifyFn() },
     );
   }
 
@@ -4633,11 +5126,19 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3639
-  constraint_sql(expression) { throw new NotPorted("constraint_sql", "sqlglot/generator.py:3639"); }
+  constraint_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const expressions = this.expressions(expression, null, { flat: true });
+    return `CONSTRAINT ${this_} ${expressions}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3644
-  nextvaluefor_sql(expression) { throw new NotPorted("nextvaluefor_sql", "sqlglot/generator.py:3644"); }
+  nextvaluefor_sql(expression) {
+    const order = expression.args.order;
+    const order_sql = order ? ` OVER (${this.order_sql(order, true)})` : "";
+    return `NEXT VALUE FOR ${this.sql(expression, "this")}${order_sql}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3649
@@ -4751,11 +5252,26 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3743
-  check_sql(expression) { throw new NotPorted("check_sql", "sqlglot/generator.py:3743"); }
+  check_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    return `CHECK (${this_})`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3747
-  foreignkey_sql(expression) { throw new NotPorted("foreignkey_sql", "sqlglot/generator.py:3747"); }
+  foreignkey_sql(expression) {
+    let expressions = this.expressions(expression, null, { flat: true });
+    expressions = expressions ? ` (${expressions})` : "";
+    let reference = this.sql(expression, "reference");
+    reference = reference ? ` ${reference}` : "";
+    let delete_ = this.sql(expression, "delete");
+    delete_ = delete_ ? ` ON DELETE ${delete_}` : "";
+    let update = this.sql(expression, "update");
+    update = update ? ` ON UPDATE ${update}` : "";
+    let options = this.expressions(expression, "options", { flat: true, sep: " " });
+    options = options ? ` ${options}` : "";
+    return `FOREIGN KEY${expressions}${reference}${delete_}${update}${options}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3760
@@ -4772,7 +5288,10 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3769
-  timeserieskey_sql(expression) { throw new NotPorted("timeserieskey_sql", "sqlglot/generator.py:3769"); }
+  timeserieskey_sql(expression) {
+    this.unsupported("TIMESERIES primary key columns are not supported");
+    return this.sql(expression, "this");
+  }
 
   /** py: sqlglot/generator.py:3773 — ported for PORT_PLAN.md R32. */
   if_sql(expression) {
@@ -4781,7 +5300,20 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3776
-  matchagainst_sql(expression) { throw new NotPorted("matchagainst_sql", "sqlglot/generator.py:3776"); }
+  matchagainst_sql(expression) {
+    let expressions;
+    if (this.constructor.MATCH_AGAINST_TABLE_PREFIX) {
+      expressions = expression.expressions.map((expr) =>
+        expr instanceof exp.Table ? `TABLE ${this.sql(expr)}` : expr,
+      );
+    } else {
+      expressions = expression.expressions;
+    }
+
+    let modifier = expression.args.modifier;
+    modifier = modifier ? ` ${modifier}` : "";
+    return `${this.func("MATCH", ...expressions)} AGAINST(${this.sql(expression, "this")}${modifier})`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3793
@@ -4848,7 +5380,11 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3828
-  formatphrase_sql(expression) { throw new NotPorted("formatphrase_sql", "sqlglot/generator.py:3828"); }
+  formatphrase_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const fmt = this.sql(expression, "format");
+    return `${this_} (FORMAT ${fmt})`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3835
@@ -4901,23 +5437,69 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3885
-  jsoncolumndef_sql(expression) { throw new NotPorted("jsoncolumndef_sql", "sqlglot/generator.py:3885"); }
+  jsoncolumndef_sql(expression) {
+    let path = this.sql(expression, "path");
+    path = path ? ` PATH ${path}` : "";
+    const nested_schema = this.sql(expression, "nested_schema");
+
+    if (nested_schema) {
+      return `NESTED${path} ${nested_schema}`;
+    }
+
+    const this_ = this.sql(expression, "this");
+    let kind = this.sql(expression, "kind");
+    kind = kind ? ` ${kind}` : "";
+    const format_json = expression.args.format_json ? " FORMAT JSON" : "";
+
+    const ordinality = expression.args.ordinality ? " FOR ORDINALITY" : "";
+    return `${this_}${kind}${format_json}${path}${ordinality}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3901
-  jsonschema_sql(expression) { throw new NotPorted("jsonschema_sql", "sqlglot/generator.py:3901"); }
+  jsonschema_sql(expression) {
+    return this.func("COLUMNS", ...expression.expressions);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3904
-  jsontable_sql(expression) { throw new NotPorted("jsontable_sql", "sqlglot/generator.py:3904"); }
+  jsontable_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    let path = this.sql(expression, "path");
+    path = path ? `, ${path}` : "";
+    let error_handling = expression.args.error_handling;
+    error_handling = error_handling ? ` ${error_handling}` : "";
+    let empty_handling = expression.args.empty_handling;
+    empty_handling = empty_handling ? ` ${empty_handling}` : "";
+    const schema = this.sql(expression, "schema");
+    return this.func(
+      "JSON_TABLE", this_, { suffix: `${path}${error_handling}${empty_handling} ${schema})` },
+    );
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3917
-  openjsoncolumndef_sql(expression) { throw new NotPorted("openjsoncolumndef_sql", "sqlglot/generator.py:3917"); }
+  openjsoncolumndef_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const kind = this.sql(expression, "kind");
+    let path = this.sql(expression, "path");
+    path = path ? ` ${path}` : "";
+    const as_json = expression.args.as_json ? " AS JSON" : "";
+    return `${this_} ${kind}${path}${as_json}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3925
-  openjson_sql(expression) { throw new NotPorted("openjson_sql", "sqlglot/generator.py:3925"); }
+  openjson_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    let path = this.sql(expression, "path");
+    path = path ? `, ${path}` : "";
+    const expressions = this.expressions(expression);
+    const with_ = expressions
+      ? ` WITH (${this.seg(this.indent(expressions), "")}${this.seg(")", "")}`
+      : "";
+    return `OPENJSON(${this_}${path})${with_}`;
+  }
 
   /**
    * py: sqlglot/generator.py:3937
@@ -4996,11 +5578,20 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3989
-  return_sql(expression) { throw new NotPorted("return_sql", "sqlglot/generator.py:3989"); }
+  return_sql(expression) {
+    return `RETURN ${this.sql(expression, "this")}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:3992
-  reference_sql(expression) { throw new NotPorted("reference_sql", "sqlglot/generator.py:3992"); }
+  reference_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    let expressions = this.expressions(expression, null, { flat: true });
+    expressions = expressions ? `(${expressions})` : "";
+    let options = this.expressions(expression, "options", { flat: true, sep: " " });
+    options = options ? ` ${options}` : "";
+    return `REFERENCES ${this_}${expressions}${options}`;
+  }
 
   /**
    * py: sqlglot/generator.py:4000
@@ -5086,7 +5677,11 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4047
-  atindex_sql(expression) { throw new NotPorted("atindex_sql", "sqlglot/generator.py:4047"); }
+  atindex_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const index = this.sql(expression, "expression");
+    return `${this_} AT ${index}`;
+  }
 
   /**
    * py: sqlglot/generator.py:4052
@@ -5102,19 +5697,29 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4057
-  fromtimezone_sql(expression) { throw new NotPorted("fromtimezone_sql", "sqlglot/generator.py:4057"); }
+  fromtimezone_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const zone = this.sql(expression, "zone");
+    return `${this_} AT TIME ZONE ${zone} AT TIME ZONE 'UTC'`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4062
-  fromiso8601date_sql(expression) { throw new NotPorted("fromiso8601date_sql", "sqlglot/generator.py:4062"); }
+  fromiso8601date_sql(expression) {
+    return this.sql(exp.cast(expression.this, exp.DType.DATE));
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4065
-  fromiso8601timestamp_sql(expression) { throw new NotPorted("fromiso8601timestamp_sql", "sqlglot/generator.py:4065"); }
+  fromiso8601timestamp_sql(expression) {
+    return this.sql(exp.cast(expression.this, exp.DType.TIMESTAMPTZ));
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4068
-  fromiso8601timestampnanos_sql(expression) { throw new NotPorted("fromiso8601timestampnanos_sql", "sqlglot/generator.py:4068"); }
+  fromiso8601timestampnanos_sql(expression) {
+    return this.sql(exp.cast(expression.this, exp.DType.TIMESTAMPTZ));
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4071
@@ -5130,7 +5735,9 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4080
-  xor_sql(expression, stack) { throw new NotPorted("xor_sql", "sqlglot/generator.py:4080"); }
+  xor_sql(expression, stack = null) {
+    return this.connector_sql(expression, "XOR", stack);
+  }
 
   /**
    * py: sqlglot/generator.py:4083 `connector_sql(expression, op, stack=None)`
@@ -5273,7 +5880,12 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4164
-  collate_sql(expression) { throw new NotPorted("collate_sql", "sqlglot/generator.py:4164"); }
+  collate_sql(expression) {
+    if (this.constructor.COLLATE_IS_FUNC) {
+      return this.function_fallback_sql(expression);
+    }
+    return this.binary(expression, "COLLATE");
+  }
 
   /**
    * py: sqlglot/generator.py:4169
@@ -5303,11 +5915,32 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4180
-  mergetreettlaction_sql(expression) { throw new NotPorted("mergetreettlaction_sql", "sqlglot/generator.py:4180"); }
+  mergetreettlaction_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const delete_ = expression.args.delete ? " DELETE" : "";
+    let recompress = this.sql(expression, "recompress");
+    recompress = recompress ? ` RECOMPRESS ${recompress}` : "";
+    let to_disk = this.sql(expression, "to_disk");
+    to_disk = to_disk ? ` TO DISK ${to_disk}` : "";
+    let to_volume = this.sql(expression, "to_volume");
+    to_volume = to_volume ? ` TO VOLUME ${to_volume}` : "";
+    return `${this_}${delete_}${recompress}${to_disk}${to_volume}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4191
-  mergetreettl_sql(expression) { throw new NotPorted("mergetreettl_sql", "sqlglot/generator.py:4191"); }
+  mergetreettl_sql(expression) {
+    const where = this.sql(expression, "where");
+    const group = this.sql(expression, "group");
+    let aggregates = this.expressions(expression, "aggregates");
+    aggregates = aggregates ? this.seg("SET") + this.seg(aggregates) : "";
+
+    if (!(where || group || aggregates) && expression.expressions.length === 1) {
+      return `TTL ${this.expressions(expression, null, { flat: true })}`;
+    }
+
+    return `TTL${this.seg(this.expressions(expression))}${where}${group}${aggregates}`;
+  }
 
   /**
    * py: sqlglot/generator.py:4202
@@ -5430,11 +6063,31 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4278
-  modifycolumn_sql(expression) { throw new NotPorted("modifycolumn_sql", "sqlglot/generator.py:4278"); }
+  modifycolumn_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const rename_from = this.sql(expression, "rename_from");
+    if (rename_from) {
+      if (!this.constructor.SUPPORTS_CHANGE_COLUMN) {
+        this.unsupported("CHANGE COLUMN is not supported in this dialect");
+      }
+      return `CHANGE COLUMN ${rename_from} ${this_}`;
+    }
+    if (!this.constructor.SUPPORTS_MODIFY_COLUMN) {
+      this.unsupported("MODIFY COLUMN is not supported in this dialect");
+    }
+    return `MODIFY COLUMN ${this_}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4289
-  alterindex_sql(expression) { throw new NotPorted("alterindex_sql", "sqlglot/generator.py:4289"); }
+  alterindex_sql(expression) {
+    const this_ = this.sql(expression, "this");
+
+    const visible = expression.args.visible;
+    const visible_sql = visible ? "VISIBLE" : "INVISIBLE";
+
+    return `ALTER INDEX ${this_} ${visible_sql}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4297
@@ -5547,7 +6200,11 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4379
-  altersession_sql(expression) { throw new NotPorted("altersession_sql", "sqlglot/generator.py:4379"); }
+  altersession_sql(expression) {
+    const items_sql = this.expressions(expression, null, { flat: true });
+    const keyword = expression.args.unset ? "UNSET" : "SET";
+    return `${keyword} ${items_sql}`;
+  }
 
   /**
    * py: sqlglot/generator.py:4384
@@ -5570,11 +6227,17 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4395
-  droppartition_sql(expression) { throw new NotPorted("droppartition_sql", "sqlglot/generator.py:4395"); }
+  droppartition_sql(expression) {
+    const expressions = this.expressions(expression);
+    const exists = expression.args.exists ? " IF EXISTS " : " ";
+    return `DROP${exists}${expressions}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4400
-  dropprimarykey_sql(expression) { throw new NotPorted("dropprimarykey_sql", "sqlglot/generator.py:4400"); }
+  dropprimarykey_sql(expression) {
+    return "DROP PRIMARY KEY";
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4403
@@ -5631,11 +6294,23 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4433
-  havingmax_sql(expression) { throw new NotPorted("havingmax_sql", "sqlglot/generator.py:4433"); }
+  havingmax_sql(expression) {
+    const this_sql = this.sql(expression, "this");
+    const expression_sql = this.sql(expression, "expression");
+    const kind = expression.args.max ? "MAX" : "MIN";
+    return `${this_sql} HAVING ${kind} ${expression_sql}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4439
-  intdiv_sql(expression) { throw new NotPorted("intdiv_sql", "sqlglot/generator.py:4439"); }
+  intdiv_sql(expression) {
+    return this.sql(
+      new exp.Cast({
+        this: new exp.Div({ this: expression.this, expression: expression.expression }),
+        to: new exp.DataType({ this: exp.DType.INT }),
+      }),
+    );
+  }
 
   /**
    * py: sqlglot/generator.py:4447
@@ -5684,15 +6359,21 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4478
-  overlaps_sql(expression) { throw new NotPorted("overlaps_sql", "sqlglot/generator.py:4478"); }
+  overlaps_sql(expression) {
+    return this.binary(expression, "OVERLAPS");
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4481
-  distance_sql(expression) { throw new NotPorted("distance_sql", "sqlglot/generator.py:4481"); }
+  distance_sql(expression) {
+    return this.binary(expression, "<->");
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4484
-  distancend_sql(expression) { throw new NotPorted("distancend_sql", "sqlglot/generator.py:4484"); }
+  distancend_sql(expression) {
+    return this.binary(expression, "<<->>");
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4487
@@ -5706,7 +6387,9 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4493
-  propertyeq_sql(expression) { throw new NotPorted("propertyeq_sql", "sqlglot/generator.py:4493"); }
+  propertyeq_sql(expression) {
+    return this.binary(expression, ":=");
+  }
 
   /**
    * py: sqlglot/generator.py:4496
@@ -5728,7 +6411,9 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4506
-  glob_sql(expression) { throw new NotPorted("glob_sql", "sqlglot/generator.py:4506"); }
+  glob_sql(expression) {
+    return this.binary(expression, "GLOB");
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4509
@@ -5821,11 +6506,15 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4578
-  match_sql(expression) { throw new NotPorted("match_sql", "sqlglot/generator.py:4578"); }
+  match_sql(expression) {
+    return this.binary(expression, "MATCH");
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4581
-  similarto_sql(expression) { throw new NotPorted("similarto_sql", "sqlglot/generator.py:4581"); }
+  similarto_sql(expression) {
+    return this.binary(expression, "SIMILAR TO");
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4584
@@ -5867,11 +6556,20 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4611
-  jsoncast_sql(expression) { throw new NotPorted("jsoncast_sql", "sqlglot/generator.py:4611"); }
+  jsoncast_sql(expression) {
+    return this.cast_sql(expression);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4614
-  try_sql(expression) { throw new NotPorted("try_sql", "sqlglot/generator.py:4614"); }
+  try_sql(expression) {
+    if (!this.constructor.TRY_SUPPORTED) {
+      this.unsupported("Unsupported TRY function");
+      return this.sql(expression, "this");
+    }
+
+    return this.func("TRY", expression.this);
+  }
 
   /**
    * py: sqlglot/generator.py:4621
@@ -5948,7 +6646,14 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4663
-  ceil_floor(expression) { throw new NotPorted("ceil_floor", "sqlglot/generator.py:4663"); }
+  ceil_floor(expression) {
+    const to_clause = this.sql(expression, "to");
+    if (to_clause) {
+      return `${expression.constructor.sqlName()}(${this.sql(expression, "this")} TO ${to_clause})`;
+    }
+
+    return this.function_fallback_sql(expression);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4670
@@ -6155,7 +6860,9 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4797
-  token_sql(token_type) { throw new NotPorted("token_sql", "sqlglot/generator.py:4797"); }
+  token_sql(token_type) {
+    return this.constructor.TOKEN_MAPPING.get(token_type) ?? TOKEN_TYPE_NAMES[token_type];
+  }
 
   /**
    * py: sqlglot/generator.py:4800
@@ -6172,11 +6879,18 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4808
-  macrooverloads_sql(expression) { throw new NotPorted("macrooverloads_sql", "sqlglot/generator.py:4808"); }
+  macrooverloads_sql(expression) {
+    return this.expressions(expression, null, { flat: true });
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4811
-  macrooverload_sql(expression) { throw new NotPorted("macrooverload_sql", "sqlglot/generator.py:4811"); }
+  macrooverload_sql(expression) {
+    const params = this.no_identify(this.expressions.bind(this), expression, null, { flat: true });
+    const body = this.sql(expression, "this");
+    const prefix = expression.args.is_table ? "TABLE " : "";
+    return `(${params}) AS ${prefix}${body}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4817
@@ -6289,39 +7003,75 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4894
-  tonumber_sql(expression) { throw new NotPorted("tonumber_sql", "sqlglot/generator.py:4894"); }
+  // py: sqlglot/generator.py:4894 `@unsupported_args("default") def tonumber_sql(self, expression)`
+  // — the `this`-forwarding shim onto `_tonumber_sql` below (module scope), same split
+  // as `tochar_sql`/`_tochar_sql`.
+  tonumber_sql(expression) { return _tonumber_sql(this, expression); }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4906
-  dictproperty_sql(expression) { throw new NotPorted("dictproperty_sql", "sqlglot/generator.py:4906"); }
+  dictproperty_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const kind = this.sql(expression, "kind");
+    const settings_sql = this.expressions(expression, "settings", { sep: " " });
+    const args = settings_sql ? `(${this.sep("")}${settings_sql}${this.seg(")", "")}` : "()";
+    return `${this_}(${kind}${args})`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4913
-  dictrange_sql(expression) { throw new NotPorted("dictrange_sql", "sqlglot/generator.py:4913"); }
+  dictrange_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const max = this.sql(expression, "max");
+    const min = this.sql(expression, "min");
+    return `${this_}(MIN ${min} MAX ${max})`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4919
-  dictsubproperty_sql(expression) { throw new NotPorted("dictsubproperty_sql", "sqlglot/generator.py:4919"); }
+  dictsubproperty_sql(expression) {
+    return `${this.sql(expression, "this")} ${this.sql(expression, "value")}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4922
-  duplicatekeyproperty_sql(expression) { throw new NotPorted("duplicatekeyproperty_sql", "sqlglot/generator.py:4922"); }
+  duplicatekeyproperty_sql(expression) {
+    return `DUPLICATE KEY (${this.expressions(expression, null, { flat: true })})`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4926
-  uniquekeyproperty_sql(expression, prefix) { throw new NotPorted("uniquekeyproperty_sql", "sqlglot/generator.py:4926"); }
+  uniquekeyproperty_sql(expression, prefix = "UNIQUE KEY") {
+    return `${prefix} (${this.expressions(expression, null, { flat: true })})`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4932
-  distributedbyproperty_sql(expression) { throw new NotPorted("distributedbyproperty_sql", "sqlglot/generator.py:4932"); }
+  distributedbyproperty_sql(expression) {
+    let expressions = this.expressions(expression, null, { flat: true });
+    expressions = expressions ? ` ${this.wrap(expressions)}` : "";
+    const buckets_sql = this.sql(expression, "buckets");
+    const kind = this.sql(expression, "kind");
+    const buckets = buckets_sql ? ` BUCKETS ${buckets_sql}` : "";
+    const order = this.sql(expression, "order");
+    return `DISTRIBUTED BY ${kind}${expressions}${buckets}${order}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4941
-  oncluster_sql(expression) { throw new NotPorted("oncluster_sql", "sqlglot/generator.py:4941"); }
+  oncluster_sql(expression) {
+    return "";
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4944
-  clusteredbyproperty_sql(expression) { throw new NotPorted("clusteredbyproperty_sql", "sqlglot/generator.py:4944"); }
+  clusteredbyproperty_sql(expression) {
+    const expressions = this.expressions(expression, "expressions", { flat: true });
+    let sorted_by = this.expressions(expression, "sorted_by", { flat: true });
+    sorted_by = sorted_by ? ` SORTED BY (${sorted_by})` : "";
+    const buckets = this.sql(expression, "buckets");
+    return `CLUSTERED BY (${expressions})${sorted_by} INTO ${buckets} BUCKETS`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4951
@@ -6357,15 +7107,56 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:4975
-  indexconstraintoption_sql(expression) { throw new NotPorted("indexconstraintoption_sql", "sqlglot/generator.py:4975"); }
+  indexconstraintoption_sql(expression) {
+    const key_block_size = this.sql(expression, "key_block_size");
+    if (key_block_size) return `KEY_BLOCK_SIZE = ${key_block_size}`;
+
+    const using = this.sql(expression, "using");
+    if (using) return `USING ${using}`;
+
+    const parser = this.sql(expression, "parser");
+    if (parser) return `WITH PARSER ${parser}`;
+
+    const comment = this.sql(expression, "comment");
+    if (comment) return `COMMENT ${comment}`;
+
+    const visible = expression.args.visible;
+    if (visible !== null && visible !== undefined) {
+      return visible ? "VISIBLE" : "INVISIBLE";
+    }
+
+    const engine_attr = this.sql(expression, "engine_attr");
+    if (engine_attr) return `ENGINE_ATTRIBUTE = ${engine_attr}`;
+
+    const secondary_engine_attr = this.sql(expression, "secondary_engine_attr");
+    if (secondary_engine_attr) return `SECONDARY_ENGINE_ATTRIBUTE = ${secondary_engine_attr}`;
+
+    this.unsupported("Unsupported index constraint option.");
+    return "";
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5007
-  checkcolumnconstraint_sql(expression) { throw new NotPorted("checkcolumnconstraint_sql", "sqlglot/generator.py:5007"); }
+  checkcolumnconstraint_sql(expression) {
+    const enforced = expression.args.enforced ? " ENFORCED" : "";
+    return `CHECK (${this.sql(expression, "this")})${enforced}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5011
-  indexcolumnconstraint_sql(expression) { throw new NotPorted("indexcolumnconstraint_sql", "sqlglot/generator.py:5011"); }
+  indexcolumnconstraint_sql(expression) {
+    let kind = this.sql(expression, "kind");
+    kind = kind ? `${kind} INDEX` : "INDEX";
+    let this_ = this.sql(expression, "this");
+    this_ = this_ ? ` ${this_}` : "";
+    let index_type = this.sql(expression, "index_type");
+    index_type = index_type ? ` USING ${index_type}` : "";
+    let expressions = this.expressions(expression, null, { flat: true });
+    expressions = expressions ? ` (${expressions})` : "";
+    let options = this.expressions(expression, "options", { sep: " " });
+    options = options ? ` ${options}` : "";
+    return `${kind}${this_}${index_type}${expressions}${options}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5024
@@ -6396,15 +7187,28 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5045
-  comprehension_sql(expression) { throw new NotPorted("comprehension_sql", "sqlglot/generator.py:5045"); }
+  comprehension_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const expr = this.sql(expression, "expression");
+    let position = this.sql(expression, "position");
+    position = position ? `, ${position}` : "";
+    const iterator = this.sql(expression, "iterator");
+    let condition = this.sql(expression, "condition");
+    condition = condition ? ` IF ${condition}` : "";
+    return `${this_} FOR ${expr}${position} IN ${iterator}${condition}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5055
-  columnprefix_sql(expression) { throw new NotPorted("columnprefix_sql", "sqlglot/generator.py:5055"); }
+  columnprefix_sql(expression) {
+    return `${this.sql(expression, "this")}(${this.sql(expression, "expression")})`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5058
-  opclass_sql(expression) { throw new NotPorted("opclass_sql", "sqlglot/generator.py:5058"); }
+  opclass_sql(expression) {
+    return `${this.sql(expression, "this")} ${this.sql(expression, "expression")}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5061
@@ -6435,55 +7239,133 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5078
-  generateembedding_sql(expression) { throw new NotPorted("generateembedding_sql", "sqlglot/generator.py:5078"); }
+  generateembedding_sql(expression) {
+    const name = expression.args.is_text ? "GENERATE_TEXT_EMBEDDING" : "GENERATE_EMBEDDING";
+    return this._ml_sql(expression, name);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5082
-  generatetext_sql(expression) { throw new NotPorted("generatetext_sql", "sqlglot/generator.py:5082"); }
+  generatetext_sql(expression) {
+    return this._ml_sql(expression, "GENERATE_TEXT");
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5085
-  generatetable_sql(expression) { throw new NotPorted("generatetable_sql", "sqlglot/generator.py:5085"); }
+  generatetable_sql(expression) {
+    return this._ml_sql(expression, "GENERATE_TABLE");
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5088
-  generatebool_sql(expression) { throw new NotPorted("generatebool_sql", "sqlglot/generator.py:5088"); }
+  generatebool_sql(expression) {
+    return this._ml_sql(expression, "GENERATE_BOOL");
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5091
-  generateint_sql(expression) { throw new NotPorted("generateint_sql", "sqlglot/generator.py:5091"); }
+  generateint_sql(expression) {
+    return this._ml_sql(expression, "GENERATE_INT");
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5094
-  generatedouble_sql(expression) { throw new NotPorted("generatedouble_sql", "sqlglot/generator.py:5094"); }
+  generatedouble_sql(expression) {
+    return this._ml_sql(expression, "GENERATE_DOUBLE");
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5097
-  mltranslate_sql(expression) { throw new NotPorted("mltranslate_sql", "sqlglot/generator.py:5097"); }
+  mltranslate_sql(expression) {
+    return this._ml_sql(expression, "TRANSLATE");
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5100
-  mlforecast_sql(expression) { throw new NotPorted("mlforecast_sql", "sqlglot/generator.py:5100"); }
+  mlforecast_sql(expression) {
+    return this._ml_sql(expression, "FORECAST");
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5103
-  aiforecast_sql(expression) { throw new NotPorted("aiforecast_sql", "sqlglot/generator.py:5103"); }
+  aiforecast_sql(expression) {
+    let this_sql = this.sql(expression, "this");
+    if (expression.this instanceof exp.Table) {
+      this_sql = `TABLE ${this_sql}`;
+    }
+
+    return this.func(
+      "FORECAST",
+      this_sql,
+      expression.args.data_col,
+      expression.args.timestamp_col,
+      expression.args.model,
+      expression.args.id_cols,
+      expression.args.horizon,
+      expression.args.forecast_end_timestamp,
+      expression.args.confidence_level,
+      expression.args.output_historical_time_series,
+      expression.args.context_window,
+    );
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5122
-  featuresattime_sql(expression) { throw new NotPorted("featuresattime_sql", "sqlglot/generator.py:5122"); }
+  featuresattime_sql(expression) {
+    let this_sql = this.sql(expression, "this");
+    if (expression.this instanceof exp.Table) {
+      this_sql = `TABLE ${this_sql}`;
+    }
+
+    return this.func(
+      "FEATURES_AT_TIME",
+      this_sql,
+      expression.args.time,
+      expression.args.num_rows,
+      expression.args.ignore_feature_nulls,
+    );
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5135
-  vectorsearch_sql(expression) { throw new NotPorted("vectorsearch_sql", "sqlglot/generator.py:5135"); }
+  vectorsearch_sql(expression) {
+    let this_sql = this.sql(expression, "this");
+    if (expression.this instanceof exp.Table) {
+      this_sql = `TABLE ${this_sql}`;
+    }
+
+    let query_table = this.sql(expression, "query_table");
+    if (expression.args.query_table instanceof exp.Table) {
+      query_table = `TABLE ${query_table}`;
+    }
+
+    return this.func(
+      "VECTOR_SEARCH",
+      this_sql,
+      expression.args.column_to_search,
+      query_table,
+      expression.args.query_column_to_search,
+      expression.args.top_k,
+      expression.args.distance_type,
+      expression.args.options,
+    );
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5155
-  forin_sql(expression) { throw new NotPorted("forin_sql", "sqlglot/generator.py:5155"); }
+  forin_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const expression_sql = this.sql(expression, "expression");
+    return `FOR ${this_} DO ${expression_sql}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5160
-  refresh_sql(expression) { throw new NotPorted("refresh_sql", "sqlglot/generator.py:5160"); }
+  refresh_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const kind = expression.this instanceof exp.Literal ? "" : `${expression.text("kind")} `;
+    return `REFRESH ${kind}${this_}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5165
@@ -6522,7 +7404,14 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5195
-  tsordstotimestamp_sql(expression) { throw new NotPorted("tsordstotimestamp_sql", "sqlglot/generator.py:5195"); }
+  tsordstotimestamp_sql(expression) {
+    const this_ = expression.this;
+    if (this_ instanceof exp.TsOrDsToTimestamp || this_.isType(exp.DType.TIMESTAMP)) {
+      return this.sql(this_);
+    }
+
+    return this.sql(exp.cast(this_, exp.DType.TIMESTAMP, { dialect: this.dialect }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5202
@@ -6571,7 +7460,16 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5229
-  unixdate_sql(expression) { throw new NotPorted("unixdate_sql", "sqlglot/generator.py:5229"); }
+  unixdate_sql(expression) {
+    return this.sql(
+      exp.func(
+        "DATEDIFF",
+        expression.this,
+        exp.cast(exp.Literal.string("1970-01-01"), exp.DType.DATE),
+        "day",
+      ),
+    );
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5239
@@ -6639,7 +7537,12 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5287
-  partitionrange_sql(expression) { throw new NotPorted("partitionrange_sql", "sqlglot/generator.py:5287"); }
+  partitionrange_sql(expression) {
+    const low = this.sql(expression, "this");
+    const high = this.sql(expression, "expression");
+
+    return `${low} TO ${high}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5293
@@ -6934,19 +7837,44 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5514
-  semicolon_sql(expression) { throw new NotPorted("semicolon_sql", "sqlglot/generator.py:5514"); }
+  semicolon_sql(expression) {
+    return "";
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5517
-  datadeletionproperty_sql(expression) { throw new NotPorted("datadeletionproperty_sql", "sqlglot/generator.py:5517"); }
+  datadeletionproperty_sql(expression) {
+    let on_sql = expression.args.on ? "ON" : "OFF";
+    let filter_col = this.sql(expression, "filter_column");
+    filter_col = filter_col ? `FILTER_COLUMN=${filter_col}` : null;
+    let retention_period = this.sql(expression, "retention_period");
+    retention_period = retention_period ? `RETENTION_PERIOD=${retention_period}` : null;
+
+    if (filter_col || retention_period) {
+      on_sql = this.func("ON", filter_col, retention_period);
+    }
+
+    return `DATA_DELETION=${on_sql}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5529
-  maskingpolicycolumnconstraint_sql(expression) { throw new NotPorted("maskingpolicycolumnconstraint_sql", "sqlglot/generator.py:5529"); }
+  maskingpolicycolumnconstraint_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    let expressions = this.expressions(expression, null, { flat: true });
+    expressions = expressions ? ` USING (${expressions})` : "";
+    return `MASKING POLICY ${this_}${expressions}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5537
-  gapfill_sql(expression) { throw new NotPorted("gapfill_sql", "sqlglot/generator.py:5537"); }
+  gapfill_sql(expression) {
+    const this_ = `TABLE ${this.sql(expression, "this")}`;
+    const rest = Object.entries(expression.args)
+      .filter(([k]) => k !== "this")
+      .map(([, v]) => v);
+    return this.func("GAP_FILL", this_, ...rest);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5542
@@ -6998,7 +7926,16 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5571
-  changes_sql(expression) { throw new NotPorted("changes_sql", "sqlglot/generator.py:5571"); }
+  changes_sql(expression) {
+    let information = this.sql(expression, "information");
+    information = `INFORMATION => ${information}`;
+    let at_before = this.sql(expression, "at_before");
+    at_before = at_before ? `${this.seg("")}${at_before}` : "";
+    let end = this.sql(expression, "end");
+    end = end ? `${this.seg("")}${end}` : "";
+
+    return `CHANGES (${information})${at_before}${end}`;
+  }
 
   /**
    * py: sqlglot/generator.py:5581
@@ -7017,7 +7954,10 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5590
-  summarize_sql(expression) { throw new NotPorted("summarize_sql", "sqlglot/generator.py:5590"); }
+  summarize_sql(expression) {
+    const table = expression.args.table ? " TABLE" : "";
+    return `SUMMARIZE${table} ${this.sql(expression.this)}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5594
@@ -7064,35 +8004,114 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5626
-  json_sql(expression) { throw new NotPorted("json_sql", "sqlglot/generator.py:5626"); }
+  json_sql(expression) {
+    let this_ = this.sql(expression, "this");
+    this_ = this_ ? ` ${this_}` : "";
+
+    const _with = expression.args.with_;
+
+    let with_sql;
+    if (_with === null || _with === undefined) {
+      with_sql = "";
+    } else if (!_with) {
+      with_sql = " WITHOUT";
+    } else {
+      with_sql = " WITH";
+    }
+
+    const unique_sql = expression.args.unique ? " UNIQUE KEYS" : "";
+
+    return `JSON${this_}${with_sql}${unique_sql}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5643
-  jsonvalue_sql(expression) { throw new NotPorted("jsonvalue_sql", "sqlglot/generator.py:5643"); }
+  jsonvalue_sql(expression) {
+    const path = this.sql(expression, "path");
+    let returning = this.sql(expression, "returning");
+    returning = returning ? ` RETURNING ${returning}` : "";
+
+    let on_condition = this.sql(expression, "on_condition");
+    on_condition = on_condition ? ` ${on_condition}` : "";
+
+    return this.func("JSON_VALUE", expression.this, `${path}${returning}${on_condition}`);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5653
-  skipjsoncolumn_sql(expression) { throw new NotPorted("skipjsoncolumn_sql", "sqlglot/generator.py:5653"); }
+  skipjsoncolumn_sql(expression) {
+    const regexp = expression.args.regexp ? " REGEXP" : "";
+    return `SKIP${regexp} ${this.sql(expression.expression)}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5657
-  conditionalinsert_sql(expression) { throw new NotPorted("conditionalinsert_sql", "sqlglot/generator.py:5657"); }
+  conditionalinsert_sql(expression) {
+    const else_ = expression.args.else_ ? "ELSE " : "";
+    let condition = this.sql(expression, "expression");
+    condition = condition ? `WHEN ${condition} THEN ` : else_;
+    const insert = pyStrip(this.sql(expression, "this").slice("INSERT".length));
+    return `${condition}${insert}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5664
-  multitableinserts_sql(expression) { throw new NotPorted("multitableinserts_sql", "sqlglot/generator.py:5664"); }
+  multitableinserts_sql(expression) {
+    const kind = this.sql(expression, "kind");
+    const expressions = this.seg(this.expressions(expression, null, { sep: " " }));
+    return `INSERT ${kind}${expressions}${this.seg(this.sql(expression, "source"))}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5670
-  oncondition_sql(expression) { throw new NotPorted("oncondition_sql", "sqlglot/generator.py:5670"); }
+  oncondition_sql(expression) {
+    let empty = expression.args.empty;
+    empty =
+      empty instanceof exp.Expr
+        ? `DEFAULT ${empty} ON EMPTY`
+        : this.sql(expression, "empty");
+
+    let error = expression.args.error;
+    error =
+      error instanceof exp.Expr
+        ? `DEFAULT ${error} ON ERROR`
+        : this.sql(expression, "error");
+
+    if (error && empty) {
+      error = this.dialect.ON_CONDITION_EMPTY_BEFORE_ERROR
+        ? `${empty} ${error}`
+        : `${error} ${empty}`;
+      empty = "";
+    }
+
+    const null_ = this.sql(expression, "null");
+
+    return `${empty}${error}${null_}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5698
-  jsonextractquote_sql(expression) { throw new NotPorted("jsonextractquote_sql", "sqlglot/generator.py:5698"); }
+  jsonextractquote_sql(expression) {
+    const scalar = expression.args.scalar ? " ON SCALAR STRING" : "";
+    return `${this.sql(expression, "option")} QUOTES${scalar}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5702
-  jsonexists_sql(expression) { throw new NotPorted("jsonexists_sql", "sqlglot/generator.py:5702"); }
+  jsonexists_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    let path = this.sql(expression, "path");
+
+    let passing = this.expressions(expression, "passing");
+    passing = passing ? ` PASSING ${passing}` : "";
+
+    let on_condition = this.sql(expression, "on_condition");
+    on_condition = on_condition ? ` ${on_condition}` : "";
+
+    path = `${path}${passing}${on_condition}`;
+
+    return this.func("JSON_EXISTS", this_, path);
+  }
 
   /**
    * py: sqlglot/generator.py:5716 `_add_arrayagg_null_filter(array_agg_sql,
@@ -7149,7 +8168,12 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5772
-  apply_sql(expression) { throw new NotPorted("apply_sql", "sqlglot/generator.py:5772"); }
+  apply_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const expr = this.sql(expression, "expression");
+
+    return `${this_} APPLY(${expr})`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5778
@@ -7217,15 +8241,39 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5843
-  overlay_sql(expression) { throw new NotPorted("overlay_sql", "sqlglot/generator.py:5843"); }
+  overlay_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const expr = this.sql(expression, "expression");
+    const from_sql = this.sql(expression, "from_");
+    let for_sql = this.sql(expression, "for_");
+    for_sql = for_sql ? ` FOR ${for_sql}` : "";
+
+    return `OVERLAY(${this_} PLACING ${expr} FROM ${from_sql}${for_sql})`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5853
-  todouble_sql(expression) { throw new NotPorted("todouble_sql", "sqlglot/generator.py:5853"); }
+  // py: sqlglot/generator.py:5853 `@unsupported_args("format") def todouble_sql(self, expression)`
+  // — the `this`-forwarding shim onto `_todouble_sql` below (module scope), same split
+  // as `tochar_sql`/`_tochar_sql`.
+  todouble_sql(expression) { return _todouble_sql(this, expression); }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5857
-  string_sql(expression) { throw new NotPorted("string_sql", "sqlglot/generator.py:5857"); }
+  string_sql(expression) {
+    let this_ = expression.this;
+    const zone = expression.args.zone;
+
+    if (zone) {
+      this_ = new exp.ConvertTimezone({
+        source_tz: exp.Literal.string("UTC"),
+        target_tz: zone,
+        timestamp: this_,
+      });
+    }
+
+    return this.sql(exp.cast(this_, exp.DType.VARCHAR));
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5871
@@ -7241,7 +8289,12 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5879
-  overflowtruncatebehavior_sql(expression) { throw new NotPorted("overflowtruncatebehavior_sql", "sqlglot/generator.py:5879"); }
+  overflowtruncatebehavior_sql(expression) {
+    let filler = this.sql(expression, "this");
+    filler = filler ? ` ${filler}` : "";
+    const with_count = expression.args.with_count ? "WITH COUNT" : "WITHOUT COUNT";
+    return `TRUNCATE${filler} ${with_count}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5885
@@ -7288,23 +8341,70 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5918
-  detach_sql(expression) { throw new NotPorted("detach_sql", "sqlglot/generator.py:5918"); }
+  detach_sql(expression) {
+    let kind = this.sql(expression, "kind");
+    kind = kind ? ` ${kind}` : "";
+    const exists = expression.args.exists ? " IF EXISTS" : "";
+    if (exists) {
+      kind = kind || " DATABASE";
+    }
+
+    let this_ = this.sql(expression, "this");
+    this_ = this_ ? ` ${this_}` : "";
+    let cluster = this.sql(expression, "cluster");
+    cluster = cluster ? ` ${cluster}` : "";
+    const permanent = expression.args.permanent ? " PERMANENTLY" : "";
+    const sync = expression.args.sync ? " SYNC" : "";
+    return `DETACH${kind}${exists}${this_}${cluster}${permanent}${sync}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5935
-  attachoption_sql(expression) { throw new NotPorted("attachoption_sql", "sqlglot/generator.py:5935"); }
+  attachoption_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    let value = this.sql(expression, "expression");
+    value = value ? ` ${value}` : "";
+    return `${this_}${value}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5941
-  watermarkcolumnconstraint_sql(expression) { throw new NotPorted("watermarkcolumnconstraint_sql", "sqlglot/generator.py:5941"); }
+  watermarkcolumnconstraint_sql(expression) {
+    return `WATERMARK FOR ${this.sql(expression, "this")} AS ${this.sql(expression, "expression")}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5946
-  encodeproperty_sql(expression) { throw new NotPorted("encodeproperty_sql", "sqlglot/generator.py:5946"); }
+  encodeproperty_sql(expression) {
+    let encode = expression.args.key ? "KEY ENCODE" : "ENCODE";
+    encode = `${encode} ${this.sql(expression, "this")}`;
+
+    const properties = expression.args.properties;
+    if (properties) {
+      encode = `${encode} ${this.properties(properties)}`;
+    }
+
+    return encode;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5956
-  includeproperty_sql(expression) { throw new NotPorted("includeproperty_sql", "sqlglot/generator.py:5956"); }
+  includeproperty_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    let include = `INCLUDE ${this_}`;
+
+    const column_def = this.sql(expression, "column_def");
+    if (column_def) {
+      include = `${include} ${column_def}`;
+    }
+
+    const alias = this.sql(expression, "alias");
+    if (alias) {
+      include = `${include} AS ${alias}`;
+    }
+
+    return include;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5970
@@ -7317,19 +8417,43 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5975
-  xmlkeyvalueoption_sql(expression) { throw new NotPorted("xmlkeyvalueoption_sql", "sqlglot/generator.py:5975"); }
+  xmlkeyvalueoption_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    let expr = this.sql(expression, "expression");
+    expr = expr ? `(${expr})` : "";
+    return `${this_}${expr}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5981
-  partitionbyrangeproperty_sql(expression) { throw new NotPorted("partitionbyrangeproperty_sql", "sqlglot/generator.py:5981"); }
+  partitionbyrangeproperty_sql(expression) {
+    const partitions = this.expressions(expression, "partition_expressions");
+    const create = this.expressions(expression, "create_expressions");
+    return `PARTITION BY RANGE ${this.wrap(partitions)} ${this.wrap(create)}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5986
-  partitionbyrangepropertydynamic_sql(expression) { throw new NotPorted("partitionbyrangepropertydynamic_sql", "sqlglot/generator.py:5986"); }
+  partitionbyrangepropertydynamic_sql(expression) {
+    const start = this.sql(expression, "start");
+    const end = this.sql(expression, "end");
+
+    const every = expression.args.every;
+    if (every instanceof exp.Interval && every.this.is_string) {
+      every.this.replace(exp.Literal.number(every.name));
+    }
+
+    return `START ${this.wrap(start)} END ${this.wrap(end)} EVERY ${this.wrap(this.sql(every))}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:5998
-  unpivotcolumns_sql(expression) { throw new NotPorted("unpivotcolumns_sql", "sqlglot/generator.py:5998"); }
+  unpivotcolumns_sql(expression) {
+    const name = this.sql(expression, "this");
+    const values = this.expressions(expression, null, { flat: true });
+
+    return `NAME ${name} VALUE ${values}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6004
@@ -7411,15 +8535,34 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6061
-  xmltable_sql(expression) { throw new NotPorted("xmltable_sql", "sqlglot/generator.py:6061"); }
+  xmltable_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    let namespaces = this.expressions(expression, "namespaces");
+    namespaces = namespaces ? `XMLNAMESPACES(${namespaces}), ` : "";
+    let passing = this.expressions(expression, "passing");
+    passing = passing ? `${this.sep()}PASSING${this.seg(passing)}` : "";
+    let columns = this.expressions(expression, "columns");
+    columns = columns ? `${this.sep()}COLUMNS${this.seg(columns)}` : "";
+    const by_ref = expression.args.by_ref ? `${this.sep()}RETURNING SEQUENCE BY REF` : "";
+    return `XMLTABLE(${this.sep("")}${this.indent(namespaces + this_ + passing + by_ref + columns)}${this.seg(")", "")}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6072
-  xmlnamespace_sql(expression) { throw new NotPorted("xmlnamespace_sql", "sqlglot/generator.py:6072"); }
+  xmlnamespace_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    return expression.this instanceof exp.Alias ? this_ : `DEFAULT ${this_}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6076
-  export_sql(expression) { throw new NotPorted("export_sql", "sqlglot/generator.py:6076"); }
+  export_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    let connection = this.sql(expression, "connection");
+    connection = connection ? `WITH CONNECTION ${connection} ` : "";
+    const options = this.sql(expression, "options");
+    return `EXPORT DATA ${connection}${options} AS ${this_}`;
+  }
 
   /**
    * py: sqlglot/generator.py:6083
@@ -7452,23 +8595,42 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6100
-  recursivewithsearch_sql(expression) { throw new NotPorted("recursivewithsearch_sql", "sqlglot/generator.py:6100"); }
+  recursivewithsearch_sql(expression) {
+    const kind = this.sql(expression, "kind");
+    const this_ = this.sql(expression, "this");
+    const set_ = this.sql(expression, "expression");
+    let using = this.sql(expression, "using");
+    using = using ? ` USING ${using}` : "";
+
+    const kind_sql = kind === "CYCLE" ? kind : `SEARCH ${kind} FIRST BY`;
+
+    return `${kind_sql} ${this_} SET ${set_}${using}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6111
-  parameterizedagg_sql(expression) { throw new NotPorted("parameterizedagg_sql", "sqlglot/generator.py:6111"); }
+  parameterizedagg_sql(expression) {
+    const params = this.expressions(expression, "params", { flat: true });
+    return this.func(expression.name, ...expression.expressions) + `(${params})`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6115
-  anonymousaggfunc_sql(expression) { throw new NotPorted("anonymousaggfunc_sql", "sqlglot/generator.py:6115"); }
+  anonymousaggfunc_sql(expression) {
+    return this.func(expression.name, ...expression.expressions);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6118
-  combinedaggfunc_sql(expression) { throw new NotPorted("combinedaggfunc_sql", "sqlglot/generator.py:6118"); }
+  combinedaggfunc_sql(expression) {
+    return this.anonymousaggfunc_sql(expression);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6121
-  combinedparameterizedagg_sql(expression) { throw new NotPorted("combinedparameterizedagg_sql", "sqlglot/generator.py:6121"); }
+  combinedparameterizedagg_sql(expression) {
+    return this.parameterizedagg_sql(expression);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6124
@@ -7488,11 +8650,27 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6132
-  get_put_sql(expression) { throw new NotPorted("get_put_sql", "sqlglot/generator.py:6132"); }
+  get_put_sql(expression) {
+    const props = expression.args.properties;
+    const props_sql = props ? this.properties(props, " ", " ", "", false) : "";
+    const this_ = this.sql(expression, "this");
+    const target = this.sql(expression, "target");
+
+    if (expression instanceof exp.Put) {
+      return `PUT ${this_} ${target}${props_sql}`;
+    } else {
+      return `GET ${target} ${this_}${props_sql}`;
+    }
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6146
-  translatecharacters_sql(expression) { throw new NotPorted("translatecharacters_sql", "sqlglot/generator.py:6146"); }
+  translatecharacters_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const expr = this.sql(expression, "expression");
+    const with_error = expression.args.with_error ? " WITH ERROR" : "";
+    return `TRANSLATE(${this_} USING ${expr}${with_error})`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6152
@@ -7559,11 +8737,32 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6196
-  getextract_sql(expression) { throw new NotPorted("getextract_sql", "sqlglot/generator.py:6196"); }
+  getextract_sql(expression) {
+    let this_ = expression.this;
+    const expr = expression.expression;
+
+    if (!this_.type || !expression.type) {
+      this_ = _getAnnotateTypesModule().annotate_types(this_, { dialect: this.dialect });
+    }
+
+    if (this_.isType(exp.DType.ARRAY, exp.DType.MAP)) {
+      return this.sql(new exp.Bracket({ this: this_, expressions: [expr] }));
+    }
+
+    return this.sql(new exp.JSONExtract({ this: this_, expression: this.dialect.to_json_path(expr) }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6210
-  datefromunixdate_sql(expression) { throw new NotPorted("datefromunixdate_sql", "sqlglot/generator.py:6210"); }
+  datefromunixdate_sql(expression) {
+    return this.sql(
+      new exp.DateAdd({
+        this: exp.cast(exp.Literal.string("1970-01-01"), exp.DType.DATE),
+        expression: expression.this,
+        unit: exp.var("DAY"),
+      }),
+    );
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6219
@@ -7574,19 +8773,45 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6222
-  buildproperty_sql(expression) { throw new NotPorted("buildproperty_sql", "sqlglot/generator.py:6222"); }
+  buildproperty_sql(expression) {
+    return `BUILD ${this.sql(expression, "this")}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6225
-  refreshtriggerproperty_sql(expression) { throw new NotPorted("refreshtriggerproperty_sql", "sqlglot/generator.py:6225"); }
+  refreshtriggerproperty_sql(expression) {
+    // deny:implicit_str sqlglot/generator.py:6237 -- `kind` is interpolated raw,
+    // exactly as upstream does, not routed through `this.sql(...)`. The deny scanner
+    // flags it generically as "could be an Expr arg", but `RefreshTriggerProperty`'s
+    // `kind` is always a parser-set keyword string (e.g. `"SCHEDULE"`/`"DEMAND"`),
+    // never an `Expr` node.
+    const method = this.sql(expression, "method");
+    const kind = expression.args.kind;
+    if (!kind) {
+      return `REFRESH ${method}`;
+    }
+
+    let every = this.sql(expression, "every");
+    const unit = this.sql(expression, "unit");
+    every = every ? ` EVERY ${every} ${unit}` : "";
+    let starts = this.sql(expression, "starts");
+    starts = starts ? ` STARTS ${starts}` : "";
+
+    return `REFRESH ${method} ON ${kind}${every}${starts}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6239
-  modelattribute_sql(expression) { throw new NotPorted("modelattribute_sql", "sqlglot/generator.py:6239"); }
+  modelattribute_sql(expression) {
+    this.unsupported("The model!attribute syntax is not supported");
+    return "";
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6243
-  directorystage_sql(expression) { throw new NotPorted("directorystage_sql", "sqlglot/generator.py:6243"); }
+  directorystage_sql(expression) {
+    return this.func("DIRECTORY", expression.this);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6246
@@ -7603,7 +8828,23 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6255
-  initcap_sql(expression) { throw new NotPorted("initcap_sql", "sqlglot/generator.py:6255"); }
+  initcap_sql(expression) {
+    let delimiters = expression.expression;
+
+    if (delimiters) {
+      if (
+        delimiters.is_string &&
+        delimiters.this === this.dialect.INITCAP_DEFAULT_DELIMITER_CHARS
+      ) {
+        delimiters = null;
+      } else if (!this.dialect.INITCAP_SUPPORTS_CUSTOM_DELIMITERS) {
+        this.unsupported("INITCAP does not support custom delimiters");
+        delimiters = null;
+      }
+    }
+
+    return this.func("INITCAP", expression.this, delimiters);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6271
@@ -7652,7 +8893,12 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6304
-  chr_sql(expression, name) { throw new NotPorted("chr_sql", "sqlglot/generator.py:6304"); }
+  chr_sql(expression, name = "CHR") {
+    const this_ = this.expressions(expression);
+    const charset = this.sql(expression, "charset");
+    const using = charset ? ` USING ${charset}` : "";
+    return this.func(name, this_ + using);
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6310
@@ -7665,11 +8911,17 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6315
-  functionspecification_sql(expression) { throw new NotPorted("functionspecification_sql", "sqlglot/generator.py:6315"); }
+  functionspecification_sql(expression) {
+    this.unsupported("Unsupported Inline UDFs syntax");
+    return "";
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6319
-  storedprocedure_sql(expression) { throw new NotPorted("storedprocedure_sql", "sqlglot/generator.py:6319"); }
+  storedprocedure_sql(expression) {
+    this.unsupported("Unsupported Stored Procedure syntax");
+    return "";
+  }
 
   /**
    * py: sqlglot/generator.py:6323
@@ -7684,47 +8936,86 @@ export class Generator {
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6327
-  casestatement_sql(expression) { throw new NotPorted("casestatement_sql", "sqlglot/generator.py:6327"); }
+  casestatement_sql(expression) {
+    this.unsupported("Unsupported Case statement syntax");
+    return "";
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6331
-  whileblock_sql(expression) { throw new NotPorted("whileblock_sql", "sqlglot/generator.py:6331"); }
+  whileblock_sql(expression) {
+    this.unsupported("Unsupported While block syntax");
+    return "";
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6335
-  loopblock_sql(expression) { throw new NotPorted("loopblock_sql", "sqlglot/generator.py:6335"); }
+  loopblock_sql(expression) {
+    this.unsupported("Unsupported Loop block syntax");
+    return "";
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6339
-  repeatblock_sql(expression) { throw new NotPorted("repeatblock_sql", "sqlglot/generator.py:6339"); }
+  repeatblock_sql(expression) {
+    this.unsupported("Unsupported Repeat block syntax");
+    return "";
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6343
-  leave_sql(expression) { throw new NotPorted("leave_sql", "sqlglot/generator.py:6343"); }
+  leave_sql(expression) {
+    this.unsupported("Unsupported Leave syntax");
+    return "";
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6347
-  iterate_sql(expression) { throw new NotPorted("iterate_sql", "sqlglot/generator.py:6347"); }
+  iterate_sql(expression) {
+    this.unsupported("Unsupported Iterate syntax");
+    return "";
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6351
-  execute_sql(expression) { throw new NotPorted("execute_sql", "sqlglot/generator.py:6351"); }
+  execute_sql(expression) {
+    this.unsupported("Unsupported Execute syntax");
+    return "";
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6355
-  executesql_sql(expression) { throw new NotPorted("executesql_sql", "sqlglot/generator.py:6355"); }
+  executesql_sql(expression) {
+    this.unsupported("Unsupported Execute syntax");
+    return "";
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6359
-  altermodifysqlsecurity_sql(expression) { throw new NotPorted("altermodifysqlsecurity_sql", "sqlglot/generator.py:6359"); }
+  altermodifysqlsecurity_sql(expression) {
+    const props = this.expressions(expression, null, { sep: " " });
+    return `MODIFY ${props}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6363
-  usingproperty_sql(expression) { throw new NotPorted("usingproperty_sql", "sqlglot/generator.py:6363"); }
+  usingproperty_sql(expression) {
+    // deny:implicit_str sqlglot/generator.py:6365 -- `kind` is interpolated raw,
+    // exactly as upstream does, not routed through `this.sql(...)`. The deny scanner
+    // flags it generically as "could be an Expr arg", but `UsingProperty`'s `kind` is
+    // always a parser-set keyword string (e.g. `"HEAP"`/`"BTREE"`), never an `Expr`
+    // node.
+    const kind = expression.args.kind;
+    return `USING ${kind} ${this.sql(expression, "this")}`;
+  }
 
   /** @returns {*} */
   // py: sqlglot/generator.py:6367
-  renameindex_sql(expression) { throw new NotPorted("renameindex_sql", "sqlglot/generator.py:6367"); }
+  renameindex_sql(expression) {
+    const this_ = this.sql(expression, "this");
+    const to = this.sql(expression, "to");
+    return `RENAME INDEX ${this_} TO ${to}`;
+  }
 
 }
 
@@ -7732,6 +9023,35 @@ export class Generator {
 const _tochar_sql = unsupported_args("format")(
   (self, expression) => self.sql(exp.cast(expression.this, exp.DType.TEXT)),
 );
+
+/** py: sqlglot/generator.py:2757 `@unsupported_args("expressions") def into_sql(self, expression)` */
+const _into_sql = unsupported_args("expressions")((self, expression) => {
+  const temporary = expression.args.temporary ? " TEMPORARY" : "";
+  const unlogged = expression.args.unlogged ? " UNLOGGED" : "";
+  return `${self.seg("INTO")}${temporary || unlogged} ${self.sql(expression, "this")}`;
+});
+
+/** py: sqlglot/generator.py:4894 `@unsupported_args("default") def tonumber_sql(self, expression)` */
+const _tonumber_sql = unsupported_args("default")((self, expression) => {
+  if (!self.constructor.SUPPORTS_TO_NUMBER) {
+    self.unsupported("Unsupported TO_NUMBER function");
+    return self.sql(exp.cast(expression.this, exp.DType.DOUBLE));
+  }
+
+  const fmt = expression.args.format;
+  if (!fmt) {
+    self.unsupported("Conversion format is required for TO_NUMBER");
+    return self.sql(exp.cast(expression.this, exp.DType.DOUBLE));
+  }
+
+  return self.func("TO_NUMBER", expression.this, fmt);
+});
+
+/** py: sqlglot/generator.py:5853 `@unsupported_args("format") def todouble_sql(self, expression)` */
+const _todouble_sql = unsupported_args("format")((self, expression) => {
+  const Cast = expression.args.safe ? exp.TryCast : exp.Cast;
+  return self.sql(new Cast({ this: expression.this, to: exp.DType.DOUBLE.intoExpr() }));
+});
 
 /**
  * py: `Expression.sql()` -> `Dialect.get_or_raise(dialect).generate(self, **opts)`

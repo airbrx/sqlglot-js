@@ -70,6 +70,7 @@ import { ExprSet, ExprMap, frozensetKey } from "../_py/collections.js";
 import { PyDate, PyDateTime, pyDateTimeFromIsoFormat, PyRelativedelta } from "../_py/datetime.js";
 import { PyDecimal, decAdd, decSub, decMul, decDiv, decCmp } from "../_py/num.js";
 import { pyStrCmp } from "../_py/sort.js";
+import { setSimplifyRef } from "../tokens.js";
 
 // py: simplify.py:33 `FINAL = "final"` — expression should not be simplified further.
 export const FINAL = "final";
@@ -2013,3 +2014,10 @@ function _build_gen_dispatch() {
 }
 
 const GEN_DISPATCH = _build_gen_dispatch();
+
+// Installs this module's own `simplify` into `tokens.js`'s relay so
+// `expressions/builders.js`'s `applyIndexOffset` (via `generator.js`'s
+// `bracket_offset_expressions`) can reach it without a top-level import that would
+// transitively re-import `dialects/dialect.js` through a live ES-module cycle -- see
+// `tokens.js`'s own `setSimplifyRef` header for the full circular-import story.
+setSimplifyRef(simplify);
