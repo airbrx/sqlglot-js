@@ -10,7 +10,7 @@ import {
 } from "./classes.js";
 import {
   Expr, TABLE_PARTS, SAFE_IDENTIFIER_RE, maybeParse, maybeCopy, toIdentifier,
-  convert, alias_, column, trailingOptions,
+  convert, alias_, column, trailingOptions, resolveDialect,
 } from "./core.js";
 import { PyValueError } from "../_py/errors.js";
 import { ParseError, TokenError } from "../errors.js";
@@ -178,14 +178,15 @@ export function subquery(expression, alias = null, options = {}) {
 
 export function cast(expression, to, options = {}) {
   const { copy = true, dialect = null, ...opts } = options;
-  const expr = maybeParse(expression, { copy, dialect, ...opts });
-  const dataType = DataType.build(to, { copy, dialect, ...opts });
+  const resolvedDialect = resolveDialect(dialect);
+  const expr = maybeParse(expression, { copy, dialect: resolvedDialect, ...opts });
+  const dataType = DataType.build(to, { copy, dialect: resolvedDialect, ...opts });
   // py: Dialect.get_or_raise(dialect).generator_class.TYPE_MAPPING.  With dialect=None
   // upstream still resolves the BASE Generator mapping, which is not empty -- it is what
   // collapses cast(cast(x, 'NCHAR'), 'CHAR') to the inner NCHAR cast.  Treating a missing
   // dialect as "no mapping" produced a double CAST instead.
   if (expr instanceof Cast) {
-    const mapping = dialect?.generatorClass?.TYPE_MAPPING || dialect?.generator_class?.TYPE_MAPPING || BASE_TYPE_MAPPING;
+    const mapping = resolvedDialect?.generatorClass?.TYPE_MAPPING || resolvedDialect?.generator_class?.TYPE_MAPPING || BASE_TYPE_MAPPING;
     const oldType = expr.to?.this, newType = dataType.this;
     // `this` is a plain type enum only for simple types; complex ones nest an
     // expression there, so the equivalence check is skipped for those.
@@ -311,14 +312,26 @@ export function func(name, ...args) {
   const { copy = true, dialect = null, kwargs = null } = options;
   const hasKwargs = truthy(kwargs);
   if (args.length && hasKwargs) throw new PyValueError("Can't use both args and kwargs to instantiate a function.");
-  const converted = args.map(value => maybeParse(value, { dialect, copy }));
-  const convertedKwargs = Object.fromEntries(Object.entries(kwargs || {}).map(([k,v]) => [k, maybeParse(v, { dialect, copy })]));
-  const functions = dialect?.parserClass?.FUNCTIONS || dialect?.parser_class?.FUNCTIONS;
+  // py: `dialect = Dialect.get_or_raise(dialect)` -- without this, a caller that omits
+  // `dialect` (the common case: `exp.func("date_add", ...)` inside transforms.js never
+  // passes one) got `functions` below as always undefined, so every such call silently
+  // fell through to the generic Anonymous() fallback instead of the base dialect's own
+  // real FUNCTIONS[name] constructor.
+  const resolvedDialect = resolveDialect(dialect);
+  const converted = args.map(value => maybeParse(value, { dialect: resolvedDialect, copy }));
+  const convertedKwargs = Object.fromEntries(Object.entries(kwargs || {}).map(([k,v]) => [k, maybeParse(v, { dialect: resolvedDialect, copy })]));
+  const functions = resolvedDialect?.parserClass?.FUNCTIONS || resolvedDialect?.parser_class?.FUNCTIONS;
   let result, constructor = functions?.get?.(name.toUpperCase()) || functions?.[name.toUpperCase()];
-  // The three upstream constructor arms (positional retry with dialect, from_arg_list,
-  // the FUNCTION_BY_NAME fallback and its terminal ValueError) are all reachable only
-  // once a dialect exposes a parser class; before P3 `constructor` is always undefined.
-  if (constructor) result = converted.length ? constructor(converted, dialect) : constructor(convertedKwargs);
+  // py: `try: constructor(converted)` / `except TypeError: constructor(converted,
+  // dialect=dialect)` -- only constructors whose `dialect` PARAMETER HAS NO DEFAULT
+  // (e.g. `build_logarithm(args, dialect)`) raise on the first, dialect-less call in
+  // Python, so only those actually receive one. JS has no arity-checking exception to
+  // catch, but `Function.prototype.length` (which, like Python's required-vs-defaulted
+  // params, excludes any parameter with a default value) is the same signal: 2 means a
+  // required second positional parameter, 1 means an optional one like
+  // `build_coalesce(args, is_nvl = null, is_null = null)` that must NOT get the dialect
+  // object stuffed into `is_nvl`.
+  if (constructor) result = converted.length ? constructor(converted, ...(constructor.length >= 2 ? [resolvedDialect] : [])) : constructor(convertedKwargs);
   else {
     // py: `Anonymous(this=name, **kwargs)` -- a kwargs key of "this" is a duplicate
     // keyword argument there, not a silent override of the function name.

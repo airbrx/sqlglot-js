@@ -1270,7 +1270,7 @@ export class Parser {
     /* py:1157 */ [TokenType.ALTER, (self) => self._parse_alter()],
     /* py:1158 */ [TokenType.ANALYZE, (self) => self._parse_analyze()],
     /* py:1159 */ [TokenType.BEGIN, (self) => self._parse_transaction()],
-    // py:1160  [TokenType.CACHE, ...]  — `_parse_cache` is still a NotPorted stub
+    /* py:1160 */ [TokenType.CACHE, (self) => self._parse_cache()],
     /* py:1161 */ [TokenType.COMMENT, (self) => self._parse_comment()],
     /* py:1162 */ [TokenType.COMMIT, (self) => self._parse_commit_or_rollback()],
     /* py:1163 */ [TokenType.COPY, (self) => self._parse_copy()],
@@ -1292,7 +1292,7 @@ export class Parser {
     /* py:1179 */ [TokenType.ROLLBACK, (self) => self._parse_commit_or_rollback()],
     /* py:1180 */ [TokenType.SET, (self) => self._parse_set()],
     /* py:1181 */ [TokenType.TRUNCATE, (self) => self._parse_truncate_table()],
-    // py:1182  [TokenType.UNCACHE, ...]  — `_parse_uncache` is still a NotPorted stub
+    /* py:1182 */ [TokenType.UNCACHE, (self) => self._parse_uncache()],
     /* py:1183 */ [TokenType.UNPIVOT, (self) => self._parse_simplified_pivot(true)],
     /* py:1184 */ [TokenType.UPDATE, (self) => self._parse_update()],
     /* py:1185 */ [TokenType.USE, (self) => self._parse_use()],
@@ -1634,15 +1634,22 @@ export class Parser {
     /* py:1574 */ ["DECODE", (self) => self._parse_decode()],
     /* py:1575 */ ["EXTRACT", (self) => self._parse_extract()],
     /* py:1576 */ ["FLOOR", (self) => self._parse_ceil_floor(exp.Floor)],
-    // py:1577  ["GAP_FILL", ...]  — `_parse_gap_fill` is still a NotPorted stub
+    /* py:1577 */ ["GAP_FILL", (self) => self._parse_gap_fill()],
     /* py:1578 */ ["INITCAP", (self) => self._parse_initcap()],
     /* py:1579 */ ["JSON_OBJECT", (self) => self._parse_json_object()],
     /* py:1580 */ ["JSON_OBJECTAGG", (self) => self._parse_json_object(true)],
     // py:1581  ["JSON_TABLE", ...]      — `_parse_json_table` is still a NotPorted stub
     /* py:1582 */ ["MATCH", (self) => self._parse_match_against()],
     // py:1583  ["NORMALIZE", ...]  — `_parse_normalize` is still a NotPorted stub
-    // py:1584  ["OPENJSON", ...]   — `_parse_open_json` is still a NotPorted stub
-    // py:1585  ["OVERLAY", ...]    — `_parse_overlay` is still a NotPorted stub
+    // py:1584 — NOT wired: `openjson_sql` (generator.js:3925) is still a NotPorted
+    // base-generator stub, and wiring `_parse_open_json` in here regresses 2
+    // ratchet-pass atoms (plain `OPENJSON(@json)`, no `WITH (...)`) that currently
+    // round-trip correctly only by accident, via the generic Anonymous-function-call
+    // fallback this port used before `_parse_open_json` existed. Re-wire this the
+    // moment `openjson_sql` lands for real -- same shape as `exp.Ceil`/`exp.Floor`
+    // in generator.js.
+    // ["OPENJSON", (self) => self._parse_open_json()],
+    /* py:1585 */ ["OVERLAY", (self) => self._parse_overlay()],
     /* py:1586 */ ["POSITION", (self) => self._parse_position()],
     /* py:1587 */ ["SAFE_CAST", (self) => self._parse_cast(false, true)],
     /* py:1588 */ ["STRING_AGG", (self) => self._parse_string_agg()],
@@ -3200,6 +3207,7 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:3218
   _parse_clustered_by() {
+    this._match_text_seq("BY");
     const expressions = this._parse_wrapped_csv(this._parse_column.bind(this)); let sorted_by = null, buckets = null;
     if (this._match_text_seq("SORTED", "BY")) sorted_by = this._parse_wrapped_csv(this._parse_ordered.bind(this));
     if (this._match_text_seq("INTO")) { buckets = this._parse_number(); this._match_text_seq("BUCKETS"); }
@@ -3580,11 +3588,31 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3899
-  _parse_uncache() { throw new NotPorted("_parse_uncache", "sqlglot/parser.py:3899"); }
+  _parse_uncache() {
+    if (!this._match(TokenType.TABLE)) this.raise_error("Expecting TABLE after UNCACHE");
+    return this.expression(new exp.Uncache({ exists: this._parse_exists(), this: this._parse_table(true) }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3907
-  _parse_cache() { throw new NotPorted("_parse_cache", "sqlglot/parser.py:3907"); }
+  _parse_cache() {
+    const lazy = this._match_text_seq("LAZY");
+    this._match(TokenType.TABLE);
+    const table = this._parse_table(true);
+
+    let options = [];
+    if (this._match_text_seq("OPTIONS")) {
+      this._match_l_paren();
+      const k = this._parse_string();
+      this._match(TokenType.EQ);
+      const v = this._parse_string();
+      options = [k, v];
+      this._match_r_paren();
+    }
+
+    this._match(TokenType.ALIAS);
+    return this.expression(new exp.Cache({ this: table, lazy, options, expression: this._parse_select(true) }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3928
@@ -5151,9 +5179,16 @@ export class Parser {
       if (known_function && post_func_comments?.some((comment) => comment.trimStart().startsWith("sqlglot.anonymous"))) known_function = false;
       if (alias && known_function) args = this._kv_to_prop_eq(args);
       if (known_function) {
-        let func;
-        try { func = func_builder(args); }
-        catch (e) { if (!(e instanceof TypeError)) throw e; func = func_builder(args, this.dialect); }
+        // py: `try: func = func_builder(args)` / `except TypeError: func = func_builder(args,
+        // dialect=self.dialect)` -- a builder genuinely declared `(args, dialect)` with no
+        // default raises on the first, dialect-less call in Python (missing required arg);
+        // JS has no such arity-checking exception, but `Function.prototype.length` (which,
+        // like a required-vs-defaulted Python param, excludes any parameter with a default
+        // value) is the same signal. See expressions/builders.js's `func()` for the sibling
+        // fix (AIR-2284) -- this is the parse-time half of the same divergence, caught by a
+        // Databricks `FROM_UTC_TIMESTAMP(x::TIMESTAMP, tz)` double-CAST: without a dialect,
+        // `exp.cast`'s TIMESTAMPTZ-vs-TIMESTAMP type-mapping collapse never triggers.
+        let func = func_builder.length >= 2 ? func_builder(args, this.dialect) : func_builder(args);
         func = this.validate_expression(func, args);
         if (this.dialect.PRESERVE_ORIGINAL_NAMES) func.meta.name = this_;
         result = func;
@@ -5528,9 +5563,10 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:7904
   _parse_period_for_system_time() {
-    if (!this._match_text_seq("PERIOD", "FOR", "SYSTEM_TIME")) return null;
-    this._match(TokenType.L_PAREN); const start = this._parse_id_var(); this._match(TokenType.COMMA); const end = this._parse_id_var(); this._match(TokenType.R_PAREN);
-    return this.expression(new exp.PeriodForSystemTimeConstraint({ start, end }));
+    if (!this._match_text_seq("FOR", "SYSTEM_TIME")) { this._retreat(this._index - 1); return null; }
+
+    const id_vars = this._parse_wrapped_id_vars();
+    return this.expression(new exp.PeriodForSystemTimeConstraint({ this: seqGet(id_vars, 0), expression: seqGet(id_vars, 1) }));
   }
 
   /** @returns {*} */
@@ -5606,9 +5642,18 @@ export class Parser {
     return this.expression(new exp.Extract({ this: this_, expression: this._parse_bitwise() }));
   }
 
-  /** @returns {*} */
+  /** @returns {exp.GapFill} */
   // py: sqlglot/parser.py:8128
-  _parse_gap_fill() { throw new NotPorted("_parse_gap_fill", "sqlglot/parser.py:8128"); }
+  _parse_gap_fill() {
+    this._match(TokenType.TABLE);
+    const this_ = this._parse_table();
+
+    this._match(TokenType.COMMA);
+    const args = [this_, ...this._parse_csv(() => this._parse_lambda())];
+
+    const gap_fill = exp.GapFill.from_arg_list(args);
+    return this.validate_expression(gap_fill, args);
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8138
@@ -5764,7 +5809,26 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8516
-  _parse_open_json() { throw new NotPorted("_parse_open_json", "sqlglot/parser.py:8516"); }
+  _parse_open_json() {
+    const this_ = this._parse_bitwise();
+    const path = this._match(TokenType.COMMA) && this._parse_string();
+
+    const _parse_open_json_column_def = () => {
+      const this_ = this._parse_field(true);
+      const kind = this._parse_types();
+      const path = this._parse_string();
+      const as_json = this._match_pair(TokenType.ALIAS, TokenType.JSON);
+      return this.expression(new exp.OpenJSONColumnDef({ this: this_, kind, path, as_json }));
+    };
+
+    let expressions = null;
+    if (this._match_pair(TokenType.R_PAREN, TokenType.WITH)) {
+      this._match_l_paren();
+      expressions = this._parse_csv(_parse_open_json_column_def);
+    }
+
+    return this.expression(new exp.OpenJSON({ this: this_, path, expressions }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8537
@@ -6826,9 +6890,21 @@ export class Parser {
     return this.expression(new exp.Revoke({ privileges, kind, securable, principals, grant_option: grantOption, cascade }));
   }
 
-  /** @returns {*} */
+  /** @returns {exp.Overlay} */
   // py: sqlglot/parser.py:10123
-  _parse_overlay() { throw new NotPorted("_parse_overlay", "sqlglot/parser.py:10123"); }
+  _parse_overlay() {
+    const _parse_overlay_arg = (text) =>
+      (this._match(TokenType.COMMA) || this._match_text_seq(text)) ? this._parse_bitwise() : null;
+
+    return this.expression(
+      new exp.Overlay({
+        this: this._parse_bitwise(),
+        expression: _parse_overlay_arg("PLACING"),
+        from_: _parse_overlay_arg("FROM"),
+        for_: _parse_overlay_arg("FOR"),
+      }),
+    );
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:10140

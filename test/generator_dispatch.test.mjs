@@ -108,15 +108,39 @@ test("the only gap versus CPython is the deliberately-unseeded TRANSFORMS", () =
   // default dialect fell through to `function_fallback_sql`'s generic rendering
   // (`CONNECT_BY_ROOT(x)` instead of the paren-less `CONNECT_BY_ROOT x`, `UTC_DATE()`
   // left untranslated instead of `CURRENT_DATE('UTC')`, `VAR_MAP(...)` instead of
-  // `MAP(...)`) — each a verified, faithful one-line port of its CPython lambda.
-  assert.equal(Generator.TRANSFORMS.size, 98, "TRANSFORMS has 98 real entries after AIR-2285's 5 wirings");
+  // `MAP(...)`) — each a verified, faithful one-line port of its CPython lambda,
+  // landed independently of, and now subsumed by, AIR-2284's own wiring below.
+  // +48 from AIR-2284 (PORT_PLAN.md P11, mismatch/ERROR triage): `exp.ExcludeColumnConstraint`
+  // (py:191) and every remaining `// TODO lambda` placeholder in the py:142-295 stretch
+  // EXCEPT `Ceil`/`Floor` (`AnalyzeColumns`/`AnalyzeWith`/`AssumeColumnConstraint`/
+  // `CaseSpecificColumnConstraint`/`CharacterSetColumnConstraint`/`ClusteredColumnConstraint`/
+  // `CollateColumnConstraint`/`CommentColumnConstraint`/`ConnectByRoot`/`ConvertToCharset`/
+  // `CurrentCatalog`/`SessionUser`/`DateFormatColumnConstraint`/`DefaultColumnConstraint`/
+  // `EncodeColumnConstraint`/`EndStatement`/`EphemeralColumnConstraint`/`Get`/
+  // `InlineLengthColumnConstraint`/`Int64`/`IntervalSpan`/`NonClusteredColumnConstraint`/
+  // `NotForReplicationColumnConstraint`/`OnUpdateColumnConstraint`/`ExtendsLeft`/
+  // `ExtendsRight`/`PathColumnConstraint`/`PartitionedByBucket`/`PartitionByTruncate`/
+  // `PositionalColumn`/`ProjectionPolicyColumnConstraint`/`InvisibleColumnConstraint`/
+  // `ZeroFillColumnConstraint`/`Put`/`Stream`/`SwapTable`/`TableColumn`/
+  // `TitleColumnConstraint`/`ToMap`/`TriggerExecute`/`UsingData`/`UppercaseColumnConstraint`/
+  // `UtcDate`/`UtcTime`/`UtcTimestamp`/`VarMap`/`WithOperator`) were each still commented
+  // out, each reached by a real corpus row that threw "Unsupported expression type X".
+  // `exp.Ceil`/`exp.Floor` (py:154/195) are DELIBERATELY left unwired: upstream's real
+  // lambda (`self.ceil_floor(e)`) is still a `NotPorted` base-generator.js stub
+  // (AIR-2276/2277/2278 territory), and wiring it regressed 6 ratchet-pass atoms that
+  // currently round-trip correctly only by accident via `function_fallback_sql`'s
+  // class-name-to-SNAKE_CASE fallback ("Ceil"/"Floor" happen to already BE their own SQL
+  // function names) — re-wire the moment `ceil_floor` lands for real. Every other entry
+  // here is a verified, faithful one-line port of its CPython lambda; `TRANSFORMS` now
+  // has 141 of upstream's 143 entries filled (only `Ceil`/`Floor` still commented out).
+  assert.equal(Generator.TRANSFORMS.size, 141, "TRANSFORMS has 141/143 entries filled (AIR-2284; Ceil/Floor deliberately held back)");
 
   const wantTransform = Object.entries(WANT).filter(([, h]) => h === "transform");
   assert.equal(wantTransform.length, 143);
 
   const got = _buildDispatch(Generator);
   assert.equal(got.size, Object.keys(WANT).length - wantTransform.length + Generator.TRANSFORMS.size);
-  assert.equal(got.size, 515);
+  assert.equal(got.size, 558, "417 method-derived + 141 of 143 TRANSFORMS entries (Ceil/Floor held back)");
 });
 
 test("TRANSFORMS beats a same-named *_sql method", () => {

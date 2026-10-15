@@ -73,7 +73,16 @@ const DEFERRED_TABLES = new Set([]);
 // corpus row construct one of these nodes and reach this table.
 // +5 from AIR-2285 (PORT_PLAN.md R97, the honest generate probe's standing
 // mismatches): `exp.ConnectByRoot`/`exp.UtcDate`/`exp.UtcTime`/`exp.UtcTimestamp`/
-// `exp.VarMap` (py:164/283-285/289) were each still a `// TODO lambda` placeholder.
+// `exp.VarMap` (py:164/283-285/289) were each still a `// TODO lambda` placeholder —
+// landed independently of, and now subsumed by, AIR-2284's own wiring below.
+// +48 from AIR-2284 (PORT_PLAN.md P11, mismatch/ERROR triage): every remaining
+// `// TODO lambda` placeholder in the py:142-295 stretch landed as a verified,
+// faithful one-line port of its CPython lambda, taking TRANSFORMS from 93 to 141
+// of upstream's 143 entries. Only `exp.Ceil`/`exp.Floor` (py:154/195) stay
+// deliberately unseeded: their real lambda (`self.ceil_floor(e)`) is still a
+// `NotPorted` base-generator.js stub, and wiring it regressed 6 ratchet-pass
+// atoms that round-trip correctly only by accident via `function_fallback_sql`'s
+// class-name-to-SNAKE_CASE fallback (see `src/generator.js`'s own comment there).
 const PARTIALLY_SEEDED_MAP_KEYS = new Map([
   [
     "TRANSFORMS",
@@ -83,28 +92,41 @@ const PARTIALLY_SEEDED_MAP_KEYS = new Map([
       "exp.JSONPathFilter", "exp.JSONPathKey", "exp.JSONPathRecursive", "exp.JSONPathRoot",
       "exp.JSONPathScript", "exp.JSONPathSelector", "exp.JSONPathSlice", "exp.JSONPathSubscript",
       "exp.JSONPathUnion", "exp.JSONPathWildcard",
-      "exp.Adjacent", "exp.AllowedValuesProperty", "exp.ArrayContainedBy", "exp.ArrayContainsAll",
-      "exp.ArrayOverlaps", "exp.AutoRefreshProperty", "exp.BackupProperty", "exp.CalledOnNullInputProperty",
-      "exp.CharacterSetProperty", "exp.ConnectByRoot", "exp.CopyGrantsProperty", "exp.CredentialsProperty", "exp.ApiProperty",
-      "exp.ApplicationProperty", "exp.CatalogProperty", "exp.ComputeProperty", "exp.DatabaseProperty",
-      "exp.DynamicProperty", "exp.EmptyProperty", "exp.EnviromentProperty", "exp.HandlerProperty",
-      "exp.ParameterStyleProperty", "exp.ExecuteAsProperty", "exp.Except", "exp.ExternalProperty",
-      "exp.GlobalProperty", "exp.HeapProperty", "exp.HybridProperty", "exp.IcebergProperty",
-      "exp.InheritsProperty", "exp.InputModelProperty", "exp.Intersect", "exp.JSONBContainsAnyTopKeys",
+      "exp.Adjacent", "exp.AllowedValuesProperty", "exp.AnalyzeColumns", "exp.AnalyzeWith",
+      "exp.ArrayContainedBy", "exp.ArrayContainsAll", "exp.ArrayOverlaps", "exp.AssumeColumnConstraint",
+      "exp.AutoRefreshProperty", "exp.BackupProperty", "exp.CaseSpecificColumnConstraint",
+      "exp.CalledOnNullInputProperty", "exp.CharacterSetColumnConstraint", "exp.CharacterSetProperty",
+      "exp.ClusteredColumnConstraint", "exp.CollateColumnConstraint", "exp.CommentColumnConstraint",
+      "exp.ConnectByRoot", "exp.ConvertToCharset", "exp.CopyGrantsProperty", "exp.CredentialsProperty",
+      "exp.CurrentCatalog", "exp.SessionUser", "exp.DateFormatColumnConstraint", "exp.DefaultColumnConstraint",
+      "exp.ApiProperty", "exp.ApplicationProperty", "exp.CatalogProperty", "exp.ComputeProperty",
+      "exp.DatabaseProperty", "exp.DynamicProperty", "exp.EmptyProperty", "exp.EncodeColumnConstraint",
+      "exp.EndStatement", "exp.EnviromentProperty", "exp.HandlerProperty", "exp.ParameterStyleProperty",
+      "exp.EphemeralColumnConstraint", "exp.ExcludeColumnConstraint", "exp.ExecuteAsProperty", "exp.Except",
+      "exp.ExternalProperty", "exp.Get", "exp.GlobalProperty", "exp.HeapProperty", "exp.HybridProperty",
+      "exp.IcebergProperty", "exp.InheritsProperty", "exp.InlineLengthColumnConstraint", "exp.InputModelProperty",
+      "exp.Intersect", "exp.IntervalSpan", "exp.Int64", "exp.JSONBContainsAnyTopKeys",
       "exp.JSONBContainsAllTopKeys", "exp.JSONBContainsTopKey", "exp.JSONBDeleteAtPath", "exp.JSONBPathExists",
       "exp.JSONObject", "exp.JSONObjectAgg",
       "exp.LanguageProperty", "exp.LocationProperty", "exp.LogProperty", "exp.MaskingProperty",
-      "exp.MaterializedProperty", "exp.NetFunc", "exp.NetworkProperty", "exp.NoPrimaryIndexProperty", "exp.OnCommitProperty",
-      "exp.OnProperty", "exp.Operator", "exp.OutputModelProperty", "exp.PivotAny", "exp.RemoteWithConnectionModelProperty",
+      "exp.MaterializedProperty", "exp.NetFunc", "exp.NetworkProperty", "exp.NonClusteredColumnConstraint",
+      "exp.NoPrimaryIndexProperty", "exp.NotForReplicationColumnConstraint", "exp.OnCommitProperty",
+      "exp.OnProperty", "exp.OnUpdateColumnConstraint", "exp.Operator", "exp.OutputModelProperty",
+      "exp.ExtendsLeft", "exp.ExtendsRight", "exp.PathColumnConstraint", "exp.PartitionedByBucket",
+      "exp.PartitionByTruncate", "exp.PivotAny", "exp.PositionalColumn", "exp.ProjectionPolicyColumnConstraint",
+      "exp.InvisibleColumnConstraint", "exp.ZeroFillColumnConstraint", "exp.Put",
+      "exp.RemoteWithConnectionModelProperty",
       "exp.ReturnsProperty", "exp.RowAccessProperty", "exp.SafeFunc", "exp.SampleProperty", "exp.SecureProperty",
       "exp.SecurityIntegrationProperty", "exp.SetConfigProperty", "exp.SetProperty", "exp.SettingsProperty",
       "exp.SharingProperty", "exp.SqlReadWriteProperty", "exp.SqlSecurityProperty", "exp.StabilityProperty",
-      "exp.StreamingTableProperty", "exp.StrictProperty", "exp.Tags", "exp.TemporaryProperty",
+      "exp.Stream", "exp.StreamingTableProperty", "exp.StrictProperty", "exp.SwapTable", "exp.TableColumn",
+      "exp.Tags", "exp.TemporaryProperty", "exp.TitleColumnConstraint", "exp.ToMap",
       "exp.ToTableProperty", "exp.TransformModelProperty", "exp.TransientProperty", "exp.VirtualProperty",
-      "exp.Union", "exp.UnloggedProperty", "exp.UsingTemplateProperty", "exp.UtcDate", "exp.UtcTime",
-      "exp.UtcTimestamp", "exp.Variadic", "exp.VarMap",
+      "exp.TriggerExecute", "exp.Union", "exp.UnloggedProperty", "exp.UsingTemplateProperty",
+      "exp.UsingData", "exp.UppercaseColumnConstraint", "exp.UtcDate", "exp.UtcTime", "exp.UtcTimestamp",
+      "exp.Variadic", "exp.VarMap",
       "exp.ViewAttributeProperty", "exp.VolatileProperty", "exp.WithJournalTableProperty", "exp.WithProcedureOptions",
-      "exp.WithSchemaBindingProperty", "exp.ForceProperty",
+      "exp.WithSchemaBindingProperty", "exp.WithOperator", "exp.ForceProperty",
     ],
   ],
 ]);
