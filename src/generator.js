@@ -2521,12 +2521,21 @@ export class Generator {
       // py: `else: type_sql = type_value` — `type_value` here is an actual Expr (e.g.
       // an `exp.Interval` DataType.this, for `INTERVAL DAY`), not a `DType` enum
       // member. Upstream's later `f"{type_sql}{nested}{values}"` implicitly calls
-      // `Expression.__str__`, which is `self.sql()` (core.py:1237) — a bare JS
-      // template literal calls `.toString()` instead (this port's verbose debug repr),
-      // so this must be `this.sql(type_value)`, not the raw object. Found via a real
-      // Postgres `CAST('45 days' AS INTERVAL DAY)` corpus mismatch
-      // (PORT_PLAN.md, the Postgres generator step).
-      type_sql = is_dtype ? (cls.TYPE_MAPPING.get(type_value) ?? type_value.value) : this.sql(type_value);
+      // `Expression.__str__`, which is `self.sql()` (core.py:1237) — `Expr.sql()`
+      // with NO dialect argument, which resolves `Dialect.get_or_raise(None)`: the
+      // DEFAULT dialect's OWN generator, not `self` (the CURRENT dialect's). A bare
+      // JS template literal calls `.toString()` instead (this port's verbose debug
+      // repr), so this must be `type_value.sql()` (the Expr instance method, which
+      // defaults to the same bare-dialect resolution), NOT `this.sql(type_value)`
+      // (this Generator's own method, which renders under the CURRENT dialect and
+      // so calls through to any dialect-specific override of e.g. `interval_sql` —
+      // wrong whenever that override's output differs from the base's, as Oracle's
+      // own `interval_sql` override does for `CAST(x AS INTERVAL YEAR TO MONTH)`,
+      // where `this` is absent: Oracle's override renders no "INTERVAL " keyword at
+      // all in that case, while the base (and upstream's real output) always does).
+      type_sql = is_dtype
+        ? (cls.TYPE_MAPPING.get(type_value) ?? type_value.value)
+        : typeof type_value === "string" ? type_value : type_value.sql();
     }
 
     if (interior) {

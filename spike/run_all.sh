@@ -163,6 +163,14 @@ PYTHONHASHSEED=0 python3 spike/p5/gen_teradata_dialect_ref.py > spike/out/terada
 # IDENTIFIERS list, and one post-merge `KEYWORDS.pop("DIV")` call. No method override
 # on the Dialect class itself, so no section 4 -- same shape Presto's own oracle used.
 PYTHONHASHSEED=0 python3 spike/p5/gen_exasol_dialect_ref.py > spike/out/exasol_dialect.json || fail=1
+# P5 oracle, same shape, Oracle (AIR-2290, "12.5 Oracle"). `dialects/oracle.py`
+# extends the BASE `Dialect` directly, no chain -- 106 resolved settings (18
+# Oracle's own, including a vestigial `LOCKING_READS_SUPPORTED` that leaks onto
+# this class with no `Dialect`-side reader), a nested Tokenizer with ~15 added/
+# remapped keywords (incl. the `(+)` outer-join marker), and one method override
+# (`can_quote`, a Pseudocolumn-parent DUAL exception) -- a real section 4, the
+# same shape Snowflake/DuckDB/ClickHouse use.
+PYTHONHASHSEED=0 python3 spike/p5/gen_oracle_dialect_ref.py > spike/out/oracle_dialect.json || fail=1
 # P6 oracle. `schema.py`'s `MappingSchema` is greenfield -- nothing in the port depends
 # on it yet, so unlike every oracle above it has no corpus/atoms.jsonl tie-in at all.
 # 24 scenarios / 53 checks of column/type lookups, add_table, dialect-aware identifier
@@ -547,6 +555,7 @@ run "P5: Dune dialect vs CPython"          node spike/p5/fuzz_dune_dialect.mjs
 run "P5: SQLite dialect vs CPython"        node spike/p5/fuzz_sqlite_dialect.mjs
 run "P5: Teradata dialect vs CPython"      node spike/p5/fuzz_teradata_dialect.mjs
 run "P5: Exasol dialect vs CPython"        node spike/p5/fuzz_exasol_dialect.mjs
+run "P5: Oracle dialect vs CPython"        node spike/p5/fuzz_oracle_dialect.mjs
 run "P6: schema.js MappingSchema vs CPython" node spike/p6/fuzz_schema.mjs
 run "P7: optimizer/scope.js traverseScope/Scope vs CPython" node spike/p7/fuzz_scope.mjs
 run "P7: optimize_joins.js vs CPython"       node spike/p7/fuzz_optimize_joins.mjs
