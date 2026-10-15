@@ -480,6 +480,29 @@ test("tables: DELETE tags the target DELETE", () => {
   assert.deepEqual(r.tables, [{ catalog: null, schema: null, table: "t1", fullyQualifiedName: "t1", operation: "DELETE" }]);
 });
 
+// AIR-2276: base `generator.js`'s `copy_sql` (and its `copyparameter_sql`/
+// `credentials_sql` dependencies) landed real, so COPY's `standardizedSql` no longer
+// falls back to the raw query text — this locks in that it stays classified as a
+// data-change statement with its target table, for both dialects this port's COPY
+// parser already supports (R65).
+test("tables/standardizedSql: COPY stays a real, cacheable-false data change with its target table (snowflake)", () => {
+  const r = extractSqlMetadata("COPY INTO t FROM 's3://bucket' FILE_FORMAT = (TYPE = CSV)", { dialect: "snowflake" });
+  assert.equal(r.extractionError, null);
+  assert.equal(r.isDataChange, true);
+  assert.equal(r.cacheable, false);
+  assert.deepEqual(r.tables, [{ catalog: null, schema: null, table: "t", fullyQualifiedName: "t", operation: "COPY" }]);
+  assert.equal(r.standardizedSql, "COPY INTO t FROM 's3://bucket' FILE_FORMAT = (TYPE=CSV)");
+});
+
+test("tables/standardizedSql: COPY stays a real, cacheable-false data change with its target table (postgres)", () => {
+  const r = extractSqlMetadata("COPY t FROM 's3://bucket/path' CREDENTIALS 'abc' CSV", { dialect: "postgres" });
+  assert.equal(r.extractionError, null);
+  assert.equal(r.isDataChange, true);
+  assert.equal(r.cacheable, false);
+  assert.deepEqual(r.tables, [{ catalog: null, schema: null, table: "t", fullyQualifiedName: "t", operation: "COPY" }]);
+  assert.equal(r.standardizedSql, "COPY t FROM 's3://bucket/path' CREDENTIALS 'abc' WITH (CSV)");
+});
+
 test("tables: MERGE tags MERGE_TARGET and MERGE_SOURCE", () => {
   const r = extractSqlMetadata("MERGE INTO t1 USING t2 ON t1.id = t2.id WHEN MATCHED THEN UPDATE SET x = 1", {
     dialect: "databricks",

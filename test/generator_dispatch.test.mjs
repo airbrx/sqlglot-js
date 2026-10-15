@@ -503,10 +503,25 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // FIELDS, which the frozen stand-in either hosts or safely returns `undefined` for),
   // so every one of the 13 also lands in the "runs without a resolved Dialect" bucket
   // below, not the `identifier_sql`-style exception.
-  // +39 from AIR-2278 (epic AIR-2270, "10.5 Generator stubs cluster D1", PORT_PLAN.md):
-  // the forty named base-Generator stubs (`withtablehint_sql`/`comment_sql`/
-  // `jsonarray_sql`/`concatws_sql`/`addpartition_sql`/`space_sql`/`block_sql`/
-  // `bitwisenot_sql`/`jsonarrayagg_sql`/`bitwisexor_sql`/`returning_sql`/
+  // +26 from AIR-2276 (epic AIR-2270, "10.3 Generator stubs cluster B", PORT_PLAN.md):
+  // the fifteen named base-Generator stubs (`rawstring_sql`, `lastday_sql`,
+  // `parameter_sql`, `triggerproperties_sql`, `respectnulls_sql`, `decodecase_sql`,
+  // `grant_sql`, `weekstart_sql`, `revoke_sql`, `strtotime_sql`, `analyze_sql`,
+  // `rand_sql`, `convert_sql`, `copy_sql`, `bytestring_sql`) plus eleven `*_sql`
+  // siblings each one reaches and un-stubs along the way: `_grant_or_revoke_sql`/
+  // `grantprivilege_sql`/`grantprincipal_sql` (grant/revoke), `analyzesample_sql`/
+  // `analyzestatistics_sql`/`analyzehistogram_sql`/`analyzedelete_sql`/
+  // `analyzelistchainedrows_sql`/`analyzevalidate_sql` (analyze), `copyparameter_sql`/
+  // `credentials_sql` (copy). `weekstart_name` (weekstart's own twelfth sibling) is
+  // also ported in the same round but does not end in `_sql`, so `sqlMethods` never
+  // counts it here.
+  // +40 from AIR-2278 (epic AIR-2270, "10.5 Generator stubs cluster D1", PORT_PLAN.md,
+  // merged concurrently with AIR-2276 and combined here — disjoint method sets, both
+  // independently ported `weekstart_name` and extended the same `tokens.js` relay with
+  // `WEEK_START_DAY_TO_DOW`/`week_offset_to_dow` for it, functionally identical,
+  // reconciled at merge): the forty named base-Generator stubs (`withtablehint_sql`/
+  // `comment_sql`/`jsonarray_sql`/`concatws_sql`/`addpartition_sql`/`space_sql`/
+  // `block_sql`/`bitwisenot_sql`/`jsonarrayagg_sql`/`bitwisexor_sql`/`returning_sql`/
   // `onconflict_sql`/`nthvalue_sql`/`primarykey_sql`/`partitionedofproperty_sql`/
   // `alterset_sql`/`strtodate_sql`/`attach_sql`/`tsordstodatetime_sql`/
   // `altersortkey_sql`/`install_sql`/`toarray_sql`/`fetch_sql`/`in_unnest_op`/
@@ -524,7 +539,10 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // five fields, same "`generator.js` cannot import `dialects/dialect.js`" R32 cycle).
     // +1 coordinator at merge (R93): `indexparameters_sql` (generator.py:1953), reached by the
   // qualify oracle's `alter table` fixture once `addconstraint_sql` went real.
-  assert.equal(bodied.length, 218, "exactly 218 *_sql methods have a real body");
+  // reaches (also not `*_sql`-suffixed): 40 - 2 + 1 = 39, plus +1 coordinator at merge
+  // (R93): `indexparameters_sql` (generator.py:1953), reached by the qualify oracle's
+  // `alter table` fixture once `addconstraint_sql` went real — 39 + 1 = 40.
+  assert.equal(bodied.length, 244, "exactly 244 *_sql methods have a real body");
 
   const stubs = sqlMethods.filter((n) => {
     try {
@@ -639,7 +657,37 @@ test("the seeded skeleton's size is stated, not implied", () => {
   // one of the thirty-nine reads only class/Dialect FIELDS and the `tokens.js` relay
   // getters, never a Dialect METHOD, so none needs the `identifier_sql`-style
   // exception).
-  assert.equal(432 - stubs.length, 217, "217 of those 218 also run without a resolved Dialect");
+  // +26 for AIR-2276's twenty-six new `*_sql` bodies: empirically verified (`node -e`
+  // against a bare `new Generator()`), none throws `NotPorted`. Twenty-two return a
+  // string outright (`bytestring_sql`/`parameter_sql`/`triggerproperties_sql`/
+  // `respectnulls_sql`/`decodecase_sql`/`_grant_or_revoke_sql`/`grant_sql`/
+  // `revoke_sql`/`grantprivilege_sql`/`grantprincipal_sql`/`strtotime_sql`/
+  // `rand_sql`/`analyzesample_sql`/`analyzestatistics_sql`/`analyzehistogram_sql`/
+  // `analyzedelete_sql`/`analyzelistchainedrows_sql`/`analyzevalidate_sql`/
+  // `analyze_sql`/`convert_sql`/`copyparameter_sql`/`credentials_sql`/`copy_sql` read
+  // only class/Dialect FIELDS, never a METHOD, or nothing at all). `rawstring_sql`
+  // and `lastday_sql` each throw a plain `TypeError` on a bare `new exp.Expr({})`
+  // (missing `.this`/`expression.constructor.sqlName`) — the same "runs, just not
+  // usefully, on made-up input" outcome `tsordstodate_sql`/`arrayagg_sql` already
+  // established this assertion counts. `weekstart_sql` throws this file's own plain
+  // `Error("...dialect helpers not loaded yet...")` from the `WEEK_START_DAY_TO_DOW`/
+  // `week_offset_to_dow` relay this round adds (via its own `weekstart_name` helper,
+  // which is ported in the same round but is not itself `_sql`-suffixed and so not
+  // counted here) — same not-`NotPorted` "ran" outcome `dateadd_sql` already
+  // established for the sibling relay.
+  // +40 for AIR-2278's new bodies (39 of its own round, +1 coordinator
+  // `indexparameters_sql`): empirically verified (`node -e` against a bare
+  // `new Generator()`), none throws `NotPorted`. Three throw a plain `TypeError`
+  // instead (`nthvalue_sql`: `expression.constructor.sqlName` is not a function on a
+  // bare `exp.Expr`; `tsordstodatetime_sql`: `expression.this` is `undefined`, so
+  // `.isType(...)` has nothing to call itself on; `toarray_sql`: `expression.this.type`
+  // likewise) — the same "runs, just not usefully, on made-up input" outcome this
+  // assertion already counts for `arrayagg_sql`/`arrayany_sql`/`tsordstodate_sql`. The
+  // rest return a string outright, including `scope_resolution`'s own caller
+  // `scoperesolution_sql` (every one reads only class/Dialect FIELDS and the
+  // `tokens.js` relay getters, never a Dialect METHOD, so none needs the
+  // `identifier_sql`-style exception).
+  assert.equal(432 - stubs.length, 243, "243 of those 244 also run without a resolved Dialect");
   assert.deepEqual(
     bodied.filter((n) => stubs.includes(n)),
     ["identifier_sql"],
