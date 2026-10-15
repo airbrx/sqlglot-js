@@ -178,14 +178,15 @@ export function subquery(expression, alias = null, options = {}) {
 
 export function cast(expression, to, options = {}) {
   const { copy = true, dialect = null, ...opts } = options;
-  const expr = maybeParse(expression, { copy, dialect, ...opts });
-  const dataType = DataType.build(to, { copy, dialect, ...opts });
+  const resolvedDialect = resolveDialect(dialect);
+  const expr = maybeParse(expression, { copy, dialect: resolvedDialect, ...opts });
+  const dataType = DataType.build(to, { copy, dialect: resolvedDialect, ...opts });
   // py: Dialect.get_or_raise(dialect).generator_class.TYPE_MAPPING.  With dialect=None
   // upstream still resolves the BASE Generator mapping, which is not empty -- it is what
   // collapses cast(cast(x, 'NCHAR'), 'CHAR') to the inner NCHAR cast.  Treating a missing
   // dialect as "no mapping" produced a double CAST instead.
   if (expr instanceof Cast) {
-    const mapping = dialect?.generatorClass?.TYPE_MAPPING || dialect?.generator_class?.TYPE_MAPPING || BASE_TYPE_MAPPING;
+    const mapping = resolvedDialect?.generatorClass?.TYPE_MAPPING || resolvedDialect?.generator_class?.TYPE_MAPPING || BASE_TYPE_MAPPING;
     const oldType = expr.to?.this, newType = dataType.this;
     // `this` is a plain type enum only for simple types; complex ones nest an
     // expression there, so the equivalence check is skipped for those.

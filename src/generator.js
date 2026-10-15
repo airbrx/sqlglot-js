@@ -507,6 +507,16 @@ export class Generator {
     [exp.CredentialsProperty, (self, e) => `CREDENTIALS=(${self.expressions(e, "expressions", { sep: " " })})`], // py:169
     [exp.CurrentCatalog, () => "CURRENT_CATALOG"], // py:172
     [exp.SessionUser, () => "SESSION_USER"], // py:173
+    // exp.CurrentRole deliberately has NO entry here. tokens.js's CURRENT_ROLE keyword
+    // (airbrx-gateway PR #228) makes BOTH `CURRENT_ROLE` and `CURRENT_ROLE()` parse to
+    // the same exp.CurrentRole node, with no stored signal distinguishing which form the
+    // source used -- upstream CPython never has this ambiguity, since it never tokenizes
+    // "CURRENT_ROLE" as a keyword at all (bare -> Column, parens -> Func via the generic
+    // by-name path). Either a bare-rendering or a parens-rendering TRANSFORMS entry here
+    // fixes one corpus row's round trip while breaking the other's -- a net-zero swap,
+    // not a fix -- so this is left on the generic Func fallback (parens), matching what
+    // every OTHER un-mapped Func already does and what this class did before AIR-2284
+    // looked at it.
     [exp.DateFormatColumnConstraint, (self, e) => `FORMAT ${self.sql(e, "this")}`], // py:174
     [exp.DefaultColumnConstraint, (self, e) => `DEFAULT ${self.sql(e, "this")}`], // py:175
     [exp.ApiProperty, () => "API"], // py:176

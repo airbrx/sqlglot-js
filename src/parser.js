@@ -5131,9 +5131,16 @@ export class Parser {
       if (known_function && post_func_comments?.some((comment) => comment.trimStart().startsWith("sqlglot.anonymous"))) known_function = false;
       if (alias && known_function) args = this._kv_to_prop_eq(args);
       if (known_function) {
-        let func;
-        try { func = func_builder(args); }
-        catch (e) { if (!(e instanceof TypeError)) throw e; func = func_builder(args, this.dialect); }
+        // py: `try: func = func_builder(args)` / `except TypeError: func = func_builder(args,
+        // dialect=self.dialect)` -- a builder genuinely declared `(args, dialect)` with no
+        // default raises on the first, dialect-less call in Python (missing required arg);
+        // JS has no such arity-checking exception, but `Function.prototype.length` (which,
+        // like a required-vs-defaulted Python param, excludes any parameter with a default
+        // value) is the same signal. See expressions/builders.js's `func()` for the sibling
+        // fix (AIR-2284) -- this is the parse-time half of the same divergence, caught by a
+        // Databricks `FROM_UTC_TIMESTAMP(x::TIMESTAMP, tz)` double-CAST: without a dialect,
+        // `exp.cast`'s TIMESTAMPTZ-vs-TIMESTAMP type-mapping collapse never triggers.
+        let func = func_builder.length >= 2 ? func_builder(args, this.dialect) : func_builder(args);
         func = this.validate_expression(func, args);
         if (this.dialect.PRESERVE_ORIGINAL_NAMES) func.meta.name = this_;
         result = func;
