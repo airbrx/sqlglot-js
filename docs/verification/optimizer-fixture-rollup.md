@@ -13,7 +13,7 @@ Measured 2026-10-15, branch based on `origin/main` `a5fceb1` and merged forward 
 22.12.0, CPython 3.9.25, `PYTHONHASHSEED=0`. No `src/` changes from this round itself —
 this is a measurement-only round (epic AIR-2273, "finish-line hygiene"); the concurrent
 merge did touch `src/` (R91-R93), which is why one table cell below (`qualify_tables.sql`)
-differs from this round's own first measurement — see PORT_PLAN.md's R94 entry.
+differs from this round's own first measurement — see PORT_PLAN.md's R95 entry.
 
 ```
 SQLGLOT_REF=/tmp/sqlglot-complete-pin node tools/fixture_rollup.mjs             # human-readable
