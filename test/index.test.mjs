@@ -89,8 +89,10 @@ test("every dialect index.js imports for its registration side effect actually r
   // DAX has no bare SELECT grammar at all -- only EVALUATE statements -- which is
   // faithful to upstream (`sqlglot.parse("SELECT 1", read="dax")` raises the same
   // ParseError there), so it gets its own smoke string rather than the shared one.
-  const PROBE_SQL = { dax: "EVALUATE Table" };
-  for (const name of ["hive", "spark2", "spark", "databricks", "snowflake", "duckdb", "postgres", "redshift", "bigquery", "tsql", "mysql", "singlestore", "presto", "clickhouse", "starrocks", "doris", "trino", "athena", "dune", "exasol", "oracle", "solr", "druid", "dax", "tableau", "drill"]) {
+  // PRQL likewise has no bare SELECT grammar -- it's a pipeline language ("from x
+  // derive ..."), not SQL at all.
+  const PROBE_SQL = { dax: "EVALUATE Table", prql: "from x" };
+  for (const name of ["hive", "spark2", "spark", "databricks", "snowflake", "duckdb", "postgres", "redshift", "bigquery", "tsql", "mysql", "singlestore", "presto", "clickhouse", "starrocks", "doris", "trino", "athena", "dune", "exasol", "oracle", "solr", "druid", "dax", "tableau", "drill", "prql"]) {
     assert.equal(Dialect.get_or_raise(name).parse(PROBE_SQL[name] ?? "SELECT 1")[0].constructor.name, "Select", `dialect '${name}' should resolve`);
   }
 });
