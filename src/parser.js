@@ -5877,10 +5877,15 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:8035
   // note: param `this` renamed to `this_` (JS reserved word)
+  // deny:operators sqlglot/parser.py:8041 — Python unary `-exp.Literal.number("1")`
+  // (`__neg__`) ported as `new exp.Neg({ this: ... })`, not a JS `-` operator.
   _parse_slice(this_) { if (!this._match(TokenType.COLON)) return this_; let end; if (this._match_pair(TokenType.DASH, TokenType.COLON, false)) { this._advance(); end = new exp.Neg({ this: exp.Literal.number("1") }); } else end = this._parse_assignment(); const step = this._match(TokenType.COLON) ? this._parse_unary() : null; return this.expression(new exp.Slice({ this: this_, expression: end, step })); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:8047
+  // deny:implicit_str sqlglot/parser.py:8069 — `default.this.sql().upper()` is an
+  // EXPLICIT `.sql()` call upstream (not an implicit `__str__` coercion), ported as
+  // `kernelSql(default_.this)` per this file's top-of-file note.
   _parse_case() { if (this._match(TokenType.DOT, false)) { this._retreat(this._index - 1); return null; } const ifs = [], comments = this._prev_comments, expression = this._parse_disjunction(); let default_ = null; while (this._match(TokenType.WHEN)) { const this_ = this._parse_disjunction(); this._match(TokenType.THEN); ifs.push(this.expression(new exp.If({ this: this_, true: this._parse_disjunction() }))); } if (this._match(TokenType.ELSE)) default_ = this._parse_disjunction(); if (!this._match(TokenType.END)) { if (default_ instanceof exp.Interval && pyUpper(kernelSql(default_.this)) === "END") default_ = exp.column("interval"); else this.raise_error("Expected END after CASE", this._prev); } return this.expression(new exp.Case({ this: expression, ifs, default: default_ }), null, comments); }
 
   /** @returns {*} */
