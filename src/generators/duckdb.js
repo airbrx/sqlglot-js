@@ -494,10 +494,11 @@ function _explode_to_unnest_sql(self, expression) {
   return explode_to_unnest_sql(self, expression);
 }
 
-/** py:545 */
-function _array_sort_sql(self, expression) {
-  return self.func("ARRAY_SORT", expression.this);
-}
+/** py:544 `@unsupported_args(("expression", "DuckDB's ARRAY_SORT does not support a comparator.")) def _array_sort_sql`. */
+const _array_sort_sql = unsupported_args([
+  "expression",
+  "DuckDB's ARRAY_SORT does not support a comparator.",
+])((self, expression) => self.func("ARRAY_SORT", expression.this));
 
 /**
  * py:565 `_array_overlaps_sql(self, expression)`.
@@ -2850,6 +2851,16 @@ export class DuckDBGenerator extends Generator {
     return this.func("ARRAY_TO_STRING", expression.this, expression.expression);
   }
 
+  /**
+   * py:2686 `approxtopk_sql(self, expression)`.
+   * @param {exp.ApproxTopK} expression
+   * @returns {string}
+   */
+  approxtopk_sql(expression) {
+    this.unsupported("APPROX_TOP_K cannot be transpiled to DuckDB due to incompatible return types. ");
+    return this.function_fallback_sql(expression);
+  }
+
   /** py:2692 `strposition_sql(self, expression)`. */
   strposition_sql(expression) {
     const this_ = expression.this;
@@ -2895,7 +2906,7 @@ export class DuckDBGenerator extends Generator {
       const method = expression.args.method;
       if (method && method.name.toUpperCase() !== "RESERVOIR") {
         this.unsupported(
-          `Sampling method ${method} is not supported with a discrete sample count, defaulting to reservoir sampling`,
+          `Sampling method ${method.sql()} is not supported with a discrete sample count, defaulting to reservoir sampling`,
         );
         expression.set("method", exp.var("RESERVOIR"));
       }
@@ -3783,17 +3794,13 @@ export class DuckDBGenerator extends Generator {
     return this.func("UNICODE", expression.this);
   }
 
-  /** py:3425 `levenshtein_sql(self, expression)`. */
+  /**
+   * py:3423 `@unsupported_args("ins_cost", "del_cost", "sub_cost") def levenshtein_sql(self,
+   * expression)` — same bound-method-vs-TRANSFORMS-value shim shape as `generators/hive.js`'s
+   * `trunc_sql`/`_trunc_sql` pair (R27).
+   */
   levenshtein_sql(expression) {
-    const this_ = expression.this;
-    const expr = expression.expression;
-    const max_dist = expression.args.max_dist;
-
-    if (max_dist === null || max_dist === undefined) return this.func("LEVENSHTEIN", this_, expr);
-
-    // Emulate Snowflake semantics: if distance > max_dist, return max_dist
-    const levenshtein = new exp.Levenshtein({ this: this_, expression: expr });
-    return this.sql(new exp.Least({ this: levenshtein, expressions: [max_dist] }));
+    return _levenshtein_sql(this, expression);
   }
 
   /** py:4024 `splitpart_sql(self, expression)`. */
@@ -4201,3 +4208,19 @@ export class DuckDBGenerator extends Generator {
     );
   }
 }
+
+// py:3423 `@unsupported_args("ins_cost", "del_cost", "sub_cost") def levenshtein_sql(self,
+// expression)` — the `unsupported_args`-wrapped body itself, with `levenshtein_sql` above as
+// its thin `this`-forwarding class-method shim (same split as `generators/hive.js`'s
+// `trunc_sql`/`_trunc_sql` pair, R27).
+const _levenshtein_sql = unsupported_args("ins_cost", "del_cost", "sub_cost")((self, expression) => {
+  const this_ = expression.this;
+  const expr = expression.expression;
+  const max_dist = expression.args.max_dist;
+
+  if (max_dist === null || max_dist === undefined) return self.func("LEVENSHTEIN", this_, expr);
+
+  // Emulate Snowflake semantics: if distance > max_dist, return max_dist
+  const levenshtein = new exp.Levenshtein({ this: this_, expression: expr });
+  return self.sql(new exp.Least({ this: levenshtein, expressions: [max_dist] }));
+});
