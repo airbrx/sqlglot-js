@@ -72,7 +72,7 @@
 // successfully. There was never a live guard here to trip.
 
 import * as exp from "../expressions/index.js";
-import { Generator, unsupported_args } from "../generator.js";
+import { Generator, unsupported_args, AFTER_HAVING_MODIFIER_TRANSFORMS as BASE_AFTER_HAVING_MODIFIER_TRANSFORMS } from "../generator.js";
 import { inherit_struct_field_names, preprocess, unqualify_columns } from "../transforms.js";
 import {
   approx_count_distinct_sql,
@@ -1578,8 +1578,13 @@ export class DuckDBGenerator extends Generator {
   static SUPPORTS_DECODE_CASE = false;
   static SUPPORTS_DROP_ALTER_ICEBERG_PROPERTY = false;
 
-  /** py:1579 `AFTER_HAVING_MODIFIER_TRANSFORMS = generator.AFTER_HAVING_MODIFIER_TRANSFORMS` */
-  static AFTER_HAVING_MODIFIER_TRANSFORMS = Generator.AFTER_HAVING_MODIFIER_TRANSFORMS;
+  /**
+   * py:1579 `AFTER_HAVING_MODIFIER_TRANSFORMS = generator.AFTER_HAVING_MODIFIER_TRANSFORMS`
+   * — the MODULE-level 2-entry dict (`windows`, `qualify`), not the base `Generator`
+   * CLASS attribute (which is a superset adding `cluster`/`distribute`/`sort`); see
+   * `generators/exasol.js`'s own copy of this note (AIR-2310) and PORT_PLAN.md.
+   */
+  static AFTER_HAVING_MODIFIER_TRANSFORMS = BASE_AFTER_HAVING_MODIFIER_TRANSFORMS;
   static SUPPORTS_WINDOW_EXCLUDE = true;
   static COPY_HAS_INTO_KEYWORD = false;
   static STAR_EXCEPT = "EXCLUDE";

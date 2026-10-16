@@ -2696,7 +2696,7 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:2319
-  _parse_to_table() { throw new NotPorted("_parse_to_table", "sqlglot/parser.py:2319"); }
+  _parse_to_table() { const table = this._parse_table_parts(true); return this.expression(new exp.ToTableProperty({ this: table })); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:2326
@@ -4780,7 +4780,7 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5659
-  _parse_interpolate() { throw new NotPorted("_parse_interpolate", "sqlglot/parser.py:5659"); }
+  _parse_interpolate() { if (this._match_text_seq("INTERPOLATE")) return this._parse_wrapped_csv(() => this._parse_name_as_expression()); return null; }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:5664

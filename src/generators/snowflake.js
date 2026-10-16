@@ -33,7 +33,7 @@ import { seqGet, findNewName } from "../helper.js";
 import { preprocess, unqualify_columns, inherit_struct_field_names, add_within_group_for_percentiles, explode_projection_to_unnest, eliminate_distinct_on, eliminate_semi_and_anti_joins, eliminate_window_clause } from "../transforms.js";
 import * as exp from "../expressions/index.js";
 import { TokenType } from "../tokens.js";
-import { Generator, unsupported_args } from "../generator.js";
+import { Generator, unsupported_args, AFTER_HAVING_MODIFIER_TRANSFORMS as BASE_AFTER_HAVING_MODIFIER_TRANSFORMS } from "../generator.js";
 import { annotate_types } from "../optimizer/annotate_types.js";
 import { buildScope, findAllInScope } from "../optimizer/scope.js";
 import {
@@ -505,8 +505,13 @@ export class SnowflakeGenerator extends Generator {
   static ARRAY_SIZE_NAME = "ARRAY_SIZE";
   static SUPPORTS_DECODE_CASE = true;
 
-  /** py:401 `AFTER_HAVING_MODIFIER_TRANSFORMS = generator.AFTER_HAVING_MODIFIER_TRANSFORMS` */
-  static AFTER_HAVING_MODIFIER_TRANSFORMS = Generator.AFTER_HAVING_MODIFIER_TRANSFORMS;
+  /**
+   * py:401 `AFTER_HAVING_MODIFIER_TRANSFORMS = generator.AFTER_HAVING_MODIFIER_TRANSFORMS`
+   * — the MODULE-level 2-entry dict (`windows`, `qualify`), not the base `Generator`
+   * CLASS attribute (which is a superset adding `cluster`/`distribute`/`sort`); see
+   * `generators/exasol.js`'s own copy of this note (AIR-2310) and PORT_PLAN.md.
+   */
+  static AFTER_HAVING_MODIFIER_TRANSFORMS = BASE_AFTER_HAVING_MODIFIER_TRANSFORMS;
 
   static IS_BOOL_ALLOWED = false;
   static DIRECTED_JOINS = true;
