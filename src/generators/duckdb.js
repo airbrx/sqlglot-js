@@ -172,6 +172,35 @@ const MAPCAT_TEMPLATE = exp.maybeParse(`
   END
 `);
 
+/**
+ * py:2062 `BITMAP_CONSTRUCT_AGG_TEMPLATE`.
+ *
+ * Snowflake's BITMAP_CONSTRUCT_AGG aggregates integers (range 0-32767, NULL if any
+ * value is out of range) into a compact binary bitmap:
+ *   Format 1 - small (< 5 unique values): 10 bytes — 2-byte big-endian count, up to
+ *     4 values as 2-byte little-endian integers, zero-padded to 8 bytes.
+ *   Format 2 - large (>= 5 unique values): 10 + 2*count bytes — fixed header
+ *     0x08 + 9 zero bytes, then each value as 2-byte little-endian (no padding).
+ * Phase 1 aggregates into a sorted, deduplicated, non-null list `l`; phase 2
+ * builds a hex string `h` of each value's little-endian byte pair; phase 3
+ * assembles the final BLOB per the format rules above.
+ */
+const BITMAP_CONSTRUCT_AGG_TEMPLATE = exp.maybeParse(`
+  SELECT CASE
+      WHEN l IS NULL OR LENGTH(l) = 0 THEN NULL
+      WHEN LENGTH(l) != LENGTH(LIST_FILTER(l, __v -> __v BETWEEN 0 AND 32767)) THEN NULL
+      WHEN LENGTH(l) < 5 THEN UNHEX(PRINTF('%04X', LENGTH(l)) || h || REPEAT('00', GREATEST(0, 4 - LENGTH(l)) * 2))
+      ELSE UNHEX('08000000000000000000' || h)
+  END
+  FROM (
+      SELECT l, COALESCE(LIST_REDUCE(
+          LIST_TRANSFORM(l, __x -> PRINTF('%02X%02X', CAST(__x AS INT) & 255, (CAST(__x AS INT) >> 8) & 255)),
+          (__a, __b) -> __a || __b, ''
+      ), '') AS h
+      FROM (SELECT LIST_SORT(LIST_DISTINCT(LIST(:arg) FILTER(NOT :arg IS NULL))) AS l)
+  )
+`);
+
 // py:2081 `RANDSTR_TEMPLATE`.
 const RANDSTR_TEMPLATE = exp.maybeParse(`
   SELECT LISTAGG(
@@ -186,6 +215,64 @@ const RANDSTR_TEMPLATE = exp.maybeParse(`
       SELECT (ABS(HASH(i + :seed)) % 1000) / 1000.0 AS random_value
       FROM RANGE(:length) AS t(i)
   )
+`);
+
+/**
+ * py:2101 `MINHASH_TEMPLATE` — computes k minimum hash values across aggregated
+ * data using DuckDB list functions. Returns JSON matching Snowflake's format:
+ * `{"state": [...], "type": "minhash", "version": 1}`.
+ */
+const MINHASH_TEMPLATE = exp.maybeParse(`
+  SELECT JSON_OBJECT('state', LIST(min_h ORDER BY seed), 'type', 'minhash', 'version', 1)
+  FROM (
+      SELECT seed, LIST_MIN(LIST_TRANSFORM(vals, __v -> HASH(CAST(__v AS VARCHAR) || CAST(seed AS VARCHAR)))) AS min_h
+      FROM (SELECT LIST(:expr) AS vals), RANGE(0, :k) AS t(seed)
+  )
+`);
+
+/**
+ * py:2113 `MINHASH_COMBINE_TEMPLATE` — combines multiple minhash signatures by
+ * taking the element-wise minimum.
+ */
+const MINHASH_COMBINE_TEMPLATE = exp.maybeParse(`
+  SELECT JSON_OBJECT('state', LIST(min_h ORDER BY idx), 'type', 'minhash', 'version', 1)
+  FROM (
+      SELECT
+          pos AS idx,
+          MIN(val) AS min_h
+      FROM
+          UNNEST(LIST(:expr)) AS _(sig),
+          UNNEST(CAST(sig -> 'state' AS UBIGINT[])) WITH ORDINALITY AS t(val, pos)
+      GROUP BY pos
+  )
+`);
+
+/**
+ * py:2130 `APPROXIMATE_SIMILARITY_TEMPLATE` — computes multi-way Jaccard
+ * similarity: the fraction of positions where ALL signatures agree.
+ */
+const APPROXIMATE_SIMILARITY_TEMPLATE = exp.maybeParse(`
+  SELECT CAST(SUM(CASE WHEN num_distinct = 1 THEN 1 ELSE 0 END) AS DOUBLE) / COUNT(*)
+  FROM (
+      SELECT pos, COUNT(DISTINCT h) AS num_distinct
+      FROM (
+          SELECT h, pos
+          FROM UNNEST(LIST(:expr)) AS _(sig),
+               UNNEST(CAST(sig -> 'state' AS UBIGINT[])) WITH ORDINALITY AS s(h, pos)
+      )
+      GROUP BY pos
+  )
+`);
+
+/**
+ * py:2148 `ARRAYS_ZIP_TEMPLATE` — Snowflake pads to the longest array; DuckDB's
+ * LIST_ZIP truncates to the shortest. Uses RANGE + indexing to match Snowflake.
+ */
+const ARRAYS_ZIP_TEMPLATE = exp.maybeParse(`
+  CASE WHEN :null_check THEN NULL
+  WHEN :all_empty_check THEN [:empty_struct]
+  ELSE LIST_TRANSFORM(RANGE(0, :max_len), __i -> :transform_struct)
+  END
 `);
 
 /**
@@ -276,6 +363,35 @@ const IN_UNNEST_TEMPLATE = exp.maybeParse(`
   END
 `);
 
+// py:2241 `STRTOK_TO_ARRAY_TEMPLATE`.
+const STRTOK_TO_ARRAY_TEMPLATE = exp.maybeParse(`
+  CASE WHEN :delimiter IS NULL THEN NULL
+  ELSE LIST_FILTER(
+      REGEXP_SPLIT_TO_ARRAY(:string, CASE WHEN :delimiter = '' THEN '.^' ELSE CONCAT('[', :escaped, ']') END),
+      x -> NOT x = ''
+  ) END
+`);
+
+/**
+ * py:2290 `STRTOK_TEMPLATE` — DuckDB itself doesn't have a strtok function; this
+ * handles the transpilation from Snowflake to DuckDB (may need adjustment for
+ * other dialects). Snowflake semantics: empty delimiter + empty input -> NULL;
+ * empty delimiter + non-empty input treats the whole input as 1 token (index 1
+ * returns it, any other index is NULL); negative index -> NULL; any NULL arg ->
+ * NULL; otherwise split on the delimiter as a regex char class, filter out empty
+ * tokens (Snowflake skips them), and index into the result.
+ */
+const STRTOK_TEMPLATE = exp.maybeParse(`
+  CASE
+      WHEN :delimiter = '' AND :string = '' THEN NULL
+      WHEN :delimiter = '' AND :part_index = 1 THEN :string
+      WHEN :delimiter = '' THEN NULL
+      WHEN :part_index < 0 THEN NULL
+      WHEN :string IS NULL OR :delimiter IS NULL OR :part_index IS NULL THEN NULL
+      ELSE :base_func
+  END
+`);
+
 /** py:670 `_build_seq_expression(base, byte_width, signed)`. */
 function _build_seq_expression(base, byte_width, signed) {
   const bits = byte_width * 8;
@@ -311,6 +427,40 @@ function _seq_sql(self, expression, byte_width) {
 
   const result = _build_seq_expression(_SEQ_BASE.copy(), byte_width, expression.name === "1");
   return self.sql(result);
+}
+
+const _SEQ_BYTE_WIDTH_BY_CLASS = new Map([[exp.Seq1, 1], [exp.Seq2, 2], [exp.Seq4, 4], [exp.Seq8, 8]]);
+
+/**
+ * py:681 `_seq_to_range_in_generator(expression)`.
+ *
+ * Transform SEQ functions to `range` column references when inside a GENERATOR
+ * context. When GENERATOR(ROWCOUNT => N) becomes RANGE(N) in DuckDB, it produces
+ * a column named `range` with values 0, 1, ..., N-1. SEQ functions produce the
+ * same sequence, so we replace them with `range % max_val` to avoid nested window
+ * function issues.
+ */
+function _seq_to_range_in_generator(expression) {
+  if (!(expression instanceof exp.Select)) return expression;
+
+  const from_ = expression.args.from_;
+  if (
+    !(from_
+      && from_.this instanceof exp.TableFromRows
+      && from_.this.this instanceof exp.Generator)
+  ) {
+    return expression;
+  }
+
+  function replace_seq(node) {
+    const byte_width = _SEQ_BYTE_WIDTH_BY_CLASS.get(node.constructor);
+    if (byte_width !== undefined) {
+      return _build_seq_expression(exp.column("range"), byte_width, node.name === "1");
+    }
+    return node;
+  }
+
+  return expression.transform(replace_seq, { copy: false });
 }
 
 /**
@@ -1743,7 +1893,13 @@ export class DuckDBGenerator extends Generator {
     [exp.Lateral, _explode_to_unnest_sql],
     [exp.LogicalOr, (self, e) => self.func("BOOL_OR", _cast_to_boolean(e.this))],
     [exp.LogicalAnd, (self, e) => self.func("BOOL_AND", _cast_to_boolean(e.this))],
-    // py:1718-1720 [exp.Select, transforms.preprocess([connect_by_to_recursive_cte, _seq_to_range_in_generator])] — blocked
+    // py:1718-1720 [exp.Select, transforms.preprocess([connect_by_to_recursive_cte, _seq_to_range_in_generator])].
+    // `connect_by_to_recursive_cte` (py:709, START WITH...CONNECT BY PRIOR -> WITH
+    // RECURSIVE, ~90 lines) is NOT YET ported — out of scope for this round's named
+    // SEQ8/GENERATOR cluster; a CONNECT BY query falls through to the base Select
+    // path unchanged, the same as before this entry existed. `_seq_to_range_in_generator`
+    // is real.
+    [exp.Select, preprocess([_seq_to_range_in_generator])],
     [exp.Seq1, (self, e) => _seq_sql(self, e, 1)],
     [exp.Seq2, (self, e) => _seq_sql(self, e, 2)],
     [exp.Seq4, (self, e) => _seq_sql(self, e, 4)],
@@ -2064,6 +2220,72 @@ export class DuckDBGenerator extends Generator {
       return this.sql(new exp.Cast({ this: result_expr, to: this_.type }));
     }
     return this.sql(result_expr);
+  }
+
+  /** py:4587 `strtok_sql(self, expression)`. */
+  strtok_sql(expression) {
+    const string_arg = expression.this;
+    const delimiter_arg = expression.args.delimiter;
+    const part_index_arg = expression.args.part_index;
+
+    if (delimiter_arg && part_index_arg) {
+      // Escape regex chars and build character class at runtime using REGEXP_REPLACE
+      const escaped_delimiter = new exp.Anonymous({
+        this: "REGEXP_REPLACE",
+        expressions: [
+          delimiter_arg,
+          exp.Literal.string("([\\[\\]^.\\-*+?(){}|$\\\\])"),
+          exp.Literal.string("\\\\\\1"),
+          exp.Literal.string("g"),
+        ],
+      });
+      // CASE WHEN delimiter = '' THEN '' ELSE CONCAT('[', escaped_delimiter, ']') END
+      const regex_pattern = exp.case()
+        .when(delimiter_arg.eq(exp.Literal.string("")), exp.Literal.string(""))
+        .else_(exp.func("CONCAT", exp.Literal.string("["), escaped_delimiter, exp.Literal.string("]")));
+
+      // STRTOK skips empty strings, so filter them out:
+      // LIST_FILTER(REGEXP_SPLIT_TO_ARRAY(string, pattern), x -> x != '')[index]
+      const split_array = exp.func("REGEXP_SPLIT_TO_ARRAY", string_arg, regex_pattern);
+      const x = exp.to_identifier("x");
+      const is_empty = x.eq(exp.Literal.string(""));
+      const filtered_array = exp.func(
+        "LIST_FILTER",
+        split_array,
+        new exp.Lambda({ this: is_empty.copy().not_(), expressions: [x.copy()] }),
+      );
+      const base_func = new exp.Bracket({ this: filtered_array, expressions: [part_index_arg], offset: 1 });
+
+      const result = exp.replacePlaceholders(STRTOK_TEMPLATE.copy(), {
+        string: string_arg,
+        delimiter: delimiter_arg,
+        part_index: part_index_arg,
+        base_func,
+      });
+      return this.sql(result);
+    }
+
+    return this.function_fallback_sql(expression);
+  }
+
+  /** py:4650 `strtoktoarray_sql(self, expression)`. */
+  strtoktoarray_sql(expression) {
+    const string_arg = expression.this;
+    const delimiter_arg = expression.args.expression || exp.Literal.string(" ");
+
+    const escaped = new exp.RegexpReplace({
+      this: delimiter_arg.copy(),
+      expression: exp.Literal.string("([\\[\\]^.\\-*+?(){}|$\\\\])"),
+      replacement: exp.Literal.string("\\\\\\1"),
+      modifiers: exp.Literal.string("g"),
+    });
+    return this.sql(
+      exp.replacePlaceholders(STRTOK_TO_ARRAY_TEMPLATE.copy(), {
+        string: string_arg,
+        delimiter: delimiter_arg,
+        escaped,
+      }),
+    );
   }
 
   /** py:4670 `approxquantile_sql(self, expression)`. */
@@ -2501,6 +2723,35 @@ export class DuckDBGenerator extends Generator {
     return timestamp;
   }
 
+  /** py:3468 `minhash_sql(self, expression)`. */
+  minhash_sql(expression) {
+    const k = expression.this;
+    const exprs = expression.expressions;
+
+    if (exprs.length !== 1 || exprs[0] instanceof exp.Star) {
+      this.unsupported("MINHASH with multiple expressions or * requires manual query restructuring");
+      return this.func("MINHASH", k, ...exprs);
+    }
+
+    const expr = exprs[0];
+    const result = exp.replacePlaceholders(MINHASH_TEMPLATE.copy(), { expr, k });
+    return `(${this.sql(result)})`;
+  }
+
+  /** py:3482 `minhashcombine_sql(self, expression)`. */
+  minhashcombine_sql(expression) {
+    const expr = expression.this;
+    const result = exp.replacePlaceholders(MINHASH_COMBINE_TEMPLATE.copy(), { expr });
+    return `(${this.sql(result)})`;
+  }
+
+  /** py:3487 `approximatesimilarity_sql(self, expression)`. */
+  approximatesimilarity_sql(expression) {
+    const expr = expression.this;
+    const result = exp.replacePlaceholders(APPROXIMATE_SIMILARITY_TEMPLATE.copy(), { expr });
+    return `(${this.sql(result)})`;
+  }
+
   /** py:3492 `arrayuniqueagg_sql(self, expression)`. */
   arrayuniqueagg_sql(expression) {
     return this.sql(
@@ -2823,6 +3074,17 @@ export class DuckDBGenerator extends Generator {
     const this_ = pyRstrip(this.sql(expression, "this"), ")");
 
     return `${this_}${expression_sql})`;
+  }
+
+  /**
+   * py:2401 `bitmapconstructagg_sql(self, expression)`.
+   *
+   * Transpile Snowflake's BITMAP_CONSTRUCT_AGG to DuckDB equivalent. Uses a
+   * pre-parsed template with placeholders replaced by expression nodes.
+   */
+  bitmapconstructagg_sql(expression) {
+    const arg = expression.this;
+    return `(${this.sql(exp.replacePlaceholders(BITMAP_CONSTRUCT_AGG_TEMPLATE, { arg }))})`;
   }
 
   /**
@@ -3606,6 +3868,44 @@ export class DuckDBGenerator extends Generator {
     return this.func("ARRAY_SLICE", expression.this, start, end, expression.args.step);
   }
 
+  /** py:3589 `arrayszip_sql(self, expression)`. */
+  arrayszip_sql(expression) {
+    const args = expression.expressions;
+
+    if (!args.length) {
+      // Return [{}] - using MAP([], []) since DuckDB can't represent empty structs
+      return this.sql(exp.array(new exp.Map({ keys: exp.array(), values: exp.array() })));
+    }
+
+    const lengths = args.map((arg) => new exp.Length({ this: arg }));
+    const max_len = lengths.length === 1
+      ? lengths[0]
+      : new exp.Greatest({ this: lengths[0], expressions: lengths.slice(1) });
+
+    const empty_struct = exp.func(
+      "STRUCT",
+      ...args.map((_, i) => new exp.PropertyEQ({ this: exp.Literal.string(`$${i + 1}`), expression: exp.null_() })),
+    );
+
+    const index = exp.column("__i").add(1);
+    const transform_struct = exp.func(
+      "STRUCT",
+      ...args.map((arg, i) => new exp.PropertyEQ({
+        this: exp.Literal.string(`$${i + 1}`),
+        expression: exp.func("COALESCE", arg, exp.array()).bracket(index),
+      })),
+    );
+
+    const result = exp.replacePlaceholders(ARRAYS_ZIP_TEMPLATE.copy(), {
+      null_check: exp.or_(...args.map((arg) => arg.is_(exp.null_()))),
+      all_empty_check: exp.and_(...args.map((arg) => new exp.EQ({ this: new exp.Length({ this: arg }), expression: exp.Literal.number(0) }))),
+      empty_struct,
+      max_len,
+      transform_struct,
+    });
+    return this.sql(result);
+  }
+
   /** py:2311 `_array_bag_sql(self, condition, arr1, arr2)`. */
   _array_bag_sql(condition, arr1, arr2) {
     const cond = new exp.Paren({ this: exp.replacePlaceholders(condition, { arr1, arr2 }) });
@@ -3651,6 +3951,29 @@ export class DuckDBGenerator extends Generator {
     const result_sql = `~${this.sql(expression, "this")}`;
 
     return _gen_with_cast_to_blob(this, expression, result_sql);
+  }
+
+  /** py:4291-4292 `@unsupported_args("culture") numbertostr_sql(self, expression)`. */
+  numbertostr_sql(expression) {
+    if (expression.args.culture) {
+      this.unsupported(
+        `Argument 'culture' is not supported for expression '${expression.constructor.name}' when targeting ${this.dialect.constructor.name}.`,
+      );
+    }
+
+    const fmt = expression.args.format;
+    if (fmt && fmt.is_int) {
+      return this.func("FORMAT", `'{:,.${fmt.name}f}'`, expression.this);
+    }
+
+    this.unsupported("Only integer formats are supported by NumberToStr");
+    return this.function_fallback_sql(expression);
+  }
+
+  /** py:4299 `autoincrementcolumnconstraint_sql(self, _)`. */
+  autoincrementcolumnconstraint_sql(_) {
+    this.unsupported("The AUTOINCREMENT column constraint is not supported by DuckDB");
+    return "";
   }
 
   /** py:4304 `aliases_sql(self, expression)`. */
