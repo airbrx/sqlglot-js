@@ -104,8 +104,9 @@ function loadSqlFixtureLines(path) {
 // used against a single-fixture oracle's one aggregate line when no breakdown exists.
 const MANIFEST = [
   {
-    file: "annotate_functions.sql", kind: "pairs", oracle: null,
-    notes: "no oracle in spike/p7 or spike/p10 opens this file (verified: zero `fixtures/optimizer` or `load_sql_fixture` hits naming it). 1,932 pairs -- the single largest fixture file by pair count, one function-call/expected-type-string pair per line pair.",
+    file: "annotate_functions.sql", kind: "pairs",
+    oracle: "spike/p7/fuzz_annotate_functions.mjs", mode: "line",
+    extra: 464, extraNote: "oracle's own record count (2,396) is pair x `# dialect:` meta fan-out, not pairs -- 464 more records than the 1,932 pairs themselves (AIR-2315 Part 1); EXACT below counts records, not pairs",
   },
   {
     file: "annotate_types.sql", kind: "pairs", oracle: null,
