@@ -4,10 +4,11 @@
 > all 33 of upstream's dialect modules at the pin — `parse`/`parseOne`/`transpile`/`tokenize`
 > resolve any of them by name — plus `Schema`/`MappingSchema`, `optimize`, `lineage`,
 > `anonymize`/`render`, and `diff`, all dialect-agnostic. Every section below says exactly
-> what's measured and links to the **Known gaps** section for what's still open — mainly a
-> population of per-atom generate mismatches/stubs the differential corpus has already found
-> and named, not missing surface. See the root [README](../README.md) for the measured
-> whole-corpus numbers this page's claims are checked against.
+> what's measured and links to the **Known gaps** section for what's still open — as of R117,
+> generate is at full parity with the pin (0 MISMATCH / 0 STUB / 0 ERROR) and parse has
+> exactly one standing row, a deliberate accepted divergence (`docs/stability.md`), not
+> missing surface. See the root [README](../README.md) for the measured whole-corpus numbers
+> this page's claims are checked against.
 > Function names and option shapes mirror upstream sqlglot's
 > own `sqlglot/__init__.py` as closely as JS naming allows: a name that collides with a JS
 > reserved word gets a trailing underscore (`from_`, `case_`), a multi-word `snake_case` name
@@ -29,9 +30,10 @@
 ## Top-level functions
 
 **Real today** (`index.js`, the package root). The underlying parse AND generate machinery
-is differentially tested against the full corpus (15,516/15,540 rows exact on the parse
-side, 15,463/15,540 on the generate side — see the root README's status table for the
-MISMATCH/STUB/ERROR breakdown), and the functions below are thin, faithfully-shaped wrappers
+is differentially tested against the full corpus (15,539/15,540 rows exact on the parse
+side, 15,540/15,540 — full parity with the pin — on the generate side; see the root README's
+status table for the one standing row, the deliberate `CURRENT_ROLE` divergence), and the
+functions below are thin, faithfully-shaped wrappers
 around it: `Dialect.get_or_raise(name)` (`src/dialects/dialect.js`) is still the actual
 dialect-by-name registry underneath, and `index.js` eagerly imports all 33 dialects with a
 real class so `read`/`write` just work by name without a separate import. A name that isn't
@@ -464,35 +466,30 @@ calling out. A few don't:
   `Hive`, `Databricks` subclasses `Spark`; `SingleStore`/`StarRocks`/`Doris` subclass `MySQL`;
   `Trino`/`Dune` subclass `Presto`; `Materialize`/`RisingWave`/`Fabric` subclass `Postgres`. A
   fix to a shared base method affects every dialect in its chain, same as upstream.
+- **`postgres` (and the base dialect) parse `CURRENT_ROLE` as a typed node, deliberately
+  diverging from the pin.** `SELECT CURRENT_ROLE` parses to `exp.CurrentRole` (rendered
+  `CURRENT_ROLE()`) here; the pin parses an untyped `Column`. See [Known gaps](#known-gaps)
+  and [docs/stability.md](stability.md) — this is the one accepted, permanent divergence in
+  the whole port, not a defect.
 
 ## Known gaps
 
-Everything below is a real, currently-open gap — named, measured, and (except where noted)
-already filed as its own Linear issue. None of it is silent: every number here comes from a
-command in the root README's status table, re-run on this tree.
+Everything below is real, named, and measured. None of it is silent: every number here comes
+from a command in the root README's status table, re-run on this tree at `65c9054` (R117).
 
-- **29 generate STUB atoms**, all one cluster: BigQuery's `APPROX_QUANTILES(x, n RESPECT|IGNORE
-  NULLS)` — the `_embed_ignore_nulls` `IGNORE_NULLS_BEFORE_ORDER` branch isn't ported yet, so
-  calling `.sql("bigquery")` on that construct throws rather than rendering.
-- **2 parse STUB atoms**: Exasol's ODBC datetime literal syntax, `` SELECT {d'2024-01-01'} ``
-  — `_parse_odbc_datetime_literal` isn't ported.
-- **48 generate MISMATCH atoms** (whole-corpus generate: 15,463 PASS / 48 MISMATCH / 29 STUB
-  / 0 ERROR of 15,540) — wrong-but-not-crashing output. `node tools/mismatch_report.mjs --all`
-  clusters the overlapping end-to-end-ratchet view of this population (39 rows / 19 clusters,
-  a slightly different scope/filter than the whole-corpus oracle above) by where generated
-  SQL first diverges: the two largest clusters (8 + 4 rows) are Spark→Presto's
-  `EXPLODE`/`POSEXPLODE` rewriting to `IF`; 5 more are BigQuery `ANY_VALUE(x HAVING MIN/MAX
-  y)` picking the wrong direction; the rest are single- or few-row clusters (DuckDB sketch
-  functions `BITMAP_CONSTRUCT_AGG`/`MINHASH`/`APPROXIMATE_SIMILARITY`, TSQL `CREATE FUNCTION
-  ... RETURNS @var TABLE`, Snowflake `AUTOINCREMENT`, ...) — re-run the tool for the current,
-  clustered breakdown with example SQL for each. **AIR-2311 is actively closing this
-  population as of R114**; treat these counts as a snapshot, not a ceiling.
-- **16 parse MISMATCH / 6 ERROR atoms** (whole-corpus parse: 15,516 PASS / 16 MISMATCH / 2
-  STUB / 6 ERROR of 15,540) — AST-shape divergences and genuine parse failures. All 6 ERROR
-  rows are TSQL: table-valued-function alias syntax (`OUTER APPLY a.b.f(x) y(z)`, 3 rows),
-  `OPENJSON ... WITH (...)` column-spec parsing (2 rows), and XML `.value()` method-call
-  syntax (1 row) — none of this is TSQL-specific upstream machinery the port forgot, it's base
-  grammar the port hasn't reached yet.
+- **The one standing row, on every whole-corpus and honest-oracle axis**: `postgres` (and the
+  base dialect) parse `SELECT CURRENT_ROLE` to a typed `exp.CurrentRole` node (rendered
+  `CURRENT_ROLE()`) where the pin parses an untyped `Column`. This is a **deliberate,
+  permanent, accepted divergence**, not an open gap — decided by Ben, 2026-10-16 (Linear
+  AIR-1864), because `contrib/gatewaySqlMetadata.js`'s non-determinism classifier depends on
+  the typed node (airbrx-gateway PR #228). See
+  [docs/stability.md](stability.md#the-one-accepted-divergence-current_role) for the full
+  rationale. It is the single row behind whole-corpus parse (15,539 PASS / 1 MISMATCH / 0
+  STUB / 0 ERROR of 15,540), the honest AST oracle (1 MISMATCH / 0 ERROR), and the v0
+  scorecard (6,521/6,522). Whole-corpus generate is **0 MISMATCH / 0 STUB / 0 ERROR of
+  15,540 — full parity with the pin** as of R116/R117 (`node
+  tools/mismatch_report.mjs --all` likewise reports exactly this one row, categorized under
+  its own instrument as a `SQL_MISMATCH`).
 - **76% of the 3,589 optimizer fixture pairs have no replaying differential oracle in this
   repo** (`tools/fixture_rollup.mjs`, R95/AIR-1864) — most severely `annotate_functions.sql`
   (1,932 pairs, 54% of the whole fixture corpus), with zero replay coverage despite several
@@ -508,9 +505,10 @@ command in the root README's status table, re-run on this tree.
   renders `"None"` and this port's `String(null)` renders `"null"` (a real, reachable, 1-value
   divergence, not a design choice — see the fuzzer's own comment for the exact two-line fix
   and why landing only one line regresses two BigQuery rows).
-- **Not published to any registry** — `package.json` is `"private": true` and there's no npm
-  publish yet; consume via a git dependency (see the root [README](../README.md)) or import
-  `./index.js` directly from a repo checkout.
+- **Not published to any registry, and no semver guarantee yet** — `package.json` is
+  `"private": true` and there's no npm publish yet; consume via a git dependency (see the
+  root [README](../README.md)) or import `./index.js` directly from a repo checkout. See
+  [docs/stability.md](stability.md) for the full no-promise-areas list.
 
-See `PORT_PLAN.md`'s R100–R114 entries for how every number above was produced and who (if
-anyone) is actively working on it.
+See `PORT_PLAN.md`'s R115–R117 entries for how every number above was produced, and
+`PORT_PLAN.md`'s R100–R114 entries for the dialect-completion history that preceded it.
