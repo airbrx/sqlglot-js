@@ -184,6 +184,12 @@ PYTHONHASHSEED=0 python3 spike/p5/gen_dax_dialect_ref.py > spike/out/dax_dialect
 # TableauGenerator, covered by the differential parse/generate corpus instead --
 # no method override on the Dialect class itself, so no section 4 here either.
 PYTHONHASHSEED=0 python3 spike/p5/gen_tableau_dialect_ref.py > spike/out/tableau_dialect.json || fail=1
+# P5 oracle, same shape, Drill (AIR-2292, "12.7 Small dialects", batch B).
+# `dialects/drill.py` extends the BASE `Dialect` directly, no chain -- 10
+# resolved settings of its own, a 29-entry TIME_MAPPING dict, and a nested
+# Tokenizer with 2 added settings plus a post-merge `KEYWORDS.pop("/*+")`. No
+# method override on the Dialect class itself, so no section 4 here either.
+PYTHONHASHSEED=0 python3 spike/p5/gen_drill_dialect_ref.py > spike/out/drill_dialect.json || fail=1
 # P6 oracle. `schema.py`'s `MappingSchema` is greenfield -- nothing in the port depends
 # on it yet, so unlike every oracle above it has no corpus/atoms.jsonl tie-in at all.
 # 24 scenarios / 53 checks of column/type lookups, add_table, dialect-aware identifier
@@ -571,6 +577,7 @@ run "P5: Solr dialect vs CPython"          node spike/p5/fuzz_solr_dialect.mjs
 run "P5: Druid dialect vs CPython"         node spike/p5/fuzz_druid_dialect.mjs
 run "P5: DAX dialect vs CPython"           node spike/p5/fuzz_dax_dialect.mjs
 run "P5: Tableau dialect vs CPython"       node spike/p5/fuzz_tableau_dialect.mjs
+run "P5: Drill dialect vs CPython"         node spike/p5/fuzz_drill_dialect.mjs
 run "P6: schema.js MappingSchema vs CPython" node spike/p6/fuzz_schema.mjs
 run "P7: optimizer/scope.js traverseScope/Scope vs CPython" node spike/p7/fuzz_scope.mjs
 run "P7: optimize_joins.js vs CPython"       node spike/p7/fuzz_optimize_joins.mjs
