@@ -32,6 +32,6 @@
   ],
   "scripts": {
     "test": "node --test $(find test -name '*.test.mjs' | sort)",
-    "check:types": "tsc --noEmit -p test/types/tsconfig.json"
+    "check:types": "npx -p typescript tsc --noEmit -p test/types/tsconfig.json"
   }
 }
