@@ -144,6 +144,19 @@ PYTHONHASHSEED=0 python3 spike/p5/gen_athena_dialect_ref.py > spike/out/athena_d
 # 23 differences-from-base survive unshadowed through yet another level of JS static
 # inheritance.
 PYTHONHASHSEED=0 python3 spike/p5/gen_dune_dialect_ref.py > spike/out/dune_dialect.json || fail=1
+# P5 oracle, same shape, SQLite (AIR-2291, "12.6 SQLite + Teradata"). `dialects/
+# sqlite.py` extends the BASE `Dialect` directly (no `typing/sqlite.py` upstream),
+# 8 resolved settings of its own, a nested Tokenizer with 4 added keywords, one
+# post-merge `KEYWORDS.pop("/*+")`, and a `COMMANDS` override (adds REPLACE) -- no
+# method overrides at all, so no section 4.
+PYTHONHASHSEED=0 python3 spike/p5/gen_sqlite_dialect_ref.py > spike/out/sqlite_dialect.json || fail=1
+# P5 oracle, same shape, Teradata (AIR-2291, "12.6 SQLite + Teradata"). `dialects/
+# teradata.py` extends the BASE `Dialect` directly (no `typing/teradata.py`
+# upstream), 9 resolved settings of its own (incl. the 26-entry TIME_MAPPING table),
+# a nested Tokenizer with ~20 added/remapped keywords, one post-merge
+# `KEYWORDS.pop("/*+")`, and one post-merge `SINGLE_TOKENS.pop("%")` (Teradata does
+# not support % as a modulo operator) -- no method overrides at all, so no section 4.
+PYTHONHASHSEED=0 python3 spike/p5/gen_teradata_dialect_ref.py > spike/out/teradata_dialect.json || fail=1
 # P5 oracle, same shape, Exasol (AIR-2289, "12.4 Exasol"). `dialects/exasol.py` is
 # standalone (not a subclass chain): 6 resolved settings of its own, a 21-entry
 # TIME_MAPPING dict, and a nested Tokenizer with 6 added keywords, a custom
@@ -608,6 +621,8 @@ run "P5: Doris dialect vs CPython"         node spike/p5/fuzz_doris_dialect.mjs
 run "P5: Trino dialect vs CPython"         node spike/p5/fuzz_trino_dialect.mjs
 run "P5: Athena dialect vs CPython"        node spike/p5/fuzz_athena_dialect.mjs
 run "P5: Dune dialect vs CPython"          node spike/p5/fuzz_dune_dialect.mjs
+run "P5: SQLite dialect vs CPython"        node spike/p5/fuzz_sqlite_dialect.mjs
+run "P5: Teradata dialect vs CPython"      node spike/p5/fuzz_teradata_dialect.mjs
 run "P5: Exasol dialect vs CPython"        node spike/p5/fuzz_exasol_dialect.mjs
 run "P5: Oracle dialect vs CPython"        node spike/p5/fuzz_oracle_dialect.mjs
 run "P5: Solr dialect vs CPython"          node spike/p5/fuzz_solr_dialect.mjs

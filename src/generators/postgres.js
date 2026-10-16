@@ -39,7 +39,7 @@
 
 import * as exp from "../expressions/index.js";
 import { PyValueError } from "../_py/errors.js";
-import { Generator, unsupported_args } from "../generator.js";
+import { Generator, unsupported_args, AFTER_HAVING_MODIFIER_TRANSFORMS as BASE_AFTER_HAVING_MODIFIER_TRANSFORMS } from "../generator.js";
 import * as transforms from "../transforms.js";
 import { annotate_types } from "../optimizer/annotate_types.js";
 import {
@@ -339,8 +339,13 @@ export class PostgresGenerator extends Generator {
   static TRY_SUPPORTED = false;
   static SUPPORTS_DECODE_CASE = false;
 
-  /** py:256 `AFTER_HAVING_MODIFIER_TRANSFORMS = generator.AFTER_HAVING_MODIFIER_TRANSFORMS` */
-  static AFTER_HAVING_MODIFIER_TRANSFORMS = Generator.AFTER_HAVING_MODIFIER_TRANSFORMS;
+  /**
+   * py:256 `AFTER_HAVING_MODIFIER_TRANSFORMS = generator.AFTER_HAVING_MODIFIER_TRANSFORMS`
+   * — the MODULE-level 2-entry dict (`windows`, `qualify`), not the base `Generator`
+   * CLASS attribute (which is a superset adding `cluster`/`distribute`/`sort`); see
+   * `generators/exasol.js`'s own copy of this note (AIR-2310) and PORT_PLAN.md.
+   */
+  static AFTER_HAVING_MODIFIER_TRANSFORMS = BASE_AFTER_HAVING_MODIFIER_TRANSFORMS;
 
   static SINGLE_STRING_INTERVAL = true;
   static RENAME_TABLE_WITH_DB = false;
