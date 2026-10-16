@@ -300,10 +300,15 @@ export function run(api) {
     // a specific baseline. Lowered 50 -> 20 (AIR-2280): the P3 parser-stubs round's own
     // nine-stub-plus-family port brought the real count to 35, tripping the old `< 50`
     // floor the same way merging the first parallel stub-queue batch tripped the
-    // original `< 300` floor on 2026-08-28. 20 stays generous headroom above "the regex
-    // silently broke and found a handful" while staying well clear of the remaining
-    // burndown.
-    if (realStubs.length < 20) throw new Error(`only found ${realStubs.length} stubs — drift?`);
+    // original `< 300` floor on 2026-08-28. Lowered again 20 -> 10 (AIR-2291, "12.6
+    // SQLite + Teradata"): porting Teradata found and fixed eleven base-`Parser`
+    // `NotPorted` stubs (`_parse_locking`, `_parse_fallback`, `_parse_withjournaltable`,
+    // `_parse_journal`, `_parse_withdata`, `_parse_log`, `_parse_checksum`,
+    // `_parse_freespace`, `_parse_mergeblockratio`, `_parse_datablocksize`,
+    // `_parse_blockcompression`), bringing the real count to 17 and tripping the old
+    // `< 20` floor. 10 stays generous headroom above "the regex silently broke and
+    // found a handful" while staying well clear of the remaining burndown.
+    if (realStubs.length < 10) throw new Error(`only found ${realStubs.length} stubs — drift?`);
     console.log(`         ${realStubs.length} stubs -> ${seen.size} distinct units, 0 mis-attributed`);
     const tableUnits = new Set(idx.units.filter((u) => /^Parser\.[A-Z_]+\[/.test(u)));
     if (tableUnits.size < 500) throw new Error(`only ${tableUnits.size} table-entry units`);

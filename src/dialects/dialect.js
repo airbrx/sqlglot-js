@@ -1679,6 +1679,11 @@ export function remove_from_array_using_filter(self, expression) {
   return filter_sql;
 }
 
+/** py: sqlglot/dialects/dialect.py:2375 */
+export function to_number_with_nls_param(self, expression) {
+  return self.func("TO_NUMBER", expression.this, expression.args.format, expression.args.nlsparam);
+}
+
 /** py: sqlglot/dialects/dialect.py:2406 */
 export function sha256_sql(self, expression) {
   return self.func(`SHA${expression.text("length") || "256"}`, expression.this);

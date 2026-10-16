@@ -3057,9 +3057,14 @@ export class Parser {
     return properties.length ? this.expression(new exp.Properties({ expressions: properties })) : null;
   }
 
-  /** @returns {*} */
-  // py: sqlglot/parser.py:3006
-  _parse_fallback(no) { throw new NotPorted("_parse_fallback", "sqlglot/parser.py:3006"); }
+  /**
+   * py: sqlglot/parser.py:3006 `_parse_fallback(self, no=False) -> exp.FallbackProperty`.
+   * Ported as a base-Parser gap found while porting Teradata (AIR-2291).
+   * @returns {exp.FallbackProperty}
+   */
+  _parse_fallback(no = false) {
+    return this.expression(new exp.FallbackProperty({ no, protection: this._match_text_seq("PROTECTION") }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3011
@@ -3205,21 +3210,47 @@ export class Parser {
   // py: sqlglot/parser.py:3169
   _parse_definer() { throw new NotPorted("_parse_definer", "sqlglot/parser.py:3169"); }
 
-  /** @returns {*} */
-  // py: sqlglot/parser.py:3181
-  _parse_withjournaltable() { throw new NotPorted("_parse_withjournaltable", "sqlglot/parser.py:3181"); }
+  /**
+   * py: sqlglot/parser.py:3181 `_parse_withjournaltable(self) -> exp.WithJournalTableProperty`.
+   * Ported as a base-Parser gap found while porting Teradata (AIR-2291).
+   * @returns {exp.WithJournalTableProperty}
+   */
+  _parse_withjournaltable() {
+    this._match(TokenType.TABLE);
+    this._match(TokenType.EQ);
+    return this.expression(new exp.WithJournalTableProperty({ this: this._parse_table_parts() }));
+  }
 
-  /** @returns {*} */
-  // py: sqlglot/parser.py:3186
-  _parse_log(no) { throw new NotPorted("_parse_log", "sqlglot/parser.py:3186"); }
+  /**
+   * py: sqlglot/parser.py:3186 `_parse_log(self, no=False) -> exp.LogProperty`.
+   * Ported as a base-Parser gap found while porting Teradata (AIR-2291).
+   * @returns {exp.LogProperty}
+   */
+  _parse_log(no = false) { return this.expression(new exp.LogProperty({ no })); }
 
-  /** @returns {*} */
-  // py: sqlglot/parser.py:3189
-  _parse_journal() { throw new NotPorted("_parse_journal", "sqlglot/parser.py:3189"); }
+  /**
+   * py: sqlglot/parser.py:3189 `_parse_journal(self, **kwargs) -> exp.JournalProperty`.
+   * Ported as a base-Parser gap found while porting Teradata (AIR-2291). JS has no
+   * `**kwargs` splat; the dispatcher (`PROPERTY_PARSERS.get("JOURNAL")`, py:1357)
+   * already forwards a single kwargs object, so this takes it directly.
+   * @returns {exp.JournalProperty}
+   */
+  _parse_journal(kwargs = {}) { return this.expression(new exp.JournalProperty({ ...kwargs })); }
 
-  /** @returns {*} */
-  // py: sqlglot/parser.py:3192
-  _parse_checksum() { throw new NotPorted("_parse_checksum", "sqlglot/parser.py:3192"); }
+  /**
+   * py: sqlglot/parser.py:3192 `_parse_checksum(self) -> exp.ChecksumProperty`.
+   * Ported as a base-Parser gap found while porting Teradata (AIR-2291).
+   * @returns {exp.ChecksumProperty}
+   */
+  _parse_checksum() {
+    this._match(TokenType.EQ);
+
+    let on = null;
+    if (this._match(TokenType.ON)) on = true;
+    else if (this._match_text_seq("OFF")) on = false;
+
+    return this.expression(new exp.ChecksumProperty({ on, default: this._match(TokenType.DEFAULT) }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3203
@@ -3254,23 +3285,73 @@ export class Parser {
     return this.expression(new exp.CopyGrantsProperty());
   }
 
-  /** @returns {*} */
-  // py: sqlglot/parser.py:3247
-  _parse_freespace() { throw new NotPorted("_parse_freespace", "sqlglot/parser.py:3247"); }
+  /**
+   * py: sqlglot/parser.py:3247 `_parse_freespace(self) -> exp.FreespaceProperty`.
+   * Ported as a base-Parser gap found while porting Teradata (AIR-2291).
+   * @returns {exp.FreespaceProperty}
+   */
+  _parse_freespace() {
+    this._match(TokenType.EQ);
+    return this.expression(
+      new exp.FreespaceProperty({ this: this._parse_number(), percent: this._match(TokenType.PERCENT) }),
+    );
+  }
 
-  /** @returns {*} */
-  // py: sqlglot/parser.py:3253
-  // note: param `default` renamed to `default_` (JS reserved word)
-  _parse_mergeblockratio(no, default_) { throw new NotPorted("_parse_mergeblockratio", "sqlglot/parser.py:3253"); }
+  /**
+   * py: sqlglot/parser.py:3253 `_parse_mergeblockratio(self, no=False, default=False) ->
+   * exp.MergeBlockRatioProperty`.
+   * Ported as a base-Parser gap found while porting Teradata (AIR-2291).
+   * note: param `default` renamed to `default_` (JS reserved word)
+   * @returns {exp.MergeBlockRatioProperty}
+   */
+  _parse_mergeblockratio(no = false, default_ = false) {
+    if (this._match(TokenType.EQ)) {
+      return this.expression(
+        new exp.MergeBlockRatioProperty({ this: this._parse_number(), percent: this._match(TokenType.PERCENT) }),
+      );
+    }
 
-  /** @returns {*} */
-  // py: sqlglot/parser.py:3265
-  // note: param `default` renamed to `default_` (JS reserved word)
-  _parse_datablocksize(default_, minimum, maximum) { throw new NotPorted("_parse_datablocksize", "sqlglot/parser.py:3265"); }
+    return this.expression(new exp.MergeBlockRatioProperty({ no, default: default_ }));
+  }
 
-  /** @returns {*} */
-  // py: sqlglot/parser.py:3284
-  _parse_blockcompression() { throw new NotPorted("_parse_blockcompression", "sqlglot/parser.py:3284"); }
+  /**
+   * py: sqlglot/parser.py:3265 `_parse_datablocksize(self, default=None, minimum=None,
+   * maximum=None) -> exp.DataBlocksizeProperty`.
+   * Ported as a base-Parser gap found while porting Teradata (AIR-2291).
+   * note: param `default` renamed to `default_` (JS reserved word)
+   * @returns {exp.DataBlocksizeProperty}
+   */
+  _parse_datablocksize(default_ = null, minimum = null, maximum = null) {
+    this._match(TokenType.EQ);
+    const size = this._parse_number();
+
+    let units = null;
+    if (this._match_texts(["BYTES", "KBYTES", "KILOBYTES"])) units = this._prev.text;
+
+    return this.expression(
+      new exp.DataBlocksizeProperty({ size, units, default: default_, minimum, maximum }),
+    );
+  }
+
+  /**
+   * py: sqlglot/parser.py:3284 `_parse_blockcompression(self) -> exp.BlockCompressionProperty`.
+   * Ported as a base-Parser gap found while porting Teradata (AIR-2291).
+   * @returns {exp.BlockCompressionProperty}
+   */
+  _parse_blockcompression() {
+    this._match(TokenType.EQ);
+    const always = this._match_text_seq("ALWAYS");
+    const manual = this._match_text_seq("MANUAL");
+    const never = this._match_text_seq("NEVER");
+    const default_ = this._match_text_seq("DEFAULT");
+
+    let autotemp = null;
+    if (this._match_text_seq("AUTOTEMP")) autotemp = this._parse_schema();
+
+    return this.expression(
+      new exp.BlockCompressionProperty({ always, manual, never, default: default_, autotemp }),
+    );
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3301
@@ -3285,9 +3366,44 @@ export class Parser {
     return this.expression(new exp.IsolatedLoadingProperty({ no, concurrent, target: this._parse_var_from_options(this.constructor.ISOLATED_LOADING_OPTIONS, false) }));
   }
 
-  /** @returns {*} */
-  // py: sqlglot/parser.py:3315
-  _parse_locking() { throw new NotPorted("_parse_locking", "sqlglot/parser.py:3315"); }
+  /**
+   * py: sqlglot/parser.py:3315 `_parse_locking(self) -> exp.LockingProperty`.
+   *
+   * Ported as a base-Parser gap found while porting Teradata (AIR-2291, which is the
+   * only STATEMENT_PARSERS wiring this — `TokenType.LOCK`/`TokenType.LOCKING`, py:1363-
+   * 1364, already real in this base class and reachable from any dialect).
+   * @returns {exp.LockingProperty}
+   */
+  _parse_locking() {
+    let kind;
+    if (this._match(TokenType.TABLE)) kind = "TABLE";
+    else if (this._match(TokenType.VIEW)) kind = "VIEW";
+    else if (this._match(TokenType.ROW)) kind = "ROW";
+    else if (this._match_text_seq("DATABASE")) kind = "DATABASE";
+    else kind = null;
+
+    const this_ = ["DATABASE", "TABLE", "VIEW"].includes(kind) ? this._parse_table_parts() : null;
+
+    let for_or_in;
+    if (this._match(TokenType.FOR)) for_or_in = "FOR";
+    else if (this._match(TokenType.IN)) for_or_in = "IN";
+    else for_or_in = null;
+
+    let lock_type;
+    if (this._match_text_seq("ACCESS")) lock_type = "ACCESS";
+    else if (this._match_texts(["EXCL", "EXCLUSIVE"])) lock_type = "EXCLUSIVE";
+    else if (this._match_text_seq("SHARE")) lock_type = "SHARE";
+    else if (this._match_text_seq("READ")) lock_type = "READ";
+    else if (this._match_text_seq("WRITE")) lock_type = "WRITE";
+    else if (this._match_text_seq("CHECKSUM")) lock_type = "CHECKSUM";
+    else lock_type = null;
+
+    const override = this._match_text_seq("OVERRIDE");
+
+    return this.expression(
+      new exp.LockingProperty({ this: this_, kind, for_or_in, lock_type, override }),
+    );
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3362
@@ -3308,9 +3424,19 @@ export class Parser {
   // py: sqlglot/parser.py:3420
   _parse_partitioned_by() { this._match(TokenType.EQ); return this.expression(new exp.PartitionedByProperty({ this: this._parse_schema() || this._parse_bracket(this._parse_field()) })); }
 
-  /** @returns {*} */
-  // py: sqlglot/parser.py:3428
-  _parse_withdata(no) { throw new NotPorted("_parse_withdata", "sqlglot/parser.py:3428"); }
+  /**
+   * py: sqlglot/parser.py:3428 `_parse_withdata(self, no=False) -> exp.WithDataProperty`.
+   * Ported as a base-Parser gap found while porting Teradata (AIR-2291).
+   * @returns {exp.WithDataProperty}
+   */
+  _parse_withdata(no = false) {
+    let statistics;
+    if (this._match_text_seq("AND", "STATISTICS")) statistics = true;
+    else if (this._match_text_seq("AND", "NO", "STATISTICS")) statistics = false;
+    else statistics = null;
+
+    return this.expression(new exp.WithDataProperty({ no, statistics }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:3438
