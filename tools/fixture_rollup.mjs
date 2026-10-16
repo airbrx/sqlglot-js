@@ -203,8 +203,9 @@ const MANIFEST = [
     notes: "no oracle opens this file.",
   },
   {
-    file: "simplify.sql", kind: "pairs", oracle: null,
-    notes: "`spike/p7/fuzz_simplify.mjs` is a hand-built Simplifier battery (own docstring) -- does not load this 521-pair file, the largest full-SQL-pair fixture in the corpus.",
+    file: "simplify.sql", kind: "pairs",
+    oracle: "spike/p7/fuzz_simplify_fixture.mjs", mode: "line",
+    notes: "AIR-2315 Part 2. `spike/p7/fuzz_simplify.mjs` is still a hand-built Simplifier battery (own docstring, 81 scenarios, stays as a sibling) -- this is the sibling oracle that replays the real 521-pair fixture file.",
   },
   {
     file: "tpc-h/tpc-h.sql", kind: "pairs",

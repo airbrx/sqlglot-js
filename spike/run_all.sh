@@ -371,6 +371,15 @@ PYTHONHASHSEED=0 python3 spike/p7/gen_eliminate_ctes_ref.py > spike/out/eliminat
 # left out because rendering their surviving node needs a pre-existing, unrelated
 # base-Generator stub (`div_sql`/`concat_sql`/`concatws_sql`).
 PYTHONHASHSEED=0 python3 spike/p7/gen_simplify_ref.py > spike/out/simplify.json || fail=1
+# AIR-2315 Part 2. Replays the REAL `tests/fixtures/optimizer/simplify.sql` (521
+# pairs) -- the largest full-SQL-pair fixture file in the whole optimizer corpus, with
+# zero oracle coverage before this round (the hand-built battery just above ships its
+# own 81 scenarios, not this file). See `gen_simplify_fixture_ref.py`'s own header for
+# the exact wrapping (`test_simplify`'s local `simplify()` helper, which runs
+# `annotate_types()` first) and why nothing here needs CPython-side normalization
+# (unlike `annotate_functions.sql`'s oracle) -- `check_file`'s own `assertEqual` is a
+# plain string compare against the raw fixture text.
+PYTHONHASHSEED=0 python3 spike/p7/gen_simplify_fixture_ref.py > spike/out/simplify_fixture.json || fail=1
 # P7 oracle (AIR-2106). `optimizer/qualify_columns.py` CORE (column qualification +
 # star expansion) -- `validate_qualify_columns`/`quote_identifiers` are AIR-2107, a
 # separate follow-up issue, and are not ported or exercised here. Same "no
@@ -664,6 +673,7 @@ run "P7: merge_subqueries.js vs CPython"                  node spike/p7/fuzz_mer
 run "P7: eliminate_subqueries.js vs CPython"  node spike/p7/fuzz_eliminate_subqueries.mjs
 run "P7: eliminate_ctes.js vs CPython"        node spike/p7/fuzz_eliminate_ctes.mjs
 run "P7: optimizer/simplify.js Simplifier vs CPython" node spike/p7/fuzz_simplify.mjs
+run "P7: simplify.sql fixture replay vs CPython" node spike/p7/fuzz_simplify_fixture.mjs
 run "P7: optimizer/qualify_columns.js (core) vs CPython" node spike/p7/fuzz_qualify_columns.mjs
 run "P10: optimizer/normalize.js vs CPython"          node spike/p10/fuzz_normalize.mjs
 run "P10: optimizer/pushdown_projections.js vs CPython" node spike/p10/fuzz_pushdown_projections.mjs
