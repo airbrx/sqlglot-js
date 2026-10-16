@@ -81,6 +81,7 @@ import { PyValueError, PyKeyError } from "./_py/errors.js";
 import { PyDecimal, pyIntFromStrBase } from "./_py/num.js";
 import { csv, nameSequence, seqGet } from "./helper.js";
 import { logger } from "./logging.js";
+import { findAllInScope } from "./optimizer/scope.js";
 import { cpAt, cpLen, cpSlice, pyIsDigit, pyIsSpace, pyLower, pyLstrip, pyStrip, pyRstrip, pyUpper } from "./_py/str.js";
 import * as exp from "./expressions/index.js";
 import { registerGenerator } from "./expressions/core.js";
@@ -7725,10 +7726,21 @@ export class Generator {
 
     if (this.constructor.IGNORE_NULLS_IN_FUNC && !expression.metaGet("inline")) {
       if (this.constructor.IGNORE_NULLS_BEFORE_ORDER) {
-        throw new NotPorted(
-          "_embed_ignore_nulls (IGNORE_NULLS_BEFORE_ORDER branch)",
-          "sqlglot/optimizer/scope.py — find_all_in_scope",
+        // py: "The first modifier here will be the one closest to the AggFunc's arg"
+        const mods = [...findAllInScope(expression, exp.HavingMax, exp.Order, exp.Limit)].sort(
+          (a, b) => {
+            const rank = (x) => (x instanceof exp.HavingMax ? 0 : x instanceof exp.Order ? 1 : 2);
+            return rank(a) - rank(b);
+          },
         );
+
+        if (mods.length) {
+          const mod = mods[0];
+          const wrapped = new expression.constructor({ this: mod.this.copy() });
+          wrapped.meta["inline"] = true;
+          mod.this.replace(wrapped);
+          return this.sql(expression.this);
+        }
       }
 
       const agg_func = expression.find(exp.AggFunc);
