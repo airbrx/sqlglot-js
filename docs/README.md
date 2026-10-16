@@ -21,6 +21,9 @@ backed by a measured number.
   error classes), per-dialect notes, and the Known gaps section.
 - **[consuming-from-cjs.md](consuming-from-cjs.md)** — how a CommonJS project (this package
   is ESM-only) consumes it via dynamic `import()`.
+- **[stability.md](stability.md)** — the stability contract: what's public vs internal, what
+  "parity" with the pin means, the one accepted divergence, and the no-promise areas before
+  1.0.
 - **[verification/](verification/)** — the gate history: ratchets, honest oracles, and the
   optimizer fixture-pair rollup (R95/AIR-1864).
 - **[proposals/](proposals/)** — design proposals awaiting a decision (not implemented),

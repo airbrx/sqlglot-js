@@ -156,6 +156,12 @@ above) precisely because they can't be gamed by narrowing scope. See
 [docs/verification/](docs/verification/) for the detailed gate history and
 [PORT_PLAN.md §3](PORT_PLAN.md) for the verification architecture.
 
+## Stability
+
+Not published to any registry yet, and no semver guarantee before 1.0 — see
+[docs/stability.md](docs/stability.md) for what's public vs internal, what "parity" means,
+the one accepted divergence (`CURRENT_ROLE`), and the no-promise areas.
+
 ## `contrib/`
 
 Airbrx-specific application code built on top of the port, not part of it (no `py:` anchors,

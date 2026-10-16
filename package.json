@@ -13,14 +13,16 @@
     ".": "./index.js",
     "./dialects/*": "./src/dialects/*.js",
     "./dialects/*.js": "./src/dialects/*.js",
-    "./expressions/*": "./src/expressions/*.js",
-    "./expressions/*.js": "./src/expressions/*.js",
-    "./contrib/*": "./contrib/*.js",
-    "./contrib/*.js": "./contrib/*.js",
+    "./expressions/index": "./src/expressions/index.js",
+    "./expressions/index.js": "./src/expressions/index.js",
+    "./contrib/gatewaySqlMetadata": "./contrib/gatewaySqlMetadata.js",
+    "./contrib/gatewaySqlMetadata.js": "./contrib/gatewaySqlMetadata.js",
     "./package.json": "./package.json"
   },
+  "types": "./index.d.ts",
   "files": [
     "index.js",
+    "index.d.ts",
     "src",
     "contrib",
     "README.md",
@@ -29,6 +31,7 @@
     "NOTICE"
   ],
   "scripts": {
-    "test": "node --test $(find test -name '*.test.mjs' | sort)"
+    "test": "node --test $(find test -name '*.test.mjs' | sort)",
+    "check:types": "tsc --noEmit -p test/types/tsconfig.json"
   }
 }
