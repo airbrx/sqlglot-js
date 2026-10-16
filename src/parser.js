@@ -2155,11 +2155,20 @@ export class Parser {
   /** py: sqlglot/parser.py:1868 */
   static MODIFIERS_ATTACHED_TO_SET_OP = true;
 
-  /** py: sqlglot/parser.py:1869 */
+  /**
+   * py: sqlglot/parser.py:1869 `{"order", "limit", "offset"}`.
+   *
+   * Iteration order below is NOT the literal's source order — it's a Python `set`,
+   * whose iteration order is hash-bucket order, not insertion order. Under this
+   * project's pinned `PYTHONHASHSEED=0`, `list({"order", "limit", "offset"})` is
+   * `['offset', 'limit', 'order']`; `_parse_set_operations` (py:5978) uses this
+   * order to decide which key is `.set()` (and therefore inserted) first on the
+   * `SetOperation` node, so it leaks into the dumped AST's arg order.
+   */
   static SET_OP_MODIFIERS = new Set([
-    /* py:1869 */ "order",
-    /* py:1869 */ "limit",
-    /* py:1869 */ "offset",
+    "offset",
+    "limit",
+    "order",
   ]);
 
   /** py: sqlglot/parser.py:1872 */
@@ -4268,7 +4277,36 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4569
-  _parse_lateral() { let cross_apply=null, view=null, outer=null, this_; if(this._match_pair(TokenType.CROSS,TokenType.APPLY)) cross_apply=true; else if(this._match_pair(TokenType.OUTER,TokenType.APPLY)) cross_apply=false; if(cross_apply!==null) this_=this._parse_select(false,true); else if(this._match(TokenType.LATERAL)){this_=this._parse_select(false,true);view=this._match(TokenType.VIEW);outer=this._match(TokenType.OUTER);} else return null; if(!this_) this_=this._parse_unnest()||this._parse_function()||this._parse_id_var(false); let ordinality=null, alias; if(view){const table=this._parse_id_var(false),columns=this._match(TokenType.ALIAS)?this._parse_csv(this._parse_id_var.bind(this)):[];alias=this.expression(new exp.TableAlias({this:table,columns}));} else if((this_ instanceof exp.Subquery||this_ instanceof exp.Unnest)&&this_.alias){ordinality=null;alias=this_.args.alias.pop();} else {ordinality=this._match_pair(TokenType.WITH,TokenType.ORDINALITY);alias=this._parse_table_alias();} return this.expression(new exp.Lateral({this:this_,view,outer,alias,cross_apply,ordinality})); }
+  _parse_lateral() {
+    let cross_apply = null, view = null, outer = null, this_;
+    if (this._match_pair(TokenType.CROSS, TokenType.APPLY)) cross_apply = true;
+    else if (this._match_pair(TokenType.OUTER, TokenType.APPLY)) cross_apply = false;
+    if (cross_apply !== null) this_ = this._parse_select(false, true);
+    else if (this._match(TokenType.LATERAL)) {
+      this_ = this._parse_select(false, true);
+      view = this._match(TokenType.VIEW);
+      outer = this._match(TokenType.OUTER);
+    } else return null;
+    if (!this_) {
+      this_ = this._parse_unnest() || this._parse_function() || this._parse_id_var(false);
+      // py:4589-4593 — qualified table-valued function names (`a.b.tvfTest(...)`).
+      while (this._match(TokenType.DOT)) {
+        this_ = new exp.Dot({ this: this_, expression: this._parse_function() || this._parse_id_var(false) });
+      }
+    }
+    let ordinality = null, alias;
+    if (view) {
+      const table = this._parse_id_var(false), columns = this._match(TokenType.ALIAS) ? this._parse_csv(this._parse_id_var.bind(this)) : [];
+      alias = this.expression(new exp.TableAlias({ this: table, columns }));
+    } else if ((this_ instanceof exp.Subquery || this_ instanceof exp.Unnest) && this_.alias) {
+      ordinality = null;
+      alias = this_.args.alias.pop();
+    } else {
+      ordinality = this._match_pair(TokenType.WITH, TokenType.ORDINALITY);
+      alias = this._parse_table_alias();
+    }
+    return this.expression(new exp.Lateral({ this: this_, view, outer, alias, cross_apply, ordinality }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4626
