@@ -306,9 +306,12 @@ export function run(api) {
     // `_parse_journal`, `_parse_withdata`, `_parse_log`, `_parse_checksum`,
     // `_parse_freespace`, `_parse_mergeblockratio`, `_parse_datablocksize`,
     // `_parse_blockcompression`), bringing the real count to 17 and tripping the old
-    // `< 20` floor. 10 stays generous headroom above "the regex silently broke and
-    // found a handful" while staying well clear of the remaining burndown.
-    if (realStubs.length < 10) throw new Error(`only found ${realStubs.length} stubs — drift?`);
+    // `< 20` floor. Lowered again 10 -> 5 (AIR-2313, "11.9 Post-v0.0.1 residuals"):
+    // porting `_parse_odbc_datetime_literal` — the last 2 parse STUB atoms in the
+    // whole corpus — brought the real count to 9, tripping the old `< 10` floor. 5
+    // stays generous headroom above "the regex silently broke and found a handful"
+    // while staying well clear of the remaining burndown.
+    if (realStubs.length < 5) throw new Error(`only found ${realStubs.length} stubs — drift?`);
     console.log(`         ${realStubs.length} stubs -> ${seen.size} distinct units, 0 mis-attributed`);
     const tableUnits = new Set(idx.units.filter((u) => /^Parser\.[A-Z_]+\[/.test(u)));
     if (tableUnits.size < 500) throw new Error(`only ${tableUnits.size} table-entry units`);
