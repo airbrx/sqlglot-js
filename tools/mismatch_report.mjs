@@ -33,7 +33,7 @@ export const PORTED_DIALECTS = new Set([
   "exasol", "fabric", "hive", "materialize", "mysql", "oracle", "postgres", "presto",
   "redshift", "risingwave", "singlestore",
   "snowflake", "spark",
-  "spark2", "starrocks", "trino", "tsql",
+  "spark2", "sqlite", "starrocks", "teradata", "trino", "tsql",
 ]);
 
 /** "duckdb, version=1.1.0" -> "duckdb". Harvested atoms carry dialect kwargs inline. */
