@@ -443,6 +443,18 @@ export class PyDateTime extends PyDate {
     return new PyDate(this.year, this.month, this.day);
   }
 
+  // py: `datetime - timedelta(days=N)` shifts the date, keeping hour/minute/second/
+  // microsecond unchanged. The base `PyDate.addDays` hardcodes `PyDate.fromOrdinal`
+  // (its own docstring: "restricted to whole-day deltas, which is all a bare PyDate
+  // ever needs"), so without this override a `PyDateTime` calling `.addDays()` (e.g.
+  // `datetime_floor`'s WEEK-unit branch, `simplify.py:447`) silently degrades to a
+  // bare `PyDate`, dropping the time-of-day and losing the type the caller needs to
+  // pick `toISODateTime()` over `toISODate()` when rendering the folded literal.
+  addDays(days) {
+    const [year, month, day] = ord2ymd(this.toOrdinal() + days);
+    return new PyDateTime(year, month, day, this.hour, this.minute, this.second, this.microsecond);
+  }
+
   replace(fields = {}) {
     return new PyDateTime(
       fields.year ?? this.year,
