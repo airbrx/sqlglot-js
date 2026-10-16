@@ -219,3 +219,66 @@ Rerun: 521/521 EXACT.
 Remaining "no oracle" population after this round: the same eleven small files named
 above (AIR-2315 Part 3) — 282 pairs total, matching AIR-2315's own target arithmetic
 (803 − 521 = 282).
+
+## Update (AIR-2315 Part 3, the last part): the ten remaining files are now replayed
+
+`spike/p7/gen_fixture_replay_ref.py` + `spike/p7/fuzz_fixture_replay.mjs` (registered
+in `spike/run_all.sh` and `tools/run_correctness.sh`'s P7 oracle loop) is ONE generic
+table-driven oracle replaying the ten remaining zero-oracle files against their own
+real driver: `canonicalize_internal_names.sql` (65), `unnest_subqueries.sql` (41),
+`normalize_identifiers.sql` (30), `eliminate_subqueries.sql` (27),
+`optimize_joins.sql` (18), `quote_identifiers.sql` (10), `isolate_table_selects.sql`
+(8), `eliminate_ctes.sql` (6), `pushdown_cte_alias_columns.sql` (6) — each replayed
+against its own real `self.check_file(...)` call site in `tests/test_optimizer.py` —
+plus `annotate_types.sql` (71), replayed in its own type-string compare mode against
+`test_annotate_types` directly (NOT `check_file`, see the gen script's own header for
+the exact difference: no schema, dialect never comma-split, SQL not wrapped in
+`SELECT ... FROM tbl`). 282 records over the ten files' 282 pairs — all **EXACT**.
+
+Re-measured with `SQLGLOT_REF=/tmp/sqlglot-complete-pin node tools/fixture_rollup.mjs`:
+
+| | before (AIR-2315 Part 2) | after (AIR-2315 Part 3) |
+|---|---:|---:|
+| Pairs replayed by some oracle | 3,307 | **3,589** (all of them) |
+| Pairs with **no oracle anywhere** | **282** | **0** |
+| Sum of `EXACT` across every mapped oracle | 3,798 | **4,082** |
+
+The real find of this round was not in the fixture replay itself but in what it
+exposed: `sqlglot/optimizer/canonicalize_internal_names.py` (331 LOC) had never been
+ported to this project's JS at all. It is not part of upstream's own default
+`optimize()` pipeline — it is a standalone export, reached only by this fixture's own
+test — which is exactly why no prior closure or demand tracer ever flagged it as
+missing: a tracer records which units a caller *reaches*; nothing in this port's own
+`optimize()` wiring ever reached an export nobody called. The whole file is now
+ported as `src/optimizer/canonicalize_internal_names.js`, with the SAME one bug the
+port's own first run against the real fixture surfaced during development (not a
+pre-existing base-layer defect, since the file was new): the UDTF `alias_holder`
+branch checked the wrong Scope object (`scope.isUdtf`, the outer scope being
+iterated, instead of `source.isUdtf`, upstream's own `source.is_udtf` — the CHILD
+scope for the source under consideration), which affected every `VALUES`/`UNNEST`/
+`LATERAL` source (8 of the file's 65 pairs). Fixed; rerun 65/65 EXACT.
+
+Two smaller, independent fixes landed alongside the new oracle:
+
+- **BigQuery's `COERCES_TO`** (`src/dialects/bigquery.js`) carried the identical
+  stale `new Map()` stub Part 1 found and fixed on `hive.js`/`databricks.js` — flagged
+  explicitly in that round's own addendum above as "the likely-identical remainder,"
+  left unfixed there only because no `annotate_functions.sql` row exercised it. Ported
+  `bigquery.py:118-130` for real (base `TypeAnnotator.COERCES_TO` plus BIGDECIMAL/
+  DECIMAL/BIGINT/VARCHAR widenings).
+- **`canonicalize.sql`'s two `# dialect: mysql` rows**, SKIPPED by `fuzz_canonicalize.mjs`
+  since before `src/dialects/mysql.js` existed in this port (MySQL landed for real at
+  R101) — another instance of the exact same "stub outlives its blocker" pattern.
+  Un-skipped; both EXACT with no further fix needed.
+
+Remaining "no oracle" population after this round: **zero**. AIR-2315 is fully closed.
+
+## AIR-1864's optimizer-fixture criterion, as actually measured
+
+AIR-1864's exit criterion — "3,476 optimizer fixture pairs green (201
+`# execute: true` permanently wontfix)" — was wrong on both numbers (see "Why
+'3,476/201' is wrong" above) and, before AIR-2315, 76% of the real corpus had no
+replaying oracle at all. As of this round, that is no longer true in either respect:
+
+**3,330 of 3,589 real optimizer fixture pairs are replayed by an oracle and EXACT at
+this pin; 259 are permanently wontfix (`execute`); 0 have no oracle.**
