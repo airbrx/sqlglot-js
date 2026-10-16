@@ -279,10 +279,18 @@ export class Expr {
   // `bases` list (core.js:365), which is Python's real MRO.
   unalias() { return this instanceof cls("Alias") ? this.this : this; }
   unnestOperands() { return [...this.iterExpressions()].map(x => x.unnest()); }
+  // py: core.py:1235 `node.unnest() if unnest and not node.is_subquery else node` --
+  // `is_subquery` (core.py:90) is `True` only on `Subquery` (query.py:1673; nothing
+  // else in the pinned tree overrides it), so a name check reproduces the real guard
+  // without plumbing a new ClassVar through the whole expr_meta.js codegen pipeline for
+  // a flag with exactly one reader. Without this guard, a scalar subquery operand of a
+  // connector (`x = 5 AND (SELECT ...)`) got unwrapped to its bare `Select` here, which
+  // then rendered as `Select`'s own WHERE merging the sibling predicate in --
+  // `SELECT ... WHERE y = 1 AND x = 5` instead of `(SELECT ... WHERE y = 1) AND x = 5`.
   *flatten(unnest = true) {
     const stack = [this];
     while (stack.length) {
-      let node = stack.pop(); if (unnest) node = node.unnest();
+      let node = stack.pop(); if (unnest && node.constructor.name !== "Subquery") node = node.unnest();
       if (node !== this && node.constructor !== this.constructor) yield node;
       else { const operands = [node.args.expression, node.args.this].filter(x => x instanceof Expr); if (!operands.length) yield node; else stack.push(...operands); }
     }

@@ -70,6 +70,7 @@ import { ExprSet, ExprMap, frozensetKey } from "../_py/collections.js";
 import { PyDate, PyDateTime, pyDateTimeFromIsoFormat, PyRelativedelta } from "../_py/datetime.js";
 import { PyDecimal, decAdd, decSub, decMul, decDiv, decCmp } from "../_py/num.js";
 import { pyStrCmp } from "../_py/sort.js";
+import { PyValueError } from "../_py/errors.js";
 import { setSimplifyRef } from "../tokens.js";
 
 // py: simplify.py:33 `FINAL = "final"` — expression should not be simplified further.
@@ -497,14 +498,19 @@ function _is_date_literal(expression) {
   return extract_date(expression) !== null;
 }
 
-/** py: simplify.py:422 `extract_interval(expression)`. */
+/** py: simplify.py:422 `extract_interval(expression)` --
+ * `except (UnsupportedUnit, ModuleNotFoundError, ValueError)`. A non-literal interval
+ * amount (e.g. `INTERVAL x DAY` where `x` is a column) makes `expression.this.toPy()`
+ * raise `PyValueError` (core.js:213, "... cannot be converted to a JavaScript value"),
+ * the JS analogue of Python's `to_py()` raising `ValueError` for the same shape --
+ * both mean "not a foldable interval", not an infrastructure error. */
 function extract_interval(expression) {
   try {
     const n = Number(expression.this.toPy());
     const unit = expression.text("unit").toLowerCase();
     return interval(unit, n);
   } catch (e) {
-    if (e instanceof UnsupportedUnit) return null;
+    if (e instanceof UnsupportedUnit || e instanceof PyValueError) return null;
     throw e;
   }
 }
