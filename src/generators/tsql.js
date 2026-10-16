@@ -619,7 +619,9 @@ export class TSQLGenerator extends Generator {
   /** py:516 */
   returnsproperty_sql(expression) {
     const table = expression.args.table;
-    const table_ = table ? `${table} ` : "";
+    // implicit __str__ (upstream's f-string relies on Expression.__str__ = self.sql();
+    // JS's toString() is the repr dump, not generated SQL)
+    const table_ = table ? `${this.sql(expression, "table")} ` : "";
     return `RETURNS ${table_}${this.sql(expression, "this")}`;
   }
 

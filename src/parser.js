@@ -1657,14 +1657,7 @@ export class Parser {
     /* py:1581 */ ["JSON_TABLE", (self) => self._parse_json_table()],
     /* py:1582 */ ["MATCH", (self) => self._parse_match_against()],
     /* py:1583 */ ["NORMALIZE", (self) => self._parse_normalize()],
-    // py:1584 — NOT wired: `openjson_sql` (generator.js:3925) is still a NotPorted
-    // base-generator stub, and wiring `_parse_open_json` in here regresses 2
-    // ratchet-pass atoms (plain `OPENJSON(@json)`, no `WITH (...)`) that currently
-    // round-trip correctly only by accident, via the generic Anonymous-function-call
-    // fallback this port used before `_parse_open_json` existed. Re-wire this the
-    // moment `openjson_sql` lands for real -- same shape as `exp.Ceil`/`exp.Floor`
-    // in generator.js.
-    // ["OPENJSON", (self) => self._parse_open_json()],
+    /* py:1584 */ ["OPENJSON", (self) => self._parse_open_json()],
     /* py:1585 */ ["OVERLAY", (self) => self._parse_overlay()],
     /* py:1586 */ ["POSITION", (self) => self._parse_position()],
     /* py:1587 */ ["SAFE_CAST", (self) => self._parse_cast(false, true)],
@@ -2155,11 +2148,20 @@ export class Parser {
   /** py: sqlglot/parser.py:1868 */
   static MODIFIERS_ATTACHED_TO_SET_OP = true;
 
-  /** py: sqlglot/parser.py:1869 */
+  /**
+   * py: sqlglot/parser.py:1869 `{"order", "limit", "offset"}`.
+   *
+   * Iteration order below is NOT the literal's source order — it's a Python `set`,
+   * whose iteration order is hash-bucket order, not insertion order. Under this
+   * project's pinned `PYTHONHASHSEED=0`, `list({"order", "limit", "offset"})` is
+   * `['offset', 'limit', 'order']`; `_parse_set_operations` (py:5978) uses this
+   * order to decide which key is `.set()` (and therefore inserted) first on the
+   * `SetOperation` node, so it leaks into the dumped AST's arg order.
+   */
   static SET_OP_MODIFIERS = new Set([
-    /* py:1869 */ "order",
-    /* py:1869 */ "limit",
-    /* py:1869 */ "offset",
+    "offset",
+    "limit",
+    "order",
   ]);
 
   /** py: sqlglot/parser.py:1872 */
@@ -4268,7 +4270,36 @@ export class Parser {
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4569
-  _parse_lateral() { let cross_apply=null, view=null, outer=null, this_; if(this._match_pair(TokenType.CROSS,TokenType.APPLY)) cross_apply=true; else if(this._match_pair(TokenType.OUTER,TokenType.APPLY)) cross_apply=false; if(cross_apply!==null) this_=this._parse_select(false,true); else if(this._match(TokenType.LATERAL)){this_=this._parse_select(false,true);view=this._match(TokenType.VIEW);outer=this._match(TokenType.OUTER);} else return null; if(!this_) this_=this._parse_unnest()||this._parse_function()||this._parse_id_var(false); let ordinality=null, alias; if(view){const table=this._parse_id_var(false),columns=this._match(TokenType.ALIAS)?this._parse_csv(this._parse_id_var.bind(this)):[];alias=this.expression(new exp.TableAlias({this:table,columns}));} else if((this_ instanceof exp.Subquery||this_ instanceof exp.Unnest)&&this_.alias){ordinality=null;alias=this_.args.alias.pop();} else {ordinality=this._match_pair(TokenType.WITH,TokenType.ORDINALITY);alias=this._parse_table_alias();} return this.expression(new exp.Lateral({this:this_,view,outer,alias,cross_apply,ordinality})); }
+  _parse_lateral() {
+    let cross_apply = null, view = null, outer = null, this_;
+    if (this._match_pair(TokenType.CROSS, TokenType.APPLY)) cross_apply = true;
+    else if (this._match_pair(TokenType.OUTER, TokenType.APPLY)) cross_apply = false;
+    if (cross_apply !== null) this_ = this._parse_select(false, true);
+    else if (this._match(TokenType.LATERAL)) {
+      this_ = this._parse_select(false, true);
+      view = this._match(TokenType.VIEW);
+      outer = this._match(TokenType.OUTER);
+    } else return null;
+    if (!this_) {
+      this_ = this._parse_unnest() || this._parse_function() || this._parse_id_var(false);
+      // py:4589-4593 — qualified table-valued function names (`a.b.tvfTest(...)`).
+      while (this._match(TokenType.DOT)) {
+        this_ = new exp.Dot({ this: this_, expression: this._parse_function() || this._parse_id_var(false) });
+      }
+    }
+    let ordinality = null, alias;
+    if (view) {
+      const table = this._parse_id_var(false), columns = this._match(TokenType.ALIAS) ? this._parse_csv(this._parse_id_var.bind(this)) : [];
+      alias = this.expression(new exp.TableAlias({ this: table, columns }));
+    } else if ((this_ instanceof exp.Subquery || this_ instanceof exp.Unnest) && this_.alias) {
+      ordinality = null;
+      alias = this_.args.alias.pop();
+    } else {
+      ordinality = this._match_pair(TokenType.WITH, TokenType.ORDINALITY);
+      alias = this._parse_table_alias();
+    }
+    return this.expression(new exp.Lateral({ this: this_, view, outer, alias, cross_apply, ordinality }));
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:4626
@@ -5042,7 +5073,7 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:6114
   // note: param `this` renamed to `this_` (JS reserved word)
-  _parse_is(this_) { const index = this._index - 1, negate = this._match(TokenType.NOT); if (this._match_text_seq("DISTINCT", "FROM")) { const C = negate ? exp.NullSafeEQ : exp.NullSafeNEQ; return this.expression(new C({ this: this_, expression: this._parse_bitwise() })); } let expression; if (this._match(TokenType.JSON)) { const kind = this._match_texts(this.constructor.IS_JSON_PREDICATE_KIND) ? pyUpper(this._prev.text) : null; let with_ = null; if (this._match_text_seq("WITH")) with_ = true; else if (this._match_text_seq("WITHOUT")) with_ = false; const unique = this._match(TokenType.UNIQUE); this._match_text_seq("KEYS"); expression = this.expression(new exp.JSON({ this: kind, with_, unique })); } else { expression = this._parse_null() || this._parse_bitwise(); if (!expression) { this._retreat(index); return null; } } if (negate && expression instanceof exp.Null && !this.dialect.NORMALIZE_NOT_NULL) this_ = this.expression(new exp.Is({ this: this_, expression, negate: true })); else { this_ = this.expression(new exp.Is({ this: this_, expression })); if (negate) this_ = this.expression(new exp.Not({ this: this_ })); } return this._parse_column_ops(this_); }
+  _parse_is(this_) { const index = this._index - 1, negate = this._match(TokenType.NOT); if (this._match_text_seq("DISTINCT", "FROM")) { const C = negate ? exp.NullSafeEQ : exp.NullSafeNEQ; return this.expression(new C({ this: this_, expression: this._parse_bitwise() })); } let expression; if (this._match(TokenType.JSON)) { const kind = this._match_texts(this.constructor.IS_JSON_PREDICATE_KIND) && pyUpper(this._prev.text); /* py:6123 `x and y` returns `False` (not None) when `x` is falsy -- `exp.JSON(this=False)` stores a real False, distinct from an absent `this` */ let with_ = null; if (this._match_text_seq("WITH")) with_ = true; else if (this._match_text_seq("WITHOUT")) with_ = false; const unique = this._match(TokenType.UNIQUE); this._match_text_seq("KEYS"); expression = this.expression(new exp.JSON({ this: kind, with_, unique })); } else { expression = this._parse_null() || this._parse_bitwise(); if (!expression) { this._retreat(index); return null; } } if (negate && expression instanceof exp.Null && !this.dialect.NORMALIZE_NOT_NULL) this_ = this.expression(new exp.Is({ this: this_, expression, negate: true })); else { this_ = this.expression(new exp.Is({ this: this_, expression })); if (negate) this_ = this.expression(new exp.Not({ this: this_ })); } return this._parse_column_ops(this_); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:6151
@@ -6145,7 +6176,11 @@ export class Parser {
   _parse_having_max(this_) {
     if (this._match(TokenType.HAVING)) {
       this._match_texts(["MAX", "MIN"]);
-      return this.expression(new exp.HavingMax({ this: this_, expression: this._parse_column(), max: pyUpper(this._prev.text) !== "MIN" }));
+      // `max` must be read BEFORE `_parse_column()` below, which advances the parser
+      // and overwrites `this._prev` — an object-literal eval-order hazard upstream's
+      // own local-variable assignment (py:8628) doesn't have.
+      const max = pyUpper(this._prev.text) !== "MIN";
+      return this.expression(new exp.HavingMax({ this: this_, expression: this._parse_column(), max }));
     }
     return this_;
   }
@@ -6888,7 +6923,7 @@ export class Parser {
   /** @returns {*} */
   // py: sqlglot/parser.py:9681
   // note: param `this` renamed to `this_` (JS reserved word)
-  _parse_comprehension(this_) { const index = this._index; const expression = this._parse_column(); const position = this._match(TokenType.COMMA) ? this._parse_column() : null; if (!this._match(TokenType.IN)) { this._retreat(index - 1); return null; } const iterator = this._parse_column(); const condition = this._match_text_seq("IF") ? this._parse_disjunction() : null; return this.expression(new exp.Comprehension({ this: this_, expression, position, iterator, condition })); }
+  _parse_comprehension(this_) { const index = this._index; const expression = this._parse_column(); const position = this._match(TokenType.COMMA) && this._parse_column(); /* py:9683 `x and y` yields `False` (not None) when `x` is falsy */ if (!this._match(TokenType.IN)) { this._retreat(index - 1); return null; } const iterator = this._parse_column(); const condition = this._match_text_seq("IF") ? this._parse_disjunction() : null; return this.expression(new exp.Comprehension({ this: this_, expression, position, iterator, condition })); }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:9701

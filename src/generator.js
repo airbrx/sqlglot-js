@@ -1830,13 +1830,15 @@ export class Generator {
     }
 
     let start = expression.args.start;
-    start = start ? `START WITH ${start}` : "";
+    // implicit __str__ (upstream relies on `f"...{start}"` calling `Expression.__str__`,
+    // which is `self.sql()`; JS's `toString()` is the repr dump, not generated SQL)
+    start = start ? `START WITH ${this.sql(expression, "start")}` : "";
     let increment = expression.args.increment;
-    increment = increment ? ` INCREMENT BY ${increment}` : "";
+    increment = increment ? ` INCREMENT BY ${this.sql(expression, "increment")}` : "";
     let minvalue = expression.args.minvalue;
-    minvalue = minvalue ? ` MINVALUE ${minvalue}` : "";
+    minvalue = minvalue ? ` MINVALUE ${this.sql(expression, "minvalue")}` : "";
     let maxvalue = expression.args.maxvalue;
-    maxvalue = maxvalue ? ` MAXVALUE ${maxvalue}` : "";
+    maxvalue = maxvalue ? ` MAXVALUE ${this.sql(expression, "maxvalue")}` : "";
     const cycle = expression.args.cycle;
     let cycle_sql = "";
 

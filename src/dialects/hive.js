@@ -145,7 +145,7 @@ export class Hive extends Dialect {
   // `\r`/`\f` are the standard ones, \u000b/\u001c/\u001d/\u001e/\u001f are explicit unicode
   // escapes for VT and the four ASCII separator characters — never as a raw byte typed
   // into the file.
-  static INITCAP_DEFAULT_DELIMITER_CHARS = "\t\n\r\f\u000b\u001c\u001d\u001e\u001f";
+  static INITCAP_DEFAULT_DELIMITER_CHARS = " \t\n\r\f\u000b\u001c\u001d\u001e\u001f";
 
   /**
    * py:37-42 `COERCES_TO = defaultdict(set, deepcopy(TypeAnnotator.COERCES_TO))`, then a
