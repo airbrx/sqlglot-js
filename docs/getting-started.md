@@ -2,13 +2,12 @@
 
 > **Status:** the top-level package wrapper described on this page is real —
 > `import { parseOne } from "sqlglot-js"` works, backed by the same `Dialect.get_or_raise(name)`
-> registry (`src/dialects/dialect.js`) this page used to describe as the only working entry
-> point. Not published to any registry yet: install it as a git dependency
-> (`github:airbrx/sqlglot-js#main`), or import `./index.js` directly from a repo checkout. Seven
-> dialect names resolve to a real `Dialect` class today — `snowflake`, `duckdb`, `postgres`,
-> and the Databricks chain (`hive`, `spark2`, `spark`, `databricks`) — everything else still
-> throws `Unknown dialect`. Check `PORT_PLAN.md` for the current, measured status of every
-> dialect and every phase.
+> registry (`src/dialects/dialect.js`). Not published to any registry yet: install it as a git
+> dependency (`github:airbrx/sqlglot-js#main`), or import `./index.js` directly from a repo
+> checkout. All 33 of upstream's dialect modules at the pin resolve to a real `Dialect` class
+> today (the root [README](../README.md) lists them by family); a name outside that set still
+> throws `Unknown dialect`. Check [api.md](api.md#known-gaps) for the current, measured list
+> of open generate/parse gaps within those 33, and `PORT_PLAN.md` for the full phase history.
 
 ## Install
 
@@ -33,10 +32,9 @@ console.log(ast.constructor.name); // "Select"
 
 **This works today.** Try it from the repo root: `node -e 'import("./index.js").then(({
 parseOne }) => { console.log(parseOne("SELECT id, name FROM users WHERE active = TRUE", {
-read: "snowflake" }).constructor.name); })'` prints `Select`. Seven dialect names have a real
-class today: `snowflake`, `duckdb`, `postgres`, and the Databricks chain (`hive`, `spark2`,
-`spark`, `databricks`) — `index.js` imports all seven eagerly for their registration side
-effect, so no separate import is needed to use any of them by name.
+read: "snowflake" }).constructor.name); })'` prints `Select`. All 33 dialects have a real
+class today — `index.js` imports all 33 eagerly for their registration side effect, so no
+separate import is needed to use any of them by name.
 
 `parseOne` mirrors upstream sqlglot's `parse_one`: it parses the SQL string under the given
 `read` dialect and returns a single expression tree — the root of the parsed statement, not a
@@ -76,9 +74,9 @@ its name.
 > (the underlying module, `src/expressions/index.js`, is checked against 5,240 metadata
 > assertions plus a full corpus AST round-trip). `.sql()` on a builder-constructed tree
 > generates through the default dialect as soon as any dialect module has been imported for
-> its side effect — `index.js` does that eagerly for seven dialects — or through a specific
-> dialect by passing its name as the first argument, `.sql("postgres")`, matching upstream's
-> own `expr.sql(dialect="postgres")` shape. Try it from the repo root: `node -e
+> its side effect — `index.js` does that eagerly for all 33 — or through a specific dialect by
+> passing its name as the first argument, `.sql("postgres")`, matching upstream's own
+> `expr.sql(dialect="postgres")` shape. Try it from the repo root: `node -e
 > 'import("./index.js").then(({ exp }) => { console.log(exp.select("id",
 > "name").from_("users").where(exp.column("active").eq(true)).sql()); })'` prints `SELECT id,
 > name FROM users WHERE active = TRUE`.
@@ -113,12 +111,13 @@ statement, same shape as `parse`'s return). Passing only `read` transpiles ident
 back out in the same dialect it went in, useful as a normalizer/formatter even without a
 target dialect.
 
-> **This works today** for the seven dialects with a real `Dialect` class (Databricks chain,
-> Snowflake, DuckDB, Postgres). Try it: `node -e 'import("./index.js").then(({ transpile }) =>
-> { console.log(transpile("SELECT \`id\` FROM t", { read: "databricks", write: "postgres"
-> })[0]); })'` prints `SELECT "id" FROM t` — Databricks' backtick-quoted identifier becomes
-> Postgres' double-quoted one, a real cross-dialect difference, not just round-tripping the
-> same string back out.
+> **This works today** for all 33 dialects, each with a real `Dialect` class. Try it: `node -e
+> 'import("./index.js").then(({ transpile }) => { console.log(transpile("SELECT \`id\` FROM
+> t", { read: "databricks", write: "postgres" })[0]); })'` prints `SELECT "id" FROM t` —
+> Databricks' backtick-quoted identifier becomes Postgres' double-quoted one, a real
+> cross-dialect difference, not just round-tripping the same string back out. See
+> [api.md#known-gaps](api.md#known-gaps) for the current, specific list of what's not yet
+> byte-exact within those 33.
 
 ## Tokenize without parsing
 
@@ -133,7 +132,7 @@ for (const token of tokenize("SELECT 1", { read: "snowflake" })) {
 }
 ```
 
-> **This works today** for the seven real dialects. Note the real `Token` class
+> **This works today** for all 33 dialects. Note the real `Token` class
 > (`src/tokens.js`) uses `token.token_type` (snake_case, a `TokenType` enum number), not a
 > camelCased `tokenType` — see [api.md](api.md) for why.
 

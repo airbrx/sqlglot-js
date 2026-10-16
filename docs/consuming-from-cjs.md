@@ -53,7 +53,11 @@ function parseSql(sql, opts) {
 module.exports = { bootstrap, parseSql };
 ```
 
-This pattern is verified against a real `.cjs` file in this repo (there's no npm-published
-package yet, so the example above resolves `sqlglot-js` to a relative path during
-verification; once installed as a git dependency — see the root [README](../README.md) —
-`import("sqlglot-js")` resolves the normal way through `node_modules`).
+**Correction (AIR-2297 docs round):** this page previously claimed the pattern above "is
+verified against a real `.cjs` file in this repo" — no such file exists, or ever has (checked
+against the full git history). The pattern was spot-checked for this docs round by running
+both snippets above as scratch `.cjs` files against this repo's `index.js` via a relative
+import path, and both produced exactly the output shown. There's no npm-published package yet,
+so a real `.cjs` consumer resolves `sqlglot-js` to a relative or git-dependency path rather
+than through `node_modules` the normal way; once installed as a git dependency — see the root
+[README](../README.md) — `import("sqlglot-js")` resolves the normal way.
