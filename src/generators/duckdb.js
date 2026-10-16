@@ -3717,6 +3717,14 @@ export class DuckDBGenerator extends Generator {
     return this.sql(result);
   }
 
+  /** py:4408 `format_sql(self, expression)`. */
+  format_sql(expression) {
+    if (pyUpper(expression.name) === "%S" && expression.expressions.length === 1) {
+      return this.func("FORMAT", "'{}'", expression.expressions[0]);
+    }
+    return this.function_fallback_sql(expression);
+  }
+
   /** py:4415 `hexstring_sql(self, expression, binary_function_repr=None)` — `UNHEX('FF')`
    * correctly produces blob `\xFF` in DuckDB (base default is `FROM_HEX`). */
   hexstring_sql(expression, binary_function_repr = null) {

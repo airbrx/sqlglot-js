@@ -48,7 +48,7 @@ import { PyTypeError, PyValueError } from "../_py/errors.js";
 import { pyTruthy } from "../_py/truthy.js";
 import { formatTime, subsecondPrecision, TIMEZONES } from "../time.js";
 import { newTrie } from "../trie.js";
-import { TokenType, Tokenizer, initTokenizerSubclass, setDialectResolver, setDialectHelpersRef } from "../tokens.js";
+import { TokenType, Tokenizer, initTokenizerSubclass, setDialectResolver, setDialectHelpersRef, getSimplifyRef } from "../tokens.js";
 import { BaseParser } from "../parsers/base.js";
 import { ALL_JSON_PATH_PARTS, Generator, unsupported_args } from "../generator.js";
 import { JSONPathTokenizer, parse as parse_json_path } from "../jsonpath.js";
@@ -1168,12 +1168,16 @@ export function nth_value_from_sql(self, expression) {
 
 /** py: sqlglot/dialects/dialect.py:1236 */
 export function bracket_to_element_at_sql(self, expression) {
+  // R33: `applyIndexOffset` silently no-ops without `annotateTypes`/`simplify` —
+  // same relay `generator.js`'s `bracket_offset_expressions` uses (`simplify.js`
+  // imports this file directly, so a top-level import here would recreate the
+  // cycle R32 named; `getSimplifyRef()` is the escape hatch).
   const index = seqGet(
     exp.applyIndexOffset(
       expression.this,
       expression.expressions,
       1 - (expression.args.offset ?? 0),
-      { dialect: self.dialect },
+      { dialect: self.dialect, annotateTypes: annotate_types, simplify: getSimplifyRef() },
     ),
     0,
   );
