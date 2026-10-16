@@ -96,19 +96,28 @@ export function binary_from_function(expr_type) {
 /**
  * py: sqlglot/dialects/dialect.py:1610
  *
- * `dialect_override` is a dialect NAME upstream (`Dialect[dialect_override]`), which
- * §8 forbids resolving here. No caller in `parsers/snowflake.py` passes it, so the
- * parameter is accepted and rejected rather than silently ignored.
+ * `dialect_override` is a dialect NAME upstream, resolved via `Dialect[dialect_override]`
+ * (the metaclass `__getitem__`, returning the registered CLASS, not an instance).
+ * AIR-2309: this file's own `Dialect` class is defined further down in THIS SAME
+ * module (no import needed, let alone a top-level import of a concrete dialect
+ * module — forbidden by R32/R42/R43's own `generator.js`<->`dialect.js` cycle
+ * precedent), so `Dialect.get_or_raise` is the faithful stand-in, same pattern R43
+ * used for TSQL's cross-dialect resolution. `get_or_raise` returns an INSTANCE
+ * rather than upstream's class, but `registerDialect` mirrors class statics onto
+ * `klass.prototype` (CONTRACTS.md §8's "Dialect settings read as self.X from an
+ * instance" row) and `format_time` is deliberately dual-defined as both a `static`
+ * and a prototype method (same §8 row, two below) for exactly this call shape, so
+ * `target_dialect.TIME_FORMAT` / `target_dialect.format_time(fmt)` read identically
+ * whether `target_dialect` is the class (upstream) or a default-constructed
+ * instance (here) — only reachable this way because `build_formatted_time` is
+ * called lexically AFTER the whole module (including the `Dialect` class body) has
+ * finished loading, never at this function's own definition time.
  */
 export function build_formatted_time(exp_class, dialect_override = null, default_ = null) {
   return function _builder(args, dialect) {
-    if (typeof dialect_override === "string") {
-      throw new NotPorted(
-        `build_formatted_time(dialect_override=${JSON.stringify(dialect_override)})`,
-        "sqlglot/dialects/dialect.py:1624",
-      );
-    }
-    const target_dialect = dialect;
+    const target_dialect = typeof dialect_override === "string"
+      ? Dialect.get_or_raise(dialect_override)
+      : dialect;
 
     let fmt = seqGet(args, 1);
     if (!fmt) fmt = default_ === true ? target_dialect.TIME_FORMAT : default_ || null;

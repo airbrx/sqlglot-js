@@ -26,7 +26,7 @@
 // `md5_sql`/`sha2_sql`/`struct_sql` call below uses the real function, not a stub.
 
 import * as exp from "../expressions/index.js";
-import { Generator, unsupported_args } from "../generator.js";
+import { Generator, unsupported_args, AFTER_HAVING_MODIFIER_TRANSFORMS as BASE_AFTER_HAVING_MODIFIER_TRANSFORMS } from "../generator.js";
 import * as transforms from "../transforms.js";
 import {
   bool_xor_sql,
@@ -338,7 +338,13 @@ export class PrestoGenerator extends Generator {
   static SELECT_KINDS = [];
   static SUPPORTS_DECODE_CASE = false;
 
-  static AFTER_HAVING_MODIFIER_TRANSFORMS = Generator.AFTER_HAVING_MODIFIER_TRANSFORMS;
+  /**
+   * py:260 `AFTER_HAVING_MODIFIER_TRANSFORMS = generator.AFTER_HAVING_MODIFIER_TRANSFORMS`
+   * — the MODULE-level 2-entry dict (`windows`, `qualify`), not the base `Generator`
+   * CLASS attribute (which is a superset adding `cluster`/`distribute`/`sort`); see
+   * `generators/exasol.js`'s own copy of this note (AIR-2310) and PORT_PLAN.md.
+   */
+  static AFTER_HAVING_MODIFIER_TRANSFORMS = BASE_AFTER_HAVING_MODIFIER_TRANSFORMS;
 
   static INTERVAL_ALLOWS_PLURAL_FORM = false;
   static JOIN_HINTS = false;
