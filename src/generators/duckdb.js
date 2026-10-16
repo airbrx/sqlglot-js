@@ -2252,7 +2252,7 @@ export class DuckDBGenerator extends Generator {
       // STRTOK skips empty strings, so filter them out:
       // LIST_FILTER(REGEXP_SPLIT_TO_ARRAY(string, pattern), x -> x != '')[index]
       const split_array = exp.func("REGEXP_SPLIT_TO_ARRAY", string_arg, regex_pattern);
-      const x = exp.to_identifier("x");
+      const x = exp.toIdentifier("x");
       const is_empty = x.eq(exp.Literal.string(""));
       const filtered_array = exp.func(
         "LIST_FILTER",
