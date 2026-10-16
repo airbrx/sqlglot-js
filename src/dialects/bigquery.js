@@ -21,15 +21,13 @@
 // a 377-entry type-inference table (294 base + 83 BigQuery-specific), the same
 // `Snowflake.EXPRESSION_METADATA` wiring shape `snowflake.js` already established.
 //
-// ONE GAP REMAINS, announced rather than faked, same shape `snowflake.js` already
-// documents for its own:
-//
-//   `COERCES_TO` (py:118, `{**TypeAnnotator.COERCES_TO, ...}` — `TypeAnnotator` is
-//   `sqlglot/optimizer/annotate_types.py`) stays an empty `Map`, exactly matching base
-//   `Dialect`'s own current default, since `COERCES_TO` is declared in
-//   `dialects/bigquery.py` itself, not `typing/bigquery.py` — outside this round's
-//   scope. Declared explicitly below rather than omitted, so the attribute EXISTS with
-//   the right shape and a gap that states its own size (PORT_PLAN.md R19).
+// `COERCES_TO` (py:118-130, `{**TypeAnnotator.COERCES_TO, ...}` widened for
+// BIGDECIMAL/DECIMAL/BIGINT/VARCHAR) now resolves to a real table (AIR-2315 Part 3) —
+// an empty `Map` was left here through R119/R120 despite `annotate_types.js` landing
+// for real at R51 (the same "stub outlives its blocker" pattern Part 1 found and fixed
+// on `hive.js`/`databricks.js`; this file was flagged as the likely-identical
+// remainder in that round's own PORT_PLAN entry, since no `annotate_functions.sql` row
+// happened to exercise it). See `buildBigQueryCoercesTo` below.
 //
 // `class JSONPathTokenizer(jsonpath.JSONPathTokenizer)` (py:163) IS now declared below
 // (AIR-2274, `src/jsonpath.js`) — `BigQueryJSONPathTokenizer`.
@@ -50,6 +48,29 @@ import {
   registerDialect,
 } from "./dialect.js";
 import { EXPRESSION_METADATA as BIGQUERY_EXPRESSION_METADATA } from "../typing/bigquery.js";
+import { TypeAnnotator } from "../optimizer/annotate_types.js";
+
+// py:118-130 `COERCES_TO = {**TypeAnnotator.COERCES_TO, exp.DType.BIGDECIMAL: {exp.DType.DOUBLE}}`,
+// then three widenings. Unlike `hive.js`/`databricks.js`'s own `COERCES_TO` builders
+// (which union a TEXT_TYPES widening across every NUMERIC/TEMPORAL/INTERVAL target),
+// BigQuery's own widenings are a short, explicit, named list — ported literally rather
+// than generalized, matching upstream's own shape.
+function buildBigQueryCoercesTo() {
+  const coercesTo = new Map();
+  for (const [k, v] of TypeAnnotator.COERCES_TO) coercesTo.set(k, new Set(v));
+  coercesTo.set(exp.DType.BIGDECIMAL, new Set([exp.DType.DOUBLE]));
+  coercesTo.set(exp.DType.DECIMAL, new Set([...(coercesTo.get(exp.DType.DECIMAL) ?? []), exp.DType.BIGDECIMAL]));
+  coercesTo.set(exp.DType.BIGINT, new Set([...(coercesTo.get(exp.DType.BIGINT) ?? []), exp.DType.BIGDECIMAL]));
+  coercesTo.set(exp.DType.VARCHAR, new Set([
+    ...(coercesTo.get(exp.DType.VARCHAR) ?? []),
+    exp.DType.DATE,
+    exp.DType.DATETIME,
+    exp.DType.TIME,
+    exp.DType.TIMESTAMP,
+    exp.DType.TIMESTAMPTZ,
+  ]));
+  return coercesTo;
+}
 
 /** py: sqlglot/dialects/bigquery.py:163 `class JSONPathTokenizer(jsonpath.JSONPathTokenizer)`. */
 class BigQueryJSONPathTokenizer extends JSONPathTokenizer {
@@ -211,13 +232,8 @@ export class BigQuery extends Dialect {
     [exp.Union, null],
   ]);
 
-  /**
-   * py:118 `COERCES_TO = {**TypeAnnotator.COERCES_TO, ...}`, from the unported
-   * `sqlglot/optimizer/annotate_types.py` — see the file header. Base `Dialect`'s own
-   * `COERCES_TO` is likewise an empty `Map` today, so this matches it exactly rather
-   * than diverging into a differently-shaped gap.
-   */
-  static COERCES_TO = new Map();
+  /** py:118-130 `COERCES_TO = {**TypeAnnotator.COERCES_TO, ...}` — see `buildBigQueryCoercesTo` above. */
+  static COERCES_TO = buildBigQueryCoercesTo();
 
   /**
    * py:132 `EXPRESSION_METADATA = EXPRESSION_METADATA.copy()`, from

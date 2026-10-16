@@ -15,9 +15,13 @@
 // match here is a match against upstream's actual documented behavior, not just
 // internal self-consistency.
 //
-// `# dialect: mysql` fixture rows are SKIPPED (not ERROR): `src/dialects/mysql.js` does
-// not exist in this port yet, so `parseOne(sql, { read: "mysql" })` already throws
-// independently of `canonicalize.js` itself.
+// `# dialect: mysql` fixture rows used to be SKIPPED here (`src/dialects/mysql.js`
+// didn't exist in this port yet) -- AIR-2315 Part 3 un-skips them: MySQL landed for
+// real at R101 and this stub outlived its own stated blocker ever since
+// ([[stubs-outlive-their-stated-blocker]]). Both rows are EXACT at this pin; the
+// SKIPPED counter/slot is kept at 0 rather than removed, matching this file's own
+// established "keep the empty slot for the next gap" convention (see the
+// GENERATOR_GAP note just below).
 //
 // Every row always carries BOTH the real rendered SQL and a structural DFS-preorder
 // class-name fingerprint (CPython's generator always succeeds, so computing both costs
@@ -34,6 +38,7 @@ import { readFileSync } from "node:fs";
 import { parseOne } from "../../src/dialects/dialect.js";
 // Side-effect imports: register dialects this battery's fixtures ask for by name, and
 // the real base-Generator dispatch (`.sql()` needs it).
+import "../../src/dialects/mysql.js";
 import "../../src/dialects/tsql.js";
 import "../../src/generator.js";
 import { qualify } from "../../src/optimizer/qualify.js";
@@ -104,11 +109,6 @@ const samples = [];
 for (const row of ref) {
   const name = `${row.name}${row.dialect ? ` (${row.dialect})` : ""}`;
 
-  if (row.dialect === "mysql") {
-    skipped++;
-    continue;
-  }
-
   // `gen_canonicalize_ref.py`'s own "tsql-concat" scenario deliberately passes
   // `schema=None` (matching upstream's real, schema-less `optimize(...)` call there) --
   // every other row uses the shared `SCHEMA`.
@@ -157,7 +157,7 @@ for (const row of ref) {
 
 console.log();
 console.log("  src/optimizer/canonicalize.js vs CPython sqlglot.optimizer.canonicalize");
-console.log(`    EXACT ${exact}    GENERATOR_GAP ${generatorGap}    MISMATCH ${mismatch}    ERROR ${error}    SKIPPED ${skipped} (mysql, unported)`);
+console.log(`    EXACT ${exact}    GENERATOR_GAP ${generatorGap}    MISMATCH ${mismatch}    ERROR ${error}    SKIPPED ${skipped}`);
 if (samples.length) {
   console.log();
   for (const s of samples) console.log(VERBOSE ? `  ${s}\n` : `  ${s.split("\n")[0]}`);

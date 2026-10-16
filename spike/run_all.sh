@@ -395,6 +395,19 @@ PYTHONHASHSEED=0 python3 spike/p7/gen_simplify_fixture_ref.py > spike/out/simpli
 # missing TRANSFORMS entry) compare a structural `repr()`/`.toString()` dump instead
 # -- see `gen_qualify_columns_ref.py`'s own `STRUCTURAL` set.
 PYTHONHASHSEED=0 python3 spike/p7/gen_qualify_columns_ref.py > spike/out/qualify_columns.json || fail=1
+# AIR-2315 Part 3 (last part of "13.7 Replay the un-replayed optimizer fixture
+# files"). ONE generic table-driven oracle replaying the ten remaining zero-oracle
+# fixture files: `canonicalize_internal_names.sql` (65), `unnest_subqueries.sql`
+# (41), `normalize_identifiers.sql` (30), `eliminate_subqueries.sql` (27),
+# `optimize_joins.sql` (18), `quote_identifiers.sql` (10), `isolate_table_selects.sql`
+# (8), `eliminate_ctes.sql` (6), `pushdown_cte_alias_columns.sql` (6) -- each replayed
+# against its own real `self.check_file(...)` call site -- plus `annotate_types.sql`
+# (71), replayed in its own type-string compare mode against `test_annotate_types`
+# directly (not `check_file`). 282 pairs total, closing the rollup's remaining
+# "no oracle" population exactly. Found ONE real module gap: `canonicalize_internal_names.py`
+# (331 LOC) had never been ported at all -- see the new `canonicalize_internal_names.js`
+# file's own header for why no prior closure/demand tracer ever reached it.
+PYTHONHASHSEED=0 python3 spike/p7/gen_fixture_replay_ref.py > spike/out/fixture_replay.json || fail=1
 # P10 oracle. `optimizer/normalize.py` (AIR-2110) is NOT greenfield -- upstream ships a
 # real fixture corpus for it, `tests/fixtures/optimizer/normalize.sql` (17 pairs),
 # reproduced here through the exact small pipeline `TestOptimizer.test_normalize` runs
@@ -675,6 +688,7 @@ run "P7: eliminate_ctes.js vs CPython"        node spike/p7/fuzz_eliminate_ctes.
 run "P7: optimizer/simplify.js Simplifier vs CPython" node spike/p7/fuzz_simplify.mjs
 run "P7: simplify.sql fixture replay vs CPython" node spike/p7/fuzz_simplify_fixture.mjs
 run "P7: optimizer/qualify_columns.js (core) vs CPython" node spike/p7/fuzz_qualify_columns.mjs
+run "P7: ten zero-oracle optimizer fixture files vs CPython (AIR-2315 Part 3)" node spike/p7/fuzz_fixture_replay.mjs
 run "P10: optimizer/normalize.js vs CPython"          node spike/p10/fuzz_normalize.mjs
 run "P10: optimizer/pushdown_projections.js vs CPython" node spike/p10/fuzz_pushdown_projections.mjs
 run "P10: optimizer/eliminate_joins.js vs CPython"    node spike/p10/fuzz_eliminate_joins.mjs

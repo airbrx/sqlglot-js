@@ -109,8 +109,9 @@ const MANIFEST = [
     extra: 464, extraNote: "oracle's own record count (2,396) is pair x `# dialect:` meta fan-out, not pairs -- 464 more records than the 1,932 pairs themselves (AIR-2315 Part 1); EXACT below counts records, not pairs",
   },
   {
-    file: "annotate_types.sql", kind: "pairs", oracle: null,
-    notes: "no oracle opens this file. The 6 spike/p7 `fuzz_annotate_types*.mjs`/`gen_annotate_types*_ref.py` files are named after the same TypeAnnotator surface but ship their own independent, hand-written corpora -- none loads `annotate_types.sql`.",
+    file: "annotate_types.sql", kind: "pairs",
+    oracle: "spike/p7/fuzz_fixture_replay.mjs", mode: "group", group: "annotate_types.sql",
+    notes: "AIR-2315 Part 3. The 6 spike/p7 `fuzz_annotate_types*.mjs`/`gen_annotate_types*_ref.py` files are named after the same TypeAnnotator surface but ship their own independent, hand-written corpora; this is the sibling oracle that replays the real fixture file, via `test_annotate_types`'s own driver (type-string compare, no schema), not `check_file`.",
   },
   {
     file: "canonicalize.sql", kind: "pairs",
@@ -118,12 +119,14 @@ const MANIFEST = [
     extra: 11, extraNote: "oracle adds 11 own hand-written scenarios beyond the 42 fixture pairs (tsql-concat, datediff-no-annotate, 3 ORDER BY shapes, 6 COERCIBLE_DATE_OPS shapes) -- EXACT/SKIPPED below cover all 53, not 42 alone",
   },
   {
-    file: "canonicalize_internal_names.sql", kind: "pairs", oracle: null,
-    notes: "no oracle opens this file, despite being used for real by `test_canonicalize_internal_names`'s own `self.check_file(...)` call (test_optimizer.py:1583).",
+    file: "canonicalize_internal_names.sql", kind: "pairs",
+    oracle: "spike/p7/fuzz_fixture_replay.mjs", mode: "group", group: "canonicalize_internal_names.sql",
+    notes: "AIR-2315 Part 3. `src/optimizer/canonicalize_internal_names.js` did not exist at all before this round -- see that file's own header for why.",
   },
   {
-    file: "eliminate_ctes.sql", kind: "pairs", oracle: null,
-    notes: "`spike/p7/fuzz_eliminate_ctes.mjs` is greenfield (own docstring) -- no corpus tie-in, does not load this file.",
+    file: "eliminate_ctes.sql", kind: "pairs",
+    oracle: "spike/p7/fuzz_fixture_replay.mjs", mode: "group", group: "eliminate_ctes.sql",
+    notes: "AIR-2315 Part 3. `spike/p7/fuzz_eliminate_ctes.mjs` is still a greenfield hand-built battery (own docstring, stays as a sibling) -- this is the sibling oracle that replays the real fixture file via its own `self.check_file(\"eliminate_ctes\", ..., pretty=True)` call.",
   },
   {
     file: "eliminate_joins.sql", kind: "pairs",
@@ -131,12 +134,14 @@ const MANIFEST = [
     extra: 7, extraNote: "oracle adds 7 own `join_condition` branch-coverage scenarios beyond the 18 fixture pairs -- EXACT below covers all 25, not 18 alone",
   },
   {
-    file: "eliminate_subqueries.sql", kind: "pairs", oracle: null,
-    notes: "`spike/p7/fuzz_eliminate_subqueries.mjs` is greenfield -- does not load this file.",
+    file: "eliminate_subqueries.sql", kind: "pairs",
+    oracle: "spike/p7/fuzz_fixture_replay.mjs", mode: "group", group: "eliminate_subqueries.sql",
+    notes: "AIR-2315 Part 3. `spike/p7/fuzz_eliminate_subqueries.mjs` is still a greenfield hand-built battery (own docstring, stays as a sibling) -- this is the sibling oracle that replays the real fixture file.",
   },
   {
-    file: "isolate_table_selects.sql", kind: "pairs", oracle: null,
-    notes: "`spike/p7/fuzz_isolate_table_selects.mjs` is greenfield -- does not load this file.",
+    file: "isolate_table_selects.sql", kind: "pairs",
+    oracle: "spike/p7/fuzz_fixture_replay.mjs", mode: "group", group: "isolate_table_selects.sql",
+    notes: "AIR-2315 Part 3. `spike/p7/fuzz_isolate_table_selects.mjs` is still a greenfield hand-built battery (own docstring, stays as a sibling) -- this is the sibling oracle that replays the real fixture file.",
   },
   {
     file: "merge_subqueries.sql", kind: "pairs",
@@ -150,12 +155,14 @@ const MANIFEST = [
     extra: 6, extraNote: "oracle adds 3 inline `test_normalize` assertions + 3 `test_normalization_distance` scenarios beyond the 17 fixture pairs -- EXACT below covers all 23, not 17 alone",
   },
   {
-    file: "normalize_identifiers.sql", kind: "pairs", oracle: null,
-    notes: "no oracle opens this file.",
+    file: "normalize_identifiers.sql", kind: "pairs",
+    oracle: "spike/p7/fuzz_fixture_replay.mjs", mode: "group", group: "normalize_identifiers.sql",
+    notes: "AIR-2315 Part 3.",
   },
   {
-    file: "optimize_joins.sql", kind: "pairs", oracle: null,
-    notes: "`spike/p7/fuzz_optimize_joins.mjs` ships its own 28-row hand-written corpus (per PORT_PLAN.md R45) -- does not load this 18-pair file.",
+    file: "optimize_joins.sql", kind: "pairs",
+    oracle: "spike/p7/fuzz_fixture_replay.mjs", mode: "group", group: "optimize_joins.sql",
+    notes: "AIR-2315 Part 3. `spike/p7/fuzz_optimize_joins.mjs` still ships its own 28-row hand-written corpus (per PORT_PLAN.md R45, stays as a sibling) -- this is the sibling oracle that replays the real 18-pair fixture file.",
   },
   {
     file: "optimizer.sql", kind: "pairs",
@@ -164,8 +171,9 @@ const MANIFEST = [
     executeDefaultTrue: true,
   },
   {
-    file: "pushdown_cte_alias_columns.sql", kind: "pairs", oracle: null,
-    notes: "no oracle opens this file.",
+    file: "pushdown_cte_alias_columns.sql", kind: "pairs",
+    oracle: "spike/p7/fuzz_fixture_replay.mjs", mode: "group", group: "pushdown_cte_alias_columns.sql",
+    notes: "AIR-2315 Part 3.",
   },
   {
     file: "pushdown_predicates.sql", kind: "pairs",
@@ -199,8 +207,9 @@ const MANIFEST = [
     notes: "replayed by `fuzz_qualify.mjs`'s own `run_qualify_tables_fixture`, not by `spike/p7/fuzz_qualify_tables.mjs` (hand-built, does not load this file).",
   },
   {
-    file: "quote_identifiers.sql", kind: "pairs", oracle: null,
-    notes: "no oracle opens this file.",
+    file: "quote_identifiers.sql", kind: "pairs",
+    oracle: "spike/p7/fuzz_fixture_replay.mjs", mode: "group", group: "quote_identifiers.sql",
+    notes: "AIR-2315 Part 3.",
   },
   {
     file: "simplify.sql", kind: "pairs",
@@ -216,8 +225,9 @@ const MANIFEST = [
     oracle: "spike/p10/fuzz_optimize_e2e.mjs", mode: "group", group: "tpc-ds/tpc-ds.sql",
   },
   {
-    file: "unnest_subqueries.sql", kind: "pairs", oracle: null,
-    notes: "`spike/p7/fuzz_unnest_subqueries.mjs` is greenfield -- does not load this file.",
+    file: "unnest_subqueries.sql", kind: "pairs",
+    oracle: "spike/p7/fuzz_fixture_replay.mjs", mode: "group", group: "unnest_subqueries.sql",
+    notes: "AIR-2315 Part 3. `spike/p7/fuzz_unnest_subqueries.mjs` is still greenfield (own docstring, stays as a sibling) -- this is the sibling oracle that replays the real fixture file.",
   },
 ];
 
