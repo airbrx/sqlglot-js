@@ -45,6 +45,7 @@ import "./src/dialects/dax.js";
 import "./src/dialects/tableau.js";
 import "./src/dialects/drill.js";
 import "./src/dialects/prql.js";
+import "./src/dialects/dremio.js";
 
 import { Dialect, parseOne } from "./src/dialects/dialect.js";
 import { ErrorLevel, ParseError, TokenError, UnsupportedError } from "./src/errors.js";

@@ -203,6 +203,15 @@ PYTHONHASHSEED=0 python3 spike/p5/gen_prql_dialect_ref.py > spike/out/prql_diale
 # sqlglot.parse(sql, read="prql").sql(), since the settings-only oracle above
 # never calls a single parser method.
 PYTHONHASHSEED=0 python3 spike/p5/gen_prql_pipeline_ref.py > spike/out/prql_pipeline.json || fail=1
+# P5 oracle, same shape, Dremio (AIR-2292, "12.7 Small dialects", batch B).
+# `dialects/dremio.py` extends the BASE `Dialect` directly, no chain -- 6
+# resolved settings of its own, a 48-entry TIME_MAPPING dict, and a nested
+# Tokenizer with 1 added setting (COMMENTS). No method override on the
+# Dialect class itself. The real grammar/generator fidelity is covered
+# separately by `gen_dremio_grammar_ref.py`/`fuzz_dremio_grammar.mjs` just
+# below, replaying 52 fixtures from upstream's own tests/dialects/test_dremio.py.
+PYTHONHASHSEED=0 python3 spike/p5/gen_dremio_dialect_ref.py > spike/out/dremio_dialect.json || fail=1
+PYTHONHASHSEED=0 python3 spike/p5/gen_dremio_grammar_ref.py > spike/out/dremio_grammar.json || fail=1
 # P6 oracle. `schema.py`'s `MappingSchema` is greenfield -- nothing in the port depends
 # on it yet, so unlike every oracle above it has no corpus/atoms.jsonl tie-in at all.
 # 24 scenarios / 53 checks of column/type lookups, add_table, dialect-aware identifier
@@ -593,6 +602,8 @@ run "P5: Tableau dialect vs CPython"       node spike/p5/fuzz_tableau_dialect.mj
 run "P5: Drill dialect vs CPython"         node spike/p5/fuzz_drill_dialect.mjs
 run "P5: PRQL dialect vs CPython"          node spike/p5/fuzz_prql_dialect.mjs
 run "P5: PRQL pipeline vs CPython"         node spike/p5/fuzz_prql_pipeline.mjs
+run "P5: Dremio dialect vs CPython"        node spike/p5/fuzz_dremio_dialect.mjs
+run "P5: Dremio grammar vs CPython"        node spike/p5/fuzz_dremio_grammar.mjs
 run "P6: schema.js MappingSchema vs CPython" node spike/p6/fuzz_schema.mjs
 run "P7: optimizer/scope.js traverseScope/Scope vs CPython" node spike/p7/fuzz_scope.mjs
 run "P7: optimize_joins.js vs CPython"       node spike/p7/fuzz_optimize_joins.mjs
