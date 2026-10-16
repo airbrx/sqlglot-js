@@ -5849,9 +5849,23 @@ export class Parser {
   // py: sqlglot/parser.py:7957
   _parse_bracket_key_value(is_map = false) { return this._parse_slice(this._parse_alias(this._parse_disjunction(), true)); }
 
-  /** @returns {*} */
-  // py: sqlglot/parser.py:7960
-  _parse_odbc_datetime_literal() { throw new NotPorted("_parse_odbc_datetime_literal", "sqlglot/parser.py:7960"); }
+  /**
+   * py: sqlglot/parser.py:7960
+   * Parses a datetime column in ODBC format. We parse the column into the corresponding
+   * types, for example `{d'yyyy-mm-dd'}` will be parsed as a `Date` column, exactly the
+   * same as we did for `DATE('yyyy-mm-dd')`.
+   *
+   * Reference:
+   * https://learn.microsoft.com/en-us/sql/odbc/reference/develop-app/date-time-and-timestamp-literals
+   * @returns {exp.Expr}
+   */
+  _parse_odbc_datetime_literal() {
+    this._match(TokenType.VAR);
+    const exp_class = this.constructor.ODBC_DATETIME_LITERALS.get(this._prev.text.toLowerCase());
+    const expression = this.expression(new exp_class({ this: this._parse_string() }));
+    if (!this._match(TokenType.R_BRACE)) this.raise_error("Expected }");
+    return expression;
+  }
 
   /** @returns {*} */
   // py: sqlglot/parser.py:7976
