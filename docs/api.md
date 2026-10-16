@@ -1,29 +1,42 @@
 # API reference
 
 > **Status:** the public surface described below is real (`index.js`, the package root) for
-> seven dialects, plus `Schema`/`MappingSchema` (dialect-agnostic — column-type-aware
-> table/column metadata, no dependency on how many dialects have landed) and `diff` (also
-> dialect-agnostic); each section also says exactly what's still missing (mainly: the other
-> ~42 harvested dialects).
+> all 33 of upstream's dialect modules at the pin — `parse`/`parseOne`/`transpile`/`tokenize`
+> resolve any of them by name — plus `Schema`/`MappingSchema`, `optimize`, `lineage`,
+> `anonymize`/`render`, and `diff`, all dialect-agnostic. Every section below says exactly
+> what's measured and links to the **Known gaps** section for what's still open — mainly a
+> population of per-atom generate mismatches/stubs the differential corpus has already found
+> and named, not missing surface. See the root [README](../README.md) for the measured
+> whole-corpus numbers this page's claims are checked against.
 > Function names and option shapes mirror upstream sqlglot's
 > own `sqlglot/__init__.py` as closely as JS naming allows: a name that collides with a JS
 > reserved word gets a trailing underscore (`from_`, `case_`), a multi-word `snake_case` name
 > becomes `camelCase` (`parse_one` → `parseOne`, `to_identifier` → `toIdentifier`), everything
 > else keeps its Python name unchanged. This is the same convention already used throughout
 > `src/expressions/`, not a new one invented for this page.
+>
+> **JS-specific shapes worth knowing up front**, each a `CONTRACTS.md` §8-recorded deviation:
+> Python's `None` is JS `null` everywhere (there is no separate "undefined means missing"
+> convention in the public API); a Python keyword-argument call becomes a single trailing
+> options object (no JS keyword arguments); a Python `dict`/`set` that needs insertion-order
+> or non-string keys is a JS `Map`/`Set`, not a plain object (`Schema`'s nested mapping, the
+> tokenizer's keyword tables); and `pyTruthy`/`pyFalsy` (empty array, empty string, `0`, `null`
+> are falsy, matching Python's own truthiness, not JS's — an empty array is falsy in Python but
+> truthy in bare JS `if (arr)`) show up in a few places where this port's own internals check
+> an upstream-shaped condition, though the public functions on this page don't require a
+> caller to know that.
 
 ## Top-level functions
 
 **Real today** (`index.js`, the package root). The underlying parse AND generate machinery
-is differentially tested (10,879/15,478 corpus rows exact on the parse side; seven dialects
-— Databricks chain, Snowflake, DuckDB, Postgres — also generate for real), and the functions
-below are thin, faithfully-shaped wrappers around it: `Dialect.get_or_raise(name)`
-(`src/dialects/dialect.js`) is still the actual dialect-by-name registry underneath, and
-`index.js` eagerly imports the seven dialects with a real class so `read`/`write` just work
-by name without a separate import. `CONTRACTS.md` §8's restriction on resolving a dialect
-string still applies to the other ~42 harvested dialects, which have no real `Dialect`
-subclass yet — `parse`/`parseOne`/`transpile`/`tokenize` all throw `Unknown dialect` for
-those names, the same as `Dialect.get_or_raise` does directly.
+is differentially tested against the full corpus (15,516/15,540 rows exact on the parse
+side, 15,463/15,540 on the generate side — see the root README's status table for the
+MISMATCH/STUB/ERROR breakdown), and the functions below are thin, faithfully-shaped wrappers
+around it: `Dialect.get_or_raise(name)` (`src/dialects/dialect.js`) is still the actual
+dialect-by-name registry underneath, and `index.js` eagerly imports all 33 dialects with a
+real class so `read`/`write` just work by name without a separate import. A name that isn't
+one of the 33 (`test/index.test.mjs` carries the exact list) throws `Unknown dialect`, the
+same as calling `Dialect.get_or_raise` on that name directly.
 
 ### `parse(sql, options?)`
 
@@ -42,10 +55,10 @@ tree per statement, in order. A genuinely empty statement (e.g. the middle one i
 whether a genuine parse *defect* throws immediately, accumulates and throws at the end, or is
 swallowed.
 
-> **Works today**, exactly as shown above (`import { parse } from "sqlglot-js"`). `read` must
-> be one of `"snowflake"`, `"duckdb"`, `"postgres"`, `"hive"`, `"spark2"`, `"spark"`,
-> `"databricks"`, or omitted for the default dialect — no separate dialect import needed,
-> `index.js` registers all seven eagerly.
+> **Works today**, exactly as shown above (`import { parse } from "sqlglot-js"`). `read` may
+> be any of the 33 dialect names (`test/index.test.mjs` carries the exact list, grouped by
+> family in the root README) or omitted for the default dialect — no separate dialect import
+> needed, `index.js` registers all 33 eagerly.
 
 ### `parseOne(sql, options?)`
 
@@ -81,12 +94,14 @@ Parses under `read` and generates under `write`, one output string per input sta
 is the round-trip entry point — `parse` + `.sql(write)` per statement. A `null` slot from
 `parse` (a genuinely empty statement) generates as `""`, matching upstream.
 
-> **Works today** for the seven dialects with a real `Generator` (Databricks chain, Snowflake,
-> DuckDB — partial, see PORT_PLAN.md R32 — and Postgres). E.g. parsing `` SELECT `id` FROM t ``
-> under `"databricks"` and generating under `"postgres"` produces `SELECT "id" FROM t` — a real
-> cross-dialect identifier-quoting difference, not just round-tripping the input back out.
-> Generating under an unregistered dialect (any of the other ~42 harvested ones) throws
-> `Unknown dialect`, the same as calling `Dialect.get_or_raise` on that name directly.
+> **Works today** for all 33 dialects, each with a real `Generator`. E.g. parsing
+> `` SELECT `id` FROM t `` under `"databricks"` and generating under `"postgres"` produces
+> `SELECT "id" FROM t` — a real cross-dialect identifier-quoting difference, not just
+> round-tripping the input back out. "Works" here means "produces output," not "byte-exact
+> with upstream for every input" — the root README's status table and
+> [Known gaps](#known-gaps) below name the current generate MISMATCH/STUB population exactly.
+> Generating under a name that isn't one of the 33 throws `Unknown dialect`, the same as
+> calling `Dialect.get_or_raise` on that name directly.
 
 ### `tokenize(sql, options?)`
 
@@ -145,7 +160,7 @@ Every `Expr` (real today, `src/expressions/core.js`):
   builder methods for fluently composing conditions on an existing node.
 - **`.sql(dialect?, options?)`** — **real today**, through the default dialect as soon as any
   dialect module has been imported for its registration side effect (importing this package
-  at all is enough — `index.js` registers seven). Pass a dialect name as the first positional
+  at all is enough — `index.js` registers all 33). Pass a dialect name as the first positional
   argument to generate under a specific one — `expr.sql("postgres")` — matching upstream's own
   `expr.sql(dialect="postgres")` shape exactly (not an options-object `{ dialect }`, despite
   what an earlier draft of this page predicted). Throws `"No SQL generator registered"` only if
@@ -171,6 +186,14 @@ rather than a bare lowercase string): `IGNORE` ignores all errors, `WARN` logs t
 collects all of a statement's errors and raises one exception for it, `IMMEDIATE` raises on
 the first error found. The default when `errorLevel` is omitted is `IMMEDIATE` — same default
 as upstream's `Parser.__init__`.
+
+The full hierarchy (`src/errors.js`), all re-exported from the package root: `SqlglotError`
+(the common base, not itself re-exported — catch it via `ParseError`/`TokenError`/
+`UnsupportedError`, or `instanceof Error`) → `ParseError` (thrown by `parse`/`parseOne`/
+`transpile`, carries structured `.errors`), `TokenError` (thrown by `tokenize` on a lexing
+failure — unterminated string, invalid escape), and `UnsupportedError` (thrown when
+`errorLevel` is `RAISE`/`IMMEDIATE` and the generator hits a construct a dialect's `Generator`
+has no rendering for — e.g. calling `.sql("duckdb")` on an AST node DuckDB has no SQL for).
 
 ## `Schema` / `MappingSchema`
 
@@ -205,8 +228,12 @@ Real methods: `addTable`, `columnNames`, `getColumnType`, `hasColumn`, `getUdfTy
 `copy`, `MappingSchema.fromMappingSchema`. Module-level helpers `ensureSchema`,
 `ensureColumnMapping`, `normalizeName`, `flattenSchema`, `nestedGet`, `nestedSet` are real too
 but not re-exported from the package root (matching upstream's own top-level surface) — reach
-them via `import { ensureSchema } from "sqlglot-js/src/schema.js"` from a repo checkout (no
-npm publish yet, same caveat as everything else on this page).
+them with a **relative** import from a repo checkout, `import { ensureSchema } from
+"./src/schema.js"`. Importing via the package name instead — `from "sqlglot-js/src/schema.js"`
+— does NOT work even as a git dependency: `package.json`'s `exports` map has no `./src/*`
+entry (only `./dialects/*`, `./expressions/*`, `./contrib/*` are exposed as subpaths), so Node
+raises `ERR_PACKAGE_PATH_NOT_EXPORTED` for any other path under the package name — verified
+directly, not assumed.
 
 One JS-specific note worth knowing before hand-building a schema: the internal nested mapping
 is stored as `Map`, not a plain object, specifically so a table or column literally named
@@ -415,15 +442,75 @@ const edits = diff(parseOne("SELECT a + b"), parseOne("SELECT a - b"), { delta_o
 rendered to SQL text for the dice-coefficient similarity score — it does not make `diff()`
 aware of a dialect's own parsing quirks, and does not require `source`/`target` to have been
 parsed under that same dialect.
-## Not yet designed / documented here
 
-- **Every dialect beyond the seven listed above** — no real `Parser`, `Dialect`, or
-  `Generator`; `Dialect.get_or_raise("bigquery")` (for example), and therefore
-  `parse`/`parseOne`/`transpile`/`tokenize` given `read`/`write: "bigquery"`, throws
-  `Unknown dialect`.
-- **Publishing to a registry** — `package.json`/`index.js` are real, but there's no npm
+## Per-dialect notes
+
+Most of the 33 dialects behave exactly like upstream with no caller-visible difference worth
+calling out. A few don't:
+
+- **`dax` and `prql` have no bare `SELECT` grammar at all**, faithfully — upstream itself
+  raises a `ParseError` for `sqlglot.parse("SELECT 1", read="dax")` and `read="prql"`. DAX only
+  parses `EVALUATE <table expr>` statements (Power BI's query language); PRQL is a pipeline
+  language (`from x | derive y = 1`), not SQL syntax at all. `test/index.test.mjs` probes each
+  with its own smoke string for this reason rather than the shared `SELECT 1`.
+- **`athena` routes each statement to one of two different grammars underneath**, matching
+  AWS's own behavior: Athena is not simply hosted Trino — it dispatches a query to either a
+  Hive-flavored DDL engine or a Trino DML engine depending on statement shape, and
+  `src/dialects/athena.js`/`src/parsers/athena.js`/`src/generators/athena.js` mirror that same
+  Hive-vs-Trino composite one layer up rather than picking a single base class. Calling code
+  doesn't need to know which half of Athena handled a given statement; the dialect does it
+  transparently.
+- **Family chains subclass each other**, the same way upstream does: `Spark` subclasses
+  `Hive`, `Databricks` subclasses `Spark`; `SingleStore`/`StarRocks`/`Doris` subclass `MySQL`;
+  `Trino`/`Dune` subclass `Presto`; `Materialize`/`RisingWave`/`Fabric` subclass `Postgres`. A
+  fix to a shared base method affects every dialect in its chain, same as upstream.
+
+## Known gaps
+
+Everything below is a real, currently-open gap — named, measured, and (except where noted)
+already filed as its own Linear issue. None of it is silent: every number here comes from a
+command in the root README's status table, re-run on this tree.
+
+- **29 generate STUB atoms**, all one cluster: BigQuery's `APPROX_QUANTILES(x, n RESPECT|IGNORE
+  NULLS)` — the `_embed_ignore_nulls` `IGNORE_NULLS_BEFORE_ORDER` branch isn't ported yet, so
+  calling `.sql("bigquery")` on that construct throws rather than rendering.
+- **2 parse STUB atoms**: Exasol's ODBC datetime literal syntax, `` SELECT {d'2024-01-01'} ``
+  — `_parse_odbc_datetime_literal` isn't ported.
+- **48 generate MISMATCH atoms** (whole-corpus generate: 15,463 PASS / 48 MISMATCH / 29 STUB
+  / 0 ERROR of 15,540) — wrong-but-not-crashing output. `node tools/mismatch_report.mjs --all`
+  clusters the overlapping end-to-end-ratchet view of this population (39 rows / 19 clusters,
+  a slightly different scope/filter than the whole-corpus oracle above) by where generated
+  SQL first diverges: the two largest clusters (8 + 4 rows) are Spark→Presto's
+  `EXPLODE`/`POSEXPLODE` rewriting to `IF`; 5 more are BigQuery `ANY_VALUE(x HAVING MIN/MAX
+  y)` picking the wrong direction; the rest are single- or few-row clusters (DuckDB sketch
+  functions `BITMAP_CONSTRUCT_AGG`/`MINHASH`/`APPROXIMATE_SIMILARITY`, TSQL `CREATE FUNCTION
+  ... RETURNS @var TABLE`, Snowflake `AUTOINCREMENT`, ...) — re-run the tool for the current,
+  clustered breakdown with example SQL for each. **AIR-2311 is actively closing this
+  population as of R114**; treat these counts as a snapshot, not a ceiling.
+- **16 parse MISMATCH / 6 ERROR atoms** (whole-corpus parse: 15,516 PASS / 16 MISMATCH / 2
+  STUB / 6 ERROR of 15,540) — AST-shape divergences and genuine parse failures. All 6 ERROR
+  rows are TSQL: table-valued-function alias syntax (`OUTER APPLY a.b.f(x) y(z)`, 3 rows),
+  `OPENJSON ... WITH (...)` column-spec parsing (2 rows), and XML `.value()` method-call
+  syntax (1 row) — none of this is TSQL-specific upstream machinery the port forgot, it's base
+  grammar the port hasn't reached yet.
+- **76% of the 3,589 optimizer fixture pairs have no replaying differential oracle in this
+  repo** (`tools/fixture_rollup.mjs`, R95/AIR-1864) — most severely `annotate_functions.sql`
+  (1,932 pairs, 54% of the whole fixture corpus), with zero replay coverage despite several
+  `fuzz_annotate_types*`/`fuzz_typing*` oracles covering the same subject area independently.
+  This does **not** mean `optimize()`'s rules are untested — every rule has its own
+  differential oracle (§3 of `PORT_PLAN.md`) — it means this *specific* upstream fixture
+  corpus, file-for-file, isn't replayed end-to-end. See
+  `docs/verification/optimizer-fixture-rollup.md` for the full per-file table.
+- **`fuzz_dialect_defaults.mjs` has two permanent, named GAP notes** (428/428 checks still
+  pass around them): `generator_class` — the base `Dialect.generator_class` static reads as
+  `null` where CPython's autofill resolves to the `Generator` class; and
+  `Literal.string(null)` — `format_time("''")` reaches a code path where CPython's `str(None)`
+  renders `"None"` and this port's `String(null)` renders `"null"` (a real, reachable, 1-value
+  divergence, not a design choice — see the fuzzer's own comment for the exact two-line fix
+  and why landing only one line regresses two BigQuery rows).
+- **Not published to any registry** — `package.json` is `"private": true` and there's no npm
   publish yet; consume via a git dependency (see the root [README](../README.md)) or import
   `./index.js` directly from a repo checkout.
 
-See `PORT_PLAN.md` for the phase (P4, P5, ...) each of these lands in, and the real, current,
-measured status of everything on this page.
+See `PORT_PLAN.md`'s R100–R114 entries for how every number above was produced and who (if
+anyone) is actively working on it.
