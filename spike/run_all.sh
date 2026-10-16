@@ -171,6 +171,22 @@ PYTHONHASHSEED=0 python3 spike/p5/gen_exasol_dialect_ref.py > spike/out/exasol_d
 # (`can_quote`, a Pseudocolumn-parent DUAL exception) -- a real section 4, the
 # same shape Snowflake/DuckDB/ClickHouse use.
 PYTHONHASHSEED=0 python3 spike/p5/gen_oracle_dialect_ref.py > spike/out/oracle_dialect.json || fail=1
+# P5 oracle, same shape, Materialize (AIR-2292, "12.7 Small dialects", batch A, part
+# 1/3). `dialects/materialize.py` is `Materialize(Postgres)`: one resolved setting of
+# its own (NORMALIZE_NOT_NULL), no nested Tokenizer declared (a fresh empty subclass
+# of Postgres's own), and no method override on the Dialect class itself -- same
+# shape StarRocks/Doris/SingleStore's own oracles have no section 4/5.
+PYTHONHASHSEED=0 python3 spike/p5/gen_materialize_dialect_ref.py > spike/out/materialize_dialect.json || fail=1
+# P5 oracle, same shape, RisingWave (AIR-2292, part 2/3). `dialects/risingwave.py` is
+# `RisingWave(Postgres)`: three resolved settings of its own, a nested Tokenizer
+# adding SINK/SOURCE keywords on top of Postgres.Tokenizer, and no method override on
+# the Dialect class itself.
+PYTHONHASHSEED=0 python3 spike/p5/gen_risingwave_dialect_ref.py > spike/out/risingwave_dialect.json || fail=1
+# P5 oracle, same shape, Fabric (AIR-2292, part 3/3). `dialects/fabric.py` is
+# `Fabric(TSQL)`: one resolved setting of its own (NORMALIZATION_STRATEGY), a nested
+# Tokenizer remapping TIMESTAMP and adding UTINYINT on top of TSQL.Tokenizer, and no
+# method override on the Dialect class itself.
+PYTHONHASHSEED=0 python3 spike/p5/gen_fabric_dialect_ref.py > spike/out/fabric_dialect.json || fail=1
 # P6 oracle. `schema.py`'s `MappingSchema` is greenfield -- nothing in the port depends
 # on it yet, so unlike every oracle above it has no corpus/atoms.jsonl tie-in at all.
 # 24 scenarios / 53 checks of column/type lookups, add_table, dialect-aware identifier
@@ -556,6 +572,9 @@ run "P5: SQLite dialect vs CPython"        node spike/p5/fuzz_sqlite_dialect.mjs
 run "P5: Teradata dialect vs CPython"      node spike/p5/fuzz_teradata_dialect.mjs
 run "P5: Exasol dialect vs CPython"        node spike/p5/fuzz_exasol_dialect.mjs
 run "P5: Oracle dialect vs CPython"        node spike/p5/fuzz_oracle_dialect.mjs
+run "P5: Materialize dialect vs CPython"   node spike/p5/fuzz_materialize_dialect.mjs
+run "P5: RisingWave dialect vs CPython"    node spike/p5/fuzz_risingwave_dialect.mjs
+run "P5: Fabric dialect vs CPython"        node spike/p5/fuzz_fabric_dialect.mjs
 run "P6: schema.js MappingSchema vs CPython" node spike/p6/fuzz_schema.mjs
 run "P7: optimizer/scope.js traverseScope/Scope vs CPython" node spike/p7/fuzz_scope.mjs
 run "P7: optimize_joins.js vs CPython"       node spike/p7/fuzz_optimize_joins.mjs

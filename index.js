@@ -41,6 +41,9 @@ import "./src/dialects/sqlite.js";
 import "./src/dialects/teradata.js";
 import "./src/dialects/oracle.js";
 import "./src/dialects/exasol.js";
+import "./src/dialects/materialize.js";
+import "./src/dialects/risingwave.js";
+import "./src/dialects/fabric.js";
 
 import { Dialect, parseOne } from "./src/dialects/dialect.js";
 import { ErrorLevel, ParseError, TokenError, UnsupportedError } from "./src/errors.js";
