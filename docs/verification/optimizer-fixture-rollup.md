@@ -181,3 +181,41 @@ Remaining "no oracle" population after this round: `simplify.sql` (521, AIR-2315
 27, `optimize_joins.sql` 18, `quote_identifiers.sql` 10, `isolate_table_selects.sql` 8,
 `eliminate_ctes.sql` 6, `pushdown_cte_alias_columns.sql` 6; AIR-2315 Part 3) — 803 pairs
 total, matching AIR-2315's own target arithmetic (2,735 − 1,932 = 803).
+
+## Update (AIR-2315 Part 2): `simplify.sql` is now replayed
+
+`spike/p7/gen_simplify_fixture_ref.py` + `spike/p7/fuzz_simplify_fixture.mjs`
+(registered in `spike/run_all.sh` and `tools/run_correctness.sh`'s P7 oracle loop) now
+replay the real `simplify.sql` fixture file against the real `test_simplify`-shaped
+pipeline (`annotate_types()` then `simplify(..., constant_propagation=True,
+coalesce_simplification=True)`, per that test's own local `simplify()` wrapper, NOT
+the bare `simplify()` entry point `spike/p7/gen_simplify_ref.py`'s hand-built 81-row
+battery already exercises) — 521 records over the file's 521 pairs (no dialect
+fan-out, unlike `annotate_functions.sql`), closing the second-largest gap this
+document found.
+
+Re-measured with `SQLGLOT_REF=/tmp/sqlglot-complete-pin node tools/fixture_rollup.mjs`:
+
+| | before (AIR-2315 Part 1) | after (AIR-2315 Part 2) |
+|---|---:|---:|
+| Pairs replayed by some oracle | 2,786 | 3,307 |
+| Pairs with **no oracle anywhere** | **803** | **282** |
+| Sum of `EXACT` across every mapped oracle | 3,277 | 3,798 |
+
+The first real run surfaced 3 genuine port defects across 2 root causes, both outside
+`src/optimizer/simplify.js` itself (in shared `src/expressions/core.js` and
+`src/_py/datetime.js`): (1) `Expr.flatten()` never ported the `not node.is_subquery`
+guard (`core.py:1235`) that stops a scalar-subquery operand of a connector
+(`x = 5 AND (SELECT ...)`) from being unwrapped to its bare `Select`, which otherwise
+renders as the `Select`'s own `WHERE` wrongly absorbing the sibling predicate; (2)
+`extract_interval` didn't catch the `PyValueError` a non-literal interval amount (a
+column, not a literal) raises, where upstream's own `except (..., ValueError)` treats
+that as "not foldable", not an error; (3) `PyDate.addDays` was never overridden on
+`PyDateTime`, so `datetime_floor`'s WEEK-unit branch silently degraded a `PyDateTime`
+input to a bare `PyDate`, dropping its time-of-day and picking the wrong ISO-rendering
+branch downstream. All three fixed; PORT_PLAN.md's R120 entry has the full detail.
+Rerun: 521/521 EXACT.
+
+Remaining "no oracle" population after this round: the same eleven small files named
+above (AIR-2315 Part 3) — 282 pairs total, matching AIR-2315's own target arithmetic
+(803 − 521 = 282).
