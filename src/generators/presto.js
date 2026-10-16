@@ -4,19 +4,11 @@
 // `src/dialects/presto.js`), the same "full stack in one round" shape R38 (Redshift)
 // used — `trino`/`athena`/`dune` extend THIS file in later rounds.
 //
-// ONE DELIBERATE GAP: `TRANSFORMS[exp.Select]` OMITS `explode_projection_to_unnest`
-// -------------------------------------------------------------------------
-// Upstream's own chain is `[eliminate_window_clause, eliminate_qualify,
-// eliminate_distinct_on, explode_projection_to_unnest(1), eliminate_semi_and_anti_joins,
-// amend_exploded_column_table]`. `transforms.explode_projection_to_unnest` (py:402,
-// ~150 lines, needs the real `optimizer/scope.py` `Scope` class's `.references`) is
-// NOT YET in this port's `src/transforms.js` — a concurrent session (AIR-2300, PR #119
-// as of this writing, open but unmerged) is landing it right now for BigQuery/
-// Snowflake's own equivalent gaps. Porting it a second time here would duplicate that
-// work, so this file's `exp.Select` entry keeps every OTHER step real and the comment
-// at that exact line documents the omission, the same "state the gap, do not invent
-// it" precedent R42 used for BigQuery's identical wait on the same function. Whoever
-// lands #119 next should wire this file's own commented-out step in, not re-port it.
+// `TRANSFORMS[exp.Select]` carries the full upstream chain (py:381-389):
+// `[eliminate_window_clause, eliminate_qualify, eliminate_distinct_on,
+// explode_projection_to_unnest(1), eliminate_semi_and_anti_joins,
+// amend_exploded_column_table]` — `explode_projection_to_unnest` landed in
+// `src/transforms.js` via AIR-2300/R101 and is wired in here (R112/AIR-2311).
 //
 // SHARED HELPERS ALREADY AVAILABLE
 // -------------------------------------------------------------------------
@@ -468,10 +460,7 @@ export class PrestoGenerator extends Generator {
       transforms.eliminate_window_clause,
       transforms.eliminate_qualify,
       transforms.eliminate_distinct_on,
-      // py:386 `transforms.explode_projection_to_unnest(1)` — NOT YET in this port's
-      // `src/transforms.js`. See this file's header: AIR-2300/#119 is landing it right
-      // now for BigQuery/Snowflake's own equivalent gap; wire it in here once it lands
-      // rather than porting it a second time.
+      transforms.explode_projection_to_unnest(1),
       transforms.eliminate_semi_and_anti_joins,
       amend_exploded_column_table,
     ])],

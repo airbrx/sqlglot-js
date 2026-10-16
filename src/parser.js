@@ -6145,7 +6145,11 @@ export class Parser {
   _parse_having_max(this_) {
     if (this._match(TokenType.HAVING)) {
       this._match_texts(["MAX", "MIN"]);
-      return this.expression(new exp.HavingMax({ this: this_, expression: this._parse_column(), max: pyUpper(this._prev.text) !== "MIN" }));
+      // `max` must be read BEFORE `_parse_column()` below, which advances the parser
+      // and overwrites `this._prev` — an object-literal eval-order hazard upstream's
+      // own local-variable assignment (py:8628) doesn't have.
+      const max = pyUpper(this._prev.text) !== "MIN";
+      return this.expression(new exp.HavingMax({ this: this_, expression: this._parse_column(), max }));
     }
     return this_;
   }
