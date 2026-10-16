@@ -306,6 +306,14 @@ PYTHONHASHSEED=0 python3 spike/p7/gen_typing_ref.py > spike/out/typing.json || f
 # functions, ARRAY/ARRAY_AGG nesting, EXTRACT's BIGINT_EXTRACT_DATE_PARTS branch, and
 # NULL propagation through a binary operator plus `annotate()`'s own NULL-cleanup pass.
 PYTHONHASHSEED=0 python3 spike/p7/gen_annotate_types_ref.py > spike/out/annotate_types.json || fail=1
+# AIR-2315 Part 1. Replays the REAL `tests/fixtures/optimizer/annotate_functions.sql`
+# corpus (1,932 pairs, 2,396 pair x `# dialect:` records) through the same real
+# `annotate_types()` the oracle above exercises with its own hand-written scenarios --
+# this is the file-replaying counterpart `docs/verification/optimizer-fixture-rollup.md`
+# (R95/AIR-2295) found had zero oracle coverage anywhere in this repo. See
+# `gen_annotate_functions_ref.py`'s own header for the exact wrapping/schema/dialect
+# fan-out this reproduces from `tests/test_optimizer.py`'s `test_annotate_funcs`.
+PYTHONHASHSEED=0 python3 spike/p7/gen_annotate_functions_ref.py > spike/out/annotate_functions.json || fail=1
 # P7 oracle (AIR-2098). `typing/snowflake.py`'s per-dialect overlay -- 14 module-level
 # `_annotate_*` helpers plus 163 new / 44 overriding `EXPRESSION_METADATA` keys layered
 # on the base table -- exercised through the SAME real `TypeAnnotator` the base oracle
@@ -646,6 +654,7 @@ run "P7: qualify_tables.js vs CPython"       node spike/p7/fuzz_qualify_tables.m
 run "P7: isolate_table_selects.js vs CPython" node spike/p7/fuzz_isolate_table_selects.mjs
 run "P7: typing/index.js EXPRESSION_METADATA vs CPython" node spike/p7/fuzz_typing.mjs
 run "P7: annotate_types.js TypeAnnotator vs CPython" node spike/p7/fuzz_annotate_types.mjs
+run "P7: annotate_functions.sql fixture replay vs CPython" node spike/p7/fuzz_annotate_functions.mjs
 run "P7: typing/snowflake.js EXPRESSION_METADATA vs CPython" node spike/p7/fuzz_annotate_types_snowflake.mjs
 run "P7: typing/hive.js EXPRESSION_METADATA vs CPython" node spike/p7/fuzz_annotate_types_hive.mjs
 run "P7: typing/spark2.js EXPRESSION_METADATA vs CPython" node spike/p7/fuzz_annotate_types_spark2.mjs

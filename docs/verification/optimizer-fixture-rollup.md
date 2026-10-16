@@ -141,3 +141,43 @@ real `check_file` call with no replaying oracle at all).
   all 8 distinct oracles measured ~45-50s — over the "< 30s informational line" budget.
   Run it by hand (invocation above) after `spike/run_all.sh` or the relevant
   `gen_*_ref.py` scripts have refreshed `spike/out/*.json`.
+
+## Update (AIR-2315 Part 1): `annotate_functions.sql` is now replayed
+
+`spike/p7/gen_annotate_functions_ref.py` + `spike/p7/fuzz_annotate_functions.mjs`
+(registered in `spike/run_all.sh` and `tools/run_correctness.sh`'s P7 oracle loop) now
+replay the real fixture file against the real `annotate_types()`, closing the single
+largest gap this document found. One record per (pair, `# dialect:` meta entry) —
+2,396 records over the file's 1,932 pairs — all **EXACT** at this pin.
+
+Re-measured with `SQLGLOT_REF=/tmp/sqlglot-complete-pin node tools/fixture_rollup.mjs`:
+
+| | before (R95) | after (AIR-2315 Part 1) |
+|---|---:|---:|
+| Pairs replayed by some oracle | 854 | 2,786 |
+| Pairs with **no oracle anywhere** | **2,735** | **803** |
+| Sum of `EXACT` across every mapped oracle | 861 | 3,277 |
+
+The first real run surfaced 25 genuine port defects, all one root cause: `COERCES_TO`
+on the `Hive`/`Databricks` dialect classes (`src/dialects/hive.js`,
+`src/dialects/databricks.js`) was still the empty-`Map()` stub R20/R31 left behind
+when `sqlglot/optimizer/annotate_types.py` was P6+/unported — a case of R22's "stub
+outlives its blocker" (the blocker, `annotate_types.js` not existing, has been resolved
+since R51/the optimizer epic landed, but nothing came back to un-stub these two call
+sites). `IF`/`COALESCE` pick their result type via `TypeAnnotator._maybe_coerce`, which
+reads `dialect.COERCES_TO`; with it empty, both dialects silently fell back to the
+dialect-neutral base table, which resolves STRING-vs-DOUBLE/DATE/INTERVAL/BIGINT
+precedence backwards from what Hive's (string wins over numeric/temporal/interval) and
+Databricks's (numeric/temporal wins over string) real tables specify. Fixed with real
+`// py:`-anchored ports of `sqlglot/dialects/hive.py:37-42` and
+`sqlglot/dialects/databricks.py:18-26`; `bigquery.js`'s own identically-shaped
+`COERCES_TO` stub (py:118-128) remains unfixed — it is not exercised by this fixture
+file (390 BigQuery records were already EXACT before and after), so it is named here
+as a likely-identical remainder rather than fixed speculatively.
+
+Remaining "no oracle" population after this round: `simplify.sql` (521, AIR-2315 Part
+2) and the eleven small files (`annotate_types.sql` 71, `canonicalize_internal_names.sql`
+65, `unnest_subqueries.sql` 41, `normalize_identifiers.sql` 30, `eliminate_subqueries.sql`
+27, `optimize_joins.sql` 18, `quote_identifiers.sql` 10, `isolate_table_selects.sql` 8,
+`eliminate_ctes.sql` 6, `pushdown_cte_alias_columns.sql` 6; AIR-2315 Part 3) — 803 pairs
+total, matching AIR-2315's own target arithmetic (2,735 − 1,932 = 803).
