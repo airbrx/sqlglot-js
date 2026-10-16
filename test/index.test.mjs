@@ -86,8 +86,14 @@ test("every dialect index.js imports for its registration side effect actually r
   // on 2026-09-15. This test only proves the import list is internally consistent
   // with what get_or_raise can resolve -- it can't catch a dialect that's real but
   // simply missing from BOTH this list and this test, so keep it in sync by hand.
-  for (const name of ["hive", "spark2", "spark", "databricks", "snowflake", "duckdb", "postgres", "redshift", "bigquery", "tsql", "mysql", "singlestore", "presto", "clickhouse", "starrocks", "doris", "trino", "athena", "dune", "sqlite", "teradata", "exasol", "oracle", "materialize", "risingwave", "fabric"]) {
-    assert.equal(Dialect.get_or_raise(name).parse("SELECT 1")[0].constructor.name, "Select", `dialect '${name}' should resolve`);
+  // DAX has no bare SELECT grammar at all -- only EVALUATE statements -- which is
+  // faithful to upstream (`sqlglot.parse("SELECT 1", read="dax")` raises the same
+  // ParseError there), so it gets its own smoke string rather than the shared one.
+  // PRQL likewise has no bare SELECT grammar -- it's a pipeline language ("from x
+  // derive ..."), not SQL at all.
+  const PROBE_SQL = { dax: "EVALUATE Table", prql: "from x" };
+  for (const name of ["hive", "spark2", "spark", "databricks", "snowflake", "duckdb", "postgres", "redshift", "bigquery", "tsql", "mysql", "singlestore", "presto", "clickhouse", "starrocks", "doris", "trino", "athena", "dune", "exasol", "oracle", "solr", "druid", "dax", "tableau", "drill", "prql", "dremio", "materialize", "risingwave", "fabric", "sqlite", "teradata"]) {
+    assert.equal(Dialect.get_or_raise(name).parse(PROBE_SQL[name] ?? "SELECT 1")[0].constructor.name, "Select", `dialect '${name}' should resolve`);
   }
 });
 

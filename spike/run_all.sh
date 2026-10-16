@@ -171,6 +171,60 @@ PYTHONHASHSEED=0 python3 spike/p5/gen_exasol_dialect_ref.py > spike/out/exasol_d
 # (`can_quote`, a Pseudocolumn-parent DUAL exception) -- a real section 4, the
 # same shape Snowflake/DuckDB/ClickHouse use.
 PYTHONHASHSEED=0 python3 spike/p5/gen_oracle_dialect_ref.py > spike/out/oracle_dialect.json || fail=1
+# P5 oracle, same shape, Solr (AIR-2292, epic AIR-2272, "12.7 Small dialects", batch
+# B). `dialects/solr.py` extends the BASE `Dialect` directly, no chain -- 2 resolved
+# settings of its own and a nested Tokenizer with custom QUOTES/IDENTIFIERS. No
+# method override on the Dialect class itself, so no section 4 -- same shape
+# Presto's/Exasol's own oracle used.
+PYTHONHASHSEED=0 python3 spike/p5/gen_solr_dialect_ref.py > spike/out/solr_dialect.json || fail=1
+# P5 oracle, same shape, Druid (AIR-2292, "12.7 Small dialects", batch B). `dialects/
+# druid.py` extends the BASE `Dialect` directly, no chain, and declares NO scalar
+# setting and NO Tokenizer override of its own -- the first ported dialect to
+# exercise `registerDialect`'s IMPLICIT synthetic-Tokenizer-subclass path (chained
+# through `Dialect.tokenizer_class`, itself already a synthetic subclass of the real
+# `tokens.Tokenizer`, since the base `Dialect` class runs through the same
+# registration hook). No method override on the Dialect class itself either.
+PYTHONHASHSEED=0 python3 spike/p5/gen_druid_dialect_ref.py > spike/out/druid_dialect.json || fail=1
+# P5 oracle, same shape, DAX (AIR-2292, "12.7 Small dialects", batch B). `dialects/
+# dax.py` extends the BASE `Dialect` directly, no chain -- 2 resolved settings of
+# its own and a nested Tokenizer with 4 overrides (IDENTIFIERS/QUOTES/
+# STRING_ESCAPES/COMMENTS). No method override on the Dialect class itself.
+PYTHONHASHSEED=0 python3 spike/p5/gen_dax_dialect_ref.py > spike/out/dax_dialect.json || fail=1
+# P5 oracle, same shape, Tableau (AIR-2292, "12.7 Small dialects", batch B).
+# `dialects/tableau.py` extends the BASE `Dialect` directly, no chain -- 1
+# resolved setting of its own and a nested Tokenizer with IDENTIFIERS/QUOTES
+# overrides. Its 3 method overrides (if_sql/count_sql/strposition_sql) live on
+# TableauGenerator, covered by the differential parse/generate corpus instead --
+# no method override on the Dialect class itself, so no section 4 here either.
+PYTHONHASHSEED=0 python3 spike/p5/gen_tableau_dialect_ref.py > spike/out/tableau_dialect.json || fail=1
+# P5 oracle, same shape, Drill (AIR-2292, "12.7 Small dialects", batch B).
+# `dialects/drill.py` extends the BASE `Dialect` directly, no chain -- 10
+# resolved settings of its own, a 29-entry TIME_MAPPING dict, and a nested
+# Tokenizer with 2 added settings plus a post-merge `KEYWORDS.pop("/*+")`. No
+# method override on the Dialect class itself, so no section 4 here either.
+PYTHONHASHSEED=0 python3 spike/p5/gen_drill_dialect_ref.py > spike/out/drill_dialect.json || fail=1
+# P5 oracle, same shape, PRQL (AIR-2292, "12.7 Small dialects", batch B).
+# `dialects/prql.py` extends the BASE `Dialect` directly, no chain -- 1
+# resolved setting of its own and a nested Tokenizer with SINGLE_TOKENS/
+# KEYWORDS overrides. Settings-only; the real pipeline-to-SQL grammar fidelity
+# is covered separately by `gen_prql_pipeline_ref.py`/`fuzz_prql_pipeline.mjs`
+# just below. No method override on the Dialect class itself, so no section 4
+# here either.
+PYTHONHASHSEED=0 python3 spike/p5/gen_prql_dialect_ref.py > spike/out/prql_dialect.json || fail=1
+# P5 oracle, PRQL's own pipeline-to-SQL GRAMMAR (not settings): replays all 29
+# fixtures from upstream's own tests/dialects/test_prql.py through
+# sqlglot.parse(sql, read="prql").sql(), since the settings-only oracle above
+# never calls a single parser method.
+PYTHONHASHSEED=0 python3 spike/p5/gen_prql_pipeline_ref.py > spike/out/prql_pipeline.json || fail=1
+# P5 oracle, same shape, Dremio (AIR-2292, "12.7 Small dialects", batch B).
+# `dialects/dremio.py` extends the BASE `Dialect` directly, no chain -- 6
+# resolved settings of its own, a 48-entry TIME_MAPPING dict, and a nested
+# Tokenizer with 1 added setting (COMMENTS). No method override on the
+# Dialect class itself. The real grammar/generator fidelity is covered
+# separately by `gen_dremio_grammar_ref.py`/`fuzz_dremio_grammar.mjs` just
+# below, replaying 52 fixtures from upstream's own tests/dialects/test_dremio.py.
+PYTHONHASHSEED=0 python3 spike/p5/gen_dremio_dialect_ref.py > spike/out/dremio_dialect.json || fail=1
+PYTHONHASHSEED=0 python3 spike/p5/gen_dremio_grammar_ref.py > spike/out/dremio_grammar.json || fail=1
 # P5 oracle, same shape, Materialize (AIR-2292, "12.7 Small dialects", batch A, part
 # 1/3). `dialects/materialize.py` is `Materialize(Postgres)`: one resolved setting of
 # its own (NORMALIZE_NOT_NULL), no nested Tokenizer declared (a fresh empty subclass
@@ -186,8 +240,7 @@ PYTHONHASHSEED=0 python3 spike/p5/gen_risingwave_dialect_ref.py > spike/out/risi
 # `Fabric(TSQL)`: one resolved setting of its own (NORMALIZATION_STRATEGY), a nested
 # Tokenizer remapping TIMESTAMP and adding UTINYINT on top of TSQL.Tokenizer, and no
 # method override on the Dialect class itself.
-PYTHONHASHSEED=0 python3 spike/p5/gen_fabric_dialect_ref.py > spike/out/fabric_dialect.json || fail=1
-# P6 oracle. `schema.py`'s `MappingSchema` is greenfield -- nothing in the port depends
+PYTHONHASHSEED=0 python3 spike/p5/gen_fabric_dialect_ref.py > spike/out/fabric_dialect.json || fail=1# P6 oracle. `schema.py`'s `MappingSchema` is greenfield -- nothing in the port depends
 # on it yet, so unlike every oracle above it has no corpus/atoms.jsonl tie-in at all.
 # 24 scenarios / 53 checks of column/type lookups, add_table, dialect-aware identifier
 # normalization (base/snowflake/duckdb), UDF resolution, and the trie's ambiguous-prefix
@@ -572,6 +625,15 @@ run "P5: SQLite dialect vs CPython"        node spike/p5/fuzz_sqlite_dialect.mjs
 run "P5: Teradata dialect vs CPython"      node spike/p5/fuzz_teradata_dialect.mjs
 run "P5: Exasol dialect vs CPython"        node spike/p5/fuzz_exasol_dialect.mjs
 run "P5: Oracle dialect vs CPython"        node spike/p5/fuzz_oracle_dialect.mjs
+run "P5: Solr dialect vs CPython"          node spike/p5/fuzz_solr_dialect.mjs
+run "P5: Druid dialect vs CPython"         node spike/p5/fuzz_druid_dialect.mjs
+run "P5: DAX dialect vs CPython"           node spike/p5/fuzz_dax_dialect.mjs
+run "P5: Tableau dialect vs CPython"       node spike/p5/fuzz_tableau_dialect.mjs
+run "P5: Drill dialect vs CPython"         node spike/p5/fuzz_drill_dialect.mjs
+run "P5: PRQL dialect vs CPython"          node spike/p5/fuzz_prql_dialect.mjs
+run "P5: PRQL pipeline vs CPython"         node spike/p5/fuzz_prql_pipeline.mjs
+run "P5: Dremio dialect vs CPython"        node spike/p5/fuzz_dremio_dialect.mjs
+run "P5: Dremio grammar vs CPython"        node spike/p5/fuzz_dremio_grammar.mjs
 run "P5: Materialize dialect vs CPython"   node spike/p5/fuzz_materialize_dialect.mjs
 run "P5: RisingWave dialect vs CPython"    node spike/p5/fuzz_risingwave_dialect.mjs
 run "P5: Fabric dialect vs CPython"        node spike/p5/fuzz_fabric_dialect.mjs

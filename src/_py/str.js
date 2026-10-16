@@ -405,6 +405,24 @@ export function pyFormatInt(n, width) {
   return sign + "0".repeat(pad) + digits;
 }
 
+/**
+ * py: `format(value, spec)` / `f"{value:{spec}}"` — Python's format mini-language.
+ *
+ * The single named entry point `corpus/deny/py_builtins.json`'s "format-spec"
+ * category always points at (`tools/deny/gen_py_builtins.py:163` hardcodes the
+ * shim name "pyFormat" for every `:spec>` site found, regardless of the
+ * specific spec), so new callers should extend THIS function rather than
+ * reaching for `padStart`/`toFixed`/etc. directly. Only the subset actually
+ * exercised anywhere in the pin is implemented: `0{width}d` (sign-aware
+ * zero-padded integer — `parsers/dremio.py:65`'s `:04d`/`:02d`). Extend the
+ * regex below, not the call sites, if a future dialect needs another spec.
+ */
+export function pyFormat(value, spec) {
+  const m = /^0(\d+)d$/.exec(spec);
+  if (m) return pyFormatInt(value, Number(m[1]));
+  throw new PyValueError(`pyFormat: unsupported format spec ${JSON.stringify(spec)}`);
+}
+
 /* ------------------------------------------------------------------------- *
  * repr                                                                       *
  * ------------------------------------------------------------------------- */

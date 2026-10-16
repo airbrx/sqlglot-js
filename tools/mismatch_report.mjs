@@ -29,11 +29,11 @@ const INCLUDE_ALL = argv.includes("--all");
 
 // Matches src/dialects/*.js minus dialect.js (the base class), plus "" (default/no dialect).
 export const PORTED_DIALECTS = new Set([
-  "", "athena", "bigquery", "clickhouse", "databricks", "doris", "duckdb", "dune",
-  "exasol", "fabric", "hive", "materialize", "mysql", "oracle", "postgres", "presto",
-  "redshift", "risingwave", "singlestore",
-  "snowflake", "spark",
-  "spark2", "sqlite", "starrocks", "teradata", "trino", "tsql",
+  "", "athena", "bigquery", "clickhouse", "databricks", "dax", "doris", "dremio",
+  "drill", "druid", "duckdb", "dune", "exasol", "fabric", "hive", "materialize",
+  "mysql", "oracle", "postgres", "presto", "prql", "redshift", "risingwave",
+  "singlestore", "snowflake", "solr", "spark", "spark2", "sqlite", "starrocks",
+  "tableau", "teradata", "trino", "tsql",
 ]);
 
 /** "duckdb, version=1.1.0" -> "duckdb". Harvested atoms carry dialect kwargs inline. */
