@@ -744,7 +744,7 @@ export class HiveGenerator extends Generator {
     const allow_null = expression.args.allow_null;
     const drop = expression.args.drop;
 
-    if ([default_, drop, visible].some(Boolean) || allow_null !== null) {
+    if ([default_, drop, visible].some(Boolean) || (allow_null !== null && allow_null !== undefined)) {
       this.unsupported("Unsupported CHANGE COLUMN syntax");
     }
 
