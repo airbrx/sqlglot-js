@@ -16,7 +16,7 @@
 // need their own `registerDialect` call — one per class, matching how the parser chain
 // registers each link separately.
 //
-// TWO CLOSED, ONE GAP REMAINS:
+// ALL THREE CLOSED:
 //
 //   `Generator = HiveGenerator` (py:126) IS now declared — `generators/hive.js` exists
 //   (PORT_PLAN.md, the Databricks-chain generator step, following Ben's corrected
@@ -30,10 +30,14 @@
 //   this one, mirroring upstream's actual class-body shape at each link.
 //
 //   `COERCES_TO` (py:37-42, from `sqlglot/optimizer/annotate_types.py`'s `TypeAnnotator`)
-//   is declared as an empty `Map()` for the same reason: the optimizer package is P6+.
-//   Only Hive and Databricks touch `COERCES_TO` in upstream (Spark2/Spark inherit
-//   Hive's); the base `Dialect.COERCES_TO` is already an empty `Map()`, so Databricks's
-//   own declaration below is the only place this note repeats.
+//   was an empty `Map()` stub since the optimizer package was P6+/unported; now that
+//   `src/optimizer/annotate_types.js` is real, R119's own `buildHiveCoercesTo()` below
+//   widens NUMERIC/TEMPORAL/INTERVAL to also coerce to TEXT (AIR-2315 Part 1 — surfaced
+//   by 25 real MISMATCHes replaying `annotate_functions.sql`'s IF/COALESCE rows against
+//   this dialect chain). Only Hive and Databricks touch `COERCES_TO` in upstream
+//   (Spark2/Spark inherit Hive's); Databricks's own override (widening the opposite
+//   direction — TEXT coerces to NUMERIC/TEMPORAL/BINARY/BOOLEAN/INTERVAL) lives in
+//   `databricks.js`.
 //
 // `class JSONPathTokenizer(jsonpath.JSONPathTokenizer)` (py:82) IS now declared below
 // (AIR-2274, `src/jsonpath.js`) — `HiveJSONPathTokenizer`. Worth flagging beyond the
@@ -60,6 +64,30 @@ import { HiveParser } from "../parsers/hive.js";
 import { HiveGenerator } from "../generators/hive.js";
 import { Dialect, Dialects, NormalizationStrategy, registerDialect } from "./dialect.js";
 import { EXPRESSION_METADATA as HIVE_EXPRESSION_METADATA } from "../typing/hive.js";
+import * as exp from "../expressions/index.js";
+import { TypeAnnotator } from "../optimizer/annotate_types.js";
+
+// py:37-42 `COERCES_TO = defaultdict(set, deepcopy(TypeAnnotator.COERCES_TO))`, then a
+// loop widening NUMERIC/TEMPORAL/INTERVAL types to also coerce to TEXT (AIR-2315 Part
+// 1: this stub's own stated blocker, "`annotate_types.py` is P6+, unported", resolved
+// once `src/optimizer/annotate_types.js` landed for real — R22's "stub outlives its
+// blocker" pattern). `TypeAnnotator.COERCES_TO`'s own entries only cover the types
+// named in its three precedence lists (text/numeric/timelike); every other
+// NUMERIC_TYPES/TEMPORAL_TYPES member defaultdict's in starting from an empty set,
+// which is why the widening below unions into `existing ?? new Set()` rather than
+// assuming every target already has an entry.
+function buildHiveCoercesTo() {
+  const coercesTo = new Map();
+  for (const [k, v] of TypeAnnotator.COERCES_TO) coercesTo.set(k, new Set(v));
+  for (const targetType of new Set([
+    ...exp.DataType.NUMERIC_TYPES,
+    ...exp.DataType.TEMPORAL_TYPES,
+    exp.DType.INTERVAL,
+  ])) {
+    coercesTo.set(targetType, new Set([...(coercesTo.get(targetType) ?? []), ...exp.DataType.TEXT_TYPES]));
+  }
+  return coercesTo;
+}
 
 /** py: sqlglot/dialects/hive.py:82 `class JSONPathTokenizer(jsonpath.JSONPathTokenizer)`. */
 class HiveJSONPathTokenizer extends JSONPathTokenizer {
@@ -147,15 +175,7 @@ export class Hive extends Dialect {
   // into the file.
   static INITCAP_DEFAULT_DELIMITER_CHARS = " \t\n\r\f\u000b\u001c\u001d\u001e\u001f";
 
-  /**
-   * py:37-42 `COERCES_TO = defaultdict(set, deepcopy(TypeAnnotator.COERCES_TO))`, then a
-   * loop widening NUMERIC/TEMPORAL/INTERVAL types to also coerce to TEXT. Both the base
-   * table and the loop depend on `sqlglot/optimizer/annotate_types.py`'s `TypeAnnotator`
-   * (P6+, unported) — same gap as `EXPRESSION_METADATA` above, and the base
-   * `Dialect.COERCES_TO` is already an empty `Map()`, so this declaration exists only to
-   * mirror upstream's own class body rather than to add real content.
-   */
-  static COERCES_TO = new Map();
+  static COERCES_TO = buildHiveCoercesTo();
 
   static TIME_MAPPING = new Map([
     ["y", "%Y"],

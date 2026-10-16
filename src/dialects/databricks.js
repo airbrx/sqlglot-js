@@ -6,9 +6,12 @@
 // exists (PORT_PLAN.md, the Databricks-chain generator step; this is the fourth and
 // final link, closing out the whole chain). `EXPRESSION_METADATA` (py:16) now resolves
 // to the real `typing/databricks.js` table (AIR-2100), Link 4 — the LEAF — of the
-// overlay chain, see that file's own header. This file adds `class Databricks extends
-// Spark` with its 2 overridden settings and the nested `Tokenizer`/`JSONPathTokenizer`
-// subclasses (the latter AIR-2274, `src/jsonpath.js` — no gaps remain in this chain).
+// overlay chain, see that file's own header. `COERCES_TO` (py:18-26) now resolves to a
+// real widened table too (AIR-2315 Part 1 — see `buildDatabricksCoercesTo` below; the
+// stub's stated blocker, `annotate_types.py` being unported, is resolved). This file
+// adds `class Databricks extends Spark` with its 2 overridden settings and the nested
+// `Tokenizer`/`JSONPathTokenizer` subclasses (the latter AIR-2274, `src/jsonpath.js` —
+// no gaps remain in this chain).
 //
 // Every setting below is diffed value-by-value against CPython by
 // `spike/p5/fuzz_dialect_parse.mjs`'s DATABRICKS row.
@@ -19,6 +22,30 @@ import { DatabricksGenerator } from "../generators/databricks.js";
 import { Dialects, registerDialect } from "./dialect.js";
 import { Spark } from "./spark.js";
 import { EXPRESSION_METADATA as DATABRICKS_EXPRESSION_METADATA } from "../typing/databricks.js";
+import * as exp from "../expressions/index.js";
+import { TypeAnnotator } from "../optimizer/annotate_types.js";
+
+// py:18-26 `COERCES_TO = defaultdict(set, deepcopy(TypeAnnotator.COERCES_TO))`, then a
+// loop widening TEXT types to also coerce to NUMERIC/TEMPORAL/BINARY/BOOLEAN/INTERVAL
+// (AIR-2315 Part 1 — this stub's own stated blocker, "`annotate_types.py` is P6+,
+// unported", resolved now that `src/optimizer/annotate_types.js` is real; see
+// `hive.js`'s own `buildHiveCoercesTo` for the identical-shape widening in the
+// OPPOSITE direction it still owns for Hive/Spark2/Spark).
+function buildDatabricksCoercesTo() {
+  const coercesTo = new Map();
+  for (const [k, v] of TypeAnnotator.COERCES_TO) coercesTo.set(k, new Set(v));
+  const widenTo = new Set([
+    ...exp.DataType.NUMERIC_TYPES,
+    ...exp.DataType.TEMPORAL_TYPES,
+    exp.DType.BINARY,
+    exp.DType.BOOLEAN,
+    exp.DType.INTERVAL,
+  ]);
+  for (const textType of exp.DataType.TEXT_TYPES) {
+    coercesTo.set(textType, new Set([...(coercesTo.get(textType) ?? []), ...widenTo]));
+  }
+  return coercesTo;
+}
 
 /**
  * py: sqlglot/dialects/databricks.py:29 `class JSONPathTokenizer(Spark.JSONPathTokenizer)`.
@@ -67,13 +94,7 @@ export class Databricks extends Spark {
    */
   static EXPRESSION_METADATA = DATABRICKS_EXPRESSION_METADATA;
 
-  /**
-   * py:18-26 `COERCES_TO = defaultdict(set, deepcopy(TypeAnnotator.COERCES_TO))`, then a
-   * loop widening TEXT types to also coerce to NUMERIC/TEMPORAL/BINARY/BOOLEAN/INTERVAL.
-   * Unported, same reason and same empty-`Map()` treatment as `hive.js`'s `COERCES_TO`
-   * note — `sqlglot/optimizer/annotate_types.py`'s `TypeAnnotator` is P6+.
-   */
-  static COERCES_TO = new Map();
+  static COERCES_TO = buildDatabricksCoercesTo();
 
   /** py:40 `Parser = DatabricksParser` — what `registerDialect` turns into `parser_class`. */
   static Parser = DatabricksParser;
