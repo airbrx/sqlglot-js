@@ -12,7 +12,7 @@ export function checkRatchetChange(before, after) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const base = process.argv[2];
   if (!base) throw new Error('Usage: node tools/check_ratchet_change.mjs <base-ref>');
-  const before = JSON.parse(execFileSync('git', ['show', `${base}:test/ratchet.json`], {encoding:'utf8'}));
+  const before = JSON.parse(execFileSync('git', ['show', `${base}:test/ratchet.json`], {encoding:'utf8', maxBuffer: 256 * 1024 * 1024}));
   const after = JSON.parse(readFileSync('test/ratchet.json', 'utf8'));
   const result = checkRatchetChange(before, after);
   console.log(JSON.stringify(result));

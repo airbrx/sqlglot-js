@@ -9,7 +9,7 @@ for (const mode of ['parse','generate']) {
   execFileSync('git',['rev-parse','--verify',`${base}^{commit}`]);
   const exists = spawnSync('git',['cat-file','-e',`${base}:${path}`]);
   if (exists.status !== 0) { console.log(`INITIAL ${mode} baseline: review ${next.pass.length} passing IDs`); continue; }
-  const before = JSON.parse(execFileSync('git',['show',`${base}:${path}`],{encoding:'utf8'}));
+  const before = JSON.parse(execFileSync('git',['show',`${base}:${path}`],{encoding:'utf8', maxBuffer: 256 * 1024 * 1024}));
   for (const key of ['pass','population']) {
     const set = new Set(next[key]);
     const removed = before[key].filter(id=>!set.has(id));
