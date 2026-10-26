@@ -64,6 +64,8 @@ python3 spike/p10/gen_anonymize_ref.py > spike/out/anonymize.json
 node spike/p10/fuzz_anonymize.mjs
 python3 spike/p10/gen_diff_ref.py > spike/out/diff.json
 node spike/p10/fuzz_diff.mjs
+python3 spike/p11/gen_session_state_ref.py > spike/out/session_state_ref.json
+node spike/p11/fuzz_session_state.mjs
 python3 tools/bridge/proof.py
 python3 tools/corpus_control.py --report spike/out/python-control.jsonl
 node spike/p5/fuzz_dialect_parse.mjs --report spike/out/production-parse.jsonl

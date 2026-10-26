@@ -17,6 +17,8 @@
     "./expressions/index.js": "./src/expressions/index.js",
     "./contrib/gatewaySqlMetadata": "./contrib/gatewaySqlMetadata.js",
     "./contrib/gatewaySqlMetadata.js": "./contrib/gatewaySqlMetadata.js",
+    "./contrib/sessionState": "./contrib/sessionState.js",
+    "./contrib/sessionState.js": "./contrib/sessionState.js",
     "./package.json": "./package.json"
   },
   "types": "./index.d.ts",

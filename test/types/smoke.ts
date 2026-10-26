@@ -30,6 +30,7 @@ import {
 } from "sqlglot-js";
 
 import { extractSqlMetadata } from "sqlglot-js/contrib/gatewaySqlMetadata";
+import { classify, createState, apply, effectiveSearchPath, render as renderSessionState } from "sqlglot-js/contrib/sessionState";
 
 // --- parse / parseOne / transpile / tokenize --------------------------------------------
 
@@ -130,4 +131,14 @@ const metadata = extractSqlMetadata("SELECT * FROM t", { dialect: "postgres" });
 void metadata.isReadOnly;
 void metadata.tables[0]?.fullyQualifiedName;
 
-void [trees, sqls, firstTokenType, firstTokenText, generated, builtSql, equal, hashed, columnNames, hasCol, rendered];
+// --- contrib/sessionState --------------------------------------------------------------------
+
+const effects = classify("SET search_path = a", { dialect: "postgres" });
+let state = createState("postgres");
+for (const effect of effects) state = apply(state, effect);
+const trustedPath: string | null = effectiveSearchPath(state);
+const replaySql: string[] = renderSessionState(state, { dialect: "postgres" });
+void effects[0]?.kind;
+void effects[0]?.affectsResolution;
+
+void [trees, sqls, firstTokenType, firstTokenText, generated, builtSql, equal, hashed, columnNames, hasCol, rendered, trustedPath, replaySql];

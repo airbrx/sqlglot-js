@@ -701,6 +701,14 @@ run "AIR-2121: lineage.js vs CPython (end-to-end)"     node spike/p10/fuzz_linea
 run "AIR-2123: anonymize.js vs CPython (tests/test_anonymize.py)" node spike/p10/fuzz_anonymize.mjs
 run "AIR-2122: diff.js vs CPython sqlglot.diff"       node spike/p10/fuzz_diff.mjs
 run "P7: typing/{postgres,redshift,duckdb,bigquery,tsql}.js vs CPython" node spike/p7/fuzz_typing_overlay_family.mjs
+# AIR-2361 (Epic AIR-2360): session-state statement AST oracle, covering every
+# statement shape named in the AIR-2360 probe across every dialect family it
+# measured — full-tree AST-dump equality, same technique as the AIR-2163
+# gateway-regressions oracle above (see spike/p11/gen_session_state_ref.py's
+# docstring for why this is strictly stronger than hand-mirroring
+# contrib/sessionState.js's own classify() dispatch into Python).
+PYTHONHASHSEED=0 python3 spike/p11/gen_session_state_ref.py > spike/out/session_state_ref.json || fail=1
+run "AIR-2361: session-state statement AST oracle vs CPython" node spike/p11/fuzz_session_state.mjs
 # The node:test suite was documented in P3_RESULTS.md but run by NOTHING — not this
 # script, not `make check`, not `make probes`. Found while fixing the PR #6 review: an
 # unrun test is a comment, which is the same argument this repo makes for the deny-list
