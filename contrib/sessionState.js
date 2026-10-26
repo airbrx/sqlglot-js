@@ -107,13 +107,83 @@ function spanText(sql, node) {
   return Array.from(sql).slice(start, end + 1).join("").trim();
 }
 
-function statementTextOf(sql, root) {
+function sliceChars(sql, start, end) {
+  return Array.from(sql).slice(start, end + 1).join("");
+}
+
+// R123: statement roots (`Set`, `Select`, ...) carry no `meta.start/end` of
+// their own, so `spanText` used to fall back to the WHOLE input for every
+// non-Command root the moment a batch held more than one statement — i.e.
+// `Effect.statementText` for `SET search_path = a; SELECT 1` was the full
+// batch, twice. The tokenizer already knows every statement boundary: a
+// top-level `;` is always its own SEMICOLON token (a `;` inside a string,
+// quoted identifier or dollar-quote never is), and token `start`/`end` are
+// code-point offsets like `meta.start/end`. One tokenize pass per `classify()`
+// yields one span per statement, aligned 1:1 and in order with the parsed
+// roots (both skip empty statements); when the counts disagree for any reason
+// the spans are simply not used and the old fallback applies.
+function statementSpans(sql, d) {
+  let tokens;
+  try {
+    tokens = d.tokenize(sql);
+  } catch {
+    return null;
+  }
+  const spans = [];
+  let current = [];
+  for (const token of tokens) {
+    if (token.token_type === TokenType.SEMICOLON) {
+      if (current.length) spans.push(current);
+      current = [];
+    } else {
+      current.push(token);
+    }
+  }
+  if (current.length) spans.push(current);
+  return spans.map((ts) => ({ tokens: ts, start: ts[0].start, end: ts[ts.length - 1].end }));
+}
+
+function statementTextOf(sql, root, span) {
   if (root instanceof exp.Command) {
     const kw = typeof root.args.this === "string" ? root.args.this : identText(root.args.this) ?? "";
     const rest = commandRawText(root);
     return `${kw} ${rest}`.trim();
   }
+  if (span && !Number.isInteger(root?.meta?.start)) return sliceChars(sql, span.start, span.end).trim();
   return spanText(sql, root);
+}
+
+// R123: the source text of a `SET key = value` / `SET key TO value` value,
+// quotes intact, for the natural `Set`-node grammar path. The parser decodes
+// the value node (`"A"` and `A` both become Var("A"); `'x'` becomes
+// Literal("x")), which is right for `Effect.value` but wrong for
+// `Effect.valueRaw`, whose contract is "as written" — and whose quoting is
+// load-bearing for Postgres' search_path LABEL (`= A` and `= "A"` resolve to
+// different schemas, see apply()). Reads from the statement's own token span:
+// everything after the first `=`/`TO` up to the first depth-0 comma (a `Set`
+// may carry several items; this module reports the first) or the span's end.
+function rawSetValue(sql, span, valueNode) {
+  if (Number.isInteger(valueNode?.meta?.start) && Number.isInteger(valueNode?.meta?.end)) {
+    return sliceChars(sql, valueNode.meta.start, valueNode.meta.end).trim();
+  }
+  if (!span) return null;
+  const tokens = span.tokens;
+  const sep = tokens.findIndex(
+    (t, i) => i > 0 && (t.token_type === TokenType.EQ || String(t.text).toUpperCase() === "TO")
+  );
+  if (sep === -1 || sep === tokens.length - 1) return null;
+  let depth = 0;
+  let last = tokens.length - 1;
+  for (let i = sep + 1; i < tokens.length; i++) {
+    const tt = tokens[i].token_type;
+    if (tt === TokenType.L_PAREN) depth++;
+    else if (tt === TokenType.R_PAREN) depth--;
+    else if (tt === TokenType.COMMA && depth === 0) {
+      last = i - 1;
+      break;
+    }
+  }
+  return sliceChars(sql, tokens[sep + 1].start, tokens[last].end).trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -205,7 +275,7 @@ function scopeFromSetItemKind(kind) {
   return "session";
 }
 
-function classifySetItem(item, family, dialectName, statementText) {
+function classifySetItem(item, family, dialectName, statementText, sql = null, span = null) {
   const itemKind = item.args.kind ?? null;
 
   if (itemKind === "TRANSACTION") {
@@ -248,16 +318,17 @@ function classifySetItem(item, family, dialectName, statementText) {
 
   const rawKey = qualifiedKey(eq.args.this);
   if (!rawKey) return null;
-  const valueRaw = valueText(eq.args.expression);
-  return resolveKeyEffect(family, dialectName, statementText, rawKey, valueRaw, scope, "set");
+  const value = valueText(eq.args.expression);
+  const valueRaw = (sql !== null ? rawSetValue(sql, span, eq.args.expression) : null) ?? value;
+  return resolveKeyEffect(family, dialectName, statementText, rawKey, valueRaw, scope, "set", value);
 }
 
-function resolveKeyEffect(family, dialectName, statementText, rawKey, valueRaw, scope, defaultKind) {
+function resolveKeyEffect(family, dialectName, statementText, rawKey, valueRaw, scope, defaultKind, value = valueRaw) {
   const table = family === "postgres" ? POSTGRES_KEYS : null;
   const meta = table?.get(rawKey.toLowerCase());
   const canonical = meta?.canonical ?? rawKey;
   const resetTarget = meta?.canonical === "search_path" || meta?.canonical === "role" || meta?.canonical === "session_authorization";
-  const isReset = defaultKind === "reset" || (resetTarget && isResetSentinel(valueRaw));
+  const isReset = defaultKind === "reset" || (resetTarget && isResetSentinel(value));
   const kind = isReset ? "reset" : (meta?.kind ?? defaultKind);
 
   return makeEffect(dialectName, statementText, {
@@ -265,14 +336,14 @@ function resolveKeyEffect(family, dialectName, statementText, rawKey, valueRaw, 
     kind: isReset ? "reset" : kind,
     key: canonical,
     valueRaw,
-    value: valueRaw,
+    value,
     affectsResolution: meta?.affectsResolution ?? false,
     affectsResults: meta?.affectsResults ?? true,
     replayable: scope !== "local",
   });
 }
 
-function classifySet(root, family, dialectName, statementText) {
+function classifySet(root, family, dialectName, statementText, sql = null, span = null) {
   const items = root.args.expressions ?? [];
   if (items.length === 0) {
     return makeEffect(dialectName, statementText, { kind: "read" });
@@ -281,10 +352,10 @@ function classifySet(root, family, dialectName, statementText) {
   // this module reports the first one, same scoping gatewaySqlMetadata.js's own
   // extractSessionStateChange already uses for its single-Effect `sessionStateChange`
   // shape — a caller needing every item can walk `root.args.expressions` itself.
-  return classifySetItem(items[0], family, dialectName, statementText) ?? noneEffect(dialectName, statementText);
+  return classifySetItem(items[0], family, dialectName, statementText, sql, span) ?? noneEffect(dialectName, statementText);
 }
 
-function classifyAlterSession(alterSessionNode, family, dialectName, statementText) {
+function classifyAlterSession(alterSessionNode, family, dialectName, statementText, sql = null, span = null) {
   const items = alterSessionNode.args.expressions ?? [];
   if (items.length === 0) return noneEffect(dialectName, statementText);
   if (alterSessionNode.args.unset) {
@@ -298,7 +369,7 @@ function classifyAlterSession(alterSessionNode, family, dialectName, statementTe
       replayable: true,
     });
   }
-  return classifySetItem(items[0], family, dialectName, statementText) ?? noneEffect(dialectName, statementText);
+  return classifySetItem(items[0], family, dialectName, statementText, sql, span) ?? noneEffect(dialectName, statementText);
 }
 
 function classifyUse(root, family, dialectName, statementText) {
@@ -609,8 +680,8 @@ function postgresSetConfigCall(root) {
 // Single-statement classification
 // ---------------------------------------------------------------------------
 
-function classifyStatement(root, family, dialectName, sql, d) {
-  const statementText = statementTextOf(sql, root);
+function classifyStatement(root, family, dialectName, sql, d, span = null) {
+  const statementText = statementTextOf(sql, root, span);
 
   if (family === "postgres" && postgresSetConfigCall(root)) {
     return unknownEffect(dialectName, statementText, "set_config-call");
@@ -618,11 +689,11 @@ function classifyStatement(root, family, dialectName, sql, d) {
 
   if (root instanceof exp.Use) return classifyUse(root, family, dialectName, statementText);
 
-  if (root instanceof exp.Set) return classifySet(root, family, dialectName, statementText);
+  if (root instanceof exp.Set) return classifySet(root, family, dialectName, statementText, sql, span);
 
   if (root instanceof exp.Alter && String(root.args.kind ?? "").toUpperCase() === "SESSION") {
     const action = root.args.actions?.[0];
-    if (action instanceof exp.AlterSession) return classifyAlterSession(action, family, dialectName, statementText);
+    if (action instanceof exp.AlterSession) return classifyAlterSession(action, family, dialectName, statementText, sql, span);
     return noneEffect(dialectName, statementText);
   }
 
@@ -687,7 +758,9 @@ export function classify(sql, options = {}) {
   // into one pessimistic answer (see the design doc's "deliberately more
   // precise" note): statement N's Effect is exactly what statement N did,
   // nothing more conservative.
-  return roots.map((root) => classifyStatement(root, family, dialectName, sql, d));
+  const spans = statementSpans(sql, d);
+  const aligned = spans && spans.length === roots.length ? spans : null;
+  return roots.map((root, i) => classifyStatement(root, family, dialectName, sql, d, aligned?.[i] ?? null));
 }
 
 /**
