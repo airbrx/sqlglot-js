@@ -32,10 +32,17 @@ this package is versioned past `0.0.x`:**
   `anonymize`, `diff`, `exp`, `lineage`, `optimize`, `parse`, `parseOne`, `render`, `tokenize`,
   `transpile`).
 - `sqlglot-js/contrib/gatewaySqlMetadata` (and the explicit `.js` form) — `extractSqlMetadata`,
-  the one contrib module with its own documentation (`contrib/README.md`) and a real,
-  named consumer (`airbrx-gateway`'s `lib/utils/SqlParser.js`, via `require()` — see
+  with its own documentation (`contrib/README.md`) and a real, named consumer
+  (`airbrx-gateway`'s `lib/utils/SqlParser.js`, via `require()` — see
   [docs/consuming-from-cjs.md](consuming-from-cjs.md) for why a CJS `require()` of an ESM
   package works there).
+- `sqlglot-js/contrib/sessionState` (and the explicit `.js` form) — `classify`/`createState`/
+  `apply`/`effectiveSearchPath`/`render`, added this round (AIR-2361). Design documented in
+  [docs/proposals/session-state-module.md](proposals/session-state-module.md); no named
+  consumer yet (gateway adoption is epics 14.2–14.4, separate PRs) — added here, not held back
+  until adoption, on the same basis `gatewaySqlMetadata.js` was: real enough to build
+  application code against, covered by its own hand-written `.d.ts` and `test/types/smoke.ts`
+  entries, exactly like every other Tier-1 public export.
 
 **Public, Tier 2 — reachable by design, not individually hand-typed, lower stability
 guarantee than the root export:**
@@ -158,3 +165,12 @@ changed):
 - `./package.json` and the package root (`.`) kept unchanged.
 - Added `"types": "./index.d.ts"` and a hand-written `index.d.ts` (+
   `contrib/gatewaySqlMetadata.d.ts`) — see `test/types/smoke.ts` and `npm run check:types`.
+
+## What changed this round (AIR-2361, R122)
+
+A new public contrib module, no `src/` behaviour changed:
+
+- `./contrib/sessionState` (+ `.js`) added to `package.json`'s `exports` map, with its own
+  `contrib/sessionState.d.ts` and `test/types/smoke.ts` entries. `./contrib/*` stays narrowed to
+  exactly these two named modules (`gatewaySqlMetadata`, `sessionState`) — still not a glob; a
+  third contrib file would need the identical deliberate addition, not an accidental one.

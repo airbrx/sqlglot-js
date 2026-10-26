@@ -481,10 +481,15 @@ function postgresSetCommandReader(root, d, dialectName, statementText) {
     // The list form: `search_path (TO|=) a, b, ...`. The Postgres cache-key
     // LABEL convention is the statement's own raw text after the keyword
     // (SearchPathTracker's own "the label comes from the raw statement text,
-    // never the parser's value" rule) — not a decoded/re-joined list.
-    let j = i + 1;
-    if (tokens[j]?.text?.toUpperCase?.() === "TO" || tokens[j]?.token_type === TokenType.EQ) j += 1;
-    const valueToken = tokens[j];
+    // never the parser's value" rule) — not a decoded/re-joined list. A
+    // delimiter is REQUIRED here: `SET search_path FROM CURRENT` is a real,
+    // distinct Postgres form this reader does not understand (matching
+    // SearchPathTracker's own "FROM CURRENT is not readable" → unknown), not
+    // a value to report as-is.
+    const delimiterToken = tokens[i + 1];
+    const isDelimiter = delimiterToken?.text?.toUpperCase?.() === "TO" || delimiterToken?.token_type === TokenType.EQ;
+    if (!isDelimiter) return unknownEffect(dialectName, statementText, "unrecognized-search-path-form");
+    const valueToken = tokens[i + 2];
     const valueRaw = valueToken ? remainder.slice(valueToken.start).trim() : null;
     return makeEffect(dialectName, statementText, {
       scope, kind: "set", key: "search_path", valueRaw, value: valueRaw,

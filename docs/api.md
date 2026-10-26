@@ -445,6 +445,56 @@ rendered to SQL text for the dice-coefficient similarity score — it does not m
 aware of a dialect's own parsing quirks, and does not require `source`/`target` to have been
 parsed under that same dialect.
 
+## `sqlglot-js/contrib/sessionState`
+
+No upstream Python equivalent — airbrx-specific, built on top of the real port (same status
+as `contrib/gatewaySqlMetadata.js` below). Classifies, reduces, and replays session-affecting
+SQL (`SET`/`RESET`/`USE`/`ALTER SESSION`/`DISCARD`/transaction control) across dialects, for
+`airbrx-gateway`'s three session-state recognizers (Postgres' regex `SearchPathTracker`,
+Databricks' ad-hoc extractors, Snowflake's none-at-all) to adopt one at a time. Full design —
+Effect/State schemas, per-dialect tables, fallback-reader rationale, what stays gateway-side
+policy — is in [docs/proposals/session-state-module.md](proposals/session-state-module.md);
+this section is the quick API reference.
+
+```ts
+import { classify, createState, apply, effectiveSearchPath, render } from "sqlglot-js/contrib/sessionState";
+
+function classify(sql: string, options?: { dialect?: string | null }): Effect[];
+function createState(dialect?: string | null): State;
+function apply(state: State, effect: Effect): State;
+function effectiveSearchPath(state: State): string | null;
+function render(state: State, options?: { dialect?: string | null }): string[];
+```
+
+`classify()` parses `sql` (optionally a semicolon-batched multi-statement input) under
+`Dialect.get_or_raise(dialect)` and returns one `Effect` per statement, in source order — a
+statement that isn't a session-state statement at all still gets one, `kind: "none"`, so a
+caller can walk `Effect[]` index-for-index against the batch. A statement that fails to parse
+(including the two documented upstream-faithful throws, Postgres `START TRANSACTION ISOLATION
+LEVEL ...` and TSQL `SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED`) collapses the WHOLE
+input to a single `kind: "unknown"` Effect, same fail-closed shape
+`contrib/gatewaySqlMetadata.js`'s own catch-all uses.
+
+```js
+import { classify, createState, apply, effectiveSearchPath } from "sqlglot-js/contrib/sessionState";
+
+let state = createState("postgres");
+for (const sql of ["SET ROLE admin", "SET search_path = a, b"]) {
+  const [effect] = classify(sql, { dialect: "postgres" });
+  state = apply(state, effect);
+}
+effectiveSearchPath(state); // "path:a, b" — trusted even while a role is switched,
+                             // because this path was set explicitly and names no $user
+```
+
+`apply()` is a pure, immediate reducer (no transaction-rollback modeling — a caller with
+Postgres' "don't trust a change until the statement is confirmed outside an open transaction"
+requirement gets it for free by simply not calling `apply()` until then, using `effect.scope`
+to know which changes are transaction-local in the first place). `render()` emits
+`state.replayLog` back to SQL through the real dialect generator — correct quoting/escaping
+for whichever dialect's own convention applies (e.g. Databricks' backslash string escapes vs.
+Postgres/Snowflake's doubled-quote convention), not a second hand-rolled quoting routine.
+
 ## Per-dialect notes
 
 Most of the 33 dialects behave exactly like upstream with no caller-visible difference worth
