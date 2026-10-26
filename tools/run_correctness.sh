@@ -4,6 +4,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PYTHONHASHSEED=0
+# Pins live under /var/lib/agor/.agor/pins; /tmp/<name> are symlinks (see spike/run_all.sh).
+for _p in sqlglot-ref sqlglot-complete-pin sqlglot-head; do
+  if [ ! -e "/tmp/$_p" ] && [ -d "/var/lib/agor/.agor/pins/$_p" ]; then
+    ln -s "/var/lib/agor/.agor/pins/$_p" "/tmp/$_p"
+  fi
+done
 : "${SQLGLOT_REF:?Complete pinned upstream checkout is required}"
 mkdir -p spike/out
 # Preconditions: never pretend that incomplete test fixtures are a green control.
