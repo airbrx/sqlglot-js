@@ -14,6 +14,15 @@ cd "$(dirname "$0")/.."
 # (no sqlglot/__init__.py), CPython resolves `sqlglot` as a namespace package rooted
 # there and SHADOWS the real pinned install, and all ~32 CPython-comparison probes go
 # red for an environmental reason that looks exactly like 32 regressions. Fail loudly.
+# R122 coordinator addendum: the pinned checkouts live on persistent disk under
+# /var/lib/agor/.agor/pins and /tmp/<name> are symlinks to them, because systemd-tmpfiles
+# ages /tmp (a tmpfs) at 10 days and had gutted the pins three times. A symlink that
+# nothing followed for 10 days is aged out too, so re-create any missing one here.
+for _p in sqlglot-ref sqlglot-complete-pin sqlglot-head; do
+  if [ ! -e "/tmp/$_p" ] && [ -d "/var/lib/agor/.agor/pins/$_p" ]; then
+    ln -s "/var/lib/agor/.agor/pins/$_p" "/tmp/$_p"
+  fi
+done
 _ref="${SQLGLOT_REF:-/tmp/sqlglot-ref}"
 if [ ! -f "$_ref/sqlglot/__init__.py" ] || [ ! -f "$_ref/sqlglot/dialects/dialect.py" ]; then
   echo "FATAL: reference checkout '$_ref' is incomplete (sqlglot/__init__.py or" >&2
