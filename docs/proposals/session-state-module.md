@@ -119,6 +119,18 @@ interface State {
 }
 ```
 
+### `effectiveSearchPath(state) → string | null`
+
+A direct generalization of `postgresql.Session.js`'s own `effectiveSearchPath()`:
+`state.searchPath` itself is never masked at mutation time by a role/auth
+switch (see `apply()`'s `"role"`/`"auth"` cases below, which only set
+`roleSwitched`/`authSwitched`); masking is applied here, at read time —
+while either flag is set, `'default'` and any label naming `$user` are
+untrustworthy and this returns `null`; any other label is returned as-is
+(e.g. an explicit non-`$user` `search_path` set while a role is switched stays
+trusted, matching `SearchPathTracker`'s own corpus: `trusted('SET ROLE x',
+'SET search_path = a, b')` is `'path:a, b'`, not `null`).
+
 ## Reducer: `apply(state, effect) → State`
 
 Pure, immediate, no rollback modeling — deliberately matching what Databricks'
