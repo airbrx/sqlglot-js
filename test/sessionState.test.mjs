@@ -576,3 +576,70 @@ test("apply: a kind: none/read/unknown effect never mutates the running state", 
   assert.deepEqual(next.variables, state.variables);
   assert.equal(next.searchPath, state.searchPath);
 });
+
+// ---------------------------------------------------------------------------
+// R123: Effect.statementText is THIS statement's text and Effect.valueRaw keeps
+// the source quoting on the natural `Set`-node grammar path too (both were
+// already true on the Command-fallback path; found by the gateway's Postgres
+// adoption, AIR-2364, which had to work around both with its own tokenizer).
+// ---------------------------------------------------------------------------
+
+test("R123 statementText: every statement in a batch reports only its own text, not the whole batch", () => {
+  const effects = classify("SET search_path = a; SELECT 1; SET ROLE admin", { dialect: "postgres" });
+  assert.deepEqual(
+    effects.map((e) => e.statementText),
+    ["SET search_path = a", "SELECT 1", "SET ROLE admin"]
+  );
+  // A `;` inside a string literal is text, not a statement boundary; offsets
+  // are code points, so an astral character before the SET does not shift it.
+  const [, set] = classify("SELECT '\u{1F600};x'; SET x = 'y'", { dialect: "postgres" });
+  assert.equal(set.statementText, "SET x = 'y'");
+  assert.equal(set.valueRaw, "'y'");
+  assert.equal(set.value, "y");
+  // Empty statements are skipped on both sides, so alignment survives `;;`.
+  assert.deepEqual(
+    classify("SELECT 1;; SET x = 1", { dialect: "postgres" }).map((e) => e.statementText),
+    ["SELECT 1", "SET x = 1"]
+  );
+});
+
+test("R123 valueRaw: a quoted single-value search_path keeps its quotes (the LABEL must tell `= A` from `= \"A\"`)", () => {
+  const quoted = classify('SET search_path = "A"', { dialect: "postgres" })[0];
+  const bare = classify("SET search_path = A", { dialect: "postgres" })[0];
+  assert.equal(quoted.valueRaw, '"A"');
+  assert.equal(quoted.value, "A");
+  assert.equal(bare.valueRaw, "A");
+  assert.notEqual(
+    effectiveSearchPath(apply(createState("postgres"), quoted)),
+    effectiveSearchPath(apply(createState("postgres"), bare)),
+    "two different Postgres schemas must never share a cache-key label"
+  );
+  assert.equal(effectiveSearchPath(apply(createState("postgres"), quoted)), 'path:"A"');
+  assert.equal(classify("SET search_path = 'x'", { dialect: "postgres" })[0].valueRaw, "'x'");
+  assert.equal(classify("SET search_path TO x", { dialect: "postgres" })[0].valueRaw, "x");
+});
+
+test("R123 valueRaw: the reset sentinel is judged on the DECODED value, so a quoted 'none' still resets", () => {
+  const e = classify("SET role = 'none'", { dialect: "postgres" })[0];
+  assert.equal(e.kind, "reset");
+  assert.equal(e.valueRaw, "'none'");
+  assert.equal(e.value, "none");
+});
+
+test("R123 valueRaw: a multi-item SET reports only the first item's raw value; parentheses do not end it early", () => {
+  assert.equal(classify("SET a = 1, b = 2", { dialect: "postgres" })[0].valueRaw, "1");
+  assert.equal(classify("SET search_path = f(a, b), c", { dialect: "postgres" })[0].valueRaw, "f(a, b), c");
+});
+
+test("R123 valueRaw: Databricks and Snowflake natural-path values keep their quotes while `value` stays decoded", () => {
+  const db = classify("SET spark.sql.x = 'o''brien'", { dialect: "databricks" })[0];
+  assert.equal(db.valueRaw, "'o''brien'");
+  assert.equal(db.value, "o'brien");
+  const sf = classify("ALTER SESSION SET QUERY_TAG = 't'", { dialect: "snowflake" })[0];
+  assert.equal(sf.valueRaw, "'t'");
+  assert.equal(sf.value, "t");
+  // apply()/render() consume `value`, so replay output is unchanged by this.
+  let state = createState("databricks");
+  state = apply(state, db);
+  assert.deepEqual(state.variables, { "spark.sql.x": "o'brien" });
+});
