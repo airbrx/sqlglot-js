@@ -16,7 +16,9 @@ nodes, Command fallbacks, and the two documented misparses) across every
 dialect family the probe measured, plus enough per-family repetition to
 comfortably clear the >=150-row floor AIR-2361 asks for.
 """
+import enum
 import json
+import logging
 import os
 import re
 import sys
@@ -24,6 +26,10 @@ import sys
 sys.path.insert(0, os.environ.get("SQLGLOT_REF", "/tmp/sqlglot-ref"))
 import sqlglot
 from sqlglot import exp
+
+# Match every other gen_*_ref.py: the Command-fallback warnings are expected for the
+# probe rows and only pollute stderr.
+logging.disable(logging.CRITICAL)
 
 
 def dump(node):
@@ -36,6 +42,11 @@ def dump(node):
         }
     if isinstance(node, list):
         return [dump(v) for v in node]
+    if isinstance(node, enum.Enum):
+        # exp.DType inside DataType nodes (the DECLARE rows). Mirrors the JS side,
+        # where DType values JSON-serialise as {"__enum__","name","value"} natively,
+        # and spike/p3/gen_walk_in_scope_ref.py's own enum branch.
+        return {"__enum__": type(node).__name__, "name": node.name, "value": node.value}
     return node
 
 
