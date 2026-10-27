@@ -795,6 +795,16 @@ export function createState(dialect = null) {
     schema: null,
     warehouse: null,
     variables: {},
+    // R2373.2: the source-quoted counterpart of `variables`, keyed the same
+    // way. Only ever populated by apply() for a key it is actively setting
+    // in THIS call (from `effect.valueRaw`) — a key carried over from a
+    // pre-existing `variables` object built some other way (e.g. a gateway
+    // session hydrated straight from persisted storage, see
+    // docs/proposals/session-state-module.md) simply has no entry here,
+    // which is intentional: render()'s Databricks raw-text renderer treats
+    // a missing entry exactly like an absent `valueRaw`, falling back to
+    // the legacy quoting rule for that key.
+    variablesRaw: {},
     replayLog: [],
   };
 }
@@ -810,7 +820,16 @@ function rebuildReplayLog(state) {
   if (state.warehouse) log.push({ kind: "use_warehouse", warehouse: state.warehouse });
   if (state.role) log.push({ kind: "use_role", role: state.role });
   for (const key of Object.keys(state.variables)) {
-    log.push({ kind: "set", key, value: state.variables[key] });
+    const entry = { kind: "set", key, value: state.variables[key] };
+    // R2373.2: only attach `valueRaw` when this key actually has raw text on
+    // file — never a bare `null` manufactured for a key apply() never saw a
+    // raw span for (a pre-existing/carried-over variable, see createState).
+    // A missing field, not a null one, is what tells render()'s Databricks
+    // renderer and the gateway's own legacy-shape readers "fall back".
+    if (state.variablesRaw && state.variablesRaw[key] !== undefined) {
+      entry.valueRaw = state.variablesRaw[key];
+    }
+    log.push(entry);
   }
   state.replayLog = log;
 }
@@ -826,6 +845,7 @@ export function apply(state, effect) {
   const next = {
     ...state,
     variables: { ...state.variables },
+    variablesRaw: { ...state.variablesRaw },
     replayLog: state.replayLog,
   };
 
@@ -864,8 +884,8 @@ export function apply(state, effect) {
       if (effect.key === "search_path" && family === "postgres") next.searchPath = "default";
       else if (effect.key === "role" && family === "postgres") { next.role = null; next.roleSwitched = false; }
       else if (effect.key === "session_authorization" && family === "postgres") { next.authSwitched = false; next.roleSwitched = false; next.role = null; }
-      else if (effect.key === "all") { delete next.variables[effect.key]; }
-      else if (effect.key) delete next.variables[effect.key];
+      else if (effect.key === "all") { delete next.variables[effect.key]; delete next.variablesRaw[effect.key]; }
+      else if (effect.key) { delete next.variables[effect.key]; delete next.variablesRaw[effect.key]; }
       rebuildReplayLog(next);
       return next;
     }
@@ -887,6 +907,10 @@ export function apply(state, effect) {
         return next;
       }
       next.variables[effect.key] = effect.value;
+      // R2373.2: record the source-quoted form alongside the decoded one so
+      // a Databricks-family render() can later emit the client's raw text
+      // verbatim instead of re-encoding through a generated string Literal.
+      next.variablesRaw[effect.key] = effect.valueRaw ?? null;
       rebuildReplayLog(next);
       return next;
     }
@@ -904,11 +928,53 @@ const REPLAY_RENDERERS = {
   // A real string Literal, not a bare Var — the generator then owns all
   // quoting/escaping for whatever the value actually contains (spaces, quotes,
   // ...), the same real code path every other emitted statement in this
-  // project uses, rather than a second hand-rolled quoting routine.
+  // project uses, rather than a second hand-rolled quoting routine. NOT used
+  // for the Databricks family's own `set` entries — see renderDatabricksSet
+  // and R2373.2 below for why that family needs a different renderer.
   set: (entry) => new exp.Set({
     expressions: [new exp.SetItem({ this: new exp.EQ({ this: exp.column(entry.key), expression: new exp.Literal({ this: String(entry.value ?? ""), is_string: true }) }) })],
   }),
 };
+
+// R2373.2: the gateway's own pre-AIR-2365 quoting rule
+// (OperationCreatingHandler.quoteSetValue), reproduced verbatim as the
+// fallback for a `set` entry with no `valueRaw` on file (a key carried over
+// from before this field existed, or one a caller built by hand — see
+// createState's own doc comment). Bare unless the value contains whitespace,
+// a quote, a `;`, or is empty, in which case it is wrapped in single quotes
+// with any embedded quote doubled — exactly the shape Spark's own
+// `configKeyValueDef` regex (`SqlBaseParser.g4` -> `SparkSqlParser.scala`'s
+// `visitSetConfiguration`) needs to read back the same string, since that
+// grammar rule has no string-literal syntax of its own to decode.
+function quoteDatabricksSetValue(value) {
+  const text = value == null ? "" : String(value);
+  const needsQuote = /[\s'";]/.test(text) || text === "";
+  return needsQuote ? `'${text.replace(/'/g, "''")}'` : text;
+}
+
+// R2373.2: Databricks-family `SET k = v` stores the RHS of `=` VERBATIM —
+// surrounding quotes are part of the stored value, not literal syntax (see
+// this file's header comment and docs/proposals/session-state-module.md's
+// "Spark raw-text SET semantics" section for the full grammar citation).
+// `entry.valueRaw`, when present, is already exactly that stored text (the
+// source span `apply()` copied byte-for-byte from the original statement —
+// bare `UTC` stays bare, `'o''brien'` stays `'o''brien'`), so it is emitted
+// completely unprocessed: re-running any quoting/escaping logic over an
+// already-valid raw value would corrupt it (doubling an apostrophe that was
+// already doubled, etc.). Only a `set` entry with NO `valueRaw` at all — the
+// decoded-only shape every pre-this-round caller still constructs by hand,
+// e.g. the gateway's own translateChangeToEffect — falls back to
+// `quoteDatabricksSetValue`, synthesizing valid syntax from the bare decoded
+// string the same way the gateway's own quoteSetValue always did. The key
+// itself is always emitted bare (never backtick-quoted, unlike a real
+// identifier position): `exp.column(key)` here would backtick-quote a
+// dotted key like `spark.sql.session.timeZone` as a qualified column
+// reference, which is not how this grammar rule reads a config key at all.
+function renderDatabricksSet(entry) {
+  if (!entry.key) return null;
+  const raw = entry.valueRaw != null ? entry.valueRaw : quoteDatabricksSetValue(entry.value);
+  return `SET ${entry.key} = ${raw}`;
+}
 
 /**
  * @param {object} state
@@ -916,9 +982,16 @@ const REPLAY_RENDERERS = {
  * @returns {string[]}
  */
 export function render(state, options = {}) {
-  const d = Dialect.get_or_raise(options.dialect ?? state.dialect ?? null);
+  const dialectName = options.dialect ?? state.dialect ?? null;
+  const d = Dialect.get_or_raise(dialectName);
+  const family = familyOf(dialectName);
   const out = [];
   for (const entry of state.replayLog) {
+    if (entry.kind === "set" && family === "databricks") {
+      const rendered = renderDatabricksSet(entry);
+      if (rendered !== null) out.push(rendered);
+      continue;
+    }
     const build = REPLAY_RENDERERS[entry.kind];
     if (!build) continue;
     try {

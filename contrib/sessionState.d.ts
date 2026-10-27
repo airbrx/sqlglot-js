@@ -52,6 +52,13 @@ export interface ReplayEntry {
   role?: string;
   key?: string;
   value?: Nullable<string>;
+  /** As written in the source (quotes intact); present only when `apply()`
+   * actually recorded one for this key in the same call that set `value` —
+   * absent (not `null`) for a key carried over without one, e.g. hydrated
+   * from storage written before this field existed. Consumed verbatim by a
+   * Databricks-family `render()` (never re-escaped); every other dialect's
+   * `set` rendering still goes through the real generator and ignores it. */
+  valueRaw?: Nullable<string>;
 }
 
 export interface State {
@@ -64,6 +71,12 @@ export interface State {
   schema: Nullable<string>;
   warehouse: Nullable<string>;
   variables: Record<string, Nullable<string>>;
+  /** The source-quoted counterpart of `variables`, keyed the same way. Only
+   * ever populated by `apply()` for a key it actively set in some call on
+   * this State — a key present in `variables` through some other path (e.g.
+   * a gateway session hydrated straight from persisted storage) may have no
+   * entry here at all. See `ReplayEntry.valueRaw`. */
+  variablesRaw: Record<string, Nullable<string>>;
   replayLog: ReplayEntry[];
 }
 
