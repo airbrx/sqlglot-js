@@ -690,7 +690,7 @@ test("AIR-2373.1: a Databricks RESET of a variable literally named search_path d
   // exercises apply()'s `reset` branch directly, the other half of the leak.
   const resetEffect = {
     dialect: "databricks", statementText: "", scope: "session", kind: "reset", key: "search_path",
-    valueRaw: null, value: null,
+    valueRaw: null, value: null, parts: null,
     affectsResolution: false, affectsResults: true, replayable: true, unknownReason: null,
   };
   state = apply(state, resetEffect);
@@ -775,4 +775,42 @@ test("AIR-2373.2: other dialects still render `set` entries through the real gen
   // Postgres decodes "''" as a real apostrophe escape (unlike Databricks), so
   // the generator reproduces the same escaping from the decoded value alone.
   assert.equal(rendered, "SET note = 'o''brien'");
+});
+
+// ---------------------------------------------------------------------------
+// AIR-2373 finding 3: a two-part `USE a.b` carried only a joined
+// `"a.b"` string on `Effect.value`/`valueRaw`, so `apply()` had to re-split
+// it on "." — mis-splitting a part that itself contains a literal dot (e.g.
+// `` USE `a.b`.c ``, a real quoted-identifier-with-dot catalog name).
+// `classifyUse` now also reports the already-split `parts`, which `apply()`
+// prefers whenever present.
+// ---------------------------------------------------------------------------
+
+test("AIR-2373.3: classify() reports structured parts for a two-part USE, not just the joined value", () => {
+  const effect = classify("USE main.sales", { dialect: "databricks" })[0];
+  assert.deepEqual(effect.parts, { catalog: "main", schema: "sales" });
+  assert.equal(effect.value, "main.sales", "value/valueRaw stay joined, for callers that only look at those");
+});
+
+test("AIR-2373.3: a catalog name containing a literal dot is never mis-split", () => {
+  const effect = classify("USE `a.b`.c", { dialect: "databricks" })[0];
+  assert.deepEqual(effect.parts, { catalog: "a.b", schema: "c" });
+
+  const state = apply(createState("databricks"), effect);
+  assert.equal(state.catalog, "a.b");
+  assert.equal(state.schema, "c");
+});
+
+test("AIR-2373.3: a hand-built namespace Effect without `parts` still falls back to splitting value on \".\" — unchanged for existing callers", () => {
+  // Exactly the shape airbrx-gateway's Session.js translateChangeToEffect
+  // has always built for a `use_namespace` change — it never set `parts`,
+  // and must keep working without it.
+  const handBuilt = {
+    dialect: "databricks", statementText: "", scope: "session", kind: "use", key: "namespace",
+    valueRaw: "main.sales", value: "main.sales", parts: null,
+    affectsResolution: true, affectsResults: true, replayable: true, unknownReason: null,
+  };
+  const state = apply(createState("databricks"), handBuilt);
+  assert.equal(state.catalog, "main");
+  assert.equal(state.schema, "sales");
 });

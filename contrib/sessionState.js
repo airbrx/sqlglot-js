@@ -199,6 +199,7 @@ function makeEffect(dialectName, statementText, partial) {
     key: null,
     valueRaw: null,
     value: null,
+    parts: null,
     affectsResolution: false,
     affectsResults: false,
     replayable: false,
@@ -396,11 +397,21 @@ function classifyUse(root, family, dialectName, statementText) {
   // Unqualified USE (no USABLES keyword): one-part switches schema, two-part
   // switches catalog+schema together (Databricks `USE main.sales`).
   if (secondary) {
+    const joined = `${secondary}.${primary}`;
+    // R2373.3: `parts` carries catalog/schema already split by the real
+    // parser (quoting intact per-part — `` USE `a.b`.c `` yields
+    // catalog="a.b", schema="c"), so apply() never has to re-split
+    // `value`/`valueRaw` on "." itself, which would mis-split a part that
+    // legitimately contains a literal dot. `value`/`valueRaw` stay the
+    // joined `catalog.schema` text for callers that only look at those
+    // (e.g. the gateway's own hand-built namespace Effects, which have
+    // never set `parts` and must keep splitting on "." — see apply()).
     return makeEffect(dialectName, statementText, {
       kind: "use",
       key: "namespace",
-      value: `${secondary}.${primary}`,
-      valueRaw: `${secondary}.${primary}`,
+      value: joined,
+      valueRaw: joined,
+      parts: { catalog: secondary, schema: primary },
       affectsResolution: true,
       affectsResults: true,
       replayable: true,
@@ -857,9 +868,19 @@ export function apply(state, effect) {
       else if (effect.key === "schema") next.schema = effect.value;
       else if (effect.key === "warehouse") next.warehouse = effect.value;
       else if (effect.key === "namespace") {
-        const [catalog, schema] = String(effect.value ?? ".").split(".");
-        next.catalog = catalog || null;
-        next.schema = schema || null;
+        // R2373.3: prefer the structured parts classifyUse already split out
+        // (quoting intact per-part), falling back to splitting `value` on
+        // "." only when a caller built this Effect by hand without them —
+        // the gateway's own translateChangeToEffect never sets `parts`, so
+        // its existing use_namespace Effects keep working unchanged.
+        if (effect.parts) {
+          next.catalog = effect.parts.catalog || null;
+          next.schema = effect.parts.schema || null;
+        } else {
+          const [catalog, schema] = String(effect.value ?? ".").split(".");
+          next.catalog = catalog || null;
+          next.schema = schema || null;
+        }
       }
       rebuildReplayLog(next);
       return next;

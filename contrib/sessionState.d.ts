@@ -34,6 +34,14 @@ export interface Effect {
   valueRaw: Nullable<string>;
   /** Parsed/unquoted value, or `null`. */
   value: Nullable<string>;
+  /** Structured USE-namespace parts for a two-part `USE a.b`, populated by
+   * `classify()`'s own `classifyUse`. `apply()` prefers these over splitting
+   * `value`/`valueRaw` on "." so a part containing a literal dot (e.g.
+   * `` USE `a.b`.c ``) is never mis-split. `null` for every other kind/form,
+   * including a hand-built `use`/`namespace` Effect that never set it (e.g.
+   * the gateway's own `translateChangeToEffect`) — `apply()` falls back to
+   * splitting `value` on "." in that case, unchanged from before. */
+  parts: Nullable<{ catalog: string; schema: string }>;
   affectsResolution: boolean;
   affectsResults: boolean;
   replayable: boolean;
