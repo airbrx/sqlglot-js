@@ -445,6 +445,21 @@ rendered to SQL text for the dice-coefficient similarity score — it does not m
 aware of a dialect's own parsing quirks, and does not require `source`/`target` to have been
 parsed under that same dialect.
 
+## `addLogSink(sink)` / `removeLogSink(sink)`
+
+The parser's Command-fallback warning (`'…' contains unsupported syntax. Falling back to
+parsing as a 'Command'.`) is emitted through the port's `sqlglot` logger, which — like
+Python's `logging.lastResort` — writes to `console.error` when nothing is listening.
+An embedder with its own logger installs a sink once:
+
+```js
+import { addLogSink } from "sqlglot-js";
+const remove = addLogSink((line) => myLogger.debug(line)); // line is "WARNING:sqlglot:…"
+```
+
+While any sink is installed nothing reaches stderr. `captureLogs` (used by the test
+suite) is the scoped, synchronous form of the same mechanism.
+
 ## `sqlglot-js/contrib/sessionState`
 
 No upstream Python equivalent — airbrx-specific, built on top of the real port (same status

@@ -444,3 +444,10 @@ export function diff(
     dialect?: Nullable<string | Dialect>;
   },
 ): Array<Insert | Remove | Move | Update | Keep>;
+
+/** Route the parser's log lines (`LEVEL:name:message`, e.g. the "contains
+ * unsupported syntax. Falling back to parsing as a 'Command'" warning) to an
+ * embedder-owned sink instead of `console.error`. While any sink is installed
+ * nothing is written to stderr. Returns a function that removes the sink. */
+export function addLogSink(sink: (line: string) => void): () => void;
+export function removeLogSink(sink: (line: string) => void): void;

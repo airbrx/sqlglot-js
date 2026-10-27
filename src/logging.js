@@ -45,6 +45,28 @@ export function captureLogs(fn) {
   }
 }
 
+/**
+ * Not upstream: a persistent log sink for embedders. Python callers attach a
+ * `logging.Handler` to the "sqlglot" logger; this port has no handler registry,
+ * so without this the parser's Command-fallback warnings go straight to
+ * `console.error` (`logging.lastResort`), bypassing the embedder's own logger
+ * (airbrx-gateway review of PR #256, bissellator, nit 5). While at least one
+ * sink is installed nothing is written to stderr — same rule as `captureLogs`.
+ * The sink receives the `LEVEL:name:message` line `formatRecord` produces.
+ *
+ * @param {(line: string) => void} sink
+ * @returns {() => void} removes the sink again
+ */
+export function addLogSink(sink) {
+  sinks.add(sink);
+  return () => sinks.delete(sink);
+}
+
+/** @param {(line: string) => void} sink */
+export function removeLogSink(sink) {
+  sinks.delete(sink);
+}
+
 class Logger {
   /** @param {string} name */
   constructor(name) {
