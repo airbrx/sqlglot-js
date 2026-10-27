@@ -42,6 +42,9 @@ interface Effect {
                                    // or null when not applicable (kind: "none"/"read"-list-all/"transaction")
   valueRaw: string | null;        // as written in the source (quotes intact), or null
   value: string | null;           // parsed/unquoted value, or null
+  parts: { catalog: string, schema: string } | null;  // structured USE-namespace parts for a
+                                   // two-part USE (AIR-2373.3); apply() prefers these over
+                                   // splitting value/valueRaw on "." — see "USE namespace parts" below
   affectsResolution: boolean;     // could change how an unqualified name resolves
                                    // (search_path, role, session_authorization, catalog, schema)
   affectsResults: boolean;        // could change query results even when resolution is untouched
@@ -84,6 +87,23 @@ dialect-specific identities fold into one canonical name on purpose:
   corpus rows, which assert the identical label as the equivalent `search_path`
   form.
 
+**`search_path`/`role`/`session_authorization` are Postgres-family GUCs, not a
+universal vocabulary (AIR-2373 finding 1).** The canonicalization table lookup
+in `classify()` already only runs for `familyOf(dialect) === "postgres"` (every
+other family has no such table, so `key` stays the raw name as written). Before
+this fix, `apply()` did not repeat that gate: it matched `effect.key ===
+"search_path"` by string alone in both its `reset` and `set`/`variable`
+branches, so a Databricks client sending an ordinary variable literally named
+`search_path` (`SET search_path = x` — a real, if unusual, Spark config key,
+no relation to Postgres' GUC) got silently diverted into `state.searchPath` —
+a Postgres-only field Databricks' own code never reads — instead of
+`state.variables`. The gateway's own Databricks adoption found this directly:
+`Session.applySessionStateChange` reported `true` (mutated) while persisting
+nothing a replay could use. `apply()` now re-checks `familyOf(state.dialect)
+=== "postgres"` itself before treating any of these three keys as special, so
+the same key on a non-Postgres dialect falls straight through to the generic
+`variables`/`replayLog` path like any other `SET`.
+
 ### `scope`
 
 `session` (ordinary `SET`), `local` (`SET LOCAL ...` — lasts only to the end of
@@ -94,6 +114,25 @@ its non-local counterpart would be (the fact doesn't change), but `apply()` neve
 mutates persisted state for it — see "Reducer" below — matching the Postgres
 tracker's own call: "a transaction is never cached from, so [`SET LOCAL`] is
 ignored."
+
+### `parts` (USE namespace, AIR-2373 finding 3)
+
+A two-part `USE a.b` sets `key: "namespace"` with `value`/`valueRaw` joined as
+`"a.b"` (unchanged, for any caller that only looks at those) AND `parts:
+{catalog: "a", schema: "b"}` — the already-split pair `classifyUse` read
+straight off the real `Table` node's own `this`/`db` args, quoting intact per
+part. `apply()` prefers `parts` whenever it's present, falling back to
+splitting `value` on `"."` only when it's `null` (every Effect this module
+itself never built with `parts` — i.e. every pre-AIR-2373 caller, such as
+airbrx-gateway's own `Session.js`'s `translateChangeToEffect`, which builds a
+`use_namespace` Effect by hand and has never set this field). Splitting on
+`"."` silently mis-splits a part that itself contains a literal dot — e.g.
+`` USE `a.b`.c `` (`a.b` is one quoted catalog name) used to become
+`catalog: "a", schema: "b.c"` wrong instead of `catalog: "a.b", schema: "c"`
+right. A hand-built Effect has no real source text to split *correctly*
+either way, so that fallback's pre-existing imprecision for a dotted part is
+unchanged — only the real, parser-driven path through `classify()` gets the
+fix.
 
 ## State schema
 
@@ -111,6 +150,14 @@ interface State {
   schema: string | null;          // Databricks/Snowflake schema
   warehouse: string | null;       // Snowflake
   variables: Record<string, string | null>;  // generic SET-family key/value store
+  variablesRaw: Record<string, string | null>;  // AIR-2373.2: source-quoted counterpart of
+                                   // `variables`, same keys. Only ever written by apply() for a
+                                   // key it is actively setting in THAT call, from the Effect's
+                                   // own `valueRaw` — a key already present in `variables` through
+                                   // some other path (e.g. a gateway session hydrated straight
+                                   // from pre-this-round persisted storage) has no entry here at
+                                   // all, which render()'s Databricks renderer (below) treats
+                                   // exactly like an Effect that never had a valueRaw to begin with
   replayLog: ReplayEntry[];       // minimum sequence to recreate the above on a fresh session —
                                    // a SIBLING of the rest of State, never read back into it,
                                    // for the identical cache-key-stability reason
@@ -151,8 +198,10 @@ would be rebuilt on top of this module's `Effect`s without losing that behaviour
 Rules:
 
 - `effect.scope === "local"` → no-op; `state` is returned unchanged.
-- `kind: "use"` → sets `catalog`/`schema`/`warehouse` depending on `key`, then
-  rebuilds `replayLog` (namespace-collapse rule below).
+- `kind: "use"` → sets `catalog`/`schema`/`warehouse` depending on `key`
+  (`"namespace"`: prefers `effect.parts.catalog`/`.schema` when present,
+  falling back to splitting `value` on `"."` only when `parts` is `null` —
+  AIR-2373.3), then rebuilds `replayLog` (namespace-collapse rule below).
 - `kind: "role"` → sets `role` (`Postgres`: also sets `roleSwitched = true`, unless
   `value` is a reset sentinel, in which case `role = null` and
   `roleSwitched = false`).
@@ -161,16 +210,24 @@ Rules:
   also clears an active `SET ROLE` (`roleSwitched` stays whatever it already was;
   only a session-user RESET clears it, see below), so this also sets `role = null`
   when switching to a NEW session user (not on reset).
-- `kind: "reset"` → `key` names what resets: `"search_path"` → `searchPath =
-  'default'`; `"role"` → `role = null, roleSwitched = false` (NOT `authSwitched` —
-  `RESET ROLE` only returns to the SESSION user, never below it); `"session_authorization"`
-  → `authSwitched = false` AND `roleSwitched = false` (`RESET SESSION AUTHORIZATION`
-  clears an active role too, verified on Postgres 16 per `SearchPathTracker`); a raw
-  variable name → deletes that key from `variables`.
+- `kind: "reset"` — the `"search_path"`/`"role"`/`"session_authorization"`
+  special cases below only fire when `familyOf(state.dialect) === "postgres"`
+  (AIR-2373.1 — they are Postgres GUCs, not a universal vocabulary); on any
+  other family all three fall through to the generic raw-variable-name case.
+  On Postgres: `"search_path"` → `searchPath = 'default'`; `"role"` → `role =
+  null, roleSwitched = false` (NOT `authSwitched` — `RESET ROLE` only returns
+  to the SESSION user, never below it); `"session_authorization"` →
+  `authSwitched = false` AND `roleSwitched = false` (`RESET SESSION
+  AUTHORIZATION` clears an active role too, verified on Postgres 16 per
+  `SearchPathTracker`). A raw variable name (any family, including the three
+  above when not Postgres) → deletes that key from `variables`/`variablesRaw`.
 - `kind: "discard"` (Postgres `DISCARD ALL`) → resets `searchPath`, `roleSwitched`,
   `authSwitched`, `role` all at once (does **not** touch Databricks/Snowflake
   fields — Postgres-only kind).
-- `kind: "set"` / `kind: "variable"` → `variables[key] = value`, rebuild `replayLog`.
+- `kind: "set"` / `kind: "variable"` → same Postgres-only gate as `reset`
+  above for `"search_path"`; otherwise `variables[key] = value`,
+  `variablesRaw[key] = effect.valueRaw ?? null` (AIR-2373.2 — feeds a
+  Databricks-family `render()`, see below), rebuild `replayLog`.
 - `kind: "transaction"` → no state mutation (the gateway's own
   `transactionStatus` tracks this; see "Gateway adoption").
 - `kind: "read"` / `"none"` / `"unknown"` → no-op.
@@ -179,24 +236,65 @@ Rules:
 this reproduces byte-for-byte for the Databricks shape — collapse order verified
 against `session-state-replay.test.js`'s `testNamespaceCollapseRebuild`): if both
 `catalog` and `schema` are set, emit one `use_namespace` entry; otherwise emit
-`use_catalog`/`use_schema` individually for whichever is set. Then one `set` entry
-per key in `variables`, insertion order. Last-write-wins per key (a second `SET
-timezone = ...` replaces, not appends, matching `testDedupeReplayLog`).
+`use_catalog`/`use_schema` individually for whichever is set. Then one `set`
+entry per key in `variables`, insertion order, with `valueRaw` attached
+whenever `variablesRaw` has one for that key (AIR-2373.2) — never a bare
+`null` manufactured for a key `apply()` never recorded raw text for.
+Last-write-wins per key (a second `SET timezone = ...` replaces, not appends,
+matching `testDedupeReplayLog`).
 
 ## `render(state, { dialect }) → string[]`
 
 Builds real `exp.Use`/`exp.Set`/`exp.AlterSession` nodes from `state.replayLog`
-and emits each through `Dialect.get_or_raise(dialect).generate(...)` — this
-*replaces* the gateway's own hand-quoting (`Databricks.OperationCreatingHandler
-.renderReplayStatement`'s manual `needsQuote`/doubled-`'` escaping). Using the
-real generator means quoting, identifier escaping, and dialect SQL spelling all
-come from the same code path that already produces correct SQL everywhere else
-in this project — no second hand-rolled quoting routine to keep in sync. A
-`replayLog` entry whose kind the target dialect's table doesn't know how to
-render (not expected in practice, since entries only ever come from this
-module's own `apply()`) is skipped with `null` filtered out, mirroring
+and emits each through `Dialect.get_or_raise(dialect).generate(...)` — for
+every `use_*` kind, on every dialect, and for `set` on every family EXCEPT
+Databricks. Using the real generator here means quoting, identifier escaping,
+and dialect SQL spelling all come from the same code path that already
+produces correct SQL everywhere else in this project. A `replayLog` entry
+whose kind the target dialect's table doesn't know how to render (not
+expected in practice, since entries only ever come from this module's own
+`apply()`) is skipped with `null` filtered out, mirroring
 `renderReplayStatement`'s own "malformed → null, caller warns and skips"
 contract.
+
+### Databricks `set` rendering is raw text, not the generator (AIR-2373 finding 2)
+
+This module originally rendered EVERY `set` entry — Databricks included —
+through the real generator (a quoted string `exp.Literal`), billed above as
+*replacing* `OperationCreatingHandler.renderReplayStatement`'s hand-rolled
+`quoteSetValue`. That was wrong specifically for the Databricks family
+(`hive`/`spark2`/`spark`/`databricks`), found by that very gateway adoption
+(gateway PR #256) while trying to delete `quoteSetValue` in favor of this
+module's `render()`:
+
+Spark's own grammar has no string-literal syntax on the `SET k = v` path at
+all. `SqlBaseParser.g4`'s `SET .*?` rule hands the whole remainder to
+`SparkSqlParser.visitSetConfiguration`, whose `configKeyValueDef` regex
+(`"""([a-zA-Z_\d\.:]+)\s*=([^;]*);*"""`) captures and stores `value.trim`
+VERBATIM — any quotes present are part of the stored string, never decoded.
+So `SET spark.sql.session.timeZone = UTC`, replayed through a generator that
+adds quotes, becomes `SET spark.sql.session.timeZone = 'UTC'` — which sets
+the session's timezone config to the five-character string `"'UTC'"`,
+failing Spark's own timezone validity check and aborting session bring-up on
+the resulting non-200. (A dotted key through `exp.column(key)` has the same
+problem one level up: the generator backtick-quotes it as a qualified column
+reference, `` `spark`.`sql`.`session`.`timeZone` ``, which is not how this
+grammar rule reads a config key either.)
+
+`render()` therefore renders a `set` entry on a Databricks-family dialect as
+plain text — `SET <key, always bare, never backtick-quoted> = <raw>` — where
+`raw` is `entry.valueRaw` when present, emitted **completely unprocessed** (it
+is already the exact source span `apply()` copied byte-for-byte from the
+original statement: bare `UTC` stays bare, `'o''brien'` stays `'o''brien'`
+doubled quote and all — re-running any quoting logic over it would corrupt
+already-valid text). Only when `valueRaw` is absent — the decoded-only shape
+every pre-this-round caller still constructs by hand, e.g. the gateway's own
+`Session.js`'s `translateChangeToEffect` — does it fall back to
+`quoteDatabricksSetValue`, a verbatim reproduction of the gateway's own
+pre-AIR-2365 `quoteSetValue`: bare unless the text contains whitespace, a
+quote, a `;`, or is empty, in which case it's wrapped in single quotes with
+any embedded quote doubled. Every other dialect's `set` rendering is
+unaffected — still the real generator, still ignoring `valueRaw` entirely.
 
 ## Per-dialect tables
 
@@ -414,11 +512,17 @@ Each adapter's eventual call shape (epics 14.2–14.4, separate PRs):
   'default', role: 'reset', auth: 'reset'` triple-check. The raw-text label
   convention (`'path:' + value`) is preserved by using `effect.valueRaw`/
   `effect.statementText` rather than re-deriving it.
-- **Databricks**: replace `applySessionStateChange`'s `switch (change.kind)` with
-  `sessionState.apply(state, effect)`, and replace
-  `OperationCreatingHandler.renderReplayStatement` with
-  `sessionState.render(state, { dialect: 'databricks' })` — the real generator
-  subsumes its hand-rolled quoting entirely.
+- **Databricks**: replace `applySessionStateChange`'s `switch (change.kind)`
+  with `sessionState.apply(state, effect)` (landed, AIR-2365). `
+  OperationCreatingHandler.renderReplayStatement` delegates its three `use_*`
+  forms to `sessionState.render(state, { dialect: 'databricks' })` but
+  deliberately keeps its own local `quoteSetValue` for `set`/`alter_session`
+  (landed, AIR-2365 Part 4) — see "Databricks `set` rendering is raw text,
+  not the generator" above for why a shared `render()` was wrong for that
+  one case specifically before this round's fix, and note that even after
+  the fix the gateway's own copy stays put: duplicating a six-line pure
+  function locally is cheaper than a second cross-repo pin bump for this one
+  spot.
 - **Snowflake**: today reads context back from response `final*` fields with no
   SQL recognition at all; this module's Snowflake table is new tracking capability,
   not a replacement — a future PR can use `classify()`/`apply()` to predict

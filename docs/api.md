@@ -491,9 +491,20 @@ effectiveSearchPath(state); // "path:a, b" — trusted even while a role is swit
 Postgres' "don't trust a change until the statement is confirmed outside an open transaction"
 requirement gets it for free by simply not calling `apply()` until then, using `effect.scope`
 to know which changes are transaction-local in the first place). `render()` emits
-`state.replayLog` back to SQL through the real dialect generator — correct quoting/escaping
-for whichever dialect's own convention applies (e.g. Databricks' backslash string escapes vs.
-Postgres/Snowflake's doubled-quote convention), not a second hand-rolled quoting routine.
+`state.replayLog` back to SQL — through the real dialect generator for every `use_*` kind on
+every dialect, and for `set` on every family except Databricks (which stores a `SET k = v`
+value's RHS text verbatim, with no string-literal syntax to decode or re-encode — see
+[docs/proposals/session-state-module.md](proposals/session-state-module.md)'s "Databricks `set`
+rendering is raw text, not the generator" section).
+
+Three family-scoping fixes (AIR-2373, found by the gateway's own adoption of this module):
+`search_path`/`role`/`session_authorization` are Postgres-only GUCs in `apply()` too, not just
+`classify()`'s canonicalization table — a Databricks variable literally named `search_path` now
+lands in `state.variables` like any other key, not in the Postgres-only `state.searchPath`
+field; a two-part `USE a.b` Effect carries structured `parts: {catalog, schema}` that `apply()`
+prefers over splitting `value` on `"."`, so a catalog/schema component containing a literal dot
+is never mis-split; and `State` gains a `variablesRaw` sibling of `variables` (source-quoted,
+same keys) that only a Databricks-family `render()` ever reads.
 
 ## Per-dialect notes
 
