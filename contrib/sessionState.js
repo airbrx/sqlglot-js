@@ -554,6 +554,10 @@ function postgresSetCommandReader(root, d, dialectName, statementText) {
   if (kw === "SCHEMA") {
     const valueToken = tokens[i + 1];
     const valueRaw = valueToken ? remainder.slice(valueToken.start).trim() : null;
+    // R125: `SET SCHEMA` with no value is not a path (Postgres rejects it);
+    // reporting `set` with a null value would let a caller build a `path:null`
+    // label (bissellator, gateway PR #256).
+    if (!valueRaw) return unknownEffect(dialectName, statementText, "missing-value");
     return makeEffect(dialectName, statementText, {
       scope, kind: "set", key: "search_path", valueRaw, value: valueRaw,
       affectsResolution: true, affectsResults: true, replayable: scope !== "local",
@@ -573,6 +577,7 @@ function postgresSetCommandReader(root, d, dialectName, statementText) {
     if (!isDelimiter) return unknownEffect(dialectName, statementText, "unrecognized-search-path-form");
     const valueToken = tokens[i + 2];
     const valueRaw = valueToken ? remainder.slice(valueToken.start).trim() : null;
+    if (!valueRaw) return unknownEffect(dialectName, statementText, "missing-value");
     return makeEffect(dialectName, statementText, {
       scope, kind: "set", key: "search_path", valueRaw, value: valueRaw,
       affectsResolution: true, affectsResults: true, replayable: scope !== "local",
@@ -659,9 +664,44 @@ function identText_fromLiteralToken(token) {
   return token.text;
 }
 
+// R125: transaction-control spellings the parser does NOT give a Transaction/
+// Commit/Rollback node (upstream-faithful misparses, verified against pinned
+// CPython): `START TRANSACTION` → Alias(Column("START"), alias "TRANSACTION");
+// `ABORT` → bare Column; `ABORT WORK|TRANSACTION` → Alias/Command; `END`
+// inside a batch → EndStatement (alone it is Commit). Gateway review of
+// airbrx-gateway PR #256 (bissellator) showed a batch such as
+// `START TRANSACTION; SET search_path = a` or `SET search_path = a; ABORT`
+// therefore escaped the caller's transaction-control fallback and the SET was
+// trusted although it is (or may be) rolled back. Detected by statement text
+// (per-statement since R123) on exactly those misparse shapes, never on a
+// real Select/Set/... node.
+function transactionMisparseKey(root, statementText) {
+  const bareColumn = root instanceof exp.Column && !root.args.table && !root.args.db && !root.args.catalog;
+  if (!(root instanceof exp.Alias) && !bareColumn && !(root instanceof exp.Identifier) && !(root instanceof exp.Command)) return null;
+  const text = statementText.trim().toUpperCase();
+  if (/^START\s+TRANSACTION\b/.test(text)) return "begin";
+  if (/^ABORT(\s+(WORK|TRANSACTION))?$/.test(text)) return "rollback";
+  if (/^END(\s+(WORK|TRANSACTION))?$/.test(text)) return "commit";
+  return null;
+}
+
+function transactionEffect(dialectName, statementText, key) {
+  return makeEffect(dialectName, statementText, {
+    scope: "transaction",
+    kind: "transaction",
+    key,
+    affectsResolution: false,
+    affectsResults: false,
+    replayable: false,
+  });
+}
+
 function classifyCommand(root, family, dialectName, statementText, d) {
   const keyword = (typeof root.args.this === "string" ? root.args.this : identText(root.args.this)) ?? "";
   const kw = keyword.toUpperCase();
+
+  const txn = transactionMisparseKey(root, statementText);
+  if (txn) return transactionEffect(dialectName, statementText, txn);
 
   if (family === "postgres") {
     if (kw === "DO" || kw === "CALL") {
@@ -712,8 +752,13 @@ function classifyStatement(root, family, dialectName, sql, d, span = null) {
   if (root instanceof exp.Commit) return classifyCommit(root, dialectName, statementText);
   if (root instanceof exp.Rollback) return classifyRollback(root, dialectName, statementText);
   if (root instanceof exp.Declare) return classifyDeclare(root, dialectName, statementText);
+  // R125: `END` inside a batch parses as EndStatement (alone it is Commit).
+  if (root instanceof exp.EndStatement) return classifyCommit(root, dialectName, statementText);
 
   if (root instanceof exp.Command) return classifyCommand(root, family, dialectName, statementText, d);
+
+  const txn = transactionMisparseKey(root, statementText);
+  if (txn) return transactionEffect(dialectName, statementText, txn);
 
   if (family === "postgres") {
     const target = postgresDiscardMisparseTarget(root);

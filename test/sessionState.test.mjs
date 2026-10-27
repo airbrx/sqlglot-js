@@ -841,3 +841,37 @@ test("R124 addendum: a hand-built set Effect must pass valueRaw null to get the 
   const decodedAsRaw = apply(createState("databricks"), { ...base, value: "a b", valueRaw: "a b" });
   assert.deepEqual(render(decodedAsRaw, { dialect: "databricks" }), ["SET y = a b"]);
 });
+
+// ---------------------------------------------------------------------------
+// R125: transaction-control spellings the parser misparses (upstream-faithful
+// Alias/Column/EndStatement shapes) are still classified as `transaction`, so
+// a caller's transaction-control fallback sees them (bissellator, gateway PR
+// #256 review, finding 1).
+// ---------------------------------------------------------------------------
+
+test("R125: START TRANSACTION / ABORT / END are transaction effects in every spelling, alone and inside a batch", () => {
+  const kinds = (sql, dialect = "postgres") => classify(sql, { dialect }).map((e) => `${e.kind}:${e.key}`);
+  assert.deepEqual(kinds("START TRANSACTION"), ["transaction:begin"]);
+  assert.deepEqual(kinds("ABORT"), ["transaction:rollback"]);
+  assert.deepEqual(kinds("ABORT TRANSACTION"), ["transaction:rollback"]);
+  assert.deepEqual(kinds("ABORT WORK"), ["transaction:rollback"]);
+  assert.deepEqual(kinds("END"), ["transaction:commit"]);
+  assert.deepEqual(kinds("END TRANSACTION"), ["transaction:commit"]);
+  assert.deepEqual(kinds("START TRANSACTION; SET search_path = a"), ["transaction:begin", "set:search_path"]);
+  assert.deepEqual(kinds("SET search_path = a; ABORT"), ["set:search_path", "transaction:rollback"]);
+  assert.deepEqual(kinds("SET search_path = a; END"), ["set:search_path", "transaction:commit"]);
+  assert.deepEqual(kinds("START TRANSACTION", "mysql"), ["transaction:begin"]);
+  // Only the misparse SHAPES are read by text — a real Select mentioning the
+  // words stays a non-effect.
+  assert.deepEqual(kinds("SELECT abort"), ["none:null"]);
+  assert.deepEqual(kinds("SELECT 1 AS end"), ["none:null"]);
+});
+
+test("R125: SET SCHEMA / SET search_path with no value is unknown, never a set with a null value", () => {
+  for (const sql of ["SET SCHEMA", "SET SESSION SCHEMA"]) {
+    const e = classify(sql, { dialect: "postgres" })[0];
+    assert.equal(e.kind, "unknown", sql);
+    assert.equal(e.unknownReason, "missing-value", sql);
+  }
+  assert.equal(classify("SET SCHEMA 'x'", { dialect: "postgres" })[0].valueRaw, "'x'");
+});

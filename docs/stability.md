@@ -43,6 +43,10 @@ this package is versioned past `0.0.x`:**
   until adoption, on the same basis `gatewaySqlMetadata.js` was: real enough to build
   application code against, covered by its own hand-written `.d.ts` and `test/types/smoke.ts`
   entries, exactly like every other Tier-1 public export.
+- `addLogSink`/`removeLogSink` (R125, additive) — route the parser's "unsupported syntax,
+  falling back to Command" warnings (and any other `sqlglot` logger line) to an embedder-owned
+  sink instead of `console.error`.
+
 
 **Public, Tier 2 — reachable by design, not individually hand-typed, lower stability
 guarantee than the root export:**

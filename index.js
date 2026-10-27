@@ -98,6 +98,8 @@ export { Dialect, ErrorLevel, ParseError, TokenError, UnsupportedError, exp, par
 export { optimize, RULES };
 export { lineage, Node };
 export { anonymize, render };
+// R125: embedder log routing — see src/logging.js.
+export { addLogSink, removeLogSink } from "./src/logging.js";
 export { diff, Insert, Remove, Move, Update, Keep };
 
 /**
