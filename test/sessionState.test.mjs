@@ -643,3 +643,59 @@ test("R123 valueRaw: Databricks and Snowflake natural-path values keep their quo
   state = apply(state, db);
   assert.deepEqual(state.variables, { "spark.sql.x": "o'brien" });
 });
+
+// ---------------------------------------------------------------------------
+// AIR-2373 finding 1: `search_path` is the Postgres cache-key LABEL only on
+// Postgres-family dialects. Before this fix, apply()'s `set`/`variable` and
+// `reset` branches checked `effect.key === "search_path"` unconditionally,
+// so a Databricks `SET search_path = x` silently vanished into
+// `state.searchPath` (a field Databricks never reads) instead of
+// `state.variables` — no entry in `variables`, no replay entry, and the
+// warehouse's own `search_path` config drifted from the gateway's view of
+// it forever. Found by the Databricks gateway adoption, AIR-2364/AIR-2365
+// (gateway PR #256): `applySessionStateChange` returned `true` (mutated)
+// but stored nothing.
+// ---------------------------------------------------------------------------
+
+test("AIR-2373.1: Databricks SET search_path = x is an ordinary variable, not the Postgres LABEL", () => {
+  const effect = classify("SET search_path = x", { dialect: "databricks" })[0];
+  assert.equal(effect.kind, "set");
+  assert.equal(effect.key, "search_path");
+
+  const state = apply(createState("databricks"), effect);
+  assert.equal(state.variables.search_path, "x", "must land in variables, not be swallowed");
+  assert.deepEqual(
+    state.replayLog,
+    [{ kind: "set", key: "search_path", value: "x" }],
+    "must produce a replay entry so a fresh warehouse session gets SET search_path = x too"
+  );
+  assert.equal(state.searchPath, "default", "the Postgres-only LABEL field is untouched on Databricks");
+});
+
+test("AIR-2373.1: a Databricks RESET of a variable literally named search_path deletes the variable, not the Postgres LABEL", () => {
+  let state = apply(createState("databricks"), classify("SET search_path = x", { dialect: "databricks" })[0]);
+  assert.equal(state.variables.search_path, "x");
+  // Hand-built, since Databricks has no RESET grammar of its own — this
+  // exercises apply()'s `reset` branch directly, the other half of the leak.
+  const resetEffect = {
+    dialect: "databricks", statementText: "", scope: "session", kind: "reset", key: "search_path",
+    valueRaw: null, value: null,
+    affectsResolution: false, affectsResults: true, replayable: true, unknownReason: null,
+  };
+  state = apply(state, resetEffect);
+  assert.equal(state.variables.search_path, undefined, "the variable is gone");
+  assert.equal(state.searchPath, "default", "still untouched — it was never the Postgres LABEL to begin with");
+});
+
+test("AIR-2373.1: Postgres search_path/role/session_authorization behavior is unchanged by the family gate", () => {
+  const state = apply(createState("postgres"), classify("SET search_path = a", { dialect: "postgres" })[0]);
+  assert.equal(effectiveSearchPath(state), "path:a");
+  assert.deepEqual(state.variables, {}, "the Postgres LABEL path never touches `variables`");
+
+  const resetState = apply(createState("postgres"), classify("RESET search_path", { dialect: "postgres" })[0]);
+  assert.equal(resetState.searchPath, "default");
+
+  const roleState = apply(createState("postgres"), classify("RESET ROLE", { dialect: "postgres" })[0]);
+  assert.equal(roleState.role, null);
+  assert.equal(roleState.roleSwitched, false);
+});

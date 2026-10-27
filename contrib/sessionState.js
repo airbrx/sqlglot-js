@@ -855,9 +855,15 @@ export function apply(state, effect) {
       return next;
     }
     case "reset": {
-      if (effect.key === "search_path") next.searchPath = "default";
-      else if (effect.key === "role") { next.role = null; next.roleSwitched = false; }
-      else if (effect.key === "session_authorization") { next.authSwitched = false; next.roleSwitched = false; next.role = null; }
+      // R2373.1: the Postgres LABEL/role/auth special cases below are only
+      // Postgres GUCs — gate every one of them on family, not just the key
+      // name, so a Databricks/Snowflake/etc. variable that happens to be
+      // named "search_path" (or "role"/"session_authorization") still goes
+      // through the generic delete-the-variable branch like any other key.
+      const family = familyOf(state.dialect);
+      if (effect.key === "search_path" && family === "postgres") next.searchPath = "default";
+      else if (effect.key === "role" && family === "postgres") { next.role = null; next.roleSwitched = false; }
+      else if (effect.key === "session_authorization" && family === "postgres") { next.authSwitched = false; next.roleSwitched = false; next.role = null; }
       else if (effect.key === "all") { delete next.variables[effect.key]; }
       else if (effect.key) delete next.variables[effect.key];
       rebuildReplayLog(next);
@@ -872,7 +878,14 @@ export function apply(state, effect) {
     }
     case "set":
     case "variable": {
-      if (effect.key === "search_path") { next.searchPath = effect.valueRaw != null ? `path:${effect.valueRaw}` : next.searchPath; return next; }
+      // R2373.1: same family gate as the reset branch above — `search_path`
+      // is the Postgres cache-key LABEL only on Postgres-family dialects;
+      // elsewhere (Databricks, etc.) it is an ordinary session variable and
+      // must land in `variables`/`replayLog` like any other key.
+      if (effect.key === "search_path" && familyOf(state.dialect) === "postgres") {
+        next.searchPath = effect.valueRaw != null ? `path:${effect.valueRaw}` : next.searchPath;
+        return next;
+      }
       next.variables[effect.key] = effect.value;
       rebuildReplayLog(next);
       return next;
