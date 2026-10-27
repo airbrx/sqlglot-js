@@ -30,10 +30,22 @@ export interface Effect {
    * warehouse/timezone/all/isolation_level/begin/commit/rollback/...), the raw
    * variable name, or `null` when not applicable. */
   key: Nullable<string>;
-  /** As written in the source (quotes intact), or `null`. */
+  /** As written in the source (quotes intact), or `null`. A caller that
+   * builds an Effect by hand from an already-DECODED value (e.g. the
+   * gateway's `translateChangeToEffect`) must pass `null` here, not the
+   * decoded text: a Databricks-family `render()` emits `valueRaw` verbatim,
+   * so a decoded `a;b` passed as raw would render `SET k = a;b`. */
   valueRaw: Nullable<string>;
   /** Parsed/unquoted value, or `null`. */
   value: Nullable<string>;
+  /** Structured USE-namespace parts for a two-part `USE a.b`, populated by
+   * `classify()`'s own `classifyUse`. `apply()` prefers these over splitting
+   * `value`/`valueRaw` on "." so a part containing a literal dot (e.g.
+   * `` USE `a.b`.c ``) is never mis-split. `null` for every other kind/form,
+   * including a hand-built `use`/`namespace` Effect that never set it (e.g.
+   * the gateway's own `translateChangeToEffect`) — `apply()` falls back to
+   * splitting `value` on "." in that case, unchanged from before. */
+  parts: Nullable<{ catalog: string; schema: string }>;
   affectsResolution: boolean;
   affectsResults: boolean;
   replayable: boolean;
@@ -52,6 +64,13 @@ export interface ReplayEntry {
   role?: string;
   key?: string;
   value?: Nullable<string>;
+  /** As written in the source (quotes intact); present only when `apply()`
+   * actually recorded one for this key in the same call that set `value` —
+   * absent (not `null`) for a key carried over without one, e.g. hydrated
+   * from storage written before this field existed. Consumed verbatim by a
+   * Databricks-family `render()` (never re-escaped); every other dialect's
+   * `set` rendering still goes through the real generator and ignores it. */
+  valueRaw?: Nullable<string>;
 }
 
 export interface State {
@@ -64,6 +83,12 @@ export interface State {
   schema: Nullable<string>;
   warehouse: Nullable<string>;
   variables: Record<string, Nullable<string>>;
+  /** The source-quoted counterpart of `variables`, keyed the same way. Only
+   * ever populated by `apply()` for a key it actively set in some call on
+   * this State — a key present in `variables` through some other path (e.g.
+   * a gateway session hydrated straight from persisted storage) may have no
+   * entry here at all. See `ReplayEntry.valueRaw`. */
+  variablesRaw: Record<string, Nullable<string>>;
   replayLog: ReplayEntry[];
 }
 

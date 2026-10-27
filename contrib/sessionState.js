@@ -199,6 +199,7 @@ function makeEffect(dialectName, statementText, partial) {
     key: null,
     valueRaw: null,
     value: null,
+    parts: null,
     affectsResolution: false,
     affectsResults: false,
     replayable: false,
@@ -396,11 +397,21 @@ function classifyUse(root, family, dialectName, statementText) {
   // Unqualified USE (no USABLES keyword): one-part switches schema, two-part
   // switches catalog+schema together (Databricks `USE main.sales`).
   if (secondary) {
+    const joined = `${secondary}.${primary}`;
+    // R2373.3: `parts` carries catalog/schema already split by the real
+    // parser (quoting intact per-part — `` USE `a.b`.c `` yields
+    // catalog="a.b", schema="c"), so apply() never has to re-split
+    // `value`/`valueRaw` on "." itself, which would mis-split a part that
+    // legitimately contains a literal dot. `value`/`valueRaw` stay the
+    // joined `catalog.schema` text for callers that only look at those
+    // (e.g. the gateway's own hand-built namespace Effects, which have
+    // never set `parts` and must keep splitting on "." — see apply()).
     return makeEffect(dialectName, statementText, {
       kind: "use",
       key: "namespace",
-      value: `${secondary}.${primary}`,
-      valueRaw: `${secondary}.${primary}`,
+      value: joined,
+      valueRaw: joined,
+      parts: { catalog: secondary, schema: primary },
       affectsResolution: true,
       affectsResults: true,
       replayable: true,
@@ -795,6 +806,16 @@ export function createState(dialect = null) {
     schema: null,
     warehouse: null,
     variables: {},
+    // R2373.2: the source-quoted counterpart of `variables`, keyed the same
+    // way. Only ever populated by apply() for a key it is actively setting
+    // in THIS call (from `effect.valueRaw`) — a key carried over from a
+    // pre-existing `variables` object built some other way (e.g. a gateway
+    // session hydrated straight from persisted storage, see
+    // docs/proposals/session-state-module.md) simply has no entry here,
+    // which is intentional: render()'s Databricks raw-text renderer treats
+    // a missing entry exactly like an absent `valueRaw`, falling back to
+    // the legacy quoting rule for that key.
+    variablesRaw: {},
     replayLog: [],
   };
 }
@@ -810,7 +831,16 @@ function rebuildReplayLog(state) {
   if (state.warehouse) log.push({ kind: "use_warehouse", warehouse: state.warehouse });
   if (state.role) log.push({ kind: "use_role", role: state.role });
   for (const key of Object.keys(state.variables)) {
-    log.push({ kind: "set", key, value: state.variables[key] });
+    const entry = { kind: "set", key, value: state.variables[key] };
+    // R2373.2: only attach `valueRaw` when this key actually has raw text on
+    // file — never a bare `null` manufactured for a key apply() never saw a
+    // raw span for (a pre-existing/carried-over variable, see createState).
+    // A missing field, not a null one, is what tells render()'s Databricks
+    // renderer and the gateway's own legacy-shape readers "fall back".
+    if (state.variablesRaw && state.variablesRaw[key] !== undefined) {
+      entry.valueRaw = state.variablesRaw[key];
+    }
+    log.push(entry);
   }
   state.replayLog = log;
 }
@@ -826,6 +856,7 @@ export function apply(state, effect) {
   const next = {
     ...state,
     variables: { ...state.variables },
+    variablesRaw: { ...state.variablesRaw },
     replayLog: state.replayLog,
   };
 
@@ -837,9 +868,19 @@ export function apply(state, effect) {
       else if (effect.key === "schema") next.schema = effect.value;
       else if (effect.key === "warehouse") next.warehouse = effect.value;
       else if (effect.key === "namespace") {
-        const [catalog, schema] = String(effect.value ?? ".").split(".");
-        next.catalog = catalog || null;
-        next.schema = schema || null;
+        // R2373.3: prefer the structured parts classifyUse already split out
+        // (quoting intact per-part), falling back to splitting `value` on
+        // "." only when a caller built this Effect by hand without them —
+        // the gateway's own translateChangeToEffect never sets `parts`, so
+        // its existing use_namespace Effects keep working unchanged.
+        if (effect.parts) {
+          next.catalog = effect.parts.catalog || null;
+          next.schema = effect.parts.schema || null;
+        } else {
+          const [catalog, schema] = String(effect.value ?? ".").split(".");
+          next.catalog = catalog || null;
+          next.schema = schema || null;
+        }
       }
       rebuildReplayLog(next);
       return next;
@@ -855,11 +896,17 @@ export function apply(state, effect) {
       return next;
     }
     case "reset": {
-      if (effect.key === "search_path") next.searchPath = "default";
-      else if (effect.key === "role") { next.role = null; next.roleSwitched = false; }
-      else if (effect.key === "session_authorization") { next.authSwitched = false; next.roleSwitched = false; next.role = null; }
-      else if (effect.key === "all") { delete next.variables[effect.key]; }
-      else if (effect.key) delete next.variables[effect.key];
+      // R2373.1: the Postgres LABEL/role/auth special cases below are only
+      // Postgres GUCs — gate every one of them on family, not just the key
+      // name, so a Databricks/Snowflake/etc. variable that happens to be
+      // named "search_path" (or "role"/"session_authorization") still goes
+      // through the generic delete-the-variable branch like any other key.
+      const family = familyOf(state.dialect);
+      if (effect.key === "search_path" && family === "postgres") next.searchPath = "default";
+      else if (effect.key === "role" && family === "postgres") { next.role = null; next.roleSwitched = false; }
+      else if (effect.key === "session_authorization" && family === "postgres") { next.authSwitched = false; next.roleSwitched = false; next.role = null; }
+      else if (effect.key === "all") { delete next.variables[effect.key]; delete next.variablesRaw[effect.key]; }
+      else if (effect.key) { delete next.variables[effect.key]; delete next.variablesRaw[effect.key]; }
       rebuildReplayLog(next);
       return next;
     }
@@ -872,8 +919,19 @@ export function apply(state, effect) {
     }
     case "set":
     case "variable": {
-      if (effect.key === "search_path") { next.searchPath = effect.valueRaw != null ? `path:${effect.valueRaw}` : next.searchPath; return next; }
+      // R2373.1: same family gate as the reset branch above — `search_path`
+      // is the Postgres cache-key LABEL only on Postgres-family dialects;
+      // elsewhere (Databricks, etc.) it is an ordinary session variable and
+      // must land in `variables`/`replayLog` like any other key.
+      if (effect.key === "search_path" && familyOf(state.dialect) === "postgres") {
+        next.searchPath = effect.valueRaw != null ? `path:${effect.valueRaw}` : next.searchPath;
+        return next;
+      }
       next.variables[effect.key] = effect.value;
+      // R2373.2: record the source-quoted form alongside the decoded one so
+      // a Databricks-family render() can later emit the client's raw text
+      // verbatim instead of re-encoding through a generated string Literal.
+      next.variablesRaw[effect.key] = effect.valueRaw ?? null;
       rebuildReplayLog(next);
       return next;
     }
@@ -882,20 +940,68 @@ export function apply(state, effect) {
   }
 }
 
+// R124 coordinator addendum: identifiers are built with `exp.toIdentifier`,
+// which (like upstream `to_identifier`) marks a name that is not a plain
+// `[_a-zA-Z]\w*` identifier as quoted — so the structured parts R2373.3
+// preserves through apply() survive render() too (`` USE `a.b`.c `` renders
+// back as `` USE `a.b`.c ``, not the lossy `USE a.b.c`). Plain names are
+// unchanged (`USE CATALOG main`, `USE main.sales`).
 const REPLAY_RENDERERS = {
-  use_catalog: (entry) => new exp.Use({ kind: exp.var("CATALOG"), this: new exp.Table({ this: new exp.Identifier({ this: entry.catalog }) }) }),
-  use_schema: (entry) => new exp.Use({ kind: exp.var("SCHEMA"), this: new exp.Table({ this: new exp.Identifier({ this: entry.schema }) }) }),
-  use_namespace: (entry) => new exp.Use({ this: new exp.Table({ this: new exp.Identifier({ this: entry.schema }), db: new exp.Identifier({ this: entry.catalog }) }) }),
-  use_warehouse: (entry) => new exp.Use({ kind: exp.var("WAREHOUSE"), this: new exp.Table({ this: new exp.Identifier({ this: entry.warehouse }) }) }),
-  use_role: (entry) => new exp.Use({ kind: exp.var("ROLE"), this: new exp.Table({ this: new exp.Identifier({ this: entry.role }) }) }),
+  use_catalog: (entry) => new exp.Use({ kind: exp.var("CATALOG"), this: new exp.Table({ this: exp.toIdentifier(entry.catalog) }) }),
+  use_schema: (entry) => new exp.Use({ kind: exp.var("SCHEMA"), this: new exp.Table({ this: exp.toIdentifier(entry.schema) }) }),
+  use_namespace: (entry) => new exp.Use({ this: new exp.Table({ this: exp.toIdentifier(entry.schema), db: exp.toIdentifier(entry.catalog) }) }),
+  use_warehouse: (entry) => new exp.Use({ kind: exp.var("WAREHOUSE"), this: new exp.Table({ this: exp.toIdentifier(entry.warehouse) }) }),
+  use_role: (entry) => new exp.Use({ kind: exp.var("ROLE"), this: new exp.Table({ this: exp.toIdentifier(entry.role) }) }),
   // A real string Literal, not a bare Var — the generator then owns all
   // quoting/escaping for whatever the value actually contains (spaces, quotes,
   // ...), the same real code path every other emitted statement in this
-  // project uses, rather than a second hand-rolled quoting routine.
+  // project uses, rather than a second hand-rolled quoting routine. NOT used
+  // for the Databricks family's own `set` entries — see renderDatabricksSet
+  // and R2373.2 below for why that family needs a different renderer.
   set: (entry) => new exp.Set({
     expressions: [new exp.SetItem({ this: new exp.EQ({ this: exp.column(entry.key), expression: new exp.Literal({ this: String(entry.value ?? ""), is_string: true }) }) })],
   }),
 };
+
+// R2373.2: the gateway's own pre-AIR-2365 quoting rule
+// (OperationCreatingHandler.quoteSetValue), reproduced verbatim as the
+// fallback for a `set` entry with no `valueRaw` on file (a key carried over
+// from before this field existed, or one a caller built by hand — see
+// createState's own doc comment). Bare unless the value contains whitespace,
+// a quote, a `;`, or is empty, in which case it is wrapped in single quotes
+// with any embedded quote doubled — exactly the shape Spark's own
+// `configKeyValueDef` regex (`SqlBaseParser.g4` -> `SparkSqlParser.scala`'s
+// `visitSetConfiguration`) needs to read back the same string, since that
+// grammar rule has no string-literal syntax of its own to decode.
+function quoteDatabricksSetValue(value) {
+  const text = value == null ? "" : String(value);
+  const needsQuote = /[\s'";]/.test(text) || text === "";
+  return needsQuote ? `'${text.replace(/'/g, "''")}'` : text;
+}
+
+// R2373.2: Databricks-family `SET k = v` stores the RHS of `=` VERBATIM —
+// surrounding quotes are part of the stored value, not literal syntax (see
+// this file's header comment and docs/proposals/session-state-module.md's
+// "Spark raw-text SET semantics" section for the full grammar citation).
+// `entry.valueRaw`, when present, is already exactly that stored text (the
+// source span `apply()` copied byte-for-byte from the original statement —
+// bare `UTC` stays bare, `'o''brien'` stays `'o''brien'`), so it is emitted
+// completely unprocessed: re-running any quoting/escaping logic over an
+// already-valid raw value would corrupt it (doubling an apostrophe that was
+// already doubled, etc.). Only a `set` entry with NO `valueRaw` at all — the
+// decoded-only shape every pre-this-round caller still constructs by hand,
+// e.g. the gateway's own translateChangeToEffect — falls back to
+// `quoteDatabricksSetValue`, synthesizing valid syntax from the bare decoded
+// string the same way the gateway's own quoteSetValue always did. The key
+// itself is always emitted bare (never backtick-quoted, unlike a real
+// identifier position): `exp.column(key)` here would backtick-quote a
+// dotted key like `spark.sql.session.timeZone` as a qualified column
+// reference, which is not how this grammar rule reads a config key at all.
+function renderDatabricksSet(entry) {
+  if (!entry.key) return null;
+  const raw = entry.valueRaw != null ? entry.valueRaw : quoteDatabricksSetValue(entry.value);
+  return `SET ${entry.key} = ${raw}`;
+}
 
 /**
  * @param {object} state
@@ -903,9 +1009,16 @@ const REPLAY_RENDERERS = {
  * @returns {string[]}
  */
 export function render(state, options = {}) {
-  const d = Dialect.get_or_raise(options.dialect ?? state.dialect ?? null);
+  const dialectName = options.dialect ?? state.dialect ?? null;
+  const d = Dialect.get_or_raise(dialectName);
+  const family = familyOf(dialectName);
   const out = [];
   for (const entry of state.replayLog) {
+    if (entry.kind === "set" && family === "databricks") {
+      const rendered = renderDatabricksSet(entry);
+      if (rendered !== null) out.push(rendered);
+      continue;
+    }
     const build = REPLAY_RENDERERS[entry.kind];
     if (!build) continue;
     try {

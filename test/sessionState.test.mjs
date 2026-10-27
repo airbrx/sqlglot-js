@@ -377,7 +377,10 @@ function applyAll(dialect, ...statements) {
 test("Databricks: SET records into variables + replayLog", () => {
   const state = applyAll("databricks", "SET timezone = 'EST'");
   assert.equal(state.variables.timezone, "EST");
-  assert.deepEqual(state.replayLog, [{ kind: "set", key: "timezone", value: "EST" }]);
+  // R2373.2: the replay entry now also carries valueRaw (source quoting
+  // intact) alongside the decoded value — see the Databricks raw-text SET
+  // replay group below for why render() needs it.
+  assert.deepEqual(state.replayLog, [{ kind: "set", key: "timezone", value: "EST", valueRaw: "'EST'" }]);
 });
 
 test("Databricks: USE namespace records catalog + schema and a single use_namespace replay entry", () => {
@@ -399,7 +402,7 @@ test("Databricks: replayLog dedupes repeated SET on the same key (rebuild-from-s
   assert.equal(state.variables.role, "admin");
   assert.equal(state.replayLog.length, 2, "one entry per key, not one per SET statement");
   const tzEntry = state.replayLog.find((e) => e.key === "timezone");
-  assert.deepEqual(tzEntry, { kind: "set", key: "timezone", value: "PST" });
+  assert.deepEqual(tzEntry, { kind: "set", key: "timezone", value: "PST", valueRaw: "'PST'" });
 });
 
 test("Databricks: namespace collapse preserves the other half on a partial USE (bissellator review case)", () => {
@@ -417,25 +420,31 @@ test("Databricks: namespace collapse preserves the other half on a partial USE (
   assert.deepEqual(state.replayLog, [{ kind: "use_namespace", catalog: "main", schema: "staging" }]);
 });
 
-test("Databricks: render() produces real, generator-quoted SQL for every replay-log entry kind", () => {
+test("Databricks: render() produces correct SQL for every replay-log entry kind (USE forms via the real generator, SET via raw text)", () => {
+  // R2373.2: USE forms still go through the real generator (an identifier
+  // position, no raw-text concern); SET now emits the client's original
+  // text verbatim instead of a generator-quoted string Literal — see the
+  // "Databricks raw-text SET replay (AIR-2373 finding 2)" group below for
+  // why that generator path was wrong for this specific dialect family.
   const state = applyAll("databricks", "SET tag = 'reporting team'", "USE main.sales");
   const rendered = render(state, { dialect: "databricks" });
   assert.deepEqual(rendered.sort(), ["SET tag = 'reporting team'", "USE main.sales"].sort());
 });
 
-test("Databricks: render() correctly round-trips an embedded apostrophe using THIS dialect's own escape convention — MORE correct than the gateway's hand-rolled quoting", () => {
+test("Databricks: render() round-trips an embedded apostrophe byte-for-byte via raw text, not generator escaping", () => {
   // contrib/README.md: Databricks' STRING_ESCAPES does not declare '' as an
-  // apostrophe escape (unlike Postgres/Snowflake); the gateway's own
-  // renderReplayStatement hand-quotes with the SQL-standard doubled-quote
-  // convention universally (`value.replace(/'/g, "''")`), which is WRONG for
-  // a literal containing an apostrophe replayed onto a real Databricks
-  // session (it would double-escape, since Databricks itself expects
-  // backslash escaping). render() instead emits through the real generator,
-  // which already knows each dialect's own convention — verified by round-
-  // tripping through classify() again.
+  // apostrophe escape (unlike Postgres/Snowflake), so 'o''brien' tokenizes
+  // as two adjacent Literals folded into a Concat — there is no single
+  // decoded Literal node here for a generator to re-quote correctly even in
+  // principle. render() instead re-emits apply()'s own `valueRaw` (the exact
+  // source span, doubled quote intact) verbatim — simpler AND more correct
+  // than asking any generator (this module's own old approach, or the
+  // gateway's pre-AIR-2365 hand-rolled doubled-quote convention) to re-derive
+  // valid syntax from the decoded value "o'brien" alone.
   const state = applyAll("databricks", "SET note = 'o''brien'");
   assert.equal(state.variables.note, "o'brien");
   const [rendered] = render(state, { dialect: "databricks" });
+  assert.equal(rendered, "SET note = 'o''brien'", "re-emitted byte-for-byte from valueRaw");
   const [reparsed] = classify(rendered, { dialect: "databricks" });
   assert.equal(reparsed.value, "o'brien", "the value must survive classify -> apply -> render -> classify intact");
 });
@@ -638,8 +647,197 @@ test("R123 valueRaw: Databricks and Snowflake natural-path values keep their quo
   const sf = classify("ALTER SESSION SET QUERY_TAG = 't'", { dialect: "snowflake" })[0];
   assert.equal(sf.valueRaw, "'t'");
   assert.equal(sf.value, "t");
-  // apply()/render() consume `value`, so replay output is unchanged by this.
+  // `variables` still stores the decoded value regardless of valueRaw — see
+  // the "Databricks raw-text SET replay" group below for where valueRaw ends
+  // up (variablesRaw / the replay log / render()'s Databricks-only path).
   let state = createState("databricks");
   state = apply(state, db);
   assert.deepEqual(state.variables, { "spark.sql.x": "o'brien" });
+});
+
+// ---------------------------------------------------------------------------
+// AIR-2373 finding 1: `search_path` is the Postgres cache-key LABEL only on
+// Postgres-family dialects. Before this fix, apply()'s `set`/`variable` and
+// `reset` branches checked `effect.key === "search_path"` unconditionally,
+// so a Databricks `SET search_path = x` silently vanished into
+// `state.searchPath` (a field Databricks never reads) instead of
+// `state.variables` — no entry in `variables`, no replay entry, and the
+// warehouse's own `search_path` config drifted from the gateway's view of
+// it forever. Found by the Databricks gateway adoption, AIR-2364/AIR-2365
+// (gateway PR #256): `applySessionStateChange` returned `true` (mutated)
+// but stored nothing.
+// ---------------------------------------------------------------------------
+
+test("AIR-2373.1: Databricks SET search_path = x is an ordinary variable, not the Postgres LABEL", () => {
+  const effect = classify("SET search_path = x", { dialect: "databricks" })[0];
+  assert.equal(effect.kind, "set");
+  assert.equal(effect.key, "search_path");
+
+  const state = apply(createState("databricks"), effect);
+  assert.equal(state.variables.search_path, "x", "must land in variables, not be swallowed");
+  assert.deepEqual(
+    state.replayLog,
+    [{ kind: "set", key: "search_path", value: "x", valueRaw: "x" }],
+    "must produce a replay entry so a fresh warehouse session gets SET search_path = x too"
+  );
+  assert.equal(state.searchPath, "default", "the Postgres-only LABEL field is untouched on Databricks");
+});
+
+test("AIR-2373.1: a Databricks RESET of a variable literally named search_path deletes the variable, not the Postgres LABEL", () => {
+  let state = apply(createState("databricks"), classify("SET search_path = x", { dialect: "databricks" })[0]);
+  assert.equal(state.variables.search_path, "x");
+  // Hand-built, since Databricks has no RESET grammar of its own — this
+  // exercises apply()'s `reset` branch directly, the other half of the leak.
+  const resetEffect = {
+    dialect: "databricks", statementText: "", scope: "session", kind: "reset", key: "search_path",
+    valueRaw: null, value: null, parts: null,
+    affectsResolution: false, affectsResults: true, replayable: true, unknownReason: null,
+  };
+  state = apply(state, resetEffect);
+  assert.equal(state.variables.search_path, undefined, "the variable is gone");
+  assert.equal(state.searchPath, "default", "still untouched — it was never the Postgres LABEL to begin with");
+});
+
+test("AIR-2373.1: Postgres search_path/role/session_authorization behavior is unchanged by the family gate", () => {
+  const state = apply(createState("postgres"), classify("SET search_path = a", { dialect: "postgres" })[0]);
+  assert.equal(effectiveSearchPath(state), "path:a");
+  assert.deepEqual(state.variables, {}, "the Postgres LABEL path never touches `variables`");
+
+  const resetState = apply(createState("postgres"), classify("RESET search_path", { dialect: "postgres" })[0]);
+  assert.equal(resetState.searchPath, "default");
+
+  const roleState = apply(createState("postgres"), classify("RESET ROLE", { dialect: "postgres" })[0]);
+  assert.equal(roleState.role, null);
+  assert.equal(roleState.roleSwitched, false);
+});
+
+// ---------------------------------------------------------------------------
+// AIR-2373 finding 2: Databricks (hive/spark2/spark/databricks family) `SET
+// k = v` stores the RHS of `=` VERBATIM — Spark's own grammar
+// (`SqlBaseParser.g4`'s `SET .*?` -> `SparkSqlParser.visitSetConfiguration`,
+// `configKeyValueDef = """([a-zA-Z_\d\\.:]+)\s*=([^;]*);*"""`) has no
+// string-literal syntax on this path at all, so quotes the client wrote are
+// part of the STORED VALUE, not syntax to decode. render()'s old `set`
+// renderer went through the real generator, which emits a quoted string
+// Literal (`UTC` -> `'UTC'`) and backtick-quotes a dotted key as a qualified
+// column — both wrong for this grammar rule specifically. Found by the
+// Databricks gateway adoption (gateway PR #256's `quoteSetValue`/
+// `renderReplayStatement`, which deliberately does NOT delegate to this
+// module's render() for exactly this reason).
+// ---------------------------------------------------------------------------
+
+test("AIR-2373.2: a bare SET value replays byte-identically (no original quoting to lose)", () => {
+  const state = apply(createState("databricks"), classify("SET spark.sql.session.timeZone = UTC", { dialect: "databricks" })[0]);
+  const [rendered] = render(state, { dialect: "databricks" });
+  assert.equal(rendered, "SET spark.sql.session.timeZone = UTC");
+});
+
+test("AIR-2373.2: SET x = 'o''brien' replays exactly as written (verbatim valueRaw, not re-escaped)", () => {
+  const state = apply(createState("databricks"), classify("SET x = 'o''brien'", { dialect: "databricks" })[0]);
+  const [rendered] = render(state, { dialect: "databricks" });
+  assert.equal(rendered, "SET x = 'o''brien'");
+});
+
+test("AIR-2373.2: a decoded-only entry (no valueRaw) renders exactly like the gateway's own legacy quoteSetValue", () => {
+  // Inlines OperationCreatingHandler.quoteSetValue verbatim (airbrx-gateway,
+  // AIR-2365 Part 4's own regression oracle) so a future change to either
+  // side is caught by a literal text mismatch, not an assumption that they
+  // still agree.
+  function oldHandRolledSetRender(key, value) {
+    const text = value == null ? "" : String(value);
+    const needsQuote = /[\s'";]/.test(text) || text === "";
+    const quoted = needsQuote ? `'${text.replace(/'/g, "''")}'` : text;
+    return `SET ${key} = ${quoted}`;
+  }
+
+  const cases = [
+    { key: "timezone", value: "EST" }, // bare
+    { key: "tag", value: "reporting team" }, // whitespace
+    { key: "tag", value: "" }, // empty
+    { key: "tag", value: "o'brien" }, // embedded apostrophe
+    { key: "tag", value: "a;b" }, // embedded semicolon
+    { key: "tag", value: 'a"b' }, // embedded double quote
+    { key: "spark.sql.session.timeZone", value: "UTC" }, // dotted key
+    { key: "count", value: 5 }, // numeric
+    { key: "note", value: null }, // null
+  ];
+
+  for (const { key, value } of cases) {
+    const state = { ...createState("databricks"), replayLog: [{ kind: "set", key, value }] };
+    const [rendered] = render(state, { dialect: "databricks" });
+    assert.equal(rendered, oldHandRolledSetRender(key, value), `SET ${key} = ${value}`);
+  }
+});
+
+test("AIR-2373.2: other dialects still render `set` entries through the real generator — valueRaw only matters for Databricks", () => {
+  const state = apply(createState("postgres"), classify("SET note = 'o''brien'", { dialect: "postgres" })[0]);
+  const [rendered] = render(state, { dialect: "postgres" });
+  // Postgres decodes "''" as a real apostrophe escape (unlike Databricks), so
+  // the generator reproduces the same escaping from the decoded value alone.
+  assert.equal(rendered, "SET note = 'o''brien'");
+});
+
+// ---------------------------------------------------------------------------
+// AIR-2373 finding 3: a two-part `USE a.b` carried only a joined
+// `"a.b"` string on `Effect.value`/`valueRaw`, so `apply()` had to re-split
+// it on "." — mis-splitting a part that itself contains a literal dot (e.g.
+// `` USE `a.b`.c ``, a real quoted-identifier-with-dot catalog name).
+// `classifyUse` now also reports the already-split `parts`, which `apply()`
+// prefers whenever present.
+// ---------------------------------------------------------------------------
+
+test("AIR-2373.3: classify() reports structured parts for a two-part USE, not just the joined value", () => {
+  const effect = classify("USE main.sales", { dialect: "databricks" })[0];
+  assert.deepEqual(effect.parts, { catalog: "main", schema: "sales" });
+  assert.equal(effect.value, "main.sales", "value/valueRaw stay joined, for callers that only look at those");
+});
+
+test("AIR-2373.3: a catalog name containing a literal dot is never mis-split", () => {
+  const effect = classify("USE `a.b`.c", { dialect: "databricks" })[0];
+  assert.deepEqual(effect.parts, { catalog: "a.b", schema: "c" });
+
+  const state = apply(createState("databricks"), effect);
+  assert.equal(state.catalog, "a.b");
+  assert.equal(state.schema, "c");
+});
+
+test("AIR-2373.3: a hand-built namespace Effect without `parts` still falls back to splitting value on \".\" — unchanged for existing callers", () => {
+  // Exactly the shape airbrx-gateway's Session.js translateChangeToEffect
+  // has always built for a `use_namespace` change — it never set `parts`,
+  // and must keep working without it.
+  const handBuilt = {
+    dialect: "databricks", statementText: "", scope: "session", kind: "use", key: "namespace",
+    valueRaw: "main.sales", value: "main.sales", parts: null,
+    affectsResolution: true, affectsResults: true, replayable: true, unknownReason: null,
+  };
+  const state = apply(createState("databricks"), handBuilt);
+  assert.equal(state.catalog, "main");
+  assert.equal(state.schema, "sales");
+});
+
+
+test("R124 addendum: render() quotes a USE part that is not a plain identifier, so structured parts survive the round trip", () => {
+  let state = createState("databricks");
+  for (const e of classify("USE `a.b`.c", { dialect: "databricks" })) state = apply(state, e);
+  assert.equal(state.catalog, "a.b");
+  assert.equal(state.schema, "c");
+  assert.deepEqual(render(state, { dialect: "databricks" }), ["USE `a.b`.c"]);
+  // Plain names are untouched — the gateway's three USE forms stay byte-identical.
+  assert.deepEqual(
+    render({ dialect: "databricks", replayLog: [
+      { kind: "use_namespace", catalog: "main", schema: "sales" },
+      { kind: "use_catalog", catalog: "main" },
+      { kind: "use_schema", schema: "sales" },
+    ] }, { dialect: "databricks" }),
+    ["USE main.sales", "USE CATALOG main", "USE SCHEMA sales"]
+  );
+});
+
+test("R124 addendum: a hand-built set Effect must pass valueRaw null to get the legacy quoting fallback (decoded text passed as raw is emitted verbatim by contract)", () => {
+  const base = { dialect: "databricks", statementText: "", scope: "session", kind: "set", key: "y", parts: null,
+    affectsResolution: false, affectsResults: true, replayable: true, unknownReason: null };
+  const withNull = apply(createState("databricks"), { ...base, value: "a b", valueRaw: null });
+  assert.deepEqual(render(withNull, { dialect: "databricks" }), ["SET y = 'a b'"]);
+  const decodedAsRaw = apply(createState("databricks"), { ...base, value: "a b", valueRaw: "a b" });
+  assert.deepEqual(render(decodedAsRaw, { dialect: "databricks" }), ["SET y = a b"]);
 });
