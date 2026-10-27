@@ -814,3 +814,30 @@ test("AIR-2373.3: a hand-built namespace Effect without `parts` still falls back
   assert.equal(state.catalog, "main");
   assert.equal(state.schema, "sales");
 });
+
+
+test("R124 addendum: render() quotes a USE part that is not a plain identifier, so structured parts survive the round trip", () => {
+  let state = createState("databricks");
+  for (const e of classify("USE `a.b`.c", { dialect: "databricks" })) state = apply(state, e);
+  assert.equal(state.catalog, "a.b");
+  assert.equal(state.schema, "c");
+  assert.deepEqual(render(state, { dialect: "databricks" }), ["USE `a.b`.c"]);
+  // Plain names are untouched — the gateway's three USE forms stay byte-identical.
+  assert.deepEqual(
+    render({ dialect: "databricks", replayLog: [
+      { kind: "use_namespace", catalog: "main", schema: "sales" },
+      { kind: "use_catalog", catalog: "main" },
+      { kind: "use_schema", schema: "sales" },
+    ] }, { dialect: "databricks" }),
+    ["USE main.sales", "USE CATALOG main", "USE SCHEMA sales"]
+  );
+});
+
+test("R124 addendum: a hand-built set Effect must pass valueRaw null to get the legacy quoting fallback (decoded text passed as raw is emitted verbatim by contract)", () => {
+  const base = { dialect: "databricks", statementText: "", scope: "session", kind: "set", key: "y", parts: null,
+    affectsResolution: false, affectsResults: true, replayable: true, unknownReason: null };
+  const withNull = apply(createState("databricks"), { ...base, value: "a b", valueRaw: null });
+  assert.deepEqual(render(withNull, { dialect: "databricks" }), ["SET y = 'a b'"]);
+  const decodedAsRaw = apply(createState("databricks"), { ...base, value: "a b", valueRaw: "a b" });
+  assert.deepEqual(render(decodedAsRaw, { dialect: "databricks" }), ["SET y = a b"]);
+});

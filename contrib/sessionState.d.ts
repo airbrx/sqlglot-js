@@ -30,7 +30,11 @@ export interface Effect {
    * warehouse/timezone/all/isolation_level/begin/commit/rollback/...), the raw
    * variable name, or `null` when not applicable. */
   key: Nullable<string>;
-  /** As written in the source (quotes intact), or `null`. */
+  /** As written in the source (quotes intact), or `null`. A caller that
+   * builds an Effect by hand from an already-DECODED value (e.g. the
+   * gateway's `translateChangeToEffect`) must pass `null` here, not the
+   * decoded text: a Databricks-family `render()` emits `valueRaw` verbatim,
+   * so a decoded `a;b` passed as raw would render `SET k = a;b`. */
   valueRaw: Nullable<string>;
   /** Parsed/unquoted value, or `null`. */
   value: Nullable<string>;

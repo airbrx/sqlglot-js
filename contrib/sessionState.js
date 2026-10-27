@@ -940,12 +940,18 @@ export function apply(state, effect) {
   }
 }
 
+// R124 coordinator addendum: identifiers are built with `exp.toIdentifier`,
+// which (like upstream `to_identifier`) marks a name that is not a plain
+// `[_a-zA-Z]\w*` identifier as quoted — so the structured parts R2373.3
+// preserves through apply() survive render() too (`` USE `a.b`.c `` renders
+// back as `` USE `a.b`.c ``, not the lossy `USE a.b.c`). Plain names are
+// unchanged (`USE CATALOG main`, `USE main.sales`).
 const REPLAY_RENDERERS = {
-  use_catalog: (entry) => new exp.Use({ kind: exp.var("CATALOG"), this: new exp.Table({ this: new exp.Identifier({ this: entry.catalog }) }) }),
-  use_schema: (entry) => new exp.Use({ kind: exp.var("SCHEMA"), this: new exp.Table({ this: new exp.Identifier({ this: entry.schema }) }) }),
-  use_namespace: (entry) => new exp.Use({ this: new exp.Table({ this: new exp.Identifier({ this: entry.schema }), db: new exp.Identifier({ this: entry.catalog }) }) }),
-  use_warehouse: (entry) => new exp.Use({ kind: exp.var("WAREHOUSE"), this: new exp.Table({ this: new exp.Identifier({ this: entry.warehouse }) }) }),
-  use_role: (entry) => new exp.Use({ kind: exp.var("ROLE"), this: new exp.Table({ this: new exp.Identifier({ this: entry.role }) }) }),
+  use_catalog: (entry) => new exp.Use({ kind: exp.var("CATALOG"), this: new exp.Table({ this: exp.toIdentifier(entry.catalog) }) }),
+  use_schema: (entry) => new exp.Use({ kind: exp.var("SCHEMA"), this: new exp.Table({ this: exp.toIdentifier(entry.schema) }) }),
+  use_namespace: (entry) => new exp.Use({ this: new exp.Table({ this: exp.toIdentifier(entry.schema), db: exp.toIdentifier(entry.catalog) }) }),
+  use_warehouse: (entry) => new exp.Use({ kind: exp.var("WAREHOUSE"), this: new exp.Table({ this: exp.toIdentifier(entry.warehouse) }) }),
+  use_role: (entry) => new exp.Use({ kind: exp.var("ROLE"), this: new exp.Table({ this: exp.toIdentifier(entry.role) }) }),
   // A real string Literal, not a bare Var — the generator then owns all
   // quoting/escaping for whatever the value actually contains (spaces, quotes,
   // ...), the same real code path every other emitted statement in this
