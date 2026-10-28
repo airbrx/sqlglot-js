@@ -875,3 +875,28 @@ test("R125: SET SCHEMA / SET search_path with no value is unknown, never a set w
   }
   assert.equal(classify("SET SCHEMA 'x'", { dialect: "postgres" })[0].valueRaw, "'x'");
 });
+
+// ---------------------------------------------------------------------------
+// R126: BEGIN carries its transaction modes so a caller can tell a READ
+// COMMITTED transaction (cache-equivalent to autocommit) from a REPEATABLE
+// READ / SERIALIZABLE one (gateway deferred-BEGIN work, AIR-2376).
+// ---------------------------------------------------------------------------
+
+test("R126: BEGIN surfaces its transaction modes as the value; a plain BEGIN has none", () => {
+  const plain = classify("BEGIN", { dialect: "postgres" })[0];
+  assert.equal(plain.kind, "transaction");
+  assert.equal(plain.key, "begin");
+  assert.equal(plain.value, null);
+  const rr = classify("BEGIN ISOLATION LEVEL REPEATABLE READ", { dialect: "postgres" })[0];
+  assert.equal(rr.kind, "transaction");
+  assert.equal(rr.value, "ISOLATION LEVEL REPEATABLE READ");
+  assert.equal(rr.valueRaw, "ISOLATION LEVEL REPEATABLE READ");
+  const two = classify("BEGIN ISOLATION LEVEL SERIALIZABLE, READ WRITE", { dialect: "postgres" })[0];
+  assert.equal(two.value, "ISOLATION LEVEL SERIALIZABLE, READ WRITE");
+  assert.equal(classify("BEGIN WORK", { dialect: "postgres" })[0].value, null);
+  // The forms upstream cannot parse stay `unknown` — never a bare `begin`
+  // that a caller might mistake for a default-isolation transaction.
+  for (const sql of ["BEGIN READ ONLY", "START TRANSACTION ISOLATION LEVEL READ COMMITTED"]) {
+    assert.equal(classify(sql, { dialect: "postgres" })[0].kind, "unknown", sql);
+  }
+});
