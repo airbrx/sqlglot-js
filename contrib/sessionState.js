@@ -446,11 +446,25 @@ function classifyDeclare(root, dialectName, statementText) {
   });
 }
 
+// R126: a `BEGIN`/`START TRANSACTION` may carry transaction modes — the parser
+// keeps them verbatim on `Transaction.args.modes` (`BEGIN ISOLATION LEVEL
+// REPEATABLE READ, READ WRITE` → ["ISOLATION LEVEL REPEATABLE READ", "READ
+// WRITE"]). They are surfaced as the Effect's value (joined with ", ", null
+// when absent) because a caller deciding whether a transaction is
+// cache-equivalent to autocommit must know its isolation level: READ
+// COMMITTED (Postgres' default) takes a fresh snapshot per statement,
+// REPEATABLE READ / SERIALIZABLE pin it at the first statement. `BEGIN READ
+// ONLY` and `START TRANSACTION ISOLATION LEVEL …` are still upstream parse
+// errors (reported as `unknown`, which is the safe answer for such a caller).
 function classifyTransaction(root, dialectName, statementText) {
+  const modes = (root?.args?.modes ?? []).map((m) => (typeof m === "string" ? m : identText(m) ?? String(m))).filter(Boolean);
+  const value = modes.length ? modes.join(", ") : null;
   return makeEffect(dialectName, statementText, {
     scope: "transaction",
     kind: "transaction",
     key: "begin",
+    valueRaw: value,
+    value,
     affectsResolution: false,
     affectsResults: false,
     replayable: false,
