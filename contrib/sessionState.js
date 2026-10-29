@@ -565,6 +565,33 @@ function postgresSetCommandReader(root, d, dialectName, statementText) {
 
   const kw = tokens[i]?.text?.toUpperCase?.();
 
+  // R127: `SET SESSION CHARACTERISTICS AS TRANSACTION <modes>` sets the
+  // session's default transaction characteristics (isolation level, read
+  // only/write, deferrable) for every later transaction — the same facts a
+  // deferring caller (airbrx-gateway AIR-2379) must see before trusting a
+  // plain BEGIN, so it is reported exactly like `SET TRANSACTION …`:
+  // `transaction:isolation_level` with the characteristics text as value.
+  // Review of gateway PR #261 found this form reported `none`, which would
+  // have let a later BEGIN be deferred (and its SELECT cached) under
+  // REPEATABLE READ.
+  if (kw === "CHARACTERISTICS") {
+    const asIdx = tokens.findIndex((t, idx) => idx > i && t.text?.toUpperCase?.() === "AS");
+    const txnIdx = asIdx !== -1 && tokens[asIdx + 1]?.text?.toUpperCase?.() === "TRANSACTION" ? asIdx + 1 : -1;
+    const valueToken = txnIdx !== -1 ? tokens[txnIdx + 1] : null;
+    if (!valueToken) return unknownEffect(dialectName, statementText, "unrecognized-session-characteristics-form");
+    const valueRaw = remainder.slice(valueToken.start).trim();
+    return makeEffect(dialectName, statementText, {
+      scope: "session",
+      kind: "transaction",
+      key: "isolation_level",
+      valueRaw,
+      value: valueRaw,
+      affectsResolution: false,
+      affectsResults: true,
+      replayable: true,
+    });
+  }
+
   if (kw === "SCHEMA") {
     const valueToken = tokens[i + 1];
     const valueRaw = valueToken ? remainder.slice(valueToken.start).trim() : null;

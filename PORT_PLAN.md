@@ -1859,3 +1859,9 @@ One place this module is deliberately MORE precise than the regex it generalizes
 
 *Verification.* `npm test` 855/855 (854 + 1); `check:types` clean; 6 lints + `check_corpus` clean; both change gates `ok:true`, no ratchet file touched; `spike/run_all.sh` one red (P3 1/0); AIR-2361 oracle 281/281.
 
+**R127 — AIR-2379 review follow-up (coordinator review of airbrx-gateway PR #261): `contrib/sessionState.js`'s Postgres SET reader now classifies `SET SESSION CHARACTERISTICS AS TRANSACTION <characteristics>` as `transaction:isolation_level` (value = the characteristics text, e.g. `"ISOLATION LEVEL REPEATABLE READ"`, `"READ ONLY, ISOLATION LEVEL SERIALIZABLE"`), the same shape `SET TRANSACTION …` already produced — it had fallen through the reader as `none`, which would have let a deferring caller treat a later plain `BEGIN` as READ COMMITTED and cache its SELECT under REPEATABLE READ.** Landed on branch `p14-session-characteristics`.
+
+*Mechanism.* The statement is a `Command('SET', " SESSION CHARACTERISTICS AS TRANSACTION …")` (upstream-faithful); after the existing SESSION-prefix step the reader sees `CHARACTERISTICS`, locates `AS TRANSACTION`, and reports everything after it verbatim with `scope: "session"` (it is a session default, unlike `SET TRANSACTION`'s transaction scope). A truncated form (`… AS TRANSACTION` with nothing after) is `unknown("unrecognized-session-characteristics-form")`, never a silent `none`. No core parser change.
+
+*Verification.* `npm test` 856/856 (855 + 1); `check:types` clean; 6 lints + `check_corpus` clean; both change gates `ok:true`, no ratchet file touched; `spike/run_all.sh` one red (P3 1/0); AIR-2361 oracle 281/281.
+
