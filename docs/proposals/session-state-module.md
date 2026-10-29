@@ -43,8 +43,13 @@ interface Effect {
   valueRaw: string | null;        // as written in the source (quotes intact), or null
   value: string | null;           // parsed/unquoted value, or null
   parts: { catalog: string, schema: string } | null;  // structured USE-namespace parts for a
-                                   // two-part USE (AIR-2373.3); apply() prefers these over
-                                   // splitting value/valueRaw on "." — see "USE namespace parts" below
+                                   // two-part USE (AIR-2373.3) or a Snowflake `USE SCHEMA db.s`
+                                   // (R128); apply() prefers these over splitting
+                                   // value/valueRaw on "." — see "USE namespace parts" below
+  items: Effect[] | null;         // R128: every item of a multi-item statement (`SET a = 1, b = 2`,
+                                   // `ALTER SESSION SET x = 1, y = 2`, `ALTER SESSION UNSET a, b`),
+                                   // first included, in source order; null for a single item —
+                                   // see "Multi-item statements" below
   affectsResolution: boolean;     // could change how an unqualified name resolves
                                    // (search_path, role, session_authorization, catalog, schema)
   affectsResults: boolean;        // could change query results even when resolution is untouched
@@ -133,6 +138,19 @@ right. A hand-built Effect has no real source text to split *correctly*
 either way, so that fallback's pre-existing imprecision for a dotted part is
 unchanged — only the real, parser-driven path through `classify()` gets the
 fix.
+
+### Multi-item statements (R128, AIR-2374)
+
+`classify()` keeps its one-`Effect`-per-statement contract for a statement that
+carries several items. The statement's `Effect` is the FIRST item's (so a caller
+reading `key`/`value` sees exactly what it saw before R128), with every item's own
+`Effect` on `items` (first included, in source order, each with the same
+`statementText`) and the booleans folded across them: `affectsResolution` /
+`affectsResults` are "any item", `replayable` is "every item". `apply()` reduces
+`items` in order, so a caller that only ever applies the top-level `Effect` gets
+every item; `ALTER SESSION SET TIMEZONE = 'UTC', WEEK_START = 1` therefore sets two
+variables, where it used to silently set one (the gateway-visible bug that
+motivated this: a dropped `TIMEZONE` meant a wrong cache key). Items never nest.
 
 ## State schema
 
@@ -244,6 +262,21 @@ Last-write-wins per key (a second `SET timezone = ...` replaces, not appends,
 matching `testDedupeReplayLog`).
 
 ## `render(state, { dialect }) → string[]`
+
+### Snowflake rendering (R128, AIR-2374)
+
+A Snowflake-family `set` entry renders as `ALTER SESSION SET KEY = <value>` — never
+`SET KEY = …`, which on Snowflake assigns a SQL *variable* (`$KEY`), a different
+thing. The value is `valueRaw` verbatim when the entry has one (Snowflake parameter
+values are typed: `WEEK_START = 1`, `AUTOCOMMIT = FALSE`, `TIMEZONE = 'UTC'`); an
+entry with no raw text on file (hydrated from storage) falls back to the smallest
+valid literal — bare for an integer/decimal/boolean, otherwise a single-quoted
+string with embedded quotes doubled. Both key and value are emitted as verbatim
+leaves inside a real `ALTER SESSION` node so the generator owns the statement shape.
+A `use_namespace` entry renders as `USE SCHEMA db.s` (the bare `USE db.s` every
+other family uses is also valid Snowflake, but `USE SCHEMA` is the documented
+form), and the replay order is role → warehouse → namespace → parameters: the
+role must be active before the objects it grants access to are selected.
 
 Builds real `exp.Use`/`exp.Set`/`exp.AlterSession` nodes from `state.replayLog`
 and emits each through `Dialect.get_or_raise(dialect).generate(...)` — for
@@ -374,6 +407,21 @@ fallback — not modeled as a real statement class, same class of gap as
 documented below) → `kind: "reset", key: "all"`.
 
 ### `snowflake`
+
+R128 adds a parameter table. Canonical keys are UPPERCASE (parameter names are
+case-insensitive; a gateway keying a cache on `variables` must see `timezone` and
+`TIMEZONE` as one key). The table only names the parameters whose value can NOT
+change a cacheable query's result bytes — tagging/operational knobs (`QUERY_TAG`,
+`STATEMENT_TIMEOUT_IN_SECONDS`, `LOCK_TIMEOUT`, `AUTOCOMMIT`, `USE_CACHED_RESULT`,
+`CLIENT_*` fetch tuning, `MULTI_STATEMENT_COUNT`, …: `affectsResults: false`) — and
+the ones that change how an unqualified name resolves (`SEARCH_PATH`,
+`QUOTED_IDENTIFIERS_IGNORE_CASE`, `CLIENT_METADATA_REQUEST_USE_CONNECTION_CTX`:
+`affectsResolution: true`). Every parameter not listed is treated conservatively as
+results-affecting (`TIMEZONE`, `WEEK_START`, every `*_OUTPUT_FORMAT` /
+`*_INPUT_FORMAT`, `TIMESTAMP_TYPE_MAPPING`, …), which is the pre-R128 behaviour for
+all of them. `ALTER SESSION UNSET a, b` goes through the same table (one `reset`
+per parameter, see "Multi-item statements"). `USE SCHEMA db.s` carries the database
+on `parts` so `apply()` switches both (it used to lose the database).
 
 | source | canonical `key` | `kind` |
 | -- | -- | -- |
