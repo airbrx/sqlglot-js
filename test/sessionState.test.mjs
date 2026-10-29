@@ -900,3 +900,28 @@ test("R126: BEGIN surfaces its transaction modes as the value; a plain BEGIN has
     assert.equal(classify(sql, { dialect: "postgres" })[0].kind, "unknown", sql);
   }
 });
+
+// ---------------------------------------------------------------------------
+// R127: SET SESSION CHARACTERISTICS AS TRANSACTION … is a session-wide
+// isolation/read-only default and must be visible to a deferring caller
+// (gateway PR #261 review: it classified `none`).
+// ---------------------------------------------------------------------------
+
+test("R127: SET SESSION CHARACTERISTICS AS TRANSACTION reports the characteristics as a transaction:isolation_level effect", () => {
+  const rr = classify("SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ", { dialect: "postgres" })[0];
+  assert.equal(rr.kind, "transaction");
+  assert.equal(rr.key, "isolation_level");
+  assert.equal(rr.value, "ISOLATION LEVEL REPEATABLE READ");
+  assert.equal(rr.scope, "session");
+  const two = classify("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY, ISOLATION LEVEL SERIALIZABLE", { dialect: "postgres" })[0];
+  assert.equal(two.kind, "transaction");
+  assert.equal(two.value, "READ ONLY, ISOLATION LEVEL SERIALIZABLE");
+  const ro = classify("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY", { dialect: "postgres" })[0];
+  assert.equal(ro.kind, "transaction");
+  assert.equal(ro.value, "READ ONLY");
+  // Truncated/garbled forms never become a silent `none`.
+  assert.equal(classify("SET SESSION CHARACTERISTICS AS TRANSACTION", { dialect: "postgres" })[0].kind, "unknown");
+  // Untouched neighbours: the SESSION scope prefix and SET TRANSACTION itself.
+  assert.equal(classify("SET SESSION search_path = x", { dialect: "postgres" })[0].key, "search_path");
+  assert.equal(classify("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE", { dialect: "postgres" })[0].key, "isolation_level");
+});
