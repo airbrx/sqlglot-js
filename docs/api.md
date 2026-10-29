@@ -484,7 +484,9 @@ function render(state: State, options?: { dialect?: string | null }): string[];
 `classify()` parses `sql` (optionally a semicolon-batched multi-statement input) under
 `Dialect.get_or_raise(dialect)` and returns one `Effect` per statement, in source order — a
 statement that isn't a session-state statement at all still gets one, `kind: "none"`, so a
-caller can walk `Effect[]` index-for-index against the batch. A statement that fails to parse
+caller can walk `Effect[]` index-for-index against the batch. A statement carrying several
+items (`SET a = 1, b = 2`, `ALTER SESSION SET x = 1, y = 2`) is still one `Effect` — the first
+item's — with every item on `items` (R128); `apply()` reduces them all. A statement that fails to parse
 (including the two documented upstream-faithful throws, Postgres `START TRANSACTION ISOLATION
 LEVEL ...` and TSQL `SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED`) collapses the WHOLE
 input to a single `kind: "unknown"` Effect, same fail-closed shape

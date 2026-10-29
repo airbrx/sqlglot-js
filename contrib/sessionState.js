@@ -159,31 +159,46 @@ function statementTextOf(sql, root, span) {
 // Literal("x")), which is right for `Effect.value` but wrong for
 // `Effect.valueRaw`, whose contract is "as written" — and whose quoting is
 // load-bearing for Postgres' search_path LABEL (`= A` and `= "A"` resolve to
-// different schemas, see apply()). Reads from the statement's own token span:
-// everything after the first `=`/`TO` up to the first depth-0 comma (a `Set`
-// may carry several items; this module reports the first) or the span's end.
-function rawSetValue(sql, span, valueNode) {
+// different schemas, see apply()). Reads from the statement's own token span
+// when the value node carries no offsets of its own (a Boolean `FALSE`, for
+// one): the span is split into items at depth-0 commas, and the `itemIndex`-th
+// item's text after its `=`/`TO` is returned (R128: before multi-item
+// statements were classified item by item this always read the FIRST item,
+// which handed `AUTOCOMMIT = FALSE`'s raw value the text of `TIMEZONE = 'UTC'`
+// when both sat in one ALTER SESSION).
+function rawSetValue(sql, span, valueNode, itemIndex = 0) {
   if (Number.isInteger(valueNode?.meta?.start) && Number.isInteger(valueNode?.meta?.end)) {
     return sliceChars(sql, valueNode.meta.start, valueNode.meta.end).trim();
   }
   if (!span) return null;
   const tokens = span.tokens;
-  const sep = tokens.findIndex(
-    (t, i) => i > 0 && (t.token_type === TokenType.EQ || String(t.text).toUpperCase() === "TO")
-  );
-  if (sep === -1 || sep === tokens.length - 1) return null;
+  // Segment the span (after its leading keyword) into items at depth-0 commas.
+  const segments = [];
   let depth = 0;
-  let last = tokens.length - 1;
-  for (let i = sep + 1; i < tokens.length; i++) {
+  let segStart = 1;
+  for (let i = 1; i < tokens.length; i++) {
     const tt = tokens[i].token_type;
     if (tt === TokenType.L_PAREN) depth++;
     else if (tt === TokenType.R_PAREN) depth--;
     else if (tt === TokenType.COMMA && depth === 0) {
-      last = i - 1;
+      segments.push([segStart, i - 1]);
+      segStart = i + 1;
+    }
+  }
+  segments.push([segStart, tokens.length - 1]);
+  const seg = segments[itemIndex];
+  if (!seg) return null;
+  const [from, to] = seg;
+  let sep = -1;
+  for (let i = from; i <= to; i++) {
+    const t = tokens[i];
+    if (t.token_type === TokenType.EQ || String(t.text).toUpperCase() === "TO") {
+      sep = i;
       break;
     }
   }
-  return sliceChars(sql, tokens[sep + 1].start, tokens[last].end).trim();
+  if (sep === -1 || sep >= to) return null;
+  return sliceChars(sql, tokens[sep + 1].start, tokens[to].end).trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -200,11 +215,35 @@ function makeEffect(dialectName, statementText, partial) {
     valueRaw: null,
     value: null,
     parts: null,
+    items: null,
     affectsResolution: false,
     affectsResults: false,
     replayable: false,
     unknownReason: null,
     ...partial,
+  };
+}
+
+// R128 (AIR-2374): one statement, several items — `SET a = 1, b = 2`,
+// `ALTER SESSION SET TIMEZONE = 'UTC', WEEK_START = 1`, `ALTER SESSION UNSET
+// a, b`. classify() keeps its one-Effect-per-statement contract (callers walk
+// Effect[] index-for-index against the batch) by returning the FIRST item's
+// Effect as the statement's Effect, with every item's own Effect on `items`
+// (first included, in source order) and the booleans folded across them
+// (affectsResolution/affectsResults: any; replayable: all). apply() reduces
+// `items` in order, so a caller that only ever applies the top-level Effect
+// gets every item for free; a caller reading `key`/`value` sees the first,
+// exactly as before this round. Single-item statements keep `items: null`.
+function foldItems(effects, dialectName, statementText) {
+  const kept = effects.filter(Boolean);
+  if (kept.length === 0) return noneEffect(dialectName, statementText);
+  if (kept.length === 1) return kept[0];
+  return {
+    ...kept[0],
+    items: kept,
+    affectsResolution: kept.some((e) => e.affectsResolution),
+    affectsResults: kept.some((e) => e.affectsResults),
+    replayable: kept.every((e) => e.replayable),
   };
 }
 
@@ -238,6 +277,47 @@ const POSTGRES_KEYS = new Map([
   ["session_authorization", row("session_authorization", "auth", true, true)],
   ["session authorization", row("session_authorization", "auth", true, true)],
   ["timezone", row("timezone", "set", false, true)],
+]);
+
+// R128 (AIR-2374): Snowflake session parameters (`ALTER SESSION SET/UNSET`).
+// Canonical form is UPPERCASE (Snowflake parameter names are case-insensitive;
+// a gateway keying a cache on `variables` must see `timezone` and `TIMEZONE`
+// as one key). The table only has to name the parameters whose value can NOT
+// change a cacheable query's result bytes (operational knobs, tagging,
+// transaction/timeout behaviour, client-side fetch tuning) and the ones that
+// change how an unqualified name RESOLVES; every parameter not listed here is
+// treated conservatively as results-affecting (TIMEZONE, WEEK_START, every
+// *_OUTPUT_FORMAT / *_INPUT_FORMAT, TIMESTAMP_TYPE_MAPPING, JSON_INDENT,
+// STRICT_JSON_OUTPUT, ROWS_PER_RESULTSET, …), which is the pre-R128 behaviour
+// for all of them.
+function sfRow(affectsResolution, affectsResults) {
+  return { affectsResolution, affectsResults };
+}
+const SNOWFLAKE_KEYS = new Map([
+  // Tagging / operational — never visible in a result set.
+  ["QUERY_TAG", sfRow(false, false)],
+  ["STATEMENT_TIMEOUT_IN_SECONDS", sfRow(false, false)],
+  ["STATEMENT_QUEUED_TIMEOUT_IN_SECONDS", sfRow(false, false)],
+  ["LOCK_TIMEOUT", sfRow(false, false)],
+  ["ABORT_DETACHED_QUERY", sfRow(false, false)],
+  ["AUTOCOMMIT", sfRow(false, false)],
+  ["TRANSACTION_ABORT_ON_ERROR", sfRow(false, false)],
+  ["TRANSACTION_DEFAULT_ISOLATION_LEVEL", sfRow(false, false)],
+  ["USE_CACHED_RESULT", sfRow(false, false)],
+  ["CLIENT_SESSION_KEEP_ALIVE", sfRow(false, false)],
+  ["CLIENT_SESSION_KEEP_ALIVE_HEARTBEAT_FREQUENCY", sfRow(false, false)],
+  ["CLIENT_PREFETCH_THREADS", sfRow(false, false)],
+  ["CLIENT_RESULT_CHUNK_SIZE", sfRow(false, false)],
+  ["CLIENT_MEMORY_LIMIT", sfRow(false, false)],
+  ["MULTI_STATEMENT_COUNT", sfRow(false, false)],
+  ["ERROR_ON_NONDETERMINISTIC_MERGE", sfRow(false, false)],
+  ["ERROR_ON_NONDETERMINISTIC_UPDATE", sfRow(false, false)],
+  ["LOG_LEVEL", sfRow(false, false)],
+  ["TRACE_LEVEL", sfRow(false, false)],
+  // Name resolution — an unqualified name may now mean a different object.
+  ["SEARCH_PATH", sfRow(true, true)],
+  ["QUOTED_IDENTIFIERS_IGNORE_CASE", sfRow(true, true)],
+  ["CLIENT_METADATA_REQUEST_USE_CONNECTION_CTX", sfRow(true, true)],
 ]);
 
 const GENERIC_USE_KIND_MAP = new Map([
@@ -276,7 +356,7 @@ function scopeFromSetItemKind(kind) {
   return "session";
 }
 
-function classifySetItem(item, family, dialectName, statementText, sql = null, span = null) {
+function classifySetItem(item, family, dialectName, statementText, sql = null, span = null, itemIndex = 0) {
   const itemKind = item.args.kind ?? null;
 
   if (itemKind === "TRANSACTION") {
@@ -320,14 +400,23 @@ function classifySetItem(item, family, dialectName, statementText, sql = null, s
   const rawKey = qualifiedKey(eq.args.this);
   if (!rawKey) return null;
   const value = valueText(eq.args.expression);
-  const valueRaw = (sql !== null ? rawSetValue(sql, span, eq.args.expression) : null) ?? value;
+  const valueRaw = (sql !== null ? rawSetValue(sql, span, eq.args.expression, itemIndex) : null) ?? value;
   return resolveKeyEffect(family, dialectName, statementText, rawKey, valueRaw, scope, "set", value);
 }
 
 function resolveKeyEffect(family, dialectName, statementText, rawKey, valueRaw, scope, defaultKind, value = valueRaw) {
-  const table = family === "postgres" ? POSTGRES_KEYS : null;
-  const meta = table?.get(rawKey.toLowerCase());
-  const canonical = meta?.canonical ?? rawKey;
+  let meta = null;
+  let canonical = rawKey;
+  if (family === "postgres") {
+    meta = POSTGRES_KEYS.get(rawKey.toLowerCase()) ?? null;
+    canonical = meta?.canonical ?? rawKey;
+  } else if (family === "snowflake") {
+    // R128: uppercase canonical form; flags from SNOWFLAKE_KEYS, conservative
+    // (results-affecting) for any parameter the table does not name.
+    canonical = rawKey.toUpperCase();
+    const sf = SNOWFLAKE_KEYS.get(canonical);
+    if (sf) meta = { canonical, kind: defaultKind, affectsResolution: sf.affectsResolution, affectsResults: sf.affectsResults };
+  }
   const resetTarget = meta?.canonical === "search_path" || meta?.canonical === "role" || meta?.canonical === "session_authorization";
   const isReset = defaultKind === "reset" || (resetTarget && isResetSentinel(value));
   const kind = isReset ? "reset" : (meta?.kind ?? defaultKind);
@@ -349,28 +438,29 @@ function classifySet(root, family, dialectName, statementText, sql = null, span 
   if (items.length === 0) {
     return makeEffect(dialectName, statementText, { kind: "read" });
   }
-  // A real `Set` node can carry several comma-separated items (`SET a = 1, b = 2`);
-  // this module reports the first one, same scoping gatewaySqlMetadata.js's own
-  // extractSessionStateChange already uses for its single-Effect `sessionStateChange`
-  // shape — a caller needing every item can walk `root.args.expressions` itself.
-  return classifySetItem(items[0], family, dialectName, statementText, sql, span) ?? noneEffect(dialectName, statementText);
+  // A real `Set` node can carry several comma-separated items (`SET a = 1, b = 2`).
+  // R128: every item is classified; the statement's Effect is the first item's
+  // with the rest on `items` — see foldItems. (gatewaySqlMetadata.js's own
+  // single-Effect `sessionStateChange` shape still reads the first item only.)
+  return foldItems(items.map((item, i) => classifySetItem(item, family, dialectName, statementText, sql, span, i)), dialectName, statementText);
 }
 
 function classifyAlterSession(alterSessionNode, family, dialectName, statementText, sql = null, span = null) {
   const items = alterSessionNode.args.expressions ?? [];
   if (items.length === 0) return noneEffect(dialectName, statementText);
   if (alterSessionNode.args.unset) {
-    const rawKey = qualifiedKey(items[0].args.this);
-    if (!rawKey) return noneEffect(dialectName, statementText);
-    return makeEffect(dialectName, statementText, {
-      kind: "reset",
-      key: rawKey,
-      affectsResolution: false,
-      affectsResults: true,
-      replayable: true,
-    });
+    // R128: `ALTER SESSION UNSET a, b` — one reset Effect per parameter,
+    // canonicalized/flagged through the same key table as SET.
+    return foldItems(
+      items.map((item) => {
+        const rawKey = qualifiedKey(item.args.this);
+        return rawKey ? resolveKeyEffect(family, dialectName, statementText, rawKey, null, "session", "reset") : null;
+      }),
+      dialectName,
+      statementText,
+    );
   }
-  return classifySetItem(items[0], family, dialectName, statementText, sql, span) ?? noneEffect(dialectName, statementText);
+  return foldItems(items.map((item, i) => classifySetItem(item, family, dialectName, statementText, sql, span, i)), dialectName, statementText);
 }
 
 function classifyUse(root, family, dialectName, statementText) {
@@ -383,11 +473,17 @@ function classifyUse(root, family, dialectName, statementText) {
   if (kindText && kindMap.has(kindText)) {
     const key = kindMap.get(kindText);
     const meta = USE_KEY_METADATA.get(key) ?? { affectsResolution: false, affectsResults: true };
+    // R128 (AIR-2374): Snowflake `USE SCHEMA db.s` switches database AND
+    // schema; the two-part form used to lose the database. `value` stays the
+    // schema name (unchanged for every one-part caller); the catalog rides on
+    // `parts`, which apply() prefers — same shape as the two-part `USE a.b`.
+    const parts = key === "schema" && secondary ? { catalog: secondary, schema: primary } : null;
     return makeEffect(dialectName, statementText, {
       kind: key === "role" ? "role" : "use",
       key,
       valueRaw: primary,
       value: primary,
+      parts,
       affectsResolution: meta.affectsResolution,
       affectsResults: meta.affectsResults,
       replayable: true,
@@ -907,15 +1003,21 @@ export function createState(dialect = null) {
 }
 
 function rebuildReplayLog(state) {
-  const log = [];
+  const namespace = [];
   if (state.catalog && state.schema) {
-    log.push({ kind: "use_namespace", catalog: state.catalog, schema: state.schema });
+    namespace.push({ kind: "use_namespace", catalog: state.catalog, schema: state.schema });
   } else {
-    if (state.catalog) log.push({ kind: "use_catalog", catalog: state.catalog });
-    if (state.schema) log.push({ kind: "use_schema", schema: state.schema });
+    if (state.catalog) namespace.push({ kind: "use_catalog", catalog: state.catalog });
+    if (state.schema) namespace.push({ kind: "use_schema", schema: state.schema });
   }
-  if (state.warehouse) log.push({ kind: "use_warehouse", warehouse: state.warehouse });
-  if (state.role) log.push({ kind: "use_role", role: state.role });
+  const context = [];
+  if (state.warehouse) context.push({ kind: "use_warehouse", warehouse: state.warehouse });
+  if (state.role) context.push({ kind: "use_role", role: state.role });
+  // R128: on Snowflake the role must be active BEFORE the warehouse/database/
+  // schema it grants access to are selected (USE DATABASE on a database the
+  // current role cannot see fails), so role and warehouse replay first there.
+  // Every other family keeps the namespace-first order it has always had.
+  const log = familyOf(state.dialect) === "snowflake" ? [...context.reverse(), ...namespace] : [...namespace, ...context];
   for (const key of Object.keys(state.variables)) {
     const entry = { kind: "set", key, value: state.variables[key] };
     // R2373.2: only attach `valueRaw` when this key actually has raw text on
@@ -946,13 +1048,22 @@ export function apply(state, effect) {
     replayLog: state.replayLog,
   };
 
+  // R128: a multi-item statement (see foldItems) reduces item by item, in
+  // source order — each item carries its own scope/kind/key.
+  if (Array.isArray(effect.items) && effect.items.length > 1) {
+    return effect.items.reduce((acc, item) => apply(acc, { ...item, items: null }), state);
+  }
+
   if (effect.scope === "local") return next;
 
   switch (effect.kind) {
     case "use": {
       if (effect.key === "catalog") next.catalog = effect.value;
-      else if (effect.key === "schema") next.schema = effect.value;
-      else if (effect.key === "warehouse") next.warehouse = effect.value;
+      else if (effect.key === "schema") {
+        next.schema = effect.value;
+        // R128: Snowflake `USE SCHEMA db.s` carries the database on `parts`.
+        if (effect.parts?.catalog) next.catalog = effect.parts.catalog;
+      } else if (effect.key === "warehouse") next.warehouse = effect.value;
       else if (effect.key === "namespace") {
         // R2373.3: prefer the structured parts classifyUse already split out
         // (quoting intact per-part), falling back to splitting `value` on
@@ -1089,6 +1200,31 @@ function renderDatabricksSet(entry) {
   return `SET ${entry.key} = ${raw}`;
 }
 
+// R128 (AIR-2374): Snowflake session-parameter values are typed (`WEEK_START =
+// 1`, `AUTOCOMMIT = FALSE`, `TIMEZONE = 'UTC'`), so `valueRaw` — the source
+// span apply() recorded, quotes and all — is emitted verbatim when present. A
+// `set` entry with no raw text on file (hydrated from storage, or built by hand
+// from a decoded value) falls back to the smallest valid literal: bare for an
+// integer/decimal/boolean, otherwise a single-quoted string with embedded
+// quotes doubled. Both the key and the value are emitted as verbatim leaves
+// (`exp.var`) inside a real `ALTER SESSION` node so the generator owns the
+// statement shape and nothing re-quotes an already-valid value.
+function snowflakeParameterLiteral(value) {
+  const text = value == null ? "" : String(value);
+  if (/^-?\d+(\.\d+)?$/.test(text) || /^(TRUE|FALSE)$/i.test(text)) return text;
+  return `'${text.replace(/'/g, "''")}'`;
+}
+
+function renderSnowflakeAlterSession(entry, d) {
+  if (!entry.key) return null;
+  const raw = entry.valueRaw != null ? entry.valueRaw : snowflakeParameterLiteral(entry.value);
+  const node = new exp.Alter({
+    kind: "SESSION",
+    actions: [new exp.AlterSession({ expressions: [new exp.SetItem({ this: new exp.EQ({ this: exp.var(entry.key), expression: exp.var(raw) }) })] })],
+  });
+  return node.sql(d);
+}
+
 /**
  * @param {object} state
  * @param {{dialect?: string|null}} [options]
@@ -1100,6 +1236,21 @@ export function render(state, options = {}) {
   const family = familyOf(dialectName);
   const out = [];
   for (const entry of state.replayLog) {
+    if (family === "snowflake") {
+      // R128 (AIR-2374): a Snowflake session parameter is restored with
+      // `ALTER SESSION SET KEY = <value>` — never `SET KEY = …`, which on
+      // Snowflake assigns a SQL *variable* (`$KEY`), a different thing.
+      if (entry.kind === "set") {
+        const rendered = renderSnowflakeAlterSession(entry, d);
+        if (rendered !== null) out.push(rendered);
+        continue;
+      }
+      // `USE SCHEMA db.s` (not the bare `USE db.s` every other family uses).
+      if (entry.kind === "use_namespace") {
+        out.push(new exp.Use({ kind: exp.var("SCHEMA"), this: new exp.Table({ this: exp.toIdentifier(entry.schema), db: exp.toIdentifier(entry.catalog) }) }).sql(d));
+        continue;
+      }
+    }
     if (entry.kind === "set" && family === "databricks") {
       const rendered = renderDatabricksSet(entry);
       if (rendered !== null) out.push(rendered);

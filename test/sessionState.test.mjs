@@ -925,3 +925,127 @@ test("R127: SET SESSION CHARACTERISTICS AS TRANSACTION reports the characteristi
   assert.equal(classify("SET SESSION search_path = x", { dialect: "postgres" })[0].key, "search_path");
   assert.equal(classify("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE", { dialect: "postgres" })[0].key, "isolation_level");
 });
+
+// ---------------------------------------------------------------------------
+// R128 (AIR-2374, gateway Snowflake adoption): multi-item statements, Snowflake
+// USE SCHEMA db.s, the Snowflake parameter table, and the Snowflake renderer.
+// ---------------------------------------------------------------------------
+
+test("R128: a multi-item ALTER SESSION SET is one Effect per statement with every item on `items`", () => {
+  const [e, ...rest] = classify("ALTER SESSION SET TIMEZONE = 'Asia/Tokyo', WEEK_START = 1, QUERY_TAG = 'etl'", { dialect: "snowflake" });
+  assert.equal(rest.length, 0, "still exactly one Effect for the one statement");
+  assert.equal(e.kind, "set");
+  assert.equal(e.key, "TIMEZONE", "the enclosing Effect is the first item's");
+  assert.equal(e.value, "Asia/Tokyo");
+  assert.deepEqual(e.items.map((i) => [i.kind, i.key, i.value, i.valueRaw]), [
+    ["set", "TIMEZONE", "Asia/Tokyo", "'Asia/Tokyo'"],
+    ["set", "WEEK_START", "1", "1"],
+    ["set", "QUERY_TAG", "etl", "'etl'"],
+  ]);
+  assert.equal(e.affectsResults, true, "folded: any item affects results");
+  assert.equal(e.items[2].affectsResults, false, "QUERY_TAG itself does not");
+  for (const item of e.items) assert.equal(item.items, null, "items never nest");
+  assert.equal(e.items.every((i) => i.statementText === e.statementText), true);
+  // Single-item statements are untouched.
+  assert.equal(classify("ALTER SESSION SET TIMEZONE = 'UTC'", { dialect: "snowflake" })[0].items, null);
+  assert.equal(classify("SET search_path = a", { dialect: "postgres" })[0].items, null);
+});
+
+test("R128: apply() of a multi-item Effect reduces every item in order (SET and UNSET)", () => {
+  let state = createState("snowflake");
+  state = apply(state, classify("ALTER SESSION SET TIMEZONE = 'Asia/Tokyo', WEEK_START = 1, QUERY_TAG = 'etl'", { dialect: "snowflake" })[0]);
+  assert.deepEqual(state.variables, { TIMEZONE: "Asia/Tokyo", WEEK_START: "1", QUERY_TAG: "etl" });
+  assert.deepEqual(state.variablesRaw, { TIMEZONE: "'Asia/Tokyo'", WEEK_START: "1", QUERY_TAG: "'etl'" });
+  const unset = classify("ALTER SESSION UNSET QUERY_TAG, week_start", { dialect: "snowflake" })[0];
+  assert.equal(unset.kind, "reset");
+  assert.deepEqual(unset.items.map((i) => [i.kind, i.key]), [["reset", "QUERY_TAG"], ["reset", "WEEK_START"]], "UNSET keys are canonicalized to uppercase too");
+  state = apply(state, unset);
+  assert.deepEqual(state.variables, { TIMEZONE: "Asia/Tokyo" });
+  // A generic multi-item SET (MySQL) folds the same way.
+  const my = classify("SET @@a = 1, @@b = 2", { dialect: "mysql" })[0];
+  assert.equal(my.items.length, 2);
+  let ms = createState("mysql");
+  ms = apply(ms, my);
+  assert.equal(Object.keys(ms.variables).length, 2);
+});
+
+test("R128: Snowflake parameter table — uppercase canonical keys, operational knobs are not results-affecting, unknown keys stay conservative", () => {
+  const tz = one("ALTER SESSION SET timezone = 'UTC'", "snowflake");
+  assert.equal(tz.key, "TIMEZONE", "case-insensitive parameter names share one canonical key");
+  assert.equal(tz.affectsResults, true);
+  const tag = one("ALTER SESSION SET QUERY_TAG = 'x'", "snowflake");
+  assert.equal(tag.affectsResults, false);
+  assert.equal(tag.affectsResolution, false);
+  assert.equal(tag.replayable, true, "still replayed — just not part of a results cache key");
+  assert.equal(one("ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 10", "snowflake").affectsResults, false);
+  assert.equal(one("ALTER SESSION SET AUTOCOMMIT = FALSE", "snowflake").affectsResults, false);
+  const sp = one("ALTER SESSION SET SEARCH_PATH = 'db.s1, db.s2'", "snowflake");
+  assert.equal(sp.affectsResolution, true);
+  assert.equal(sp.affectsResults, true);
+  // Anything the table does not name is results-affecting (pre-R128 behaviour).
+  for (const sql of ["ALTER SESSION SET DATE_OUTPUT_FORMAT = 'YYYY-MM-DD'", "ALTER SESSION SET WEEK_START = 1", "ALTER SESSION SET SOME_FUTURE_PARAMETER = 1"]) {
+    assert.equal(one(sql, "snowflake").affectsResults, true, sql);
+  }
+  // The Postgres table is untouched by the new one.
+  assert.equal(one("SET timezone = 'UTC'", "postgres").key, "timezone");
+  assert.equal(one("SET QUERY_TAG = 'x'", "postgres").affectsResults, true);
+});
+
+test("R128: Snowflake USE SCHEMA db.s keeps the database on `parts`, and apply() switches both", () => {
+  const e = one("USE SCHEMA db1.s1", "snowflake");
+  assert.equal(e.kind, "use");
+  assert.equal(e.key, "schema");
+  assert.equal(e.value, "s1", "value stays the schema name, as every one-part caller expects");
+  assert.deepEqual(e.parts, { catalog: "db1", schema: "s1" });
+  const quoted = one('USE SCHEMA "My Db"."S 1"', "snowflake");
+  assert.deepEqual(quoted.parts, { catalog: "My Db", schema: "S 1" });
+  assert.equal(one("USE SCHEMA s1", "snowflake").parts, null);
+  let state = createState("snowflake");
+  state = apply(state, one("USE DATABASE other", "snowflake"));
+  state = apply(state, e);
+  assert.equal(state.catalog, "db1");
+  assert.equal(state.schema, "s1");
+  state = apply(state, one("USE SCHEMA s2", "snowflake"));
+  assert.equal(state.catalog, "db1", "a one-part USE SCHEMA leaves the database alone");
+  assert.equal(state.schema, "s2");
+});
+
+test("R128: Snowflake render() emits ALTER SESSION SET with the raw value, USE SCHEMA db.s, and replays role/warehouse before the namespace", () => {
+  let state = createState("snowflake");
+  for (const sql of ["USE SCHEMA db1.s1", "USE WAREHOUSE wh1", "USE ROLE analyst", "ALTER SESSION SET TIMEZONE = 'Asia/Tokyo', WEEK_START = 1, AUTOCOMMIT = FALSE, QUERY_TAG = 'o''brien'"]) {
+    state = apply(state, classify(sql, { dialect: "snowflake" })[0]);
+  }
+  assert.deepEqual(render(state, { dialect: "snowflake" }), [
+    "USE ROLE analyst",
+    "USE WAREHOUSE wh1",
+    "USE SCHEMA db1.s1",
+    "ALTER SESSION SET TIMEZONE = 'Asia/Tokyo'",
+    "ALTER SESSION SET WEEK_START = 1",
+    "ALTER SESSION SET AUTOCOMMIT = FALSE",
+    "ALTER SESSION SET QUERY_TAG = 'o''brien'",
+  ]);
+  // No raw text on file (a state hydrated from storage): numbers/booleans bare, strings quoted and escaped.
+  const hydrated = createState("snowflake");
+  hydrated.variables = { WEEK_START: "1", AUTOCOMMIT: "false", TIMEZONE: "America/New_York", QUERY_TAG: "o'brien" };
+  hydrated.replayLog = Object.entries(hydrated.variables).map(([key, value]) => ({ kind: "set", key, value }));
+  assert.deepEqual(render(hydrated, { dialect: "snowflake" }), [
+    "ALTER SESSION SET WEEK_START = 1",
+    "ALTER SESSION SET AUTOCOMMIT = false",
+    "ALTER SESSION SET TIMEZONE = 'America/New_York'",
+    "ALTER SESSION SET QUERY_TAG = 'o''brien'",
+  ]);
+  // Every rendered statement round-trips through the Snowflake parser to the same Effect.
+  for (const stmt of render(state, { dialect: "snowflake" })) {
+    const [back] = classify(stmt, { dialect: "snowflake" });
+    assert.notEqual(back.kind, "unknown", stmt);
+    assert.notEqual(back.kind, "none", stmt);
+  }
+  // Other families are untouched: Databricks raw-text SET, Postgres order namespace-first.
+  let db = createState("databricks");
+  db = apply(db, classify("SET spark.sql.session.timeZone = UTC", { dialect: "databricks" })[0]);
+  assert.deepEqual(render(db, { dialect: "databricks" }), ["SET spark.sql.session.timeZone = UTC"]);
+  let pg = createState("postgres");
+  pg = apply(pg, classify("SET ROLE admin", { dialect: "postgres" })[0]);
+  pg = apply(pg, classify("SET timezone = 'UTC'", { dialect: "postgres" })[0]);
+  assert.equal(pg.replayLog.map((e) => e.kind).join(","), "use_role,set", "Postgres keeps its pre-R128 replay order (role before parameters; the Snowflake reordering is family-gated)");
+});

@@ -46,6 +46,14 @@ export interface Effect {
    * the gateway's own `translateChangeToEffect`) — `apply()` falls back to
    * splitting `value` on "." in that case, unchanged from before. */
   parts: Nullable<{ catalog: string; schema: string }>;
+  /** R128: for a statement carrying several items (`SET a = 1, b = 2`,
+   * `ALTER SESSION SET TIMEZONE = 'UTC', WEEK_START = 1`, `ALTER SESSION UNSET
+   * a, b`) every item's own Effect, first included, in source order; the
+   * enclosing Effect is the first item's with `affectsResolution`/
+   * `affectsResults` folded as "any item" and `replayable` as "every item".
+   * `apply()` reduces `items` in order, so applying the enclosing Effect
+   * applies every item. `null` for a single-item statement. */
+  items: Nullable<Effect[]>;
   affectsResolution: boolean;
   affectsResults: boolean;
   replayable: boolean;
@@ -97,7 +105,8 @@ export interface RenderOptions {
 }
 
 /** Classifies a (possibly semicolon-batched) SQL string into one Effect per
- * statement, from a real parsed AST — never a regex over the raw text. */
+ * statement, from a real parsed AST — never a regex over the raw text. A
+ * multi-item statement is still one Effect, with the items on `items`. */
 export function classify(sql: string, options?: ClassifyOptions): Effect[];
 
 /** A fresh State for a new connection/session on the given dialect. */
