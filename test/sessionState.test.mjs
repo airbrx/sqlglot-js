@@ -1060,7 +1060,6 @@ test("R129: Snowflake driver-side-only parameters do not affect the cached resul
     "ALTER SESSION SET JDBC_TREAT_DECIMAL_AS_INT = TRUE",
     "ALTER SESSION SET JDBC_TREAT_TIMESTAMP_NTZ_AS_UTC = TRUE",
     "ALTER SESSION SET JDBC_USE_SESSION_TIMEZONE = TRUE",
-    "ALTER SESSION SET CLIENT_TIMESTAMP_TYPE_MAPPING = 'TIMESTAMP_LTZ'",
     "ALTER SESSION SET CLIENT_RESULT_COLUMN_CASE_INSENSITIVE = TRUE",
     "ALTER SESSION SET JS_TREAT_INTEGER_AS_BIGINT = TRUE",
     "ALTER SESSION SET ODBC_TREAT_DECIMAL_AS_INT = TRUE",
@@ -1073,11 +1072,17 @@ test("R129: Snowflake driver-side-only parameters do not affect the cached resul
   }
   // Formatting/encoding parameters that genuinely change the response bytes
   // stay results-affecting (pre-R128/R129 conservative default, unlisted).
+  // CLIENT_TIMESTAMP_TYPE_MAPPING is the one parameter this round considered
+  // and deliberately did NOT flip: unlike its sibling *_TREAT_* parameters
+  // above, it also sets the SQL type of a JDBC/ODBC bind (TIMESTAMP_LTZ vs
+  // TIMESTAMP_NTZ), which the server receives and can answer differently —
+  // an outgoing-request effect, not just a client-side read mapping.
   for (const sql of [
     "ALTER SESSION SET ROWS_PER_RESULTSET = 100",
     "ALTER SESSION SET PYTHON_CONNECTOR_QUERY_RESULT_FORMAT = 'ARROW'",
     "ALTER SESSION SET JDBC_QUERY_RESULT_FORMAT = 'JSON'",
     "ALTER SESSION SET GO_QUERY_RESULT_FORMAT = 'JSON'",
+    "ALTER SESSION SET CLIENT_TIMESTAMP_TYPE_MAPPING = 'TIMESTAMP_LTZ'",
   ]) {
     assert.equal(one(sql, "snowflake").affectsResults, true, sql);
   }
