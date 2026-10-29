@@ -288,8 +288,10 @@ const POSTGRES_KEYS = new Map([
 // change how an unqualified name RESOLVES; every parameter not listed here is
 // treated conservatively as results-affecting (TIMEZONE, WEEK_START, every
 // *_OUTPUT_FORMAT / *_INPUT_FORMAT, TIMESTAMP_TYPE_MAPPING, JSON_INDENT,
-// STRICT_JSON_OUTPUT, ROWS_PER_RESULTSET, …), which is the pre-R128 behaviour
-// for all of them.
+// STRICT_JSON_OUTPUT, ROWS_PER_RESULTSET, PYTHON_CONNECTOR_QUERY_RESULT_FORMAT,
+// JDBC_QUERY_RESULT_FORMAT, …), which is the pre-R128 behaviour for all of
+// them. See docs/proposals/session-state-module.md's `snowflake` section for
+// the full per-parameter decision table (R129).
 function sfRow(affectsResolution, affectsResults) {
   return { affectsResolution, affectsResults };
 }
@@ -314,6 +316,55 @@ const SNOWFLAKE_KEYS = new Map([
   ["ERROR_ON_NONDETERMINISTIC_UPDATE", sfRow(false, false)],
   ["LOG_LEVEL", sfRow(false, false)],
   ["TRACE_LEVEL", sfRow(false, false)],
+  // R129 (AIR-2374 review, bissellator): driver-side-only knobs. Each of
+  // these changes how a specific DRIVER converts values it already
+  // received from the server into that language's local types (Java
+  // BigDecimal-vs-Integer, java.sql.Timestamp's time zone, JS Number-vs-
+  // BigInt, ResultSet.get* column-name lookup) — never what the server puts
+  // on the wire for `/queries/v1/query-request`. Confirmed against
+  // snowflake-jdbc's own `SessionUtil.java`: the handler for each of the
+  // four JDBC/CLIENT_* keys below calls a `session.setXxx(...)` setter that
+  // only touches local JDBC-session state (`setJdbcTreatDecimalAsInt`,
+  // `setTreatNTZAsUTC`, `setUseSessionTimezone`,
+  // `setResultColumnCaseInsensitive`) — see
+  // src/main/java/net/snowflake/client/core/SessionUtil.java,
+  // `updateSfDriverParamValues`. Caching the response bytes is unaffected
+  // by any of them, so a JDBC/Tableau session and a Python session running
+  // the same SQL can still share one cache entry.
+  ["JDBC_TREAT_DECIMAL_AS_INT", sfRow(false, false)],
+  ["JDBC_TREAT_TIMESTAMP_NTZ_AS_UTC", sfRow(false, false)],
+  ["JDBC_USE_SESSION_TIMEZONE", sfRow(false, false)],
+  ["CLIENT_RESULT_COLUMN_CASE_INSENSITIVE", sfRow(false, false)],
+  // NOT driver-side-only, unlike its four siblings above — stays
+  // results-affecting. `CLIENT_TIMESTAMP_TYPE_MAPPING` has two roles: a
+  // read-side one (maps an already-fetched TIMESTAMP column to a Java type
+  // on `getObject()`, which alone would be client-only) and a BIND-side one
+  // Snowflake's own docs call out explicitly: "Specifies the TIMESTAMP_*
+  // variation to use when BINDING timestamp variables for JDBC or ODBC
+  // applications." snowflake-jdbc's `SnowflakePreparedStatementImpl.java`
+  // confirms the bind path: the generic `setTimestamp(i, ts)` overload reads
+  // `session.getTimestampMappedType()` to compute `bindingTypeName`, sent to
+  // the server in the bind's `ParameterBindingDTO` as its SQL type
+  // (TIMESTAMP_LTZ vs TIMESTAMP_NTZ) — those two types have different
+  // server-side semantics, so the same SQL text with the same bind bytes can
+  // come back different depending on this parameter. That outgoing-request
+  // effect dominates: left unlisted (conservative `true`, the pre-R129
+  // default) rather than added here.
+  // Node.js driver equivalent: converts an already-returned INTEGER value
+  // to JS BigInt vs Number; the wire value is identical either way (Snowflake
+  // docs, "Consuming results" / Node.js driver guide).
+  ["JS_TREAT_INTEGER_AS_BIGINT", sfRow(false, false)],
+  // ODBC's own TREAT_DECIMAL_AS_INT — same local column-type-binding
+  // semantics as JDBC_TREAT_DECIMAL_AS_INT above, just for the ODBC driver.
+  ["ODBC_TREAT_DECIMAL_AS_INT", sfRow(false, false)],
+  // Governs precision optimization of Parquet files COPY INTO <location>
+  // writes to an external stage (Snowflake docs: "Tutorial: Loading and
+  // unloading Parquet data"). A `COPY INTO <location>` statement's own
+  // response can carry this (e.g. `output_bytes`), but unload responses are
+  // never cached by a results cache keyed on SELECT text — so for every
+  // statement this table's `affectsResults` actually gates, the parameter
+  // has no effect.
+  ["ENABLE_UNLOAD_PHYSICAL_TYPE_OPTIMIZATION", sfRow(false, false)],
   // Name resolution — an unqualified name may now mean a different object.
   ["SEARCH_PATH", sfRow(true, true)],
   ["QUOTED_IDENTIFIERS_IGNORE_CASE", sfRow(true, true)],
