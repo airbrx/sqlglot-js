@@ -1049,3 +1049,43 @@ test("R128: Snowflake render() emits ALTER SESSION SET with the raw value, USE S
   pg = apply(pg, classify("SET timezone = 'UTC'", { dialect: "postgres" })[0]);
   assert.equal(pg.replayLog.map((e) => e.kind).join(","), "use_role,set", "Postgres keeps its pre-R128 replay order (role before parameters; the Snowflake reordering is family-gated)");
 });
+
+test("R129: Snowflake driver-side-only parameters do not affect the cached result bytes", () => {
+  // Each of these only changes how a specific DRIVER converts/binds values it
+  // already received into that language's local types — never what the
+  // server puts on the wire. AIR-2374 code review (bissellator) found the
+  // R128 table left them all conservatively `true`, forking the cache across
+  // client types for no reason.
+  for (const sql of [
+    "ALTER SESSION SET JDBC_TREAT_DECIMAL_AS_INT = TRUE",
+    "ALTER SESSION SET JDBC_TREAT_TIMESTAMP_NTZ_AS_UTC = TRUE",
+    "ALTER SESSION SET JDBC_USE_SESSION_TIMEZONE = TRUE",
+    "ALTER SESSION SET CLIENT_TIMESTAMP_TYPE_MAPPING = 'TIMESTAMP_LTZ'",
+    "ALTER SESSION SET CLIENT_RESULT_COLUMN_CASE_INSENSITIVE = TRUE",
+    "ALTER SESSION SET JS_TREAT_INTEGER_AS_BIGINT = TRUE",
+    "ALTER SESSION SET ODBC_TREAT_DECIMAL_AS_INT = TRUE",
+    "ALTER SESSION SET ENABLE_UNLOAD_PHYSICAL_TYPE_OPTIMIZATION = FALSE",
+  ]) {
+    const e = one(sql, "snowflake");
+    assert.equal(e.affectsResults, false, sql);
+    assert.equal(e.affectsResolution, false, sql);
+    assert.equal(e.replayable, true, "still replayed — just not part of a results cache key");
+  }
+  // Formatting/encoding parameters that genuinely change the response bytes
+  // stay results-affecting (pre-R128/R129 conservative default, unlisted).
+  for (const sql of [
+    "ALTER SESSION SET ROWS_PER_RESULTSET = 100",
+    "ALTER SESSION SET PYTHON_CONNECTOR_QUERY_RESULT_FORMAT = 'ARROW'",
+    "ALTER SESSION SET JDBC_QUERY_RESULT_FORMAT = 'JSON'",
+    "ALTER SESSION SET GO_QUERY_RESULT_FORMAT = 'JSON'",
+  ]) {
+    assert.equal(one(sql, "snowflake").affectsResults, true, sql);
+  }
+  // UNSET goes through the same table — one `reset` per parameter, still not
+  // results-affecting for a driver-side-only key.
+  const unset = classify("ALTER SESSION UNSET JDBC_TREAT_DECIMAL_AS_INT, QUERY_TAG", { dialect: "snowflake" })[0];
+  assert.deepEqual(
+    unset.items.map((i) => [i.kind, i.key, i.affectsResults]),
+    [["reset", "JDBC_TREAT_DECIMAL_AS_INT", false], ["reset", "QUERY_TAG", false]],
+  );
+});

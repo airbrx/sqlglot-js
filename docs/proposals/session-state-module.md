@@ -438,6 +438,42 @@ concept for these statements, and no documented `Command`-fallback or misparse
 case from the AIR-2360 probe — every statement in its row of the probe already
 produces a real node, so this table has no fallback-reader section.
 
+#### R129: driver-side-only parameter audit (AIR-2374 review)
+
+airbrx-gateway PR #262 (AIR-2374) builds its Snowflake cache key from the
+results-affecting subset of the parameters the server echoes in login/query
+responses (`data.parameters`). bissellator's review (2026-10-29) found the
+R128 table left every JDBC/Node.js/ODBC driver-tuning parameter at its
+conservative `affectsResults: true` default, which forks the cache across
+client types for no reason: a JDBC/Tableau session and a Python session
+running the identical SQL would never share a cache entry.
+
+The question for each parameter is narrow: does changing it change what the
+**server** puts in the `/queries/v1/query-request` response for the same SQL
+(under the same role/warehouse/database/schema) — not whether it changes what
+a *driver* does with that response afterward. The table below is the full
+audit; rows actually added to `SNOWFLAKE_KEYS` are marked **added**.
+
+| parameter | `affectsResults` | evidence |
+| -- | -- | -- |
+| `JDBC_TREAT_DECIMAL_AS_INT` | false — **added** | snowflake-jdbc `SessionUtil.java` (`updateSfDriverParamValues`): the handler calls `session.setJdbcTreatDecimalAsInt(bool)`, pure local JDBC-session state. [Snowflake docs](https://docs.snowflake.com/en/sql-reference/parameters#jdbc-treat-decimal-as-int): "Specifies how JDBC processes columns that have a scale of zero" — a `getObject()`-time Java type choice (confirmed independently by Trino's Snowflake connector, which sets this to `FALSE` specifically so it always gets a `DECIMAL` back from `getObject`). |
+| `JDBC_TREAT_TIMESTAMP_NTZ_AS_UTC` | false — **added** | Same handler, `session.setTreatNTZAsUTC(bool)` — only changes how an already-fetched `TIMESTAMP_NTZ` wire value is epoch-adjusted into `java.sql.Timestamp`. |
+| `JDBC_USE_SESSION_TIMEZONE` | false — **added** | [Snowflake docs](https://docs.snowflake.com/en/sql-reference/parameters#jdbc-use-session-timezone): "Specifies whether the JDBC Driver uses the time zone of the JVM or … of the session … for the `getDate()`, `getTime()`, and `getTimestamp()` methods of the `ResultSet` class." Source: `session.setUseSessionTimezone(bool)`, same local-state handler. |
+| `CLIENT_TIMESTAMP_TYPE_MAPPING` | false — **added** | Named explicitly as needing evidence (sounds like it could coerce a bind parameter's server-side type). The driver source settles it: the handler calls `session.setTimestampMappedType(SnowflakeType.valueOf(...))`, which only selects the Java/JDBC type a `TIMESTAMP` column maps to when read back via `getObject()` — a client-side *read* mapping, not a server-side bind coercion. Not to be confused with the unrelated, genuinely results-affecting `TIMESTAMP_TYPE_MAPPING` (no `CLIENT_` prefix), which is a server-side default for untyped `TIMESTAMP` literals/columns and stays conservative (unlisted). |
+| `CLIENT_RESULT_COLUMN_CASE_INSENSITIVE` | false — **added** | [Snowflake docs](https://docs.snowflake.com/en/sql-reference/parameters#client-result-column-case-insensitive) (via terraform-provider-snowflake, which mirrors the official parameter descriptions): "indicates whether to match column name case-insensitively in `ResultSet.get*` methods in JDBC." Source: `session.setResultColumnCaseInsensitive(bool)` — client-side column-label lookup only. |
+| `JS_TREAT_INTEGER_AS_BIGINT` | false — **added** | [Snowflake docs](https://docs.snowflake.com/en/developer-guide/node-js/nodejs-driver-consume) (Node.js driver, "Consuming results"): converts an already-returned `INTEGER` value from JS `Number` to `BigInt` so it doesn't lose precision — the wire value is identical either way. |
+| `ODBC_TREAT_DECIMAL_AS_INT` | false — **added** | Same family and semantics as `JDBC_TREAT_DECIMAL_AS_INT` above (confirmed as a real, distinct account/session parameter in Snowflake's own parameter enum, alongside the JDBC/JS variants) — the ODBC driver's local column-type binding for scale-zero numerics. |
+| `ENABLE_UNLOAD_PHYSICAL_TYPE_OPTIMIZATION` | false — **added** | [Snowflake docs](https://docs.snowflake.com/en/user-guide/tutorials/script-data-load-transform-parquet) ("Tutorial: Loading and unloading Parquet data"): controls precision optimization of **Parquet files** that `COPY INTO <location>` writes to an external stage. That changes bytes written to the stage, not the `query-request` response describing the unload (row/file counts) — the only thing a results cache keys on. Out of scope for every statement except `COPY INTO <location>` unloads; conservative-but-wrong would only matter there, and even there it doesn't change the *response*. |
+| `ROWS_PER_RESULTSET` | true — kept (unlisted) | [Snowflake docs](https://docs.snowflake.com/sql-reference/parameters) ("ROWS_PER_RESULTSET … maximum number of rows returned in a result set"): truncates the actual row set the server returns — genuinely changes response bytes. bissellator's review flagged this one as "suspect"; the audit confirms it belongs on the `true` side, not `false`. |
+| `PYTHON_CONNECTOR_QUERY_RESULT_FORMAT`, `JDBC_QUERY_RESULT_FORMAT` | true — kept (unlisted) | Select Arrow vs. JSON wire encoding for the result — a direct, large change to the response bytes. |
+| `GO_QUERY_RESULT_FORMAT` | true — **undecided, kept conservative** | Presumably the Go driver's analogue of the two rows above (Arrow vs. JSON), which would make it `true` for the same reason — but no primary-source confirmation of its value set or behavior was found in this round. Left at the conservative default; a gateway owner with access to a real Go-driver login payload should confirm. |
+| `TIMEZONE`, every `*_OUTPUT_FORMAT` / `*_INPUT_FORMAT` (`DATE`, `TIME`, `TIMESTAMP*`, `BINARY`, `GEOGRAPHY`, `GEOMETRY`), `WEEK_START`, `WEEK_OF_YEAR_POLICY`, `JSON_INDENT`, `STRICT_JSON_OUTPUT`, `TIMESTAMP_TYPE_MAPPING`, `TWO_DIGIT_CENTURY_START` | true — kept (unlisted) | Server-side formatting/encoding or literal-parsing of the actual column values — change the response bytes directly. Unchanged from R128; listed here for completeness since they were named as examples in the AIR-2374 review. |
+
+No other parameter from Snowflake's [session parameters
+reference](https://docs.snowflake.com/sql-reference/parameters) was re-examined
+this round; everything not in the table above or in `SNOWFLAKE_KEYS` keeps the
+R128 conservative default.
+
 ### `mysql` (shared by `singlestore`, `starrocks`, `doris`) — generic-table rows only
 
 Only the probe's own real-node row: `SET NAMES charset [COLLATE c]` → `kind:
