@@ -1094,3 +1094,152 @@ test("R129: Snowflake driver-side-only parameters do not affect the cached resul
     [["reset", "JDBC_TREAT_DECIMAL_AS_INT", false], ["reset", "QUERY_TAG", false]],
   );
 });
+
+// ---------------------------------------------------------------------------
+// R130 (AIR-2379 prerequisite, AIR-2382 non-grammar half): a `chain` field on
+// every `transaction:commit`/`transaction:rollback` Effect, so a deferring
+// caller (airbrx-gateway PR #261) can tell `COMMIT`/`ROLLBACK`/`END`/`ABORT`
+// (ends the transaction) from `… AND CHAIN` (ends it and immediately opens a
+// new one, Postgres reporting ReadyForQuery('T') not 'I') without re-tokenizing
+// the statement text itself. `null` on every other Effect, including every
+// other transaction key (begin/isolation_level/rollback_to_savepoint) — chain
+// is only a real clause on the four forms that end a transaction.
+// ---------------------------------------------------------------------------
+
+test("R130: COMMIT's chain comes straight from the real AST field, true/false/no-clause across every spelling", () => {
+  const chain = (sql, dialect = "postgres") => one(sql, dialect).chain;
+  assert.equal(chain("COMMIT"), false, "no clause");
+  assert.equal(chain("COMMIT AND CHAIN"), true);
+  assert.equal(chain("COMMIT AND NO CHAIN"), false);
+  assert.equal(chain("COMMIT WORK"), false);
+  assert.equal(chain("COMMIT WORK AND CHAIN"), true);
+  assert.equal(chain("COMMIT TRANSACTION"), false);
+  assert.equal(chain("COMMIT TRANSACTION AND CHAIN"), true);
+  assert.equal(chain("COMMIT TRANSACTION AND NO CHAIN"), false);
+  // A comment never leaks into the clause the real parser already stripped —
+  // the AST path (unlike a text-regex one) never has to special-case this.
+  assert.equal(chain("COMMIT /* and chain */ AND NO CHAIN"), false);
+  for (const e of classify("COMMIT", { dialect: "postgres" })) assert.equal(e.key, "commit");
+});
+
+test("R130: bare END takes the real AST Commit path on Postgres (TokenType.END -> _parse_commit_or_rollback, Postgres-only) and gets the same chain; other families misparse it with the token-span fallback", () => {
+  assert.equal(one("END").chain, false);
+  assert.equal(one("END AND CHAIN").chain, true);
+  assert.equal(one("END AND NO CHAIN").chain, false);
+  assert.equal(one("END WORK AND CHAIN").chain, true);
+  assert.equal(one("END TRANSACTION AND NO CHAIN").chain, false);
+  // Non-last-token END inside a batch still reaches the real Commit path.
+  assert.deepEqual(
+    classify("SET search_path = a; END AND CHAIN").map((e) => [e.kind, e.key, e.chain]),
+    [["set", "search_path", null], ["transaction", "commit", true]],
+  );
+  // A bare, non-last END on every other family misparses the same way ABORT
+  // does (not Postgres-only STATEMENT_PARSERS wiring) — the token-span/text
+  // fallback in transactionMisparseKey picks the clause up all the same.
+  for (const dialect of ["mysql", "snowflake", "databricks"]) {
+    assert.equal(one("END", dialect).chain, false, dialect);
+    assert.equal(one("END AND CHAIN", dialect).chain, true, dialect);
+    assert.equal(one("END AND NO CHAIN", dialect).chain, false, dialect);
+    const [, end] = classify("SELECT 1; END AND CHAIN", { dialect });
+    assert.equal(end.chain, true, dialect);
+  }
+});
+
+test("R130: END as the very last token of a batch is the chainless EndStatement shortcut — it can never carry a clause", () => {
+  const endStatement = classify("SELECT 1; END")[1];
+  assert.equal(endStatement.kind, "transaction");
+  assert.equal(endStatement.key, "commit");
+  assert.equal(endStatement.chain, false);
+  // The shortcut only fires when END really is the last token — one with
+  // anything after it (even just "AND CHAIN") takes the real Commit path
+  // instead (previous test), so there is no shape where EndStatement and a
+  // chain clause coexist.
+});
+
+test("R130: ROLLBACK has no `chain` arg on the real AST at all (upstream discards it in _parse_commit_or_rollback) — every spelling reads it from the statement's own trailing tokens instead", () => {
+  const chain = (sql, dialect = "postgres") => one(sql, dialect).chain;
+  assert.equal(chain("ROLLBACK"), false);
+  assert.equal(chain("ROLLBACK AND CHAIN"), true);
+  assert.equal(chain("ROLLBACK AND NO CHAIN"), false);
+  assert.equal(chain("ROLLBACK WORK"), false);
+  assert.equal(chain("ROLLBACK WORK AND CHAIN"), true);
+  assert.equal(chain("ROLLBACK TRANSACTION"), false);
+  assert.equal(chain("ROLLBACK TRANSACTION AND NO CHAIN"), false);
+  assert.equal(chain("ROLLBACK TRANSACTION AND CHAIN"), true);
+  for (const e of classify("ROLLBACK AND CHAIN")) assert.equal(e.key, "rollback");
+});
+
+test("R130: ROLLBACK TO SAVEPOINT always reports chain:null — real Postgres grammar has no AND CHAIN form for a savepoint target", () => {
+  const toSavepoint = one("ROLLBACK TO SAVEPOINT x");
+  assert.equal(toSavepoint.key, "rollback_to_savepoint");
+  assert.equal(toSavepoint.chain, null);
+  // This port's (and upstream's) grammar loosely allows — and, per the same
+  // chain-discard as plain ROLLBACK, silently ignores — a trailing AND CHAIN
+  // after the savepoint name even though real Postgres rejects that
+  // combination; either way this module reports null, never a derived bool.
+  const withTrailingClause = one("ROLLBACK TO SAVEPOINT x AND CHAIN");
+  assert.equal(withTrailingClause.key, "rollback_to_savepoint");
+  assert.equal(withTrailingClause.chain, null);
+});
+
+test("R130: ABORT's AND CHAIN clause changes its misparse SHAPE (Column -> And/Alias), which is why R125 never saw it — this round widens transactionMisparseKey's accepted root types to catch it", () => {
+  const chain = (sql, dialect = "postgres") => one(sql, dialect).chain;
+  assert.equal(chain("ABORT"), false);
+  assert.equal(chain("ABORT AND CHAIN"), true);
+  assert.equal(chain("ABORT AND NO CHAIN"), false);
+  assert.equal(chain("ABORT WORK"), false, "no clause — unaffected, same shape as R125");
+  assert.equal(chain("ABORT TRANSACTION"), false, "no clause — unaffected, same shape as R125");
+  for (const e of classify("ABORT AND CHAIN")) {
+    assert.equal(e.kind, "transaction");
+    assert.equal(e.key, "rollback");
+  }
+  // ABORT [WORK|TRANSACTION] AND [NO] CHAIN together is a real,
+  // upstream-faithful parse error (verified directly against pinned CPython):
+  // "ABORT WORK" already completes as its own top-level statement, and a
+  // trailing bare "AND" has no grammar rule to attach to once that happens.
+  // classify()'s own parse-error catch reports the whole batch `unknown`
+  // before transactionMisparseKey is ever reached, so these can only ever
+  // read chain:null (the unknown-Effect default), never a derived bool.
+  for (const sql of ["ABORT WORK AND CHAIN", "ABORT TRANSACTION AND NO CHAIN", "ABORT WORK AND NO CHAIN", "ABORT TRANSACTION AND CHAIN"]) {
+    const e = one(sql);
+    assert.equal(e.kind, "unknown", sql);
+    assert.match(e.unknownReason, /^parse-error:/, sql);
+    assert.equal(e.chain, null, sql);
+  }
+});
+
+test("R130: COMMIT/ROLLBACK PREPARED (two-phase commit) are real, upstream-faithful parse errors on this port's grammar, not chainable — unknown with chain:null, unchanged from before this round", () => {
+  for (const sql of ["COMMIT PREPARED 'x'", "ROLLBACK PREPARED 'x'"]) {
+    const e = one(sql);
+    assert.equal(e.kind, "unknown", sql);
+    assert.equal(e.chain, null, sql);
+  }
+});
+
+test("R130: chain is null on every transaction Effect that is not a plain commit/rollback, and on every non-transaction Effect", () => {
+  assert.equal(one("START TRANSACTION").chain, null);
+  assert.equal(one("BEGIN ISOLATION LEVEL REPEATABLE READ").chain, null);
+  assert.equal(one("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY").chain, null);
+  assert.equal(one("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE").chain, null);
+  assert.equal(one("SET search_path = a").chain, null);
+  assert.equal(one("USE SCHEMA db1.s1", "snowflake").chain, null);
+  assert.equal(one("RESET ALL").chain, null);
+  assert.equal(classify("SELECT 1")[0].chain, null);
+});
+
+test("R130: COMMIT/ROLLBACK AND CHAIN is base-parser grammar, not Postgres-specific — every dialect family this module tracks reads the same chain", () => {
+  for (const dialect of ["mysql", "snowflake", "databricks"]) {
+    assert.equal(one("COMMIT AND CHAIN", dialect).chain, true, dialect);
+    assert.equal(one("COMMIT AND NO CHAIN", dialect).chain, false, dialect);
+    assert.equal(one("ROLLBACK AND CHAIN", dialect).chain, true, dialect);
+  }
+  // TSQL overrides _parse_commit_or_rollback entirely (its own COMMIT/ROLLBACK
+  // TRAN grammar, Microsoft docs) with no AND CHAIN support at all — the
+  // clause is a real parse error there, so a plain COMMIT/ROLLBACK always
+  // reads chain:false (no clause can ever produce true).
+  assert.equal(one("COMMIT", "tsql").chain, false);
+  assert.equal(one("ROLLBACK", "tsql").chain, false);
+  const tsqlChainError = classify("COMMIT AND CHAIN", { dialect: "tsql" })[0];
+  assert.equal(tsqlChainError.kind, "unknown");
+  assert.equal(tsqlChainError.chain, null);
+});
