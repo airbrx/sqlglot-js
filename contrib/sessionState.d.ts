@@ -54,6 +54,17 @@ export interface Effect {
    * `apply()` reduces `items` in order, so applying the enclosing Effect
    * applies every item. `null` for a single-item statement. */
   items: Nullable<Effect[]>;
+  /** R130: for a `kind:"transaction"` Effect with `key:"commit"` or
+   * `key:"rollback"` only — `true` for a trailing `AND CHAIN` clause
+   * (`COMMIT`/`ROLLBACK`/`END`/`ABORT ... AND CHAIN`: ends the transaction and
+   * immediately starts a new one), `false` for `AND NO CHAIN` or no clause at
+   * all. `null` on every other Effect, including every other transaction key
+   * (`begin`, `isolation_level`, `rollback_to_savepoint`) — chain is a real
+   * clause only on the four forms that end a transaction. See
+   * docs/proposals/session-state-module.md's "Transaction chain" section for
+   * the per-spelling derivation (real AST field for Commit, token-span reader
+   * for Rollback, which upstream's grammar parses but discards). */
+  chain: Nullable<boolean>;
   affectsResolution: boolean;
   affectsResults: boolean;
   replayable: boolean;

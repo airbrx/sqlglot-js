@@ -523,6 +523,15 @@ prefers over splitting `value` on `"."`, so a catalog/schema component containin
 is never mis-split; and `State` gains a `variablesRaw` sibling of `variables` (source-quoted,
 same keys) that only a Databricks-family `render()` ever reads.
 
+A transaction can end two ways: a plain `COMMIT`/`ROLLBACK`/`END`/`ABORT` leaves the session
+idle, while the same statement with a trailing `AND CHAIN` immediately opens a new transaction
+with the same characteristics (Postgres itself reports `ReadyForQuery('T')`, not `'I'`). Every
+`kind: "transaction"` Effect with `key: "commit"`/`"rollback"` carries this as a `chain: boolean`
+field (`true`/`false`, never `null`); every other Effect — including every other transaction key
+— has `chain: null`. See
+[docs/proposals/session-state-module.md](proposals/session-state-module.md)'s "Transaction
+chain" section for the full per-spelling table (R130).
+
 ## Per-dialect notes
 
 Most of the 33 dialects behave exactly like upstream with no caller-visible difference worth

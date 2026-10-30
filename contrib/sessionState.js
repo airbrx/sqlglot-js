@@ -220,6 +220,13 @@ function makeEffect(dialectName, statementText, partial) {
     affectsResults: false,
     replayable: false,
     unknownReason: null,
+    // R130 (AIR-2382 prerequisite): true/false only on a kind:'transaction'
+    // Effect with key 'commit'/'rollback' (see classifyCommit/
+    // classifyRollback/transactionEffect); null on every other Effect,
+    // including every other transaction key (begin, isolation_level,
+    // rollback_to_savepoint) — chain is a real-SQL-grammar concept only for
+    // the forms that end a transaction and optionally start another.
+    chain: null,
     ...partial,
   };
 }
@@ -618,18 +625,56 @@ function classifyTransaction(root, dialectName, statementText) {
   });
 }
 
+// R130 (AIR-2379 prerequisite): `exp.Commit.args.chain` carries the real
+// `AND [NO] CHAIN` clause verbatim — the base `_parse_commit_or_rollback`
+// (`sqlglot/parser.py:8993`, this port's `src/parser.js` equivalent) sets it
+// to `true`/`false`/`null` (no clause) for every dialect that reaches
+// `exp.Commit` through it: `COMMIT`, `COMMIT WORK`, `COMMIT TRANSACTION`, and
+// — on Postgres only (`sqlglot/parsers/postgres.py` maps `TokenType.END` to
+// the same parse function) — bare `END`/`END WORK`/`END TRANSACTION` too.
+// `exp.EndStatement` (the batch-trailing-`END` shortcut, see
+// `transactionMisparseKey`'s comment) carries no args at all, so
+// `root.args.chain === true` is simply `false` for it — correct, since that
+// shortcut only fires when `END` is the very last token, which means no
+// `AND CHAIN` clause could follow it even in principle.
 function classifyCommit(root, dialectName, statementText) {
   return makeEffect(dialectName, statementText, {
     scope: "transaction",
     kind: "transaction",
     key: "commit",
+    chain: root.args.chain === true,
     affectsResolution: false,
     affectsResults: false,
     replayable: false,
   });
 }
 
-function classifyRollback(root, dialectName, statementText) {
+// R130: unlike Commit, upstream's `exp.Rollback` (`sqlglot/expressions/ddl.py`)
+// has NO `chain` arg at all — `_parse_commit_or_rollback` parses the same
+// `AND [NO] CHAIN` clause for a rollback but then discards it (`chain` is a
+// local variable only ever read by the `return exp.Commit(chain=chain)`
+// branch; the `is_rollback` branch above it returns `exp.Rollback(savepoint=
+// savepoint)` with no `chain=` at all). Verified directly against the pinned
+// CPython checkout, not inferred — this is a real upstream limitation, not a
+// bug in this port, and parser.js is upstream-faithful to it. So `chain` for
+// a real `exp.Rollback` node can only come from the statement's own trailing
+// tokens, exactly like the misparse readers above it in this file use for
+// forms the parser gives no AST field for at all. `ROLLBACK TO SAVEPOINT x`
+// has no `AND CHAIN` counterpart in real Postgres grammar (chain restarts a
+// whole transaction, not a savepoint) — `chain` is `null` there, same as any
+// other non-commit/rollback transaction key, even though this port's (and
+// upstream's) grammar loosely allows one to follow the savepoint name without
+// erroring (and, per the same discard, silently drops it either way).
+function chainFromTrailingTokens(span) {
+  if (!span) return false;
+  const tokens = span.tokens.filter((t) => t.token_type !== TokenType.SEMICOLON);
+  const text = (i) => tokens[tokens.length - 1 - i]?.text?.toUpperCase?.();
+  if (text(0) === "CHAIN" && text(1) === "AND") return true;
+  if (text(0) === "CHAIN" && text(1) === "NO" && text(2) === "AND") return false;
+  return false;
+}
+
+function classifyRollback(root, dialectName, statementText, span = null) {
   const savepoint = identText(root.args.savepoint);
   return makeEffect(dialectName, statementText, {
     scope: "transaction",
@@ -637,6 +682,7 @@ function classifyRollback(root, dialectName, statementText) {
     key: savepoint ? "rollback_to_savepoint" : "rollback",
     value: savepoint,
     valueRaw: savepoint,
+    chain: savepoint ? null : chainFromTrailingTokens(span),
     affectsResolution: false,
     affectsResults: false,
     replayable: false,
@@ -856,28 +902,48 @@ function identText_fromLiteralToken(token) {
 // Commit/Rollback node (upstream-faithful misparses, verified against pinned
 // CPython): `START TRANSACTION` → Alias(Column("START"), alias "TRANSACTION");
 // `ABORT` → bare Column; `ABORT WORK|TRANSACTION` → Alias/Command; `END`
-// inside a batch → EndStatement (alone it is Commit). Gateway review of
+// inside a batch → EndStatement (alone it is Commit, or on Postgres also a
+// real Commit — see classifyCommit's comment — so this function's `END`
+// branch only ever fires on a non-Postgres family). Gateway review of
 // airbrx-gateway PR #256 (bissellator) showed a batch such as
 // `START TRANSACTION; SET search_path = a` or `SET search_path = a; ABORT`
 // therefore escaped the caller's transaction-control fallback and the SET was
 // trusted although it is (or may be) rolled back. Detected by statement text
 // (per-statement since R123) on exactly those misparse shapes, never on a
 // real Select/Set/... node.
+//
+// R130: an `AND [NO] CHAIN` clause after `ABORT`/`END` changes the misparse
+// shape again rather than erroring — `ABORT AND CHAIN` is
+// `And(Column(ABORT), Column(CHAIN))` (`exp.And`, a type this function did
+// not previously accept at all, which is why R125 never saw the clause: the
+// type guard rejected the root before the regex ever ran) and
+// `ABORT AND NO CHAIN` is `Alias(And(Column(ABORT), Column(NO)), CHAIN)` (an
+// `exp.Alias`, already accepted). `ABORT WORK AND CHAIN` and
+// `ABORT TRANSACTION AND NO CHAIN`, by contrast, are real (upstream-faithful,
+// verified against pinned CPython) parse errors — `ABORT WORK` alone
+// completes as its own top-level Alias statement, and a batch parser
+// expecting `;`/EOF next has no rule for a bare `AND` to follow a completed
+// statement — so `classify()`'s own try/catch around `d.parse()` already
+// reports the whole batch `unknown` for those two spellings; this function is
+// never reached for them and their `chain` never has a real shape to detect.
 function transactionMisparseKey(root, statementText) {
   const bareColumn = root instanceof exp.Column && !root.args.table && !root.args.db && !root.args.catalog;
-  if (!(root instanceof exp.Alias) && !bareColumn && !(root instanceof exp.Identifier) && !(root instanceof exp.Command)) return null;
+  if (!(root instanceof exp.Alias) && !bareColumn && !(root instanceof exp.And) && !(root instanceof exp.Identifier) && !(root instanceof exp.Command)) return null;
   const text = statementText.trim().toUpperCase();
-  if (/^START\s+TRANSACTION\b/.test(text)) return "begin";
-  if (/^ABORT(\s+(WORK|TRANSACTION))?$/.test(text)) return "rollback";
-  if (/^END(\s+(WORK|TRANSACTION))?$/.test(text)) return "commit";
+  if (/^START\s+TRANSACTION\b/.test(text)) return { key: "begin", chain: null };
+  const abort = text.match(/^ABORT(?:\s+(?:WORK|TRANSACTION))?(\s+AND(?:\s+NO)?\s+CHAIN)?$/);
+  if (abort) return { key: "rollback", chain: abort[1] ? !/\bNO\b/.test(abort[1]) : false };
+  const end = text.match(/^END(?:\s+(?:WORK|TRANSACTION))?(\s+AND(?:\s+NO)?\s+CHAIN)?$/);
+  if (end) return { key: "commit", chain: end[1] ? !/\bNO\b/.test(end[1]) : false };
   return null;
 }
 
-function transactionEffect(dialectName, statementText, key) {
+function transactionEffect(dialectName, statementText, key, chain = null) {
   return makeEffect(dialectName, statementText, {
     scope: "transaction",
     kind: "transaction",
     key,
+    chain,
     affectsResolution: false,
     affectsResults: false,
     replayable: false,
@@ -889,7 +955,7 @@ function classifyCommand(root, family, dialectName, statementText, d) {
   const kw = keyword.toUpperCase();
 
   const txn = transactionMisparseKey(root, statementText);
-  if (txn) return transactionEffect(dialectName, statementText, txn);
+  if (txn) return transactionEffect(dialectName, statementText, txn.key, txn.chain);
 
   if (family === "postgres") {
     if (kw === "DO" || kw === "CALL") {
@@ -938,7 +1004,7 @@ function classifyStatement(root, family, dialectName, sql, d, span = null) {
 
   if (root instanceof exp.Transaction) return classifyTransaction(root, dialectName, statementText);
   if (root instanceof exp.Commit) return classifyCommit(root, dialectName, statementText);
-  if (root instanceof exp.Rollback) return classifyRollback(root, dialectName, statementText);
+  if (root instanceof exp.Rollback) return classifyRollback(root, dialectName, statementText, span);
   if (root instanceof exp.Declare) return classifyDeclare(root, dialectName, statementText);
   // R125: `END` inside a batch parses as EndStatement (alone it is Commit).
   if (root instanceof exp.EndStatement) return classifyCommit(root, dialectName, statementText);
@@ -946,7 +1012,7 @@ function classifyStatement(root, family, dialectName, sql, d, span = null) {
   if (root instanceof exp.Command) return classifyCommand(root, family, dialectName, statementText, d);
 
   const txn = transactionMisparseKey(root, statementText);
-  if (txn) return transactionEffect(dialectName, statementText, txn);
+  if (txn) return transactionEffect(dialectName, statementText, txn.key, txn.chain);
 
   if (family === "postgres") {
     const target = postgresDiscardMisparseTarget(root);

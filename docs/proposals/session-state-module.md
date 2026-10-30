@@ -50,6 +50,10 @@ interface Effect {
                                    // `ALTER SESSION SET x = 1, y = 2`, `ALTER SESSION UNSET a, b`),
                                    // first included, in source order; null for a single item —
                                    // see "Multi-item statements" below
+  chain: boolean | null;          // R130: true/false only on kind:"transaction" with
+                                   // key:"commit"/"rollback" (AND CHAIN / AND NO CHAIN / no
+                                   // clause); null on every other Effect, including every other
+                                   // transaction key — see "Transaction chain" below
   affectsResolution: boolean;     // could change how an unqualified name resolves
                                    // (search_path, role, session_authorization, catalog, schema)
   affectsResults: boolean;        // could change query results even when resolution is untouched
@@ -151,6 +155,47 @@ reading `key`/`value` sees exactly what it saw before R128), with every item's o
 every item; `ALTER SESSION SET TIMEZONE = 'UTC', WEEK_START = 1` therefore sets two
 variables, where it used to silently set one (the gateway-visible bug that
 motivated this: a dropped `TIMEZONE` meant a wrong cache key). Items never nest.
+
+### Transaction chain (R130, AIR-2379/AIR-2382 prerequisite)
+
+`COMMIT AND CHAIN` / `ROLLBACK AND CHAIN` / `END AND CHAIN` (and the `AND NO
+CHAIN` / no-clause counterparts) all end the current transaction, but `AND
+CHAIN` immediately opens a new one with the same characteristics — Postgres
+itself reports `ReadyForQuery('T')` (still in a transaction) rather than
+`ReadyForQuery('I')` (idle). airbrx-gateway's deferred-BEGIN work (AIR-2379,
+PR #261) needs to tell the two apart without re-tokenizing the statement text
+itself, so every `kind: "transaction"` Effect with `key: "commit"` or
+`key: "rollback"` carries a `chain: boolean` (never `null`) field; every other
+Effect — including every other transaction key (`begin`, `isolation_level`,
+`rollback_to_savepoint`) — has `chain: null`, since the clause is not a real
+concept there.
+
+**Where each spelling's `chain` comes from:**
+
+| Spelling | AST shape | `chain` source |
+| --- | --- | --- |
+| `COMMIT` / `COMMIT WORK` / `COMMIT TRANSACTION` (± `AND [NO] CHAIN`) | `exp.Commit` | `root.args.chain === true` — the real parser (`sqlglot/parser.py`'s `_parse_commit_or_rollback`, this port's `src/parser.js` equivalent) sets `chain` to `true`/`false`/`null` (no clause) directly on the node |
+| `END` / `END WORK` / `END TRANSACTION` (± `AND [NO] CHAIN`), **Postgres only**, not the last token of the batch | `exp.Commit` | same as `COMMIT` — Postgres' own parser table (`sqlglot/parsers/postgres.py`) maps `TokenType.END` to the identical `_parse_commit_or_rollback` function; every other dialect family this module tracks does not, so a bare `END` there takes the misparse row below instead |
+| `END` as the absolute last token of a multi-statement batch, any family | `exp.EndStatement` | hardcoded `false` — this shortcut (`_parse_batch_statements`'s own `not self._next` check) can only fire when `END` truly is the last token, which means no `AND CHAIN` clause could follow it even in principle; `EndStatement` carries no args at all |
+| `ROLLBACK` / `ROLLBACK WORK` / `ROLLBACK TRANSACTION` (± `AND [NO] CHAIN`) | `exp.Rollback` | **not** the AST — upstream's `Rollback` class (`sqlglot/expressions/ddl.py`) has no `chain` arg at all; `_parse_commit_or_rollback` parses the identical clause for a rollback but discards it (only the `Commit` branch's `return` passes `chain=chain` through). Verified directly against the pinned CPython checkout, not inferred — a real upstream limitation `src/parser.js` is faithful to, not a bug in this port. `chain` is read from the statement's own trailing tokens instead (`chainFromTrailingTokens`): the last two or three tokens of the statement's span are `AND CHAIN` / `AND NO CHAIN` / neither |
+| `ROLLBACK TO SAVEPOINT x` (± a trailing `AND CHAIN`, which this grammar loosely allows and then silently drops, same as plain `ROLLBACK`) | `exp.Rollback` | always `null` (`key: "rollback_to_savepoint"`) — real Postgres grammar has no `AND CHAIN` form for a savepoint target (chain restarts a whole transaction, not a savepoint), so this module never derives a bool for it regardless of what text happens to follow |
+| `ABORT` / `ABORT AND CHAIN` / `ABORT AND NO CHAIN` (bare, no `WORK`/`TRANSACTION`) | bare `Column`, `exp.And`, or `exp.Alias` wrapping an `exp.And` | `ABORT` is never a real keyword in any dialect this port supports (confirmed absent from every `tokens.js` KEYWORDS table, upstream-faithful), so it always misparses. Critically, the clause changes the misparse SHAPE, not just trailing text: `ABORT AND CHAIN` is `And(Column(ABORT), Column(CHAIN))` and `ABORT AND NO CHAIN` is `Alias(And(Column(ABORT), Column(NO)), CHAIN)` — R125 (which predates this field) only accepted `Alias`/bare-`Column`/`Identifier`/`Command` roots, so `exp.And` (the plain `AND CHAIN` case) was silently rejected before even reaching the text regex. This round widens `transactionMisparseKey`'s accepted root types to include `exp.And` and extends its regex to capture the trailing clause, returning `{ key: "rollback", chain }` |
+| `ABORT WORK` / `ABORT TRANSACTION` (no clause) | `exp.Alias` | unaffected by this round — same shape and regex match as R125, `chain: false` (no clause) |
+| `ABORT WORK AND CHAIN` / `ABORT TRANSACTION AND NO CHAIN` (any clause combined with `WORK`/`TRANSACTION`) | — | a real, **upstream-faithful parse error** (verified directly against the pinned CPython checkout): `ABORT WORK` already completes as its own top-level statement, and the batch parser has no grammar rule for a bare `AND` to follow a statement that already finished. `classify()`'s own `try`/`catch` around `d.parse()` reports the *whole batch* `kind: "unknown"` before `transactionMisparseKey` is ever reached, so these spellings can only ever read `chain: null` (the `unknown`-Effect default), never a derived bool. This is the parser-grammar gap AIR-2382 is tracking upstream, not something this module-only round can fix (see this file's header and `PORT_PLAN.md`'s R130 entry) |
+| `COMMIT PREPARED 'x'` / `ROLLBACK PREPARED 'x'` (two-phase commit) | — | also a real, upstream-faithful parse error on this port's grammar (unrelated to `AND CHAIN` — this port simply does not parse the two-phase-commit forms at all); `kind: "unknown"`, `chain: null`, unchanged from before this round |
+
+`COMMIT AND CHAIN` and `ROLLBACK AND CHAIN` are base-`Parser` grammar
+(`sqlglot/parser.py`'s own `STATEMENT_PARSERS[TokenType.COMMIT]`/`[ROLLBACK]`),
+inherited unmodified by every dialect family this module tracks except TSQL,
+which overrides `_parse_commit_or_rollback` entirely with its own `COMMIT
+[TRAN|TRANSACTION] [name]` / `ROLLBACK [TRAN|TRANSACTION] [name]` grammar
+(Microsoft's own syntax, no `AND CHAIN` concept at all) — `AND CHAIN` is a
+real parse error there, so a TSQL `COMMIT`/`ROLLBACK` always reads
+`chain: false` (no clause can ever produce `true`). A comment or string
+literal inside the clause text (`COMMIT /* and chain */ AND NO CHAIN`) never
+has to be special-cased, because the real tokenizer already strips comments
+and keeps string literals as single tokens before either the AST or the
+token-span path ever sees them.
 
 ## State schema
 
