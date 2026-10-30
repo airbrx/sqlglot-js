@@ -113,6 +113,47 @@ POSTGRES_STATEMENTS = [
     "SET TimeZone = 'UTC'",
 ]
 
+# R130 (AIR-2379 prerequisite): sessionState.js's new `chain` field (true for a
+# trailing AND CHAIN, false for AND NO CHAIN/no clause) is derived from several
+# DIFFERENT AST shapes per contrib/sessionState.js's own "Transaction chain"
+# doc section — a real exp.Commit's own `chain` arg; a real exp.Rollback (no
+# such arg at all, read from trailing tokens instead); the EndStatement
+# shortcut (always chainless by construction); and ABORT's/bare END's
+# misparse shape, which the clause itself changes (Column -> And/Alias(And)).
+# Pinned here against the real CPython checkout rather than trusted from only
+# the JS-side unit tests added with the field itself, same full-tree-equality
+# technique as every other row in this file. Shared across both families this
+# applies to (postgres: real Commit via TokenType.END; databricks: END/ABORT
+# both take the misparse path, since only postgres's own parser table maps
+# TokenType.END to _parse_commit_or_rollback) — two DIFFERENT code paths are
+# worth pinning twice, not redundant despite the identical SQL text.
+SESSION_STATE_CHAIN_STATEMENTS = [
+    "COMMIT AND CHAIN",
+    "COMMIT WORK AND NO CHAIN",
+    "COMMIT TRANSACTION AND CHAIN",
+    "END AND CHAIN",
+    "END AND NO CHAIN",
+    "BEGIN; END AND CHAIN; SELECT 1",
+    "BEGIN; SELECT 1; END",
+    "ROLLBACK AND CHAIN",
+    "ROLLBACK WORK AND NO CHAIN",
+    "ABORT AND CHAIN",
+    "ABORT AND NO CHAIN",
+    "ROLLBACK TO SAVEPOINT a",
+    "COMMIT /* and chain */ AND NO CHAIN",
+    "commit and chain;",
+    # Upstream-faithful parse errors (ABORT WORK, unlike bare ABORT, already
+    # completes as its own top-level statement before "AND CHAIN" is reached;
+    # PREPARED two-phase-commit forms are not parsed at all) — `add()`'s own
+    # try/except already records these the same way as every other error row
+    # in this file (e.g. "START TRANSACTION ISOLATION LEVEL READ COMMITTED"
+    # above), no special-casing needed.
+    "ABORT WORK AND CHAIN",
+    "COMMIT PREPARED 'x'",
+]
+
+POSTGRES_STATEMENTS += SESSION_STATE_CHAIN_STATEMENTS
+
 DATABRICKS_STATEMENTS = [
     "SET timezone = 'America/New_York'",
     "SET spark.sql.session.timeZone = 'UTC'",
@@ -130,7 +171,7 @@ DATABRICKS_STATEMENTS = [
     "BEGIN",
     "COMMIT",
     "ROLLBACK",
-]
+] + SESSION_STATE_CHAIN_STATEMENTS
 
 SNOWFLAKE_STATEMENTS = [
     "USE ROLE x",
